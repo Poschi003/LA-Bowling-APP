@@ -2171,6 +2171,130 @@ button:disabled {
   background: var(--success-soft);
 }
 
+.a4-report {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 14px;
+}
+
+.a4-report-head {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(320px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 10px;
+}
+
+.a4-report-head span,
+.a4-report-kpis span,
+.a4-report-table th,
+.a4-report-head dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.a4-report-head h3 {
+  margin: 2px 0 0;
+  font-size: 24px;
+}
+
+.a4-report-head dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.a4-report-head dl div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+}
+
+.a4-report-head dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.a4-report-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.a4-report-kpis article {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 8px;
+}
+
+.a4-report-kpis strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.a4-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.a4-report-block {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 10px;
+}
+
+.a4-report-block-wide {
+  grid-column: 1 / -1;
+}
+
+.a4-report-block h4 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.a4-report-block p {
+  margin: 4px 0;
+}
+
+.a4-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.a4-report-table th,
+.a4-report-table td {
+  border-top: 1px solid var(--line);
+  padding: 5px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.a4-report-table td {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.a4-report-table tfoot th,
+.a4-report-table tfoot td {
+  border-top: 2px solid var(--line-strong);
+  color: var(--ink);
+  font-weight: 800;
+}
+
 .danger-button {
   border-color: var(--danger);
   color: var(--danger);
@@ -2315,6 +2439,23 @@ button:disabled {
 .receipt-link {
   color: var(--brand-strong);
   font-weight: 800;
+}
+
+.settings-note {
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.report-definition-grid label {
+  align-items: flex-start;
+  background: #fff;
 }
 
 .customer-invoice-panel {
@@ -2888,10 +3029,16 @@ button:disabled {
   .terminal-cost-summary,
   .day-report-grid,
   .day-report-values,
+  .a4-report-head,
+  .a4-report-grid,
   .invoice-day-overview,
   .invoice-entry-summary,
   .report-entry-grid {
     grid-template-columns: 1fr;
+  }
+
+  .a4-report-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .invoice-entry-total {
@@ -3201,6 +3348,15 @@ button:disabled {
   body.terminal-mode #admin,
   body.terminal-mode #terminalLogin,
   body.terminal-mode .terminal-add,
+  body.terminal-mode .terminal-tabs,
+  body.terminal-mode .terminal-section,
+  body.terminal-mode .terminal-day-head,
+  body.terminal-mode .terminal-day-meta-display,
+  body.terminal-mode .terminal-handover-anchor,
+  body.terminal-mode .terminal-cost-summary,
+  body.terminal-mode .day-report-grid,
+  body.terminal-mode .report-subsection,
+  body.terminal-mode .day-report > label[data-report-field-box],
   body.terminal-mode #printDayReport,
   body.terminal-mode #saveDayReport,
   body.terminal-mode #closeDayReport,
@@ -3231,11 +3387,64 @@ button:disabled {
     border-radius: 0;
     background: white;
     padding: 0;
-    gap: 5mm;
+    gap: 3mm;
   }
 
-  body.terminal-mode .day-report-grid {
-    grid-template-columns: repeat(3, 1fr);
+  body.terminal-mode .day-report-title {
+    display: none;
+  }
+
+  body.terminal-mode .a4-report {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    gap: 3mm;
+  }
+
+  body.terminal-mode .a4-report-head {
+    grid-template-columns: 1fr 1fr;
+    border-bottom: 0.4mm solid #111;
+    padding-bottom: 2mm;
+  }
+
+  body.terminal-mode .a4-report-head h3 {
+    font-size: 16pt;
+  }
+
+  body.terminal-mode .a4-report-kpis {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1.5mm;
+  }
+
+  body.terminal-mode .a4-report-kpis article,
+  body.terminal-mode .a4-report-block {
+    border: 0.25mm solid #111;
+    border-radius: 0;
+    padding: 1.5mm;
+  }
+
+  body.terminal-mode .a4-report-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 2mm;
+  }
+
+  body.terminal-mode .a4-report-block-wide {
+    grid-column: 1 / -1;
+  }
+
+  body.terminal-mode .a4-report-table {
+    font-size: 8.5pt;
+  }
+
+  body.terminal-mode .a4-report-table th,
+  body.terminal-mode .a4-report-table td {
+    border-top: 0.2mm solid #999;
+    padding: 1mm;
+  }
+
+  body.terminal-mode .receipt-link {
+    color: #111;
+    text-decoration: none;
   }
 
   body.terminal-mode input,

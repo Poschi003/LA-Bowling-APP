@@ -678,15 +678,8 @@ function dayReportsHtml() {
             <strong>${formatDate(dateKey)}</strong>
           <span>${dayReportSummaryLine(report)}</span>
           </summary>
-          ${dayReportValuesHtml(report)}
-          ${reportFieldEnabled("preparation") ? reportPreparationHtml(dateKey, report) : ""}
-          ${reportFieldEnabled("handovers") ? reportHandoversHtml(report.handovers) : ""}
-          ${reportFieldEnabled("invoiceCustomers") ? reportInvoiceCustomersHtml(report.invoiceCustomers) : ""}
-          ${reportFieldEnabled("expenses") ? reportExpensesHtml(report.expenses) : ""}
-          ${reportFieldEnabled("documents") ? reportDocumentsHtml(report.documents) : ""}
+          ${dayReportA4Html(dateKey, report)}
           <button class="secondary" data-export-day-report="${escapeHtml(dateKey)}" type="button">Bericht exportieren</button>
-          ${reportFieldEnabled("extraEmployees") && report.extraEmployees?.length ? `<p><strong>Zusätzlich:</strong> ${report.extraEmployees.map(escapeHtml).join(", ")}</p>` : ""}
-          ${reportFieldEnabled("notes") ? `<p>${report.notes ? escapeHtml(report.notes) : "Keine Notizen."}</p>` : ""}
         </details>
       `).join("")}
     </div>
@@ -708,15 +701,8 @@ function dayReportsForMonthHtml(month) {
             <strong>${formatDate(dateKey)}</strong>
           <span>${dayReportSummaryLine(report)}</span>
           </summary>
-          ${dayReportValuesHtml(report)}
-          ${reportFieldEnabled("preparation") ? reportPreparationHtml(dateKey, report) : ""}
-          ${reportFieldEnabled("handovers") ? reportHandoversHtml(report.handovers) : ""}
-          ${reportFieldEnabled("invoiceCustomers") ? reportInvoiceCustomersHtml(report.invoiceCustomers) : ""}
-          ${reportFieldEnabled("expenses") ? reportExpensesHtml(report.expenses) : ""}
-          ${reportFieldEnabled("documents") ? reportDocumentsHtml(report.documents) : ""}
+          ${dayReportA4Html(dateKey, report)}
           <button class="secondary" data-export-day-report="${escapeHtml(dateKey)}" type="button">Bericht exportieren</button>
-          ${reportFieldEnabled("extraEmployees") && report.extraEmployees?.length ? `<p><strong>Zusätzlich:</strong> ${report.extraEmployees.map(escapeHtml).join(", ")}</p>` : ""}
-          ${reportFieldEnabled("notes") ? `<p>${report.notes ? escapeHtml(report.notes) : "Keine Notizen."}</p>` : ""}
         </details>
       `).join("")}
     </div>
@@ -743,6 +729,189 @@ function dayReportValuesHtml(report = {}) {
       ${reportFieldEnabled("expenses") ? `<span><small>Ausgaben</small><strong>${formatReportMoney(reportItemsTotal(report.expenses))}</strong></span>` : ""}
       ${reportFieldEnabled("ecTotal") ? `<span><small>EC gesamt</small><strong>${formatReportMoney(report.ecTotal)}</strong></span>` : ""}
     </div>
+  `;
+}
+
+function dayReportA4Html(dateKey, report = {}) {
+  const invoiceTotalValue = reportItemsTotal(report.invoiceCustomers);
+  const expenseTotalValue = reportItemsTotal(report.expenses);
+  const employeeRows = dayReportEmployeeRowsHtml(dateKey, report);
+  return `
+    <section class="a4-report">
+      <div class="a4-report-head">
+        <div>
+          <span>Tagesabschluss</span>
+          <h3>${escapeHtml(formatDate(dateKey))}</h3>
+        </div>
+        <dl>
+          <div><dt>Schichtleitung</dt><dd>${escapeHtml(report.shiftLeader || "-")}</dd></div>
+          <div><dt>Öffnungszeit</dt><dd>${escapeHtml(report.openingHours || "-")}</dd></div>
+          <div><dt>Status</dt><dd>${report.closed ? "Abgeschlossen" : "Offen"}</dd></div>
+        </dl>
+      </div>
+
+      <div class="a4-report-kpis">
+        ${reportFieldEnabled("barBowling") ? a4Kpi("Bar Bowling", formatReportMoney(report.barBowling)) : ""}
+        ${reportFieldEnabled("barGastro") ? a4Kpi("Bar Gastro", formatReportMoney(report.barGastro)) : ""}
+        ${reportFieldEnabled("barTotal") ? a4Kpi("Bar gesamt", formatReportMoney(barTotal(report))) : ""}
+        ${reportFieldEnabled("ecTotal") ? a4Kpi("EC gesamt", formatReportMoney(report.ecTotal)) : ""}
+        ${reportFieldEnabled("invoiceCustomers") ? a4Kpi("Auf Rechnung", formatReportMoney(invoiceTotalValue)) : ""}
+        ${reportFieldEnabled("expenses") ? a4Kpi("Ausgaben", formatReportMoney(expenseTotalValue)) : ""}
+      </div>
+
+      <div class="a4-report-grid">
+        <section class="a4-report-block a4-report-block-wide">
+          <h4>Personalzeiten</h4>
+          ${employeeRows || `<p class="hint">Keine Arbeitszeiten erfasst.</p>`}
+        </section>
+        <section class="a4-report-block">
+          <h4>Umsatzaufteilung</h4>
+          <table class="a4-report-table">
+            <tbody>
+              <tr><th>Bar Bowling</th><td>${formatReportMoney(report.barBowling)}</td></tr>
+              <tr><th>Bar Gastro</th><td>${formatReportMoney(report.barGastro)}</td></tr>
+              <tr><th>Bar gesamt</th><td>${formatReportMoney(barTotal(report))}</td></tr>
+              <tr><th>EC gesamt</th><td>${formatReportMoney(report.ecTotal)}</td></tr>
+              <tr><th>Auf Rechnung</th><td>${formatReportMoney(invoiceTotalValue)}</td></tr>
+            </tbody>
+          </table>
+        </section>
+        ${reportFieldEnabled("invoiceCustomers") ? a4InvoiceBlock(report.invoiceCustomers) : ""}
+        ${reportFieldEnabled("expenses") ? a4ExpenseBlock(report.expenses) : ""}
+        ${reportFieldEnabled("documents") ? a4DocumentsBlock(report.documents) : ""}
+        ${reportFieldEnabled("handovers") ? a4HandoversBlock(report.handovers) : ""}
+        ${reportFieldEnabled("notes") ? a4NotesBlock(report.notes) : ""}
+      </div>
+    </section>
+  `;
+}
+
+function a4Kpi(label, value) {
+  return `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`;
+}
+
+function dayReportEmployeeRowsHtml(dateKey, report = {}) {
+  const employees = reportEmployeesForDate(dateKey, report);
+  if (!employees.length) return "";
+  const totalHours = employees.reduce((sum, employee) => {
+    const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
+    return sum + hoursBetween(entry.from, entry.to);
+  }, 0);
+  const rows = employees.map((employee) => {
+    const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
+    const hours = hoursBetween(entry.from, entry.to);
+    const extra = (report.extraEmployees || []).some((item) => (typeof item === "string" ? item : item.employee) === employee);
+    return `
+      <tr>
+        <th>${escapeHtml(employee)}</th>
+        <td>${escapeHtml(entry.from || "--:--")}</td>
+        <td>${escapeHtml(entry.to || "--:--")}</td>
+        <td>${formatHours(hours)}</td>
+        <td>${extra ? "Zusätzlich" : "Dienstplan"}</td>
+      </tr>
+    `;
+  }).join("");
+  return `
+    <table class="a4-report-table">
+      <thead><tr><th>Mitarbeiter</th><th>Beginn</th><th>Ende</th><th>Stunden</th><th>Art</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><th>Gesamt</th><td></td><td></td><td>${formatHours(totalHours)}</td><td></td></tr></tfoot>
+    </table>
+  `;
+}
+
+function reportEmployeesForDate(dateKey, report = {}) {
+  const names = new Set();
+  Object.entries(state.timesheets || {}).forEach(([employee, entries]) => {
+    const entry = entries?.[dateKey] || {};
+    if (entry.from || entry.to) names.add(employee);
+  });
+  if (dateKey === state.terminalDate) {
+    terminalEmployeesForDay(dateKey).forEach((employee) => names.add(employee));
+  }
+  (report.extraEmployees || []).forEach((item) => {
+    const employee = typeof item === "string" ? item : item.employee;
+    if (employee) names.add(employee);
+  });
+  return [...names].filter(Boolean).sort((a, b) => a.localeCompare(b, "de"));
+}
+
+function a4InvoiceBlock(items = []) {
+  return `
+    <section class="a4-report-block">
+      <h4>Rechnungskunden</h4>
+      ${items.length ? `<table class="a4-report-table">
+        <thead><tr><th>Kunde</th><th>Bowling</th><th>Gastro</th><th>Gesamt</th><th>Beleg</th></tr></thead>
+        <tbody>${items.map((item, index) => `
+          <tr>
+            <th>${escapeHtml(item.name || `Kunde ${index + 1}`)}</th>
+            <td>${formatReportMoney(item.bowlingAmount)}</td>
+            <td>${formatReportMoney(item.gastroAmount)}</td>
+            <td>${formatReportMoney(invoiceTotal(item))}</td>
+            <td>${invoiceReceiptLinksHtml(item) || "-"}</td>
+          </tr>
+        `).join("")}</tbody>
+      </table>` : `<p class="hint">Keine Rechnungskunden.</p>`}
+    </section>
+  `;
+}
+
+function a4ExpenseBlock(items = []) {
+  return `
+    <section class="a4-report-block">
+      <h4>Ausgaben</h4>
+      ${items.length ? `<table class="a4-report-table">
+        <thead><tr><th>Ausgabe</th><th>Kategorie</th><th>Betrag</th><th>Beleg</th></tr></thead>
+        <tbody>${items.map((item, index) => `
+          <tr>
+            <th>${escapeHtml(item.name || `Ausgabe ${index + 1}`)}</th>
+            <td>${escapeHtml(item.category || "-")}</td>
+            <td>${formatReportMoney(item.amount)}</td>
+            <td>${receiptLinkHtml(item) || "-"}</td>
+          </tr>
+        `).join("")}</tbody>
+      </table>` : `<p class="hint">Keine Ausgaben.</p>`}
+    </section>
+  `;
+}
+
+function a4DocumentsBlock(documents = {}) {
+  const entries = [
+    ["Penta", documents.penta],
+    ["Handschrift", documents.handwriting]
+  ];
+  return `
+    <section class="a4-report-block">
+      <h4>Dokumente Tagesordner</h4>
+      <table class="a4-report-table">
+        <tbody>${entries.map(([label, document]) => `
+          <tr>
+            <th>${escapeHtml(label)}</th>
+            <td>${document?.name ? escapeHtml(document.name) : "fehlt"}</td>
+            <td>${document?.path || document?.url || document?.data ? reportDocumentLinkHtml(document, label) : "-"}</td>
+          </tr>
+        `).join("")}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function a4HandoversBlock(items = []) {
+  if (!items.length) return "";
+  return `
+    <section class="a4-report-block">
+      <h4>Schichtübergaben</h4>
+      ${items.map((item) => `<p><strong>${escapeHtml(item.time || "--:--")} ${escapeHtml(item.from || "-")} an ${escapeHtml(item.to || "-")}:</strong> ${escapeHtml(item.note || "-")}</p>`).join("")}
+    </section>
+  `;
+}
+
+function a4NotesBlock(notes = "") {
+  return `
+    <section class="a4-report-block">
+      <h4>Notizen</h4>
+      <p>${notes ? escapeHtml(notes) : "Keine Notizen."}</p>
+    </section>
   `;
 }
 
@@ -1156,8 +1325,18 @@ function exportDayReport(dateKey) {
   const report = state.dayReports?.[dateKey];
   if (!report) return;
   const lineIf = (key, line) => reportFieldEnabled(key) ? [line] : [];
+  const employees = reportEmployeesForDate(dateKey, report);
   const lines = [
     `Tagesbericht ${formatDate(dateKey)}`,
+    `Schichtleitung: ${report.shiftLeader || "-"}`,
+    `Öffnungszeit: ${report.openingHours || "-"}`,
+    `Status: ${report.closed ? "Abgeschlossen" : "Offen"}`,
+    "",
+    "Personalzeiten:",
+    ...(employees.length ? employees.map((employee) => {
+      const entry = state.timesheets?.[employee]?.[dateKey] || {};
+      return `- ${employee} | ${entry.from || "--:--"} bis ${entry.to || "--:--"} | ${formatHours(hoursBetween(entry.from, entry.to))}`;
+    }) : ["- Keine Arbeitszeiten erfasst."]),
     "",
     ...lineIf("ecTotal", `EC gesamt: ${formatReportMoney(report.ecTotal)}`),
     ...lineIf("barBowling", `Bar Bowling: ${formatReportMoney(report.barBowling)}`),
@@ -2081,6 +2260,7 @@ function renderTerminal() {
   $("#reportNotes").value = report.notes || "";
   renderReportEntryLists(report);
   renderReportDocuments(report);
+  renderDayReportA4Summary(dateKey, report);
   setDayReportLocked(reportClosed, report);
   applyDayReportVisibility();
 
@@ -2090,6 +2270,12 @@ function renderTerminal() {
     const options = (state.settings.employees || []).filter((employee) => !planned.has(employee));
     select.innerHTML = `<option value="">Ungeplanten Mitarbeiter auswählen</option>${options.map((employee) => `<option value="${escapeHtml(employee)}">${escapeHtml(employee)}</option>`).join("")}`;
   }
+}
+
+function renderDayReportA4Summary(dateKey, report = {}) {
+  const target = $("#dayReportA4Summary");
+  if (!target) return;
+  target.innerHTML = dayReportA4Html(dateKey, report);
 }
 
 function applyDayReportVisibility() {

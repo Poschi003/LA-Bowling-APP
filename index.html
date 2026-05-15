@@ -180,6 +180,7 @@
                 <p id="dayReportLockStatus" class="hint"></p>
               </div>
             </div>
+            <div id="dayReportA4Summary" class="day-report-a4-summary"></div>
             <div class="day-report-grid">
               <label data-report-field-box="ecTotal">EC gesamt<input id="reportEcTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
               <label data-report-field-box="barBowling">Bar Bowling<input id="reportBarBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
@@ -490,7 +491,8 @@
             </section>
             <section>
               <h4>Tagesbericht</h4>
-              <div class="checkbox-grid">
+              <p class="settings-note">Der Tagesbericht ist das Abschlussdokument fuer den Chef: Personalzeiten, Umsaetze, Rechnungskunden, Ausgaben und Abschlussdokumente gehoeren in eine klare A4-Ansicht.</p>
+              <div class="checkbox-grid report-definition-grid">
                 <label><input type="checkbox" data-day-report-field="ecTotal"> EC gesamt</label>
                 <label><input type="checkbox" data-day-report-field="barBowling"> Bar Bowling</label>
                 <label><input type="checkbox" data-day-report-field="barGastro"> Bar Gastro</label>
