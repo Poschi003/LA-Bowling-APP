@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260513-chef-invoices-v9">
+    <link rel="stylesheet" href="styles.css?v=20260515-tageskopf-v2">
   </head>
   <body>
     <header class="topbar">
@@ -122,6 +122,32 @@
             <label>Schichtleitung<select id="terminalShiftLeader"></select></label>
             <button id="saveTerminalDayMeta" class="secondary" type="button">Tageskopf speichern</button>
           </div>
+          <div id="terminalDayMetaDisplay" class="terminal-day-meta-display hidden"></div>
+          <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
+            <div class="terminal-task-group-head">
+              <div>
+                <h4>Übergabe</h4>
+                <span id="handoverCount">0 Übergaben</span>
+              </div>
+              <button id="openHandover" class="secondary" type="button">Übergabe eintragen</button>
+            </div>
+            <div id="handoverList" class="terminal-handover-list"></div>
+          </section>
+          <div id="handoverModal" class="handover-modal hidden" role="dialog" aria-modal="true">
+            <section class="terminal-handover">
+              <div class="terminal-task-group-head">
+                <h4>Übergabe Schichtleitung</h4>
+                <button id="closeHandover" class="secondary" type="button">Schließen</button>
+              </div>
+              <div class="terminal-handover-form form-grid">
+              <label>Von<select id="handoverFrom"></select></label>
+              <label>An<select id="handoverTo"></select></label>
+              <label>Uhrzeit<input id="handoverTime" type="time"></label>
+              <label>Offene Punkte<textarea id="handoverNote" rows="3" placeholder="Was muss die nächste Schicht wissen?"></textarea></label>
+              <button id="saveHandover" class="primary" type="button">Übergabe speichern</button>
+              </div>
+            </section>
+          </div>
           <nav class="terminal-tabs" aria-label="Terminal-Bereiche">
             <button class="terminal-tab active" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
@@ -134,23 +160,6 @@
               </div>
             </div>
             <div id="terminalTaskList" class="terminal-task-list"></div>
-            <button id="openHandover" class="secondary" type="button">Übergabe</button>
-            <div id="handoverModal" class="handover-modal hidden" role="dialog" aria-modal="true">
-              <section class="terminal-handover">
-                <div class="terminal-task-group-head">
-                  <h4>Übergabe Schichtleitung</h4>
-                  <button id="closeHandover" class="secondary" type="button">Schließen</button>
-                </div>
-                <div class="terminal-handover-form form-grid">
-                <label>Von<select id="handoverFrom"></select></label>
-                <label>An<select id="handoverTo"></select></label>
-                <label>Uhrzeit<input id="handoverTime" type="time"></label>
-                <label>Offene Punkte<textarea id="handoverNote" rows="3" placeholder="Was muss die nächste Schicht wissen?"></textarea></label>
-                <button id="saveHandover" class="primary" type="button">Übergabe speichern</button>
-                </div>
-              </section>
-            </div>
-            <div id="handoverList" class="terminal-handover-list"></div>
             <div id="toiletCheckStatus" class="toilet-check-status"></div>
           </section>
           <section id="terminalServiceSection" class="terminal-section hidden">
@@ -557,7 +566,7 @@
         if (panel) panel.classList.add("active");
       });
     </script>
-    <script src="teamapp-client.js?v=20260513-chef-invoices-v9"></script>
+    <script src="teamapp-client.js?v=20260515-tageskopf-v2"></script>
     <script src="terminal-roles-addon.js?v=20260506-terminal-roles-v1"></script>
   </body>
 </html>

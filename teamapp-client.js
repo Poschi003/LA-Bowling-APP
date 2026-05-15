@@ -27,6 +27,7 @@
   terminalReminders: [],
   pendingToiletCheck: "",
   pendingReminder: null,
+  terminalDayMetaEditing: false,
   taskTemplates: [],
   reminderTemplates: [],
   plannerEditWeeks: []
@@ -753,6 +754,7 @@ function openInvoiceCardHtml({ dateKey, invoice, index }) {
   const gastro = Number(invoice.gastroAmount || 0);
   const total = bowling + gastro || Number(invoice.amount || 0);
   const token = `${dateKey}|${invoice.id || index}`;
+  const briefhead = invoiceBriefhead(invoice);
   return `
     <article class="open-invoice-card">
       <div class="open-invoice-head">
@@ -761,8 +763,7 @@ function openInvoiceCardHtml({ dateKey, invoice, index }) {
       </div>
       <div class="invoice-copy-grid">
         ${invoiceCopyField("Rechnungsdatum", formatDate(dateKey))}
-        ${invoiceCopyField("Firmierung", invoice.name || "")}
-        ${invoiceCopyField("Rechnungsadresse", invoice.address || "")}
+        ${invoiceCopyField("Briefkopf", briefhead, "invoice-copy-field-wide")}
         ${invoiceCopyField("Betrag Bowling", formatReportMoney(bowling))}
         ${invoiceCopyField("Betrag Gastro", formatReportMoney(gastro))}
         ${invoiceCopyField("Betrag gesamt", formatReportMoney(total))}
@@ -772,13 +773,21 @@ function openInvoiceCardHtml({ dateKey, invoice, index }) {
   `;
 }
 
-function invoiceCopyField(label, value) {
+function invoiceBriefhead(invoice = {}) {
+  return [
+    invoice.name || "",
+    invoice.address || ""
+  ].map((line) => String(line || "").trim()).filter(Boolean).join("\n") || "-";
+}
+
+function invoiceCopyField(label, value, className = "") {
   const text = String(value || "-");
+  const escapedText = escapeHtml(text);
   return `
-    <div class="invoice-copy-field">
+    <div class="invoice-copy-field ${escapeHtml(className)}">
       <small>${escapeHtml(label)}</small>
-      <strong>${escapeHtml(text)}</strong>
-      <button class="secondary" type="button" data-copy-value="${escapeHtml(text)}">Kopieren</button>
+      <strong>${escapedText.replace(/\n/g, "<br>")}</strong>
+      <button class="secondary" type="button" data-copy-value="${escapedText.replace(/\n/g, "&#10;")}">Kopieren</button>
     </div>
   `;
 }
@@ -949,10 +958,11 @@ function reportInvoiceCustomersHtml(items = []) {
           <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)}</strong>
           <span>Rechnungssumme ${formatReportMoney(invoiceTotal(item))}</span>
           <span>Bowling ${formatReportMoney(item.bowlingAmount)} · Gastro ${formatReportMoney(item.gastroAmount)}</span>
+          <span>Briefkopf</span>
+          <p class="invoice-briefhead">${escapeHtml(invoiceBriefhead(item)).replace(/\n/g, "<br>")}</p>
           <span>Ansprechpartner: ${escapeHtml(item.contact || "-")}</span>
           <span>Telefon: ${escapeHtml(item.phone || "-")}</span>
           <span>Tipp: ${escapeHtml(item.tip || "-")}</span>
-          <span>${escapeHtml(item.address || "Keine Rechnungsadresse")}</span>
           <span>${escapeHtml(item.email || "Keine E-Mail")}</span>
           ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
           ${receiptLinkHtml({ receiptData: item.bowlingReceiptData || item.receiptData, receiptPath: item.bowlingReceiptPath || item.receiptPath, receiptUrl: item.bowlingReceiptUrl || item.receiptUrl, receiptName: item.bowlingReceiptName || item.receiptName }, "Beleg Bowling")}
@@ -1995,15 +2005,28 @@ function renderTerminalDayMeta(dateKey, report, reportClosed) {
   const openingInput = $("#terminalOpeningHours");
   const leaderSelect = $("#terminalShiftLeader");
   const hasSavedDayHead = Boolean(report.openingHours || report.shiftLeader);
-  const hideTodoDayHead = isTodoMode() && hasSavedDayHead;
-  $("#terminalDayHeadForm")?.classList.toggle("hidden", hideTodoDayHead);
+  const showForm = !hasSavedDayHead || state.terminalDayMetaEditing;
+  $("#terminalDayHeadForm")?.classList.toggle("hidden", !showForm);
+  const display = $("#terminalDayMetaDisplay");
+  if (display) {
+    const opening = report.openingHours || openingHoursFor(dateKey) || "Öffnungszeit offen";
+    const leader = report.shiftLeader || "Schichtleitung offen";
+    display.classList.toggle("hidden", showForm);
+    display.innerHTML = `
+      <div>
+        <h3>${escapeHtml(formatLongDate(dateKey))}</h3>
+        <p><strong>${escapeHtml(leader)}</strong>${opening ? ` · ${escapeHtml(opening)}` : ""}</p>
+      </div>
+      <button id="editTerminalDayMeta" class="secondary" type="button" ${reportClosed ? "disabled" : ""}>Tageskopf ändern</button>
+    `;
+  }
   const summary = $("#terminalDayMetaSummary");
   if (summary) {
     const opening = report.openingHours || openingHoursFor(dateKey) || "Öffnungszeit offen";
     const leader = report.shiftLeader || "Schichtleitung offen";
-    summary.textContent = hideTodoDayHead
-      ? `${formatLongDate(dateKey)} | ${opening} | ${leader}`
-      : "Vorbereitung, laufender Betrieb und Schlussdienst sauber abhaken.";
+    summary.textContent = hasSavedDayHead
+      ? `${formatLongDate(dateKey)} | ${leader} | ${opening}`
+      : "Tageskopf speichern, dann die Aufgaben des Tages abarbeiten.";
   }
   if (dateInput) {
     dateInput.value = dateKey;
@@ -2084,6 +2107,13 @@ function renderHandovers(report, reportClosed) {
   const to = $("#handoverTo");
   const list = $("#handoverList");
   const count = $("#handoverCount");
+  const handovers = report.handovers || [];
+  const todoMode = isTodoMode();
+  const anchor = $("#terminalHandoverAnchor");
+  if (anchor) anchor.classList.toggle("hidden", todoMode && !handovers.length);
+  $("#openHandover")?.classList.toggle("hidden", todoMode);
+  const title = $("#terminalHandoverAnchor h4");
+  if (title) title.textContent = todoMode ? "Übergabe-Info" : "Übergabe";
   const currentLeader = report.shiftLeader || "";
   const employees = shiftLeaderEmployees();
   const options = (selected = "") => `<option value="">Auswählen</option>${employees.map((employee) => `<option value="${escapeHtml(employee)}" ${selected === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`).join("")}`;
@@ -2098,7 +2128,6 @@ function renderHandovers(report, reportClosed) {
   $("#handoverTime")?.toggleAttribute("disabled", reportClosed);
   $("#handoverNote")?.toggleAttribute("disabled", reportClosed);
   $("#saveHandover")?.toggleAttribute("disabled", reportClosed);
-  const handovers = report.handovers || [];
   if (count) count.textContent = `${handovers.length} Übergabe${handovers.length === 1 ? "" : "n"}`;
   if (list) {
     list.innerHTML = handovers.length ? handovers.slice().reverse().map((item) => `
@@ -2487,6 +2516,7 @@ async function terminalAction(payload) {
   state.terminalSchedule = result.schedule || {};
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = result.reminders || [];
+  state.terminalDayMetaEditing = false;
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
   renderAdminEmployeeOverview();
@@ -4148,6 +4178,12 @@ function bindEvents() {
       renderTerminal();
       return;
     }
+    const editDayMeta = event.target.closest("#editTerminalDayMeta");
+    if (editDayMeta) {
+      state.terminalDayMetaEditing = true;
+      renderTerminal();
+      return;
+    }
     const taskInput = event.target.closest("[data-terminal-task]");
     if (taskInput) {
       try {
@@ -4192,6 +4228,8 @@ function bindEvents() {
         openingHours: $("#terminalOpeningHours")?.value || "",
         shiftLeader: $("#terminalShiftLeader")?.value || ""
       });
+      state.terminalDayMetaEditing = false;
+      renderTerminal();
       button.textContent = "Gespeichert";
       showToast(result.message || "Tageskopf gespeichert.");
       window.setTimeout(() => {
