@@ -335,6 +335,7 @@ async function loadState() {
   state.missingAvailability = data.missingAvailability || [];
   state.availabilityChangeRequests = data.availabilityChangeRequests || [];
   renderAll();
+  if (!state.weather || state.weather.error) loadWeather().catch(() => {});
   loadSwaps().catch(() => {});
 }
 
@@ -536,8 +537,8 @@ function renderHome() {
   }
   container.innerHTML = `
     ${renderDashboardMessages()}
-    ${renderHomeStats()}
-    <details class="today-section dashboard-today" open>
+    <section class="dashboard-weather-widget" data-weather-widget>Wetterbericht wird geladen...</section>
+    <details class="today-section dashboard-today">
       <summary>Heutiger Tag</summary>
       ${renderScheduleDay(new Date(`${today}T12:00:00`), { today: true })}
     </details>
@@ -1353,7 +1354,7 @@ function renderScheduleDay(date, options = {}) {
         `;
   });
   if (options.today) {
-    cells.push(`<div class="position-cell weather-cell" id="weatherReport">Wetter wird geladen...</div>`);
+    cells.push(`<div class="position-cell weather-cell" data-weather-widget>Wetter wird geladen...</div>`);
   }
   const content = `
       <div class="day-header ${holiday.className}">
@@ -1742,7 +1743,7 @@ function renderMissingAvailability() {
 }
 
 function renderWeather() {
-  const targets = $$("#weatherReport");
+  const targets = $$("[data-weather-widget]");
   if (!targets.length) return;
   if (!state.weather) {
     targets.forEach((target) => {
@@ -2465,19 +2466,19 @@ function renderTerminalCosts(dateKey, employees) {
     : `${formatMoney(difference)} über Prognose`;
   target.innerHTML = `
     <article>
-      <span>Prognose</span>
+      <span>Plan</span>
       <strong>${formatMoney(planned.cost)}</strong>
-      <small>${formatHours(planned.hours)} geplant</small>
+      <small>${formatHours(planned.hours)}</small>
     </article>
     <article>
-      <span>Ist-Kosten</span>
+      <span>Ist</span>
       <strong>${formatMoney(actualCost)}</strong>
-      <small>${formatHours(actualHours)} gestempelt</small>
+      <small>${formatHours(actualHours)}</small>
     </article>
     <article class="${difference <= 0 ? "cost-good" : "cost-high"}">
-      <span>Differenz</span>
+      <span>Delta</span>
       <strong>${diffText}</strong>
-      <small>Berechnet mit ${formatMoney(hourlyRate)} Euro pro Arbeitsstunde</small>
+      <small>${formatMoney(hourlyRate)}/h</small>
     </article>
   `;
 }
