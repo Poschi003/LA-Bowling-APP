@@ -1773,10 +1773,14 @@ function renderWeather() {
     targets.forEach((target) => {
       target.innerHTML = `
         <span class="position-name">Wetterbericht</span>
-        <span class="assignment">Nicht verfügbar</span>
-        <span class="assignment-note">Bitte später erneut versuchen.</span>
+        <span class="assignment">Wird aktualisiert...</span>
+        <span class="assignment-note">Verbindung wird erneut aufgebaut.</span>
       `;
     });
+    window.setTimeout(() => {
+      state.weather = null;
+      loadWeather().catch(() => {});
+    }, 1200);
     return;
   }
   const daily = state.weather.daily || {};
