@@ -1069,7 +1069,42 @@ button.employee-badge-stat {
 
 .admin-content {
   display: grid;
-  gap: 14px;
+  gap: 12px;
+}
+
+.admin-workspace-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  padding: 4px;
+}
+
+.admin-workspace-tab {
+  flex: 0 0 auto;
+  min-height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.admin-workspace-tab.active {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+
+.admin-workspace {
+  display: none;
+  gap: 10px;
+}
+
+.admin-workspace.active {
+  display: grid;
 }
 
 .admin-primary-box {
@@ -3008,6 +3043,15 @@ button:disabled {
 
   .admin-actions button,
   .section-head > button {
+    width: 100%;
+  }
+
+  .admin-workspace-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-workspace-tab {
     width: 100%;
   }
 

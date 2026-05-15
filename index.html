@@ -341,6 +341,14 @@
         </div>
 
         <div id="adminContent" class="admin-content hidden">
+        <nav class="admin-workspace-tabs" aria-label="Admin-Arbeitsbereiche">
+          <button class="admin-workspace-tab active" type="button" data-admin-workspace-tab="planning">Planung</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="settings">Einstellungen</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="approvals">Freigaben</button>
+        </nav>
+
+        <section class="admin-workspace active" data-admin-workspace="planning">
         <details class="settings-box admin-primary-box">
           <summary>Wochenplanung</summary>
           <div id="planner" class="planner"></div>
@@ -350,7 +358,9 @@
           <summary>Veröffentlichte Wochen</summary>
           <div id="adminPublishedList" class="swap-list"></div>
         </details>
+        </section>
 
+        <section class="admin-workspace" data-admin-workspace="operations">
         <details class="settings-box admin-priority">
           <summary>Nachrichten fürs Dashboard</summary>
           <div class="message-editor form-grid">
@@ -461,7 +471,9 @@
           <summary>Verfügbarkeiten Vorschau</summary>
           <div id="adminAvailabilityPreview" class="availability-preview"></div>
         </details>
+        </section>
 
+        <section class="admin-workspace" data-admin-workspace="settings">
         <details class="settings-box admin-priority">
           <summary>Chefansicht und Tagesbericht definieren</summary>
           <div class="visibility-settings">
@@ -578,7 +590,9 @@
           </details>
           <button id="saveSettings" class="secondary">Einstellungen speichern</button>
         </details>
+        </section>
 
+        <section class="admin-workspace" data-admin-workspace="approvals">
         <details class="settings-box">
           <summary>Mitarbeiterübersicht</summary>
           <div id="adminEmployeeOverview" class="employee-overview"></div>
@@ -593,6 +607,7 @@
           <summary>Verfügbarkeit freigeben</summary>
           <div id="adminAvailabilityRequests" class="swap-list"></div>
         </details>
+        </section>
         </div>
       </section>
     </main>
@@ -608,6 +623,19 @@
         button.classList.add("active");
         const panel = document.getElementById(button.dataset.tab);
         if (panel) panel.classList.add("active");
+      });
+
+      const adminContent = document.querySelector("#adminContent");
+      if (adminContent) adminContent.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-admin-workspace-tab]");
+        if (!button) return;
+        const target = button.dataset.adminWorkspaceTab;
+        adminContent.querySelectorAll("[data-admin-workspace-tab]").forEach((tab) => {
+          tab.classList.toggle("active", tab === button);
+        });
+        adminContent.querySelectorAll("[data-admin-workspace]").forEach((section) => {
+          section.classList.toggle("active", section.dataset.adminWorkspace === target);
+        });
       });
     </script>
     <script src="teamapp-client.js?v=20260515-invoice-desk-v1"></script>
