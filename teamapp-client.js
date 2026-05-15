@@ -8,6 +8,7 @@
   activeEmployee: "",
   employeeToken: "",
   adminToken: "",
+  hasBackofficeAccess: false,
   isChef: false,
   chefTab: "reports",
   timesheets: {},
@@ -17,6 +18,7 @@
   swaps: { open: [], mine: [], myShifts: [], admin: [] },
   availabilityChangeRequests: [],
   weather: null,
+  weatherLoading: false,
   terminalToken: "",
   terminalTab: "service",
   terminalDate: "",
@@ -345,18 +347,32 @@ async function loadSwaps() {
   if (state.adminToken) params.set("adminToken", state.adminToken);
   state.swaps = await api(`/api/swaps?${params.toString()}`);
   renderHome();
+  ensureWeatherVisible();
   renderSwaps();
   renderAdminSwaps();
 }
 
 async function loadWeather() {
+  if (state.weatherLoading) return;
+  state.weatherLoading = true;
   try {
     const data = await api("/api/weather");
     state.weather = data;
   } catch (error) {
     state.weather = { error: true };
+  } finally {
+    state.weatherLoading = false;
   }
   renderWeather();
+}
+
+function ensureWeatherVisible() {
+  if (!$$("[data-weather-widget]").length) return;
+  if (state.weather && !state.weather.error) {
+    renderWeather();
+    return;
+  }
+  loadWeather().catch(() => {});
 }
 
 function cloneData(value) {
@@ -473,13 +489,13 @@ function renderAccess() {
   }
   const loggedIn = Boolean(state.activeEmployee);
   const chef = currentUserIsChef();
-  $("#mainTabs")?.classList.toggle("hidden", !loggedIn || state.adminUnlocked);
-  $$(".employee-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || state.adminUnlocked || chef));
+  $("#mainTabs")?.classList.toggle("hidden", !loggedIn);
+  $$(".employee-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || chef));
   $('[data-tab="swaps"]')?.classList.add("hidden");
-  $$(".chef-only").forEach((element) => element.classList.toggle("hidden", !chef || state.adminUnlocked));
+  $$(".chef-only").forEach((element) => element.classList.toggle("hidden", !chef));
   $("#homeLogin")?.classList.toggle("hidden", loggedIn);
   $("#homeGreeting")?.classList.toggle("hidden", !loggedIn);
-  $("#topLogout")?.classList.toggle("hidden", !loggedIn && !state.adminUnlocked);
+  $("#topLogout")?.classList.toggle("hidden", !loggedIn && !state.adminToken);
   if ($("#homeEmployeeName")) {
     $("#homeEmployeeName").innerHTML = loggedIn ? renderEmployeeBadge() : "";
   }
@@ -512,6 +528,7 @@ function renderEmployeeBadge() {
     return `
       <span class="employee-badge-name">${escapeHtml(state.activeEmployee)}</span>
       <span class="employee-badge-role">${escapeHtml(role)}</span>
+      ${state.adminToken ? `<button class="employee-badge-stat compact" type="button" data-open-backoffice><small>Admin</small>Backoffice</button>` : ""}
     `;
   }
   const totals = timesheetTotals();
@@ -520,6 +537,7 @@ function renderEmployeeBadge() {
     <span class="employee-badge-role">${escapeHtml(role)}</span>
     <button class="employee-badge-stat compact" type="button" data-open-timesheet><small>Std</small>${formatHours(totals.hours)}</button>
     <span class="employee-badge-stat compact"><small>TG</small>${formatMoney(totals.tip)}</span>
+    ${state.adminToken ? `<button class="employee-badge-stat compact" type="button" data-open-backoffice><small>Admin</small>Backoffice</button>` : ""}
   `;
 }
 
@@ -527,7 +545,7 @@ function renderHome() {
   const container = $("#homeContent");
   if (!container) return;
   const today = todayKey();
-  if (!state.activeEmployee && !state.adminUnlocked) {
+  if (!state.activeEmployee && !state.adminToken) {
     container.innerHTML = renderLoginReminder(today);
     return;
   }
@@ -537,7 +555,6 @@ function renderHome() {
   }
   container.innerHTML = `
     ${renderDashboardMessages()}
-    <section class="dashboard-weather-widget" data-weather-widget>Wetterbericht wird geladen...</section>
     <details class="today-section dashboard-today">
       <summary>Heutiger Tag</summary>
       ${renderScheduleDay(new Date(`${today}T12:00:00`), { today: true })}
@@ -545,6 +562,7 @@ function renderHome() {
     ${state.activeEmployee ? renderHomeSwaps() : ""}
     ${state.adminUnlocked ? renderMissingAvailability() : ""}
   `;
+  ensureWeatherVisible();
 }
 
 function renderDashboardMessages() {
@@ -3311,16 +3329,19 @@ async function employeeLogin(pin) {
   state.activeEmployee = login.employee || "";
   state.employeeToken = login.token || "";
   state.adminToken = login.adminToken || "";
-  state.adminUnlocked = Boolean(login.isAdmin);
+  state.hasBackofficeAccess = Boolean(login.isAdmin);
+  state.adminUnlocked = false;
   await loadState();
-  if (login.isAdmin) {
+  if (!login.employee && login.isAdmin) {
+    state.adminUnlocked = true;
     activateTab("admin");
-    showToast(login.employee ? `Hallo ${login.employee}. Admin-Bereich geöffnet.` : "Admin-Bereich geöffnet.");
+    showToast("Admin-Bereich geöffnet.");
   } else if (currentUserIsChef()) {
     activateTab("chef");
     showToast(`Hallo ${login.employee}. Chef-Übersicht geöffnet.`);
   } else {
-    showToast(`Hallo ${login.employee}.`);
+    activateTab("home");
+    showToast(login.isAdmin ? `Hallo ${login.employee}. Backoffice ist freigeschaltet.` : `Hallo ${login.employee}.`);
   }
 }
 
@@ -3328,6 +3349,7 @@ function employeeLogout() {
   state.activeEmployee = "";
   state.employeeToken = "";
   state.adminToken = "";
+  state.hasBackofficeAccess = false;
   state.adminUnlocked = false;
   state.isChef = false;
   activateTab("home");
@@ -3345,6 +3367,7 @@ async function adminLogin(pin) {
     body: JSON.stringify({ pin })
   });
   state.adminToken = login.token;
+  state.hasBackofficeAccess = true;
   state.adminUnlocked = true;
   await loadState();
   activateTab("admin");
@@ -3503,6 +3526,13 @@ function bindEvents() {
   });
 
   $("#homeContent").addEventListener("click", (event) => {
+    if (event.target.closest("[data-open-backoffice]")) {
+      state.adminUnlocked = true;
+      renderAll();
+      activateTab("admin");
+      showToast("Backoffice geöffnet.");
+      return;
+    }
     if (event.target.closest("[data-open-timesheet]")) {
       activateTab("timesheet");
       return;
@@ -3523,6 +3553,13 @@ function bindEvents() {
   });
 
   $("#homeGreeting")?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-open-backoffice]")) {
+      state.adminUnlocked = true;
+      renderAll();
+      activateTab("admin");
+      showToast("Backoffice geöffnet.");
+      return;
+    }
     if (!event.target.closest("[data-open-timesheet]")) return;
     activateTab("timesheet");
   });

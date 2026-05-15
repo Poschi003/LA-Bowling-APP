@@ -889,8 +889,8 @@ label {
 }
 
 #homeEmployeeName {
-  display: grid;
-  grid-template-columns: minmax(120px, auto) minmax(100px, 1fr) minmax(58px, auto) minmax(70px, auto);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   width: 100%;
