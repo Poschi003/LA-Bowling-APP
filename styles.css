@@ -1718,6 +1718,34 @@ button:disabled {
   padding: 12px;
 }
 
+.terminal-day-meta-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+}
+
+.terminal-day-meta-display h3,
+.terminal-day-meta-display p {
+  margin: 0;
+}
+
+.terminal-day-meta-display p {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.terminal-handover-anchor {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
 .terminal-section-head {
   display: flex;
   justify-content: space-between;
@@ -2302,6 +2330,10 @@ button:disabled {
   padding: 12px;
 }
 
+.invoice-copy-field-wide {
+  grid-column: 1 / -1;
+}
+
 .invoice-copy-field small {
   color: var(--muted);
   font-weight: 900;
@@ -2309,7 +2341,14 @@ button:disabled {
 
 .invoice-copy-field strong {
   overflow-wrap: anywhere;
-  line-height: 1.35;
+  line-height: 1.45;
+}
+
+.invoice-briefhead {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .report-folders {
@@ -2630,6 +2669,10 @@ button:disabled {
   .invoice-copy-grid {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .terminal-day-meta-display {
+    display: grid;
   }
 
   .report-folders-head,
