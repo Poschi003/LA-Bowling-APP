@@ -1,4 +1,4 @@
-﻿const { handleError, readAppData, readJson, sendJson, signToken, verifyAdmin } = require("../server/data");
+﻿const { handleError, readAppData, readJson, sendJson, signToken, verifyAdmin } = require("./_data");
 
 module.exports = async function handler(req, res) {
   try {
