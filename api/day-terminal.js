@@ -366,7 +366,10 @@ async function cleanReportItems(items, type, date) {
       tip: String(raw.tip || "").trim().slice(0, 160),
       email: String(raw.email || "").trim().slice(0, 180),
       category: String(raw.category || "").trim().slice(0, 120),
-      invoiceDone: Boolean(raw.invoiceDone),
+      createdAt: cleanText(raw.createdAt || new Date().toISOString(), 80),
+      invoiceReady: raw.invoiceReady === true || raw.invoiceReady === "true",
+      invoiceReadyAt: cleanText(raw.invoiceReadyAt, 80),
+      invoiceDone: raw.invoiceDone === true || raw.invoiceDone === "true",
       invoiceDoneAt: cleanText(raw.invoiceDoneAt, 80),
       area: type === "invoice" ? "rechnung" : raw.area
     };
