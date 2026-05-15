@@ -30,6 +30,9 @@
   pendingToiletCheck: "",
   pendingReminder: null,
   terminalDayMetaEditing: false,
+  invoiceTerminalToken: window.localStorage?.getItem("invoiceTerminalToken") || "",
+  invoiceDate: todayKey(),
+  invoiceReport: {},
   taskTemplates: [],
   reminderTemplates: [],
   plannerEditWeeks: []
@@ -474,6 +477,7 @@ function renderAll() {
   renderAdminAvailabilityPreview();
   renderWeather();
   renderTerminal();
+  renderCustomerInvoiceDesk();
 }
 
 function renderAccess() {
@@ -762,6 +766,7 @@ function openInvoiceItems() {
   for (const [dateKey, report] of Object.entries(state.dayReports || {})) {
     (report.invoiceCustomers || []).forEach((invoice, index) => {
       if (invoice.invoiceDone) return;
+      if (!invoiceIsReady(invoice)) return;
       items.push({ dateKey, invoice, index });
     });
   }
@@ -788,6 +793,7 @@ function openInvoiceCardHtml({ dateKey, invoice, index }) {
         ${invoiceCopyField("Betrag gesamt", formatReportMoney(total))}
       </div>
       <p class="hint">Ansprechpartner: ${escapeHtml(invoice.contact || "-")} · E-Mail: ${escapeHtml(invoice.email || "-")} · Telefon: ${escapeHtml(invoice.phone || "-")}</p>
+      ${invoiceReceiptLinksHtml(invoice)}
     </article>
   `;
 }
@@ -909,20 +915,14 @@ function reportFolderItems(month, key) {
     if (key === "invoices") {
       (report.invoiceCustomers || []).forEach((customer, index) => {
         const base = customer.name || `Rechnungskunde ${index + 1}`;
-        const bowling = {
-          receiptName: customer.bowlingReceiptName || customer.receiptName,
-          receiptPath: customer.bowlingReceiptPath || customer.receiptPath,
-          receiptUrl: customer.bowlingReceiptUrl || customer.receiptUrl,
-          receiptData: customer.bowlingReceiptData || customer.receiptData
-        };
-        const gastro = {
-          receiptName: customer.gastroReceiptName,
-          receiptPath: customer.gastroReceiptPath,
-          receiptUrl: customer.gastroReceiptUrl,
-          receiptData: customer.gastroReceiptData
-        };
-        if (hasReceipt(bowling)) items.push(receiptFolderItem(dateKey, bowling, `${base} - Bowling`, "Beleg Bowling"));
-        if (hasReceipt(gastro)) items.push(receiptFolderItem(dateKey, gastro, `${base} - Gastro`, "Beleg Gastro"));
+        const singleReceipt = invoiceReceipt(customer);
+        if (singleReceipt) {
+          items.push(receiptFolderItem(dateKey, singleReceipt, base, "Rechnungsbeleg"));
+          return;
+        }
+        invoiceLegacyReceipts(customer).forEach(({ receipt, title, label }) => {
+          items.push(receiptFolderItem(dateKey, receipt, `${base} - ${title}`, label));
+        });
       });
     }
     if (key === "penta" && hasDocument(report.documents?.penta)) {
@@ -941,6 +941,68 @@ function hasReceipt(item = {}) {
 
 function hasDocument(item = {}) {
   return Boolean(item.path || item.url || item.data);
+}
+
+function invoiceReceipt(item = {}) {
+  const receipt = {
+    receiptName: item.receiptName,
+    receiptPath: item.receiptPath,
+    receiptUrl: item.receiptUrl,
+    receiptData: item.receiptData
+  };
+  if (hasReceipt(receipt)) return receipt;
+  const legacy = invoiceLegacyReceipts(item);
+  return legacy.length === 1 ? legacy[0].receipt : null;
+}
+
+function invoiceLegacyReceipts(item = {}) {
+  const receipts = [];
+  const bowling = {
+    receiptName: item.bowlingReceiptName,
+    receiptPath: item.bowlingReceiptPath,
+    receiptUrl: item.bowlingReceiptUrl,
+    receiptData: item.bowlingReceiptData
+  };
+  const gastro = {
+    receiptName: item.gastroReceiptName,
+    receiptPath: item.gastroReceiptPath,
+    receiptUrl: item.gastroReceiptUrl,
+    receiptData: item.gastroReceiptData
+  };
+  if (hasReceipt(bowling)) receipts.push({ receipt: bowling, title: "Bowling", label: "Beleg Bowling" });
+  if (hasReceipt(gastro)) receipts.push({ receipt: gastro, title: "Gastro", label: "Beleg Gastro" });
+  return receipts;
+}
+
+function invoiceReceiptLinksHtml(item = {}) {
+  const singleReceipt = invoiceReceipt(item);
+  if (singleReceipt) return receiptLinkHtml(singleReceipt, "Rechnungsbeleg");
+  return invoiceLegacyReceipts(item).map(({ receipt, label }) => receiptLinkHtml(receipt, label)).join("");
+}
+
+function invoiceReceiptNameText(item = {}) {
+  const singleReceipt = invoiceReceipt(item);
+  if (singleReceipt) return singleReceipt.receiptName || "Rechnungsbeleg";
+  const legacy = invoiceLegacyReceipts(item).map(({ label, receipt }) => `${label}: ${receipt.receiptName || "Beleg"}`);
+  return legacy.join(" | ") || "-";
+}
+
+function invoiceIsReady(item = {}) {
+  if (item.invoiceReady === true || item.invoiceReady === "true") return true;
+  if (item.invoiceReady === false || item.invoiceReady === "false") return false;
+  return invoiceTotal(item) > 0 && Boolean(invoiceReceipt(item));
+}
+
+function invoiceStatusText(item = {}) {
+  if (item.invoiceDone) return "Erledigt";
+  if (invoiceIsReady(item)) return "Fertig für Chef";
+  return "Angelegt";
+}
+
+function invoiceStatusClass(item = {}) {
+  if (item.invoiceDone) return "is-done";
+  if (invoiceIsReady(item)) return "is-ready";
+  return "is-draft";
 }
 
 function receiptFolderItem(dateKey, receipt, title, label) {
@@ -984,8 +1046,7 @@ function reportInvoiceCustomersHtml(items = []) {
           <span>Tipp: ${escapeHtml(item.tip || "-")}</span>
           <span>${escapeHtml(item.email || "Keine E-Mail")}</span>
           ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
-          ${receiptLinkHtml({ receiptData: item.bowlingReceiptData || item.receiptData, receiptPath: item.bowlingReceiptPath || item.receiptPath, receiptUrl: item.bowlingReceiptUrl || item.receiptUrl, receiptName: item.bowlingReceiptName || item.receiptName }, "Beleg Bowling")}
-          ${receiptLinkHtml({ receiptData: item.gastroReceiptData, receiptPath: item.gastroReceiptPath, receiptUrl: item.gastroReceiptUrl, receiptName: item.gastroReceiptName }, "Beleg Gastro")}
+          ${invoiceReceiptLinksHtml(item)}
         </article>
       `).join("")}
     </div>
@@ -1115,8 +1176,8 @@ function exportDayReport(dateKey) {
       `  Telefon: ${item.phone || "-"}`,
       `  Tipp: ${item.tip || "-"}`,
       `  E-Mail: ${item.email || "-"}`,
-      `  Bowling: ${formatReportMoney(item.bowlingAmount)} | Beleg: ${item.bowlingReceiptName || item.receiptName || "-"}`,
-      `  Gastro: ${formatReportMoney(item.gastroAmount)} | Beleg: ${item.gastroReceiptName || "-"}`
+      `  Bowling: ${formatReportMoney(item.bowlingAmount)} | Gastro: ${formatReportMoney(item.gastroAmount)}`,
+      `  Beleg: ${invoiceReceiptNameText(item)}`
     ].join("\n"))] : []),
     "",
     ...(reportFieldEnabled("expenses") ? ["Ausgaben:", ...(report.expenses || []).map((item) => `- ${item.name || "Ausgabe"} | ${item.category || "-"} | ${formatReportMoney(item.amount)} | Beleg: ${item.receiptName || "-"}`)] : []),
@@ -1785,15 +1846,37 @@ function renderWeather() {
   }
   const daily = state.weather.daily || {};
   const current = state.weather.current || {};
+  const hourly = state.weather.hourly || [];
   targets.forEach((target) => {
     target.innerHTML = `
       <span class="position-name">Wetterbericht</span>
       <span class="assignment">${weatherText(daily.weatherCode)}</span>
       <span class="assignment-note">Jetzt ${roundValue(current.temperature_2m)} C, Wind ${roundValue(current.wind_speed_10m)} km/h</span>
       <span class="assignment-note">Heute ${roundValue(daily.tempMin)}-${roundValue(daily.tempMax)} C, Regen ${roundValue(daily.precipitation)} mm</span>
+      ${hourly.length ? weatherHourlyHtml(hourly) : ""}
       <span class="hint">${escapeHtml(state.weather.location || "Roentgenstrasse 12, 84034 Landshut")}</span>
     `;
   });
+}
+
+function weatherHourlyHtml(items = []) {
+  return `
+    <div class="weather-hourly">
+      ${items.map((item) => `
+        <span>
+          <strong>${escapeHtml(weatherHourLabel(item.time))}</strong>
+          <small>${roundValue(item.temperature)} C</small>
+          <small>${roundValue(item.rainProbability)}% Regen</small>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function weatherHourLabel(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--:--";
+  return date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
 }
 
 function roundValue(value) {
@@ -2214,7 +2297,7 @@ function setDayReportLocked(isLocked, report = {}) {
   target.querySelectorAll("input, textarea, select").forEach((field) => {
     field.disabled = isLocked;
   });
-  target.querySelectorAll("#addInvoiceCustomer, #addExpense, [data-remove-report-entry], #saveDayReport").forEach((button) => {
+  target.querySelectorAll("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-remove-report-entry], #saveDayReport").forEach((button) => {
     button.disabled = isLocked;
   });
   const closeButton = $("#closeDayReport");
@@ -2230,11 +2313,32 @@ function renderReportEntryLists(report) {
   const invoiceTarget = $("#invoiceCustomersList");
   const expenseTarget = $("#expensesList");
   if (invoiceTarget) {
-    invoiceTarget.innerHTML = invoices.map((item) => invoiceRowHtml(item)).join("") || `<p class="hint">Keine Rechnungskunden erfasst.</p>`;
+    invoiceTarget.innerHTML = invoices.length
+      ? `${invoiceDayOverviewHtml(invoices)}${invoices.map((item) => invoiceRowHtml(item)).join("")}`
+      : `<p class="hint">Keine Rechnungskunden erfasst.</p>`;
   }
   if (expenseTarget) {
     expenseTarget.innerHTML = expenses.map((item) => expenseRowHtml(item)).join("") || `<p class="hint">Keine Ausgaben erfasst.</p>`;
   }
+}
+
+function invoiceDayOverviewHtml(invoices = []) {
+  const ready = invoices.filter((item) => invoiceIsReady(item) && !item.invoiceDone).length;
+  const draft = invoices.filter((item) => !invoiceIsReady(item) && !item.invoiceDone).length;
+  const done = invoices.filter((item) => item.invoiceDone).length;
+  const total = invoices.reduce((sum, item) => sum + invoiceTotal(item), 0);
+  return `
+    <div class="invoice-day-overview">
+      <div>
+        <small>Tagesübersicht Rechnung</small>
+        <strong>${invoices.length} Kunde${invoices.length === 1 ? "" : "n"}</strong>
+      </div>
+      <span class="invoice-pill is-draft">${draft} angelegt</span>
+      <span class="invoice-pill is-ready">${ready} fertig für Chef</span>
+      <span class="invoice-pill is-done">${done} erledigt</span>
+      <span class="invoice-pill">${formatReportMoney(total)}</span>
+    </div>
+  `;
 }
 
 function renderReportDocuments(report = {}) {
@@ -2258,10 +2362,91 @@ function renderReportDocuments(report = {}) {
   `).join("");
 }
 
+function renderCustomerInvoiceDesk() {
+  if (!isCustomerInvoiceMode()) return;
+  const login = $("#customerInvoiceStaffLogin");
+  const area = $("#customerInvoiceStaffArea");
+  const lockButton = $("#lockCustomerInvoiceStaff");
+  if (!login || !area) return;
+  const unlocked = Boolean(state.invoiceTerminalToken);
+  login.classList.toggle("hidden", unlocked);
+  area.classList.toggle("hidden", !unlocked);
+  lockButton?.classList.toggle("hidden", !unlocked);
+  if (!unlocked) return;
+
+  const report = state.invoiceReport || {};
+  const invoices = report.invoiceCustomers || [];
+  const expenses = report.expenses || [];
+  const summary = $("#customerInvoiceDaySummary");
+  if (summary) {
+    const ready = invoices.filter((item) => invoiceIsReady(item) && !item.invoiceDone).length;
+    const draft = invoices.filter((item) => !invoiceIsReady(item) && !item.invoiceDone).length;
+    const total = invoices.reduce((sum, item) => sum + invoiceTotal(item), 0);
+    summary.innerHTML = `
+      <div>
+        <small>${escapeHtml(formatDate(state.invoiceDate || todayKey()))}</small>
+        <strong>${invoices.length} Rechnungskunde${invoices.length === 1 ? "" : "n"}</strong>
+      </div>
+      <span class="invoice-pill is-draft">${draft} offen</span>
+      <span class="invoice-pill is-ready">${ready} fertig für Chef</span>
+      <span class="invoice-pill">${formatReportMoney(total)}</span>
+    `;
+  }
+  const invoiceList = $("#customerInvoiceWorkList");
+  if (invoiceList) {
+    invoiceList.innerHTML = invoices.map((item) => invoiceRowHtml(item)).join("") || `<p class="hint">Noch keine Rechnungskunden für heute.</p>`;
+  }
+  const expenseList = $("#customerExpenseWorkList");
+  if (expenseList) {
+    expenseList.innerHTML = expenses.map((item) => expenseRowHtml(item)).join("") || `<p class="hint">Noch keine Ausgaben für heute.</p>`;
+  }
+  renderCustomerInvoiceDocuments(report);
+  const status = $("#customerInvoiceStaffStatus");
+  if (status && !status.textContent) status.textContent = "Tagesübersicht geöffnet.";
+}
+
+function renderCustomerInvoiceDocuments(report = {}) {
+  const target = $("#customerReportDocumentStatus");
+  if (!target) return;
+  const documents = report.documents || {};
+  const rows = [
+    ["Penta", "penta", documents.penta],
+    ["Handschrift", "handwriting", documents.handwriting]
+  ];
+  target.innerHTML = rows.map(([label, key, document]) => `
+    <article class="report-entry compact-report-entry">
+      <strong>${escapeHtml(label)}</strong>
+      ${document?.name ? `<span class="hint">${escapeHtml(document.name)}</span>` : `<span class="hint">Noch nicht hochgeladen.</span>`}
+      ${document?.path || document?.url || document?.data ? reportDocumentLinkHtml(document, label) : ""}
+      <input type="hidden" data-customer-report-document="${key}" data-document-field="name" value="${escapeHtml(document?.name || "")}">
+      <input type="hidden" data-customer-report-document="${key}" data-document-field="path" value="${escapeHtml(document?.path || "")}">
+      <input type="hidden" data-customer-report-document="${key}" data-document-field="url" value="${escapeHtml(document?.url || "")}">
+      <input type="hidden" data-customer-report-document="${key}" data-document-field="data" value="${escapeHtml(document?.data || "")}">
+    </article>
+  `).join("");
+}
+
 function invoiceRowHtml(item = {}) {
   const id = item.id || cryptoId();
+  const singleReceipt = invoiceReceipt(item);
+  const legacyReceipts = invoiceLegacyReceipts(item);
+  const isReady = invoiceIsReady(item);
+  const statusClass = invoiceStatusClass(item);
+  const total = invoiceTotal(item);
+  const legacyHint = !singleReceipt && legacyReceipts.length
+    ? `<span class="hint">Bisherige getrennte Belege: ${legacyReceipts.map(({ label, receipt }) => `${escapeHtml(label)} ${escapeHtml(receipt.receiptName || "")}`).join(" | ")}</span>`
+    : "";
   return `
-    <article class="report-entry" data-report-entry="invoice" data-id="${escapeHtml(id)}">
+    <details class="report-entry invoice-entry ${statusClass}" data-report-entry="invoice" data-id="${escapeHtml(id)}" ${isReady ? "" : "open"}>
+      <summary class="invoice-entry-summary">
+        <div>
+          <strong>${escapeHtml(item.name || "Neuer Rechnungskunde")}</strong>
+          <span>${escapeHtml(item.contact || "Kontakt offen")} · ${escapeHtml(item.email || "E-Mail offen")}</span>
+        </div>
+        <span class="invoice-pill ${statusClass}">${escapeHtml(invoiceStatusText(item))}</span>
+        <span class="invoice-entry-total">${formatReportMoney(total)}</span>
+      </summary>
+      <div class="invoice-entry-body">
       <div class="report-entry-grid">
         <label>Kunde<input data-report-field="name" value="${escapeHtml(item.name || "")}" placeholder="Name/Firma"></label>
         <label>Ansprechpartner<input data-report-field="contact" value="${escapeHtml(item.contact || "")}" placeholder="optional"></label>
@@ -2275,22 +2460,33 @@ function invoiceRowHtml(item = {}) {
       </div>
       <label>Rechnungsadresse<textarea data-report-field="address" rows="2" placeholder="Adresse für Rechnung">${escapeHtml(item.address || "")}</textarea></label>
       <label>Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
-      <div class="report-entry-grid">
-        <label>Beleg Bowling<input data-report-file="bowling" type="file" accept="image/*,application/pdf"></label>
-        <label>Beleg Gastro<input data-report-file="gastro" type="file" accept="image/*,application/pdf"></label>
-      </div>
-      ${item.bowlingReceiptName || item.receiptName ? `<span class="hint">Bowling-Beleg: ${escapeHtml(item.bowlingReceiptName || item.receiptName)}</span>` : ""}
-      ${item.gastroReceiptName ? `<span class="hint">Gastro-Beleg: ${escapeHtml(item.gastroReceiptName)}</span>` : ""}
-      <input type="hidden" data-report-field="bowlingReceiptName" value="${escapeHtml(item.bowlingReceiptName || item.receiptName || "")}">
-      <input type="hidden" data-report-field="bowlingReceiptData" value="${escapeHtml(item.bowlingReceiptData || item.receiptData || "")}">
-      <input type="hidden" data-report-field="bowlingReceiptPath" value="${escapeHtml(item.bowlingReceiptPath || item.receiptPath || "")}">
-      <input type="hidden" data-report-field="bowlingReceiptUrl" value="${escapeHtml(item.bowlingReceiptUrl || item.receiptUrl || "")}">
+      <label>Rechnungsbeleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
+      ${singleReceipt?.receiptName ? `<span class="hint">Aktueller Rechnungsbeleg: ${escapeHtml(singleReceipt.receiptName)}</span>` : ""}
+      ${legacyHint}
+      <input type="hidden" data-report-field="receiptName" value="${escapeHtml(singleReceipt?.receiptName || item.receiptName || "")}">
+      <input type="hidden" data-report-field="receiptData" value="${escapeHtml(singleReceipt?.receiptData || item.receiptData || "")}">
+      <input type="hidden" data-report-field="receiptPath" value="${escapeHtml(singleReceipt?.receiptPath || item.receiptPath || "")}">
+      <input type="hidden" data-report-field="receiptUrl" value="${escapeHtml(singleReceipt?.receiptUrl || item.receiptUrl || "")}">
+      <input type="hidden" data-report-field="bowlingReceiptName" value="${escapeHtml(item.bowlingReceiptName || "")}">
+      <input type="hidden" data-report-field="bowlingReceiptData" value="${escapeHtml(item.bowlingReceiptData || "")}">
+      <input type="hidden" data-report-field="bowlingReceiptPath" value="${escapeHtml(item.bowlingReceiptPath || "")}">
+      <input type="hidden" data-report-field="bowlingReceiptUrl" value="${escapeHtml(item.bowlingReceiptUrl || "")}">
       <input type="hidden" data-report-field="gastroReceiptName" value="${escapeHtml(item.gastroReceiptName || "")}">
       <input type="hidden" data-report-field="gastroReceiptData" value="${escapeHtml(item.gastroReceiptData || "")}">
       <input type="hidden" data-report-field="gastroReceiptPath" value="${escapeHtml(item.gastroReceiptPath || "")}">
       <input type="hidden" data-report-field="gastroReceiptUrl" value="${escapeHtml(item.gastroReceiptUrl || "")}">
-      <button class="secondary" data-remove-report-entry type="button">Entfernen</button>
-    </article>
+      <input type="hidden" data-report-field="invoiceReady" value="${isReady ? "true" : "false"}">
+      <input type="hidden" data-report-field="invoiceReadyAt" value="${escapeHtml(item.invoiceReadyAt || "")}">
+      <input type="hidden" data-report-field="invoiceDone" value="${item.invoiceDone ? "true" : "false"}">
+      <input type="hidden" data-report-field="invoiceDoneAt" value="${escapeHtml(item.invoiceDoneAt || "")}">
+      <input type="hidden" data-report-field="createdAt" value="${escapeHtml(item.createdAt || "")}">
+      <div class="invoice-entry-actions">
+        <button class="secondary" data-save-invoice-draft type="button">Zwischenspeichern</button>
+        <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut an Chef senden" : "Fertig für Chef"}</button>
+        <button class="secondary" data-remove-report-entry type="button">Entfernen</button>
+      </div>
+      </div>
+    </details>
   `;
 }
 
@@ -2304,7 +2500,7 @@ function expenseRowHtml(item = {}) {
         <label>Betrag<input data-report-field="amount" type="number" min="0" step="0.01" value="${escapeHtml(item.amount || "")}" placeholder="0,00"></label>
       </div>
       <label>Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
-      <label>Beleg<input data-report-file type="file" accept="image/*,application/pdf"></label>
+      <label>Beleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
       ${item.receiptName ? `<span class="hint">Aktueller Beleg: ${escapeHtml(item.receiptName)}</span>` : ""}
       <input type="hidden" data-report-field="receiptName" value="${escapeHtml(item.receiptName || "")}">
       <input type="hidden" data-report-field="receiptData" value="${escapeHtml(item.receiptData || "")}">
@@ -2320,9 +2516,13 @@ function cryptoId() {
 }
 
 async function collectReportEntries(type) {
+  return collectReportEntriesFrom(document, type);
+}
+
+async function collectReportEntriesFrom(root, type) {
   const selector = type === "invoice" ? '[data-report-entry="invoice"]' : '[data-report-entry="expense"]';
   const entries = [];
-  for (const row of $$(selector)) {
+  for (const row of [...(root || document).querySelectorAll(selector)]) {
     const item = { id: row.dataset.id || cryptoId() };
     row.querySelectorAll("[data-report-field]").forEach((field) => {
       item[field.dataset.reportField] = field.value;
@@ -2398,6 +2598,183 @@ async function collectDayReportPayload() {
     documents: await collectReportDocuments(),
     notes: $("#reportNotes").value
   };
+}
+
+async function collectCustomerInvoiceDocuments() {
+  const documents = cloneData(state.invoiceReport?.documents || { penta: {}, handwriting: {} });
+  $$("[data-customer-report-document]").forEach((field) => {
+    const key = field.dataset.customerReportDocument;
+    const name = field.dataset.documentField;
+    documents[key] ||= {};
+    documents[key][name] = field.value;
+  });
+  const pentaFile = $("#customerReportDocumentPenta")?.files?.[0];
+  if (pentaFile) {
+    documents.penta ||= {};
+    documents.penta.name = pentaFile.name;
+    documents.penta.data = await fileToDataUrl(pentaFile);
+  }
+  const handwritingFile = $("#customerReportDocumentHandwriting")?.files?.[0];
+  if (handwritingFile) {
+    documents.handwriting ||= {};
+    documents.handwriting.name = handwritingFile.name;
+    documents.handwriting.data = await fileToDataUrl(handwritingFile);
+  }
+  return documents;
+}
+
+async function collectCustomerInvoiceDeskPayload() {
+  const report = state.invoiceReport || {};
+  const root = $("#customerInvoiceStaffArea") || document;
+  return {
+    action: "save-report",
+    date: state.invoiceDate || todayKey(),
+    ecTotal: report.ecTotal || "",
+    barBowling: report.barBowling || "",
+    barGastro: report.barGastro || "",
+    openingHours: report.openingHours || "",
+    shiftLeader: report.shiftLeader || "",
+    handovers: report.handovers || [],
+    invoiceCustomers: await collectReportEntriesFrom(root, "invoice"),
+    expenses: await collectReportEntriesFrom(root, "expense"),
+    documents: await collectCustomerInvoiceDocuments(),
+    notes: report.notes || "",
+    taskCompletions: report.taskCompletions || {},
+    toiletChecks: report.toiletChecks || [],
+    reminderChecks: report.reminderChecks || []
+  };
+}
+
+async function loadCustomerInvoiceDesk() {
+  if (!state.invoiceTerminalToken) return;
+  const result = await api("/api/day-terminal", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "load",
+      date: state.invoiceDate || todayKey(),
+      terminalToken: state.invoiceTerminalToken
+    })
+  });
+  state.invoiceDate = result.date || state.invoiceDate || todayKey();
+  state.invoiceReport = result.report || {};
+  state.settings = normalizeSettings(result.settings || state.settings);
+  renderCustomerInvoiceDesk();
+}
+
+async function saveCustomerInvoiceDeskReport(button, successText = "Tagesübersicht gespeichert.") {
+  if (!state.invoiceTerminalToken) {
+    showToast("Bitte Mitarbeiter-Code eingeben.");
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Speichert...";
+  }
+  try {
+    const result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        ...(await collectCustomerInvoiceDeskPayload()),
+        terminalToken: state.invoiceTerminalToken
+      })
+    });
+    state.invoiceDate = result.date || state.invoiceDate || todayKey();
+    state.invoiceReport = result.report || {};
+    state.dayReports[state.invoiceDate] = state.invoiceReport;
+    renderCustomerInvoiceDesk();
+    $("#customerInvoiceStaffStatus").textContent = successText;
+    showToast(successText);
+  } catch (error) {
+    showError(error);
+    if (String(error.message || "").includes("Terminal-Code")) {
+      state.invoiceTerminalToken = "";
+      window.localStorage?.removeItem("invoiceTerminalToken");
+      renderCustomerInvoiceDesk();
+    }
+  } finally {
+    if (button) {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
+  }
+}
+
+async function saveCustomerInvoiceDeskRow(button, markReady = false) {
+  const row = button.closest('[data-report-entry="invoice"]');
+  if (!row) return;
+  if (markReady) {
+    const problems = invoiceRowReadyProblems(row);
+    if (problems.length) {
+      showToast(`Noch offen: ${problems.join(", ")}.`);
+      return;
+    }
+    setReportFieldValue(row, "invoiceReady", "true");
+    setReportFieldValue(row, "invoiceReadyAt", new Date().toISOString());
+  }
+  await saveCustomerInvoiceDeskReport(button, markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.");
+}
+
+function reportFieldValue(row, name) {
+  return row.querySelector(`[data-report-field="${name}"]`)?.value || "";
+}
+
+function setReportFieldValue(row, name, value) {
+  const field = row.querySelector(`[data-report-field="${name}"]`);
+  if (field) field.value = value;
+}
+
+function invoiceRowHasReceipt(row) {
+  if (row.querySelector("[data-report-file]")?.files?.[0]) return true;
+  return [
+    "receiptData",
+    "receiptPath",
+    "receiptUrl",
+    "bowlingReceiptData",
+    "bowlingReceiptPath",
+    "bowlingReceiptUrl",
+    "gastroReceiptData",
+    "gastroReceiptPath",
+    "gastroReceiptUrl"
+  ].some((field) => Boolean(reportFieldValue(row, field)));
+}
+
+function invoiceRowReadyProblems(row) {
+  const problems = [];
+  if (!reportFieldValue(row, "name")) problems.push("Firma/Name fehlt");
+  if (!reportFieldValue(row, "address")) problems.push("Rechnungsadresse fehlt");
+  if (!reportFieldValue(row, "email")) problems.push("E-Mail fehlt");
+  const amount = parseMoneyInput(reportFieldValue(row, "bowlingAmount")) + parseMoneyInput(reportFieldValue(row, "gastroAmount"));
+  if (amount <= 0) problems.push("Bowling- oder Gastro-Betrag fehlt");
+  if (!invoiceRowHasReceipt(row)) problems.push("Rechnungsbeleg fehlt");
+  return problems;
+}
+
+async function saveInvoiceRow(button, markReady = false) {
+  const row = button.closest('[data-report-entry="invoice"]');
+  if (!row) return;
+  if (markReady) {
+    const problems = invoiceRowReadyProblems(row);
+    if (problems.length) {
+      showToast(`Noch offen: ${problems.join(", ")}.`);
+      return;
+    }
+    setReportFieldValue(row, "invoiceReady", "true");
+    setReportFieldValue(row, "invoiceReadyAt", new Date().toISOString());
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    await terminalAction(await collectDayReportPayload());
+    showToast(markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.");
+  } catch (error) {
+    if (markReady) setReportFieldValue(row, "invoiceReady", "false");
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
 }
 
 async function fileToDataUrl(file) {
@@ -3647,8 +4024,9 @@ function bindEvents() {
         })
       });
       event.target.reset();
-      status.textContent = "Danke, die Rechnungsdaten wurden übermittelt.";
-      showToast("Rechnungsdaten gespeichert.");
+      status.textContent = "Danke, die Rechnungsdaten wurden für heute angelegt.";
+      showToast("Rechnungskunde angelegt.");
+      if (state.invoiceTerminalToken) await loadCustomerInvoiceDesk();
     } catch (error) {
       status.textContent = error.message || String(error);
       showError(error);
@@ -3656,6 +4034,88 @@ function bindEvents() {
       button.textContent = oldText;
       button.disabled = false;
     }
+  });
+
+  $("#unlockCustomerInvoiceStaff")?.addEventListener("click", async () => {
+    const code = $("#customerInvoiceStaffCode")?.value || "";
+    const button = $("#unlockCustomerInvoiceStaff");
+    if (!code) {
+      showToast("Bitte Mitarbeiter-Code eingeben.");
+      return;
+    }
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Öffnet...";
+    try {
+      const result = await api("/api/day-terminal", {
+        method: "POST",
+        body: JSON.stringify({ action: "login", code, date: todayKey() })
+      });
+      state.invoiceTerminalToken = result.token || "";
+      state.invoiceDate = result.date || todayKey();
+      state.invoiceReport = result.report || {};
+      state.settings = normalizeSettings(result.settings || state.settings);
+      window.localStorage?.setItem("invoiceTerminalToken", state.invoiceTerminalToken);
+      $("#customerInvoiceStaffCode").value = "";
+      renderCustomerInvoiceDesk();
+      showToast("Tagesübersicht geöffnet.");
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
+  });
+
+  $("#lockCustomerInvoiceStaff")?.addEventListener("click", () => {
+    state.invoiceTerminalToken = "";
+    state.invoiceReport = {};
+    window.localStorage?.removeItem("invoiceTerminalToken");
+    renderCustomerInvoiceDesk();
+    showToast("Mitarbeiterbereich gesperrt.");
+  });
+
+  $("#addCustomerInvoiceWorkRow")?.addEventListener("click", () => {
+    const list = $("#customerInvoiceWorkList");
+    if (!list) return;
+    if (list.querySelector(".hint")) list.innerHTML = "";
+    list.insertAdjacentHTML("beforeend", invoiceRowHtml());
+  });
+
+  $("#addCustomerExpenseWorkRow")?.addEventListener("click", () => {
+    const list = $("#customerExpenseWorkList");
+    if (!list) return;
+    if (list.querySelector(".hint")) list.innerHTML = "";
+    list.insertAdjacentHTML("beforeend", expenseRowHtml());
+  });
+
+  $("#saveCustomerInvoiceWork")?.addEventListener("click", (event) => {
+    saveCustomerInvoiceDeskReport(event.currentTarget, "Rechnungen gespeichert.");
+  });
+
+  $("#saveCustomerExpenses")?.addEventListener("click", (event) => {
+    saveCustomerInvoiceDeskReport(event.currentTarget, "Ausgaben gespeichert.");
+  });
+
+  $("#saveCustomerDocuments")?.addEventListener("click", (event) => {
+    saveCustomerInvoiceDeskReport(event.currentTarget, "Dokumente gespeichert.");
+  });
+
+  $("#customerInvoiceStaffArea")?.addEventListener("click", (event) => {
+    const draftButton = event.target.closest("[data-save-invoice-draft]");
+    if (draftButton) {
+      saveCustomerInvoiceDeskRow(draftButton, false);
+      return;
+    }
+    const readyButton = event.target.closest("[data-mark-invoice-ready]");
+    if (readyButton) {
+      saveCustomerInvoiceDeskRow(readyButton, true);
+      return;
+    }
+    const removeButton = event.target.closest("[data-remove-report-entry]");
+    if (!removeButton) return;
+    removeButton.closest(".report-entry")?.remove();
+    showToast("Eintrag entfernt. Bitte speichern.");
   });
 
   $("#timesheetGrid").addEventListener("click", async (event) => {
@@ -4395,6 +4855,16 @@ function bindEvents() {
   });
 
   $("#dayReportPrintArea")?.addEventListener("click", (event) => {
+    const draftButton = event.target.closest("[data-save-invoice-draft]");
+    if (draftButton) {
+      saveInvoiceRow(draftButton, false);
+      return;
+    }
+    const readyButton = event.target.closest("[data-mark-invoice-ready]");
+    if (readyButton) {
+      saveInvoiceRow(readyButton, true);
+      return;
+    }
     const removeButton = event.target.closest("[data-remove-report-entry]");
     if (!removeButton) return;
     if (state.terminalReport?.closed) return;
@@ -4690,3 +5160,9 @@ renderAll();
 if (isTerminalMode() || isTodoMode()) activateTab("terminal");
 if (isCustomerInvoiceMode()) activateTab("customerInvoice");
 loadState().catch(showError);
+if (isCustomerInvoiceMode() && state.invoiceTerminalToken) loadCustomerInvoiceDesk().catch((error) => {
+  state.invoiceTerminalToken = "";
+  window.localStorage?.removeItem("invoiceTerminalToken");
+  showError(error);
+  renderCustomerInvoiceDesk();
+});

@@ -984,6 +984,33 @@ button.employee-badge-stat {
   font-weight: 800;
 }
 
+.weather-hourly {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.weather-hourly span {
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 6px;
+}
+
+.weather-hourly strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.weather-hourly small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .dashboard-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2134,6 +2161,99 @@ button:disabled {
   gap: 10px;
 }
 
+.invoice-day-overview {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) repeat(4, auto);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.invoice-day-overview small,
+.invoice-entry-summary span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.invoice-day-overview strong {
+  display: block;
+  margin-top: 3px;
+}
+
+.invoice-entry {
+  padding: 0;
+  overflow: hidden;
+}
+
+.invoice-entry-summary {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+  padding: 12px;
+}
+
+.invoice-entry-summary strong,
+.invoice-entry-summary span {
+  display: block;
+}
+
+.invoice-entry-total {
+  color: var(--ink);
+  font-weight: 900;
+  text-align: right;
+}
+
+.invoice-entry-body {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding: 12px;
+}
+
+.invoice-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.invoice-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  padding: 6px 10px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.invoice-pill.is-draft {
+  border-color: #f59e0b;
+  background: #fff7ed;
+  color: #92400e;
+}
+
+.invoice-pill.is-ready {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.invoice-pill.is-done {
+  border-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
 .receipt-link {
   color: var(--brand-strong);
   font-weight: 800;
@@ -2147,6 +2267,36 @@ button:disabled {
 .customer-invoice-form {
   display: grid;
   gap: 14px;
+}
+
+.customer-invoice-staff {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.customer-invoice-staff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.customer-invoice-staff-head h3,
+.customer-invoice-staff-head p {
+  margin: 0;
+}
+
+.customer-invoice-staff-head p {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.customer-invoice-staff-area {
+  display: grid;
+  gap: 12px;
 }
 
 .customer-firming-hint {
@@ -2597,7 +2747,8 @@ button:disabled {
   }
 
   .topbar,
-  .section-head {
+  .section-head,
+  .customer-invoice-staff-head {
     align-items: stretch;
     flex-direction: column;
   }
@@ -2679,8 +2830,14 @@ button:disabled {
   .terminal-cost-summary,
   .day-report-grid,
   .day-report-values,
+  .invoice-day-overview,
+  .invoice-entry-summary,
   .report-entry-grid {
     grid-template-columns: 1fr;
+  }
+
+  .invoice-entry-total {
+    text-align: left;
   }
 
   .day-report-card summary {

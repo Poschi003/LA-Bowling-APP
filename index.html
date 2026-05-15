@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260515-weather-retry-v1">
+    <link rel="stylesheet" href="styles.css?v=20260515-invoice-desk-v1">
   </head>
   <body>
     <header class="topbar">
@@ -199,8 +199,8 @@
             <details class="report-subsection" data-report-field-box="documents">
               <summary>Abschlussdokumente</summary>
               <div class="report-entry-grid">
-                <label>Penta<input id="reportDocumentPenta" type="file" accept="image/*,application/pdf"></label>
-                <label>Handschrift<input id="reportDocumentHandwriting" type="file" accept="image/*,application/pdf"></label>
+                <label>Penta scannen/fotografieren<input id="reportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
+                <label>Handschrift scannen/fotografieren<input id="reportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
               </div>
               <div id="reportDocumentStatus" class="report-entry-list"></div>
             </details>
@@ -223,7 +223,7 @@
       <section id="customerInvoice" class="panel customer-invoice-panel">
         <div class="section-head">
           <div>
-            <h2>Rechnungsdaten</h2>
+            <h2>Neuer Rechnungskunde</h2>
           </div>
         </div>
         <form id="customerInvoiceForm" class="customer-invoice-form">
@@ -242,9 +242,53 @@
             <label>Tipp<input id="customerTip" placeholder="optional"></label>
             <label>Notiz<textarea id="customerNote" rows="3"></textarea></label>
           </div>
-          <button id="submitCustomerInvoice" class="primary" type="submit">Rechnungsdaten senden</button>
+          <button id="submitCustomerInvoice" class="primary" type="submit">Rechnungskunde speichern</button>
           <p id="customerInvoiceStatus" class="action-status"></p>
         </form>
+        <section class="customer-invoice-staff">
+          <div class="customer-invoice-staff-head">
+            <div>
+              <h3>Tagesübersicht Mitarbeiter</h3>
+              <p>Rechnungskunden, Belege und Abschlussdokumente für den heutigen Tagesbericht ergänzen.</p>
+            </div>
+            <button id="lockCustomerInvoiceStaff" class="secondary hidden" type="button">Sperren</button>
+          </div>
+          <div id="customerInvoiceStaffLogin" class="form-grid">
+            <label>Mitarbeiter-Code<input id="customerInvoiceStaffCode" type="password" inputmode="numeric" placeholder="Code"></label>
+            <button id="unlockCustomerInvoiceStaff" class="primary" type="button">Tagesübersicht öffnen</button>
+          </div>
+          <div id="customerInvoiceStaffArea" class="customer-invoice-staff-area hidden">
+            <div class="invoice-day-overview" id="customerInvoiceDaySummary"></div>
+            <details class="report-subsection" open>
+              <summary>Rechnungskunden vervollständigen</summary>
+              <div id="customerInvoiceWorkList" class="report-entry-list"></div>
+              <div class="day-report-actions">
+                <button id="addCustomerInvoiceWorkRow" class="secondary" type="button">Rechnungskunde hinzufügen</button>
+                <button id="saveCustomerInvoiceWork" class="primary" type="button">Rechnungen speichern</button>
+              </div>
+            </details>
+            <details class="report-subsection">
+              <summary>Ausgaben aus der Kasse</summary>
+              <div id="customerExpenseWorkList" class="report-entry-list"></div>
+              <div class="day-report-actions">
+                <button id="addCustomerExpenseWorkRow" class="secondary" type="button">Ausgabe hinzufügen</button>
+                <button id="saveCustomerExpenses" class="primary" type="button">Ausgaben speichern</button>
+              </div>
+            </details>
+            <details class="report-subsection">
+              <summary>Penta und Handschrift</summary>
+              <div class="report-entry-grid">
+                <label>Penta scannen/fotografieren<input id="customerReportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
+                <label>Handschrift scannen/fotografieren<input id="customerReportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
+              </div>
+              <div id="customerReportDocumentStatus" class="report-entry-list"></div>
+              <div class="day-report-actions">
+                <button id="saveCustomerDocuments" class="primary" type="button">Dokumente speichern</button>
+              </div>
+            </details>
+            <p id="customerInvoiceStaffStatus" class="action-status"></p>
+          </div>
+        </section>
       </section>
 
       <section id="swaps" class="panel">
@@ -566,7 +610,7 @@
         if (panel) panel.classList.add("active");
       });
     </script>
-    <script src="teamapp-client.js?v=20260515-weather-retry-v1"></script>
+    <script src="teamapp-client.js?v=20260515-invoice-desk-v1"></script>
     <script src="terminal-roles-addon.js?v=20260506-terminal-roles-v1"></script>
   </body>
 </html>
