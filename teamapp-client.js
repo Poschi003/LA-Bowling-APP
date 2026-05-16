@@ -641,7 +641,7 @@ function chefDashboardHtml() {
   const openInvoiceCount = openInvoiceItems().length;
   const tabs = [
     ["reports", "Tagesberichte", chefSectionEnabled("reports")],
-    ["invoices", "Bitte Rechnung schreiben", openInvoiceCount > 0],
+    ["invoices", "Rechnung schreiben", openInvoiceCount > 0],
     ["employees", "Mitarbeiterübersicht", chefSectionEnabled("employees")],
     ["schedule", "Dienstplan", chefSectionEnabled("schedule")]
   ].filter(([, , visible]) => visible);
@@ -935,7 +935,7 @@ function openInvoicesHtml() {
   return `
     <section class="open-invoices-panel ${items.length ? "has-open-invoices" : ""}">
       <div>
-        <h3>Bitte Rechnung schreiben</h3>
+        <h3>Rechnung schreiben</h3>
         <p>${items.length ? `${items.length} Rechnung${items.length === 1 ? "" : "en"} zu schreiben` : "Keine offene Rechnung."}</p>
       </div>
       ${items.length ? `<div class="open-invoice-list">

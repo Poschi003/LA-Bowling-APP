@@ -2564,10 +2564,10 @@ button:disabled {
 }
 
 .chef-tab.needs-attention {
-  border-color: rgba(225, 23, 47, 0.42);
-  background: #fff5f6;
+  border-color: var(--brand);
+  background: #ffe8eb;
   color: var(--brand-strong);
-  animation: invoiceAttentionPulse 1.8s ease-in-out infinite;
+  animation: invoiceAttentionBlink 1s ease-in-out infinite;
 }
 
 .chef-tab.needs-attention span {
@@ -2584,12 +2584,16 @@ button:disabled {
   font-weight: 800;
 }
 
-@keyframes invoiceAttentionPulse {
+@keyframes invoiceAttentionBlink {
   0%, 100% {
+    background: #ffe8eb;
     box-shadow: 0 0 0 0 rgba(225, 23, 47, 0);
+    transform: translateY(0);
   }
   50% {
-    box-shadow: 0 0 0 3px rgba(225, 23, 47, 0.14);
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(225, 23, 47, 0.22);
+    transform: translateY(-1px);
   }
 }
 
@@ -2712,6 +2716,16 @@ button:disabled {
 .open-invoices-panel.has-open-invoices {
   border-color: #c41f2b;
   background: #fff7f8;
+  animation: invoicePanelBlink 1.2s ease-in-out infinite;
+}
+
+@keyframes invoicePanelBlink {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(196, 31, 43, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(196, 31, 43, 0.16);
+  }
 }
 
 .open-invoices-panel h3,
