@@ -346,6 +346,7 @@
         <div id="adminContent" class="admin-content hidden">
         <nav class="admin-workspace-tabs" aria-label="Admin-Arbeitsbereiche">
           <button class="admin-workspace-tab active" type="button" data-admin-workspace-tab="planning">Planung</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="employees">Mitarbeiter Sicht</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="correction">Korrekturmodus</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="settings">Einstellungen</button>
@@ -361,6 +362,14 @@
         <details class="settings-box admin-primary-box">
           <summary>Veröffentlichte Wochen</summary>
           <div id="adminPublishedList" class="swap-list"></div>
+        </details>
+        </section>
+
+        <section class="admin-workspace" data-admin-workspace="employees">
+        <details class="settings-box admin-priority" open>
+          <summary>Mitarbeiter Sicht</summary>
+          <p class="settings-note">Nur Admin: Hier kannst du Arbeitstage und Stunden nachtragen, auch wenn der Tagesbericht schon abgeschlossen ist.</p>
+          <div id="adminEmployeeOverview" class="employee-overview"></div>
         </details>
         </section>
 
@@ -616,11 +625,6 @@
         </section>
 
         <section class="admin-workspace" data-admin-workspace="approvals">
-        <details class="settings-box">
-          <summary>Mitarbeiterübersicht</summary>
-          <div id="adminEmployeeOverview" class="employee-overview"></div>
-        </details>
-
         <details class="settings-box">
           <summary>Ersatz freigeben</summary>
           <div id="adminSwapList" class="swap-list"></div>
