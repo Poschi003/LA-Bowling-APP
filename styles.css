@@ -2538,6 +2538,36 @@ button:disabled {
   color: var(--ink);
 }
 
+.chef-tab.needs-attention {
+  border-color: rgba(225, 23, 47, 0.42);
+  background: #fff5f6;
+  color: var(--brand-strong);
+  animation: invoiceAttentionPulse 1.8s ease-in-out infinite;
+}
+
+.chef-tab.needs-attention span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  min-height: 20px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+@keyframes invoiceAttentionPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(225, 23, 47, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(225, 23, 47, 0.14);
+  }
+}
+
 .chef-section {
   display: grid;
   gap: 16px;
@@ -3334,6 +3364,106 @@ button:disabled {
 
   .assignment {
     font-size: 10px;
+  }
+
+  body.print-chef-day-report .topbar,
+  body.print-chef-day-report .tabs,
+  body.print-chef-day-report #home,
+  body.print-chef-day-report #availability,
+  body.print-chef-day-report #published,
+  body.print-chef-day-report #timesheet,
+  body.print-chef-day-report #swaps,
+  body.print-chef-day-report #admin,
+  body.print-chef-day-report .chef-tabs,
+  body.print-chef-day-report .chef-section-head,
+  body.print-chef-day-report .report-folders-head,
+  body.print-chef-day-report .report-month-summary,
+  body.print-chef-day-report .report-month-section > summary,
+  body.print-chef-day-report .day-report-card:not([data-printing-report]),
+  body.print-chef-day-report [data-print-day-report],
+  body.print-chef-day-report .toast {
+    display: none !important;
+  }
+
+  body.print-chef-day-report main,
+  body.print-chef-day-report #chef,
+  body.print-chef-day-report .chef-dashboard,
+  body.print-chef-day-report .chef-section,
+  body.print-chef-day-report .report-month-section,
+  body.print-chef-day-report .day-report-list {
+    display: block !important;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: white;
+  }
+
+  body.print-chef-day-report .day-report-card[data-printing-report] {
+    display: block !important;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: white;
+    overflow: visible;
+  }
+
+  body.print-chef-day-report .day-report-card[data-printing-report] > summary {
+    display: none;
+  }
+
+  body.print-chef-day-report .a4-report {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    gap: 3mm;
+  }
+
+  body.print-chef-day-report .a4-report-head {
+    grid-template-columns: 1fr 1fr;
+    border-bottom: 0.4mm solid #111;
+    padding-bottom: 2mm;
+  }
+
+  body.print-chef-day-report .a4-report-head h3 {
+    font-size: 16pt;
+  }
+
+  body.print-chef-day-report .a4-report-kpis {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1.5mm;
+  }
+
+  body.print-chef-day-report .a4-report-kpis article,
+  body.print-chef-day-report .a4-report-block {
+    border: 0.25mm solid #111;
+    border-radius: 0;
+    padding: 1.5mm;
+  }
+
+  body.print-chef-day-report .a4-report-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 2mm;
+  }
+
+  body.print-chef-day-report .a4-report-block-wide {
+    grid-column: 1 / -1;
+  }
+
+  body.print-chef-day-report .a4-report-table {
+    font-size: 8.5pt;
+  }
+
+  body.print-chef-day-report .a4-report-table th,
+  body.print-chef-day-report .a4-report-table td {
+    border-top: 0.2mm solid #999;
+    padding: 1mm;
+  }
+
+  body.print-chef-day-report .receipt-link {
+    color: #111;
+    text-decoration: none;
   }
 }
 

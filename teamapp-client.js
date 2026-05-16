@@ -623,8 +623,10 @@ function renderChef() {
 function chefDashboardHtml() {
   const today = todayKey();
   const schedule = state.schedule || {};
+  const openInvoiceCount = openInvoiceItems().length;
   const tabs = [
     ["reports", "Tagesberichte", chefSectionEnabled("reports")],
+    ["invoices", "Bitte Rechnung schreiben", openInvoiceCount > 0],
     ["employees", "Mitarbeiterübersicht", chefSectionEnabled("employees")],
     ["schedule", "Dienstplan", chefSectionEnabled("schedule")]
   ].filter(([, , visible]) => visible);
@@ -636,11 +638,13 @@ function chefDashboardHtml() {
       ${renderScheduleDay(new Date(`${today}T12:00:00`), { today: true })}
     </details>` : ""}
     <nav class="chef-tabs" aria-label="Chef-Bereiche">
-      ${tabs.map(([key, label]) => `<button class="chef-tab ${state.chefTab === key ? "active" : ""}" type="button" data-chef-tab="${key}">${label}</button>`).join("")}
+      ${tabs.map(([key, label]) => `<button class="chef-tab ${state.chefTab === key ? "active" : ""} ${key === "invoices" && openInvoiceCount ? "needs-attention" : ""}" type="button" data-chef-tab="${key}">${label}${key === "invoices" && openInvoiceCount ? ` <span>${openInvoiceCount}</span>` : ""}</button>`).join("")}
     </nav>
     ${chefSectionEnabled("reports") ? `<section class="chef-section ${state.chefTab === "reports" ? "active" : "hidden"}">
-      ${openInvoicesHtml()}
       ${dayReportFoldersByMonthHtml()}
+    </section>` : ""}
+    ${openInvoiceCount ? `<section class="chef-section ${state.chefTab === "invoices" ? "active" : "hidden"}">
+      ${openInvoicesHtml()}
     </section>` : ""}
     ${chefSectionEnabled("employees") ? `<section class="chef-section ${state.chefTab === "employees" ? "active" : "hidden"}">
       <div class="chef-section-head">
@@ -679,7 +683,7 @@ function dayReportsHtml() {
           <span>${dayReportSummaryLine(report)}</span>
           </summary>
           ${dayReportA4Html(dateKey, report)}
-          <button class="secondary" data-export-day-report="${escapeHtml(dateKey)}" type="button">Bericht exportieren</button>
+          <button class="secondary" data-print-day-report="${escapeHtml(dateKey)}" type="button">Bericht drucken</button>
         </details>
       `).join("")}
     </div>
@@ -702,7 +706,7 @@ function dayReportsForMonthHtml(month) {
           <span>${dayReportSummaryLine(report)}</span>
           </summary>
           ${dayReportA4Html(dateKey, report)}
-          <button class="secondary" data-export-day-report="${escapeHtml(dateKey)}" type="button">Bericht exportieren</button>
+          <button class="secondary" data-print-day-report="${escapeHtml(dateKey)}" type="button">Bericht drucken</button>
         </details>
       `).join("")}
     </div>
@@ -916,7 +920,7 @@ function openInvoicesHtml() {
   return `
     <section class="open-invoices-panel ${items.length ? "has-open-invoices" : ""}">
       <div>
-        <h3>Offene Rechnungen</h3>
+        <h3>Bitte Rechnung schreiben</h3>
         <p>${items.length ? `${items.length} Rechnung${items.length === 1 ? "" : "en"} zu schreiben` : "Keine offene Rechnung."}</p>
       </div>
       ${items.length ? `<div class="open-invoice-list">
@@ -1365,6 +1369,22 @@ function exportDayReport(dateKey) {
     ...lineIf("notes", `Notizen: ${report.notes || "-"}`)
   ];
   downloadText(`tagesbericht-${dateKey}.txt`, lines.join("\n"));
+}
+
+function printDayReportFromChef(dateKey, button) {
+  const card = button?.closest(".day-report-card");
+  if (!card) return;
+  card.setAttribute("data-printing-report", dateKey);
+  card.open = true;
+  document.body.classList.add("print-chef-day-report");
+  const cleanup = () => {
+    document.body.classList.remove("print-chef-day-report");
+    card.removeAttribute("data-printing-report");
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  window.setTimeout(cleanup, 1200);
 }
 
 function exportReportFolder(value) {
@@ -4159,9 +4179,9 @@ function bindEvents() {
       completeInvoice(completeInvoiceButton.dataset.completeInvoice, completeInvoiceButton);
       return;
     }
-    const exportButton = event.target.closest("[data-export-day-report]");
-    if (exportButton) {
-      exportDayReport(exportButton.dataset.exportDayReport);
+    const printReportButton = event.target.closest("[data-print-day-report]");
+    if (printReportButton) {
+      printDayReportFromChef(printReportButton.dataset.printDayReport, printReportButton);
       return;
     }
     const folderButton = event.target.closest("[data-export-report-folder]");
