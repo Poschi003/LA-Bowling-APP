@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260516-invoice-blink-v1">
+    <link rel="stylesheet" href="styles.css?v=20260516-admin-hours-v1">
   </head>
   <body>
     <header class="topbar">
@@ -123,6 +123,7 @@
             <button id="saveTerminalDayMeta" class="secondary" type="button">Tageskopf speichern</button>
           </div>
           <div id="terminalDayMetaDisplay" class="terminal-day-meta-display hidden"></div>
+          <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
           <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
             <div class="terminal-task-group-head">
               <div>
@@ -173,13 +174,14 @@
             <div id="terminalCostSummary" class="terminal-cost-summary"></div>
             <div id="terminalEmployees" class="terminal-employees"></div>
           </section>
-          <section id="dayReportPrintArea" class="day-report">
-            <div class="day-report-title">
+          <details id="dayReportPrintArea" class="day-report">
+            <summary class="day-report-title">
               <div>
                 <h3>Tagesbericht</h3>
                 <p id="dayReportLockStatus" class="hint"></p>
               </div>
-            </div>
+              <span class="day-report-toggle-label">Öffnen</span>
+            </summary>
             <div id="dayReportA4Summary" class="day-report-a4-summary"></div>
             <div class="day-report-grid">
               <label data-report-field-box="ecTotal">EC gesamt<input id="reportEcTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
@@ -210,7 +212,7 @@
               <button id="saveDayReport" class="primary">Tagesbericht speichern</button>
               <button id="closeDayReport" class="secondary danger-button" type="button">Tagesabschluss</button>
             </div>
-          </section>
+          </details>
           <div id="toiletReminder" class="toilet-reminder hidden" role="dialog" aria-modal="true">
             <div>
               <h3 id="terminalReminderTitle">Erinnerung</h3>
@@ -345,6 +347,7 @@
         <nav class="admin-workspace-tabs" aria-label="Admin-Arbeitsbereiche">
           <button class="admin-workspace-tab active" type="button" data-admin-workspace-tab="planning">Planung</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="correction">Korrekturmodus</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="settings">Einstellungen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="approvals">Freigaben</button>
         </nav>
@@ -471,6 +474,24 @@
         <details class="settings-box admin-priority">
           <summary>Verfügbarkeiten Vorschau</summary>
           <div id="adminAvailabilityPreview" class="availability-preview"></div>
+        </details>
+        </section>
+
+        <section class="admin-workspace" data-admin-workspace="correction">
+        <details class="settings-box admin-priority" open>
+          <summary>Tagesbericht zur Korrektur öffnen</summary>
+          <div class="correction-admin-panel">
+            <p class="settings-note">Nur für bewusste Korrekturen nach Tagesabschluss. Nach dem Öffnen wechselst du automatisch ins Terminal und kannst Personalzeiten, Finanzdaten, Belege und Tagesbericht bearbeiten.</p>
+            <div class="form-grid">
+              <label>Datum<input id="correctionDate" type="date"></label>
+              <label>Grund der Korrektur<textarea id="correctionReason" rows="3" placeholder="z.B. Test, Personal vergessen, Beleg nachgetragen"></textarea></label>
+            </div>
+            <div class="day-report-actions">
+              <button id="openCorrectionReport" class="primary" type="button">Bericht im Korrekturmodus öffnen</button>
+              <button id="closeCorrectionReport" class="secondary danger-button" type="button">Ausgewählten Bericht wieder abschließen</button>
+            </div>
+            <p id="correctionStatus" class="action-status"></p>
+          </div>
         </details>
         </section>
 
@@ -640,7 +661,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260516-invoice-blink-v1"></script>
+    <script src="teamapp-client.js?v=20260516-admin-hours-v1"></script>
     <script src="terminal-roles-addon.js?v=20260506-terminal-roles-v1"></script>
   </body>
 </html>

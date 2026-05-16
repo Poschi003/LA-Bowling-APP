@@ -1129,6 +1129,20 @@ button.employee-badge-stat {
   margin: 0 0 10px;
 }
 
+.correction-admin-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.correction-admin-panel .settings-note {
+  border: 1px solid #f0c36a;
+  border-radius: var(--radius);
+  background: #fff7df;
+  color: #5f3b00;
+  padding: 10px 12px;
+  font-weight: 800;
+}
+
 .availability-preview {
   display: grid;
   gap: 10px;
@@ -1402,6 +1416,34 @@ button:disabled {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+}
+
+.employee-workday small {
+  grid-column: 1 / -1;
+  border-radius: var(--radius-sm);
+  background: #fff7df;
+  color: #5f3b00;
+  padding: 4px 7px;
+  font-weight: 800;
+}
+
+.admin-timesheet-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.85fr) minmax(110px, 0.6fr) minmax(110px, 0.6fr) minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  border: 1px solid #f0c36a;
+  border-radius: var(--radius);
+  background: #fff7df;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.admin-timesheet-form .hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #5f3b00;
+  font-weight: 850;
 }
 
 .swap-grid {
@@ -1850,6 +1892,35 @@ button:disabled {
   font-weight: 800;
 }
 
+.terminal-correction-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #f0c36a;
+  border-left: 6px solid #f59e0b;
+  border-radius: var(--radius);
+  background: #fff7df;
+  color: #5f3b00;
+  padding: 14px;
+}
+
+.terminal-correction-banner > div {
+  display: grid;
+  gap: 3px;
+}
+
+.terminal-correction-banner strong {
+  color: #5f3b00;
+  font-size: 18px;
+}
+
+.terminal-correction-banner span,
+.terminal-correction-banner small {
+  color: #6f4700;
+  font-weight: 800;
+}
+
 .terminal-handover-anchor {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -2182,6 +2253,15 @@ button:disabled {
   font-size: 22px;
 }
 
+.day-report > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.day-report > summary::-webkit-details-marker {
+  display: none;
+}
+
 .day-report-title,
 .day-report-actions {
   display: flex;
@@ -2189,6 +2269,37 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.day-report-toggle-label {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--ink);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.day-report[open] .day-report-toggle-label {
+  background: var(--brand-soft);
+  border-color: rgba(225, 23, 47, 0.28);
+}
+
+.day-report[open] .day-report-toggle-label::before {
+  content: "Geöffnet";
+}
+
+.day-report:not([open]) .day-report-toggle-label::before {
+  content: "Öffnen";
+}
+
+.day-report-toggle-label {
+  font-size: 0;
+}
+
+.day-report-toggle-label::before {
+  font-size: 12px;
 }
 
 .day-report.is-locked {
@@ -2595,6 +2706,54 @@ button:disabled {
     box-shadow: 0 0 0 4px rgba(225, 23, 47, 0.22);
     transform: translateY(-1px);
   }
+}
+
+.invoice-write-alert {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  min-height: 86px;
+  border: 2px solid var(--brand);
+  border-radius: var(--radius);
+  background: #ffe8eb;
+  color: var(--brand-strong);
+  padding: 16px 18px;
+  text-align: left;
+  animation: invoiceAttentionBlink 1s ease-in-out infinite;
+}
+
+.invoice-write-alert span {
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.invoice-write-alert strong {
+  color: var(--brand-strong);
+  font-size: clamp(22px, 4vw, 34px);
+}
+
+.invoice-write-alert small {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.invoice-pending-hint {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius);
+  background: #fff7ed;
+  padding: 14px 16px;
+}
+
+.invoice-pending-hint strong {
+  color: #92400e;
+}
+
+.invoice-pending-hint span {
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .chef-section {
@@ -3119,6 +3278,10 @@ button:disabled {
     text-align: left;
   }
 
+  .terminal-correction-banner {
+    display: grid;
+  }
+
   .day-report-card summary span {
     text-align: left;
   }
@@ -3280,6 +3443,11 @@ button:disabled {
   }
 
   .employee-overview-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-workday,
+  .admin-timesheet-form {
     grid-template-columns: 1fr;
   }
 

@@ -30,6 +30,7 @@
   pendingToiletCheck: "",
   pendingReminder: null,
   terminalDayMetaEditing: false,
+  terminalCorrectionMode: false,
   invoiceTerminalToken: window.localStorage?.getItem("invoiceTerminalToken") || "",
   invoiceDate: todayKey(),
   invoiceReport: {},
@@ -214,6 +215,12 @@ function emptyDay() {
 
 function todayKey() {
   return isoDate(new Date());
+}
+
+function yesterdayKey() {
+  const date = new Date();
+  date.setDate(date.getDate() - 1);
+  return isoDate(date);
 }
 
 function dailyQuote(dateKey) {
@@ -490,6 +497,7 @@ function renderAll() {
   renderAdminTasks();
   renderAdminReminders();
   renderAdminAvailabilityPreview();
+  renderAdminCorrection();
   renderWeather();
   renderTerminal();
   renderCustomerInvoiceDesk();
@@ -639,6 +647,7 @@ function chefDashboardHtml() {
   const today = todayKey();
   const schedule = state.schedule || {};
   const openInvoiceCount = openInvoiceItems().length;
+  const pendingInvoiceCount = pendingInvoiceItems().length;
   const tabs = [
     ["reports", "Tagesberichte", chefSectionEnabled("reports")],
     ["invoices", "Rechnung schreiben", openInvoiceCount > 0],
@@ -652,6 +661,7 @@ function chefDashboardHtml() {
       <summary>Heutiger Tag</summary>
       ${renderScheduleDay(new Date(`${today}T12:00:00`), { today: true })}
     </details>` : ""}
+    ${openInvoiceCount ? invoiceWriteAlertHtml(openInvoiceCount) : pendingInvoiceCount ? invoicePendingHintHtml(pendingInvoiceCount) : ""}
     <nav class="chef-tabs" aria-label="Chef-Bereiche">
       ${tabs.map(([key, label]) => `<button class="chef-tab ${state.chefTab === key ? "active" : ""} ${key === "invoices" && openInvoiceCount ? "needs-attention" : ""}" type="button" data-chef-tab="${key}">${label}${key === "invoices" && openInvoiceCount ? ` <span>${openInvoiceCount}</span>` : ""}</button>`).join("")}
     </nav>
@@ -679,6 +689,25 @@ function chefDashboardHtml() {
           : `<p class="hint">Für ${formatMonth(state.selectedMonth)} ist noch kein Dienstplan veröffentlicht.</p>`}
       </div>
     </section>` : ""}
+  `;
+}
+
+function invoiceWriteAlertHtml(count) {
+  return `
+    <button class="invoice-write-alert" type="button" data-chef-tab="invoices">
+      <span>Rechnung schreiben</span>
+      <strong>${count} Rechnung${count === 1 ? "" : "en"} fertig</strong>
+      <small>Zum Öffnen klicken</small>
+    </button>
+  `;
+}
+
+function invoicePendingHintHtml(count) {
+  return `
+    <div class="invoice-pending-hint">
+      <strong>${count} Rechnungskunde${count === 1 ? "" : "n"} angelegt</strong>
+      <span>Noch nicht fertig für den Chef. In „Bezahlung auf Rechnung“ Betrag und Beleg ergänzen, dann „Fertig für Chef“ drücken.</span>
+    </div>
   `;
 }
 
@@ -951,6 +980,17 @@ function openInvoiceItems() {
     (report.invoiceCustomers || []).forEach((invoice, index) => {
       if (invoice.invoiceDone) return;
       if (!invoiceIsReady(invoice)) return;
+      items.push({ dateKey, invoice, index });
+    });
+  }
+  return items.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+}
+
+function pendingInvoiceItems() {
+  const items = [];
+  for (const [dateKey, report] of Object.entries(state.dayReports || {})) {
+    (report.invoiceCustomers || []).forEach((invoice, index) => {
+      if (invoice.invoiceDone || invoiceIsReady(invoice)) return;
       items.push({ dateKey, invoice, index });
     });
   }
@@ -2022,6 +2062,15 @@ function renderAdminAvailabilityPreview() {
   `;
 }
 
+function renderAdminCorrection() {
+  const dateInput = $("#correctionDate");
+  if (!dateInput) return;
+  if (!dateInput.value) dateInput.value = yesterdayKey();
+  const status = $("#correctionStatus");
+  if (!status || status.textContent) return;
+  status.textContent = "Datum wählen, Grund eintragen und Bericht gezielt zur Korrektur öffnen.";
+}
+
 function renderMissingAvailability() {
   const missing = state.missingAvailability || [];
   return `
@@ -2265,6 +2314,7 @@ function renderTerminal() {
   const reportClosed = Boolean(report.closed);
   renderTerminalTabs();
   renderTerminalDayMeta(dateKey, report, reportClosed);
+  renderTerminalCorrectionBanner(dateKey, report);
   renderTerminalTasks(report, reportClosed);
   renderHandovers(report, reportClosed);
   renderToiletStatus(report);
@@ -2380,6 +2430,25 @@ function renderTerminalDayMeta(dateKey, report, reportClosed) {
     leaderSelect.disabled = reportClosed;
   }
   $("#saveTerminalDayMeta")?.toggleAttribute("disabled", reportClosed);
+}
+
+function renderTerminalCorrectionBanner(dateKey, report = {}) {
+  const target = $("#terminalCorrectionBanner");
+  if (!target) return;
+  const active = Boolean(report.correctionOpen || state.terminalCorrectionMode);
+  target.classList.toggle("hidden", !active);
+  if (!active) {
+    target.innerHTML = "";
+    return;
+  }
+  target.innerHTML = `
+    <div>
+      <strong>Korrekturmodus aktiv</strong>
+      <span>${escapeHtml(formatLongDate(dateKey))}${report.correctionReason ? ` | Grund: ${escapeHtml(report.correctionReason)}` : ""}</span>
+      ${report.correctionOpenedAt ? `<small>Geöffnet am ${escapeHtml(formatDateTime(report.correctionOpenedAt))}</small>` : ""}
+    </div>
+    <button id="returnToAdminCorrection" class="secondary" type="button">Zurück zum Admin-Reiter</button>
+  `;
 }
 
 function shiftLeaderEmployees() {
@@ -3145,10 +3214,12 @@ async function terminalAction(payload) {
   state.terminalDate = result.date || state.terminalDate || isoDate(new Date());
   state.terminalEntries = result.entries || {};
   state.terminalReport = result.report || {};
+  state.dayReports[state.terminalDate] = state.terminalReport;
   state.terminalSchedule = result.schedule || {};
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalDayMetaEditing = false;
+  state.terminalCorrectionMode = Boolean(result.correctionMode || state.terminalReport?.correctionOpen);
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
   renderAdminEmployeeOverview();
@@ -3165,12 +3236,176 @@ async function terminalLogin(code) {
   state.terminalDate = result.date || isoDate(new Date());
   state.terminalEntries = result.entries || {};
   state.terminalReport = result.report || {};
+  state.dayReports[state.terminalDate] = state.terminalReport;
   state.terminalSchedule = result.schedule || {};
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
+  state.terminalCorrectionMode = false;
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
   showToast(isTodoMode() ? "TO DO geöffnet." : "Tages-Terminal geöffnet.");
+}
+
+async function openCorrectionReport(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin-Bereich erneut entsperren.");
+    return;
+  }
+  const date = $("#correctionDate")?.value || "";
+  const reason = $("#correctionReason")?.value.trim() || "";
+  if (!date) {
+    showToast("Bitte Datum wählen.");
+    return;
+  }
+  if (!reason) {
+    showToast("Bitte Grund der Korrektur eintragen.");
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Öffnet...";
+  }
+  try {
+    const result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "admin-open-correction",
+        adminToken: state.adminToken,
+        date,
+        reason
+      })
+    });
+    state.terminalToken = result.token || "";
+    state.terminalDate = result.date || date;
+    state.settings = normalizeSettings(result.settings || state.settings);
+    state.terminalEntries = result.entries || {};
+    state.terminalReport = result.report || {};
+    state.dayReports[state.terminalDate] = state.terminalReport;
+    state.terminalSchedule = result.schedule || {};
+    state.terminalTasks = result.tasks || [];
+    state.terminalReminders = normalizeReminderTemplates(result.reminders);
+    state.terminalCorrectionMode = true;
+    state.timesheets = result.entries || state.timesheets || {};
+    const status = $("#correctionStatus");
+    if (status) status.textContent = result.message || "Korrekturmodus geöffnet.";
+    activateTab("terminal");
+    renderTerminal();
+    showToast("Korrekturmodus geöffnet.");
+  } catch (error) {
+    const status = $("#correctionStatus");
+    if (status) status.textContent = error.message || String(error);
+    showError(error);
+  } finally {
+    if (button) {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
+  }
+}
+
+async function closeCorrectionReport(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin-Bereich erneut entsperren.");
+    return;
+  }
+  const date = $("#correctionDate")?.value || state.terminalDate || "";
+  if (!date) {
+    showToast("Bitte Datum wählen.");
+    return;
+  }
+  if (!confirm(`Tagesbericht ${formatDate(date)} wieder abschließen?`)) return;
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Schließt...";
+  }
+  try {
+    const result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "admin-close-correction",
+        adminToken: state.adminToken,
+        date
+      })
+    });
+    state.terminalDate = result.date || date;
+    state.terminalReport = result.report || state.terminalReport || {};
+    state.dayReports[state.terminalDate] = state.terminalReport;
+    state.terminalCorrectionMode = false;
+    if (state.terminalDate === date) {
+      state.terminalEntries = result.entries || state.terminalEntries || {};
+      state.terminalSchedule = result.schedule || state.terminalSchedule || {};
+      state.terminalTasks = result.tasks || state.terminalTasks || [];
+      state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
+    }
+    const status = $("#correctionStatus");
+    if (status) status.textContent = result.message || "Tagesbericht wieder abgeschlossen.";
+    renderTerminal();
+    showToast("Tagesbericht wieder abgeschlossen.");
+  } catch (error) {
+    const status = $("#correctionStatus");
+    if (status) status.textContent = error.message || String(error);
+    showError(error);
+  } finally {
+    if (button) {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
+  }
+}
+
+async function saveAdminTimesheet(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin-Bereich erneut entsperren.");
+    return;
+  }
+  const employee = button.dataset.adminSaveTimesheet || "";
+  const form = button.closest(".admin-timesheet-form");
+  const field = (name) => form?.querySelector(`[data-admin-ts-field="${name}"]`)?.value || "";
+  const date = field("date");
+  const from = field("from");
+  const to = field("to");
+  const note = field("note");
+  if (!date || !from || !to) {
+    showToast("Bitte Datum, Beginn und Ende eintragen.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await api("/api/timesheet", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "admin-save-time",
+        adminToken: state.adminToken,
+        employee,
+        month: date.slice(0, 7),
+        date,
+        from,
+        to,
+        note
+      })
+    });
+    if (date.startsWith(state.selectedMonth)) {
+      state.timesheets = result.timesheets || state.timesheets || {};
+    } else {
+      state.selectedMonth = date.slice(0, 7);
+      $("#monthInput").value = state.selectedMonth;
+      await loadState();
+      showToast("Stunden nachgetragen. Monat wurde gewechselt.");
+      return;
+    }
+    renderAdminEmployeeOverview();
+    showToast("Stunden nur durch Admin nachgetragen.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
 }
 
 async function confirmToiletCheck() {
@@ -3261,6 +3496,7 @@ function renderAdminEmployeeOverview() {
 }
 
 function employeeOverviewHtml() {
+  const defaultDate = adminTimesheetDefaultDate();
   return `
     <div class="employee-overview-head">
       <span>Name</span>
@@ -3287,14 +3523,29 @@ function employeeOverviewHtml() {
                   <strong>${formatDate(shift.date)}</strong>
                   <span>${escapeHtml(shift.from || "?")} - ${escapeHtml(shift.to || "?")}</span>
                   <span>${formatHours(shift.hours)}</span>
+                  ${shift.adminOnly ? `<small>Nur Admin${shift.adminNote ? ` | ${escapeHtml(shift.adminNote)}` : ""}</small>` : ""}
                 </div>
               `).join("") || `<p class="hint">Keine Arbeitszeiten für diesen Monat erfasst.</p>`}
+            </div>
+            <div class="admin-timesheet-form" data-admin-timesheet-form="${escapeHtml(employee)}">
+              <p class="hint">Nur Admin: vergessene Stunden und Tage können auch bei abgeschlossenen Tagesberichten ergänzt werden.</p>
+              <label>Datum<input type="date" data-admin-ts-field="date" value="${escapeHtml(defaultDate)}"></label>
+              <label>Beginn<input type="time" data-admin-ts-field="from"></label>
+              <label>Ende<input type="time" data-admin-ts-field="to"></label>
+              <label>Hinweis<input data-admin-ts-field="note" placeholder="z.B. vergessen einzutragen"></label>
+              <button class="primary" type="button" data-admin-save-timesheet="${escapeHtml(employee)}">Stunden nachtragen</button>
             </div>
           </div>
         </details>
       `;
     }).join("")}
   `;
+}
+
+function adminTimesheetDefaultDate() {
+  const today = todayKey();
+  if (today.startsWith(state.selectedMonth)) return today;
+  return `${state.selectedMonth}-01`;
 }
 
 function totalsForEmployee(employee) {
@@ -3315,7 +3566,9 @@ function timesheetDetailsForEmployee(employee) {
       date,
       from: entry.from || "",
       to: entry.to || "",
-      hours: hoursBetween(entry.from, entry.to)
+      hours: hoursBetween(entry.from, entry.to),
+      adminOnly: Boolean(entry.adminOnly || entry.source === "admin-manual"),
+      adminNote: entry.adminNote || ""
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -4825,6 +5078,12 @@ function bindEvents() {
     }
   });
 
+  $("#adminEmployeeOverview")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-admin-save-timesheet]");
+    if (!button) return;
+    saveAdminTimesheet(button);
+  });
+
   $("#addEmployeeCard")?.addEventListener("click", () => {
     syncEmployeeDirectoryToTextareas();
     const base = "Neuer Mitarbeiter";
@@ -4889,6 +5148,14 @@ function bindEvents() {
   $("#saveSettings").addEventListener("click", () => saveSettings($("#saveSettings")));
   $("#saveEmployees")?.addEventListener("click", () => saveSettings($("#saveEmployees")));
 
+  $("#openCorrectionReport")?.addEventListener("click", (event) => {
+    openCorrectionReport(event.currentTarget);
+  });
+
+  $("#closeCorrectionReport")?.addEventListener("click", (event) => {
+    closeCorrectionReport(event.currentTarget);
+  });
+
   $("#unlockTerminal")?.addEventListener("click", async () => {
     const button = $("#unlockTerminal");
     const oldText = button.textContent;
@@ -4917,6 +5184,15 @@ function bindEvents() {
       state.terminalDayMetaEditing = true;
       renderTerminal();
       return;
+    }
+    const returnToCorrection = event.target.closest("#returnToAdminCorrection");
+    if (returnToCorrection) {
+      state.adminUnlocked = true;
+      renderAll();
+      activateTab("admin");
+      $$(".admin-workspace-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.adminWorkspaceTab === "correction"));
+      $$(".admin-workspace").forEach((section) => section.classList.toggle("active", section.dataset.adminWorkspace === "correction"));
+      showToast("Korrekturmodus im Admin-Bereich geöffnet.");
     }
   });
 
@@ -5164,7 +5440,11 @@ function bindEvents() {
     }
   });
 
-  $("#printDayReport")?.addEventListener("click", () => window.print());
+  $("#printDayReport")?.addEventListener("click", () => {
+    const report = $("#dayReportPrintArea");
+    if (report) report.open = true;
+    window.print();
+  });
   $("#printSchedule").addEventListener("click", () => window.print());
 }
 
