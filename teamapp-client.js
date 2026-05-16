@@ -39,6 +39,15 @@
 };
 
 const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+const defaultReminderTemplates = [
+  {
+    id: "default-toilet-reminder",
+    text: "Toiletten-Kontrolle durchführen",
+    startAfterOpeningMinutes: 60,
+    intervalMinutes: 60,
+    active: true
+  }
+];
 const motivationQuotes = [
   "Gemeinsam wird der Tag leichter.",
   "Ein gutes Team merkt man im laufenden Betrieb.",
@@ -103,6 +112,7 @@ const defaultData = {
     scheduleAutoDeleteDays: 14,
     hourlyRate: 25
   },
+  reminderTemplates: defaultReminderTemplates,
   availability: {},
   schedules: {},
   timesheets: {},
@@ -333,7 +343,7 @@ async function loadState() {
   state.timesheets = data.timesheets || {};
   state.messages = data.messages || [];
   state.taskTemplates = data.taskTemplates || [];
-  state.reminderTemplates = data.reminderTemplates || [];
+  state.reminderTemplates = normalizeReminderTemplates(data.reminderTemplates);
   state.dayReports = data.dayReports || {};
   state.weather = data.weather || state.weather;
   state.isChef = Boolean(data.isChef);
@@ -450,6 +460,11 @@ function normalizeHourlyRate(value, fallback = 25) {
 
 function currentHourlyRate() {
   return normalizeHourlyRate(state.settings?.hourlyRate, defaultData.settings.hourlyRate);
+}
+
+function normalizeReminderTemplates(reminders) {
+  const list = Array.isArray(reminders) ? reminders.filter((reminder) => reminder && reminder.active !== false) : [];
+  return list.length ? list : cloneData(defaultReminderTemplates);
 }
 
 function renderAll() {
@@ -2478,13 +2493,13 @@ function checkTerminalReminders(report, reportClosed) {
   const due = dueReminder(state.terminalDate || todayKey(), report, report.openingHours || $("#terminalOpeningHours")?.value || "");
   state.pendingReminder = due;
   state.pendingToiletCheck = due?.checkKey || "";
-  $("#terminalReminderTitle").textContent = due?.title || "Erinnerung";
+  $("#terminalReminderTitle").textContent = due?.title || (isTodoMode() ? "TO DO Erinnerung" : "Terminal Erinnerung");
   $("#terminalReminderText").textContent = due?.text || "Bitte quittieren.";
   modal.classList.toggle("hidden", !due);
 }
 
 function dueReminder(dateKey, report, openingText = "") {
-  const reminders = (state.terminalReminders || []).filter((reminder) => reminder.active !== false);
+  const reminders = normalizeReminderTemplates(state.terminalReminders);
   const checks = [...(report.toiletChecks || []), ...(report.reminderChecks || [])];
   const match = String(openingText || openingHoursFor(dateKey)).match(/(\d{2}):(\d{2})/);
   if (!match) return null;
@@ -2496,7 +2511,7 @@ function dueReminder(dateKey, report, openingText = "") {
     if (current < start) continue;
     for (let minute = start; minute <= current; minute += Number(reminder.intervalMinutes || 60)) {
       const key = `${dateKey}-${reminder.id}-${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-      if (!checked.has(key) && window.localStorage?.getItem(`toilet-check-${key}`) !== "1") {
+      if (!checked.has(key)) {
         return { checkKey: key, text: reminder.text, title: reminder.text, reminderId: reminder.id };
       }
     }
@@ -3132,7 +3147,7 @@ async function terminalAction(payload) {
   state.terminalReport = result.report || {};
   state.terminalSchedule = result.schedule || {};
   state.terminalTasks = result.tasks || [];
-  state.terminalReminders = result.reminders || [];
+  state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalDayMetaEditing = false;
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
@@ -3152,7 +3167,7 @@ async function terminalLogin(code) {
   state.terminalReport = result.report || {};
   state.terminalSchedule = result.schedule || {};
   state.terminalTasks = result.tasks || [];
-  state.terminalReminders = result.reminders || [];
+  state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
   showToast(isTodoMode() ? "TO DO geöffnet." : "Tages-Terminal geöffnet.");
@@ -4903,13 +4918,30 @@ function bindEvents() {
       renderTerminal();
       return;
     }
+  });
+
+  $("#terminalContent")?.addEventListener("change", async (event) => {
     const taskInput = event.target.closest("[data-terminal-task]");
-    if (taskInput) {
-      try {
-        await terminalAction({ action: "complete-task", id: taskInput.dataset.terminalTask, done: taskInput.checked });
-      } catch (error) {
-        showError(error);
+    if (!taskInput) return;
+    const taskId = taskInput.dataset.terminalTask;
+    const done = taskInput.checked;
+    const previousCompletions = cloneData(state.terminalReport?.taskCompletions || {});
+    state.terminalReport = {
+      ...(state.terminalReport || {}),
+      taskCompletions: {
+        ...(state.terminalReport?.taskCompletions || {}),
+        ...(done ? { [taskId]: { done: true, doneAt: new Date().toISOString() } } : {})
       }
+    };
+    if (!done) delete state.terminalReport.taskCompletions[taskId];
+    renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
+    try {
+      await terminalAction({ action: "complete-task", id: taskId, done });
+      showToast(done ? "Aufgabe erledigt." : "Aufgabe wieder geöffnet.");
+    } catch (error) {
+      state.terminalReport = { ...(state.terminalReport || {}), taskCompletions: previousCompletions };
+      renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
+      showError(error);
     }
   });
 
