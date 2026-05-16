@@ -3599,11 +3599,11 @@ function renderSettings() {
 function renderEmployeeDirectory() {
   const target = $("#employeeDirectory");
   if (!target) return;
-  const departments = state.settings.employeeDepartments || {};
-  const roles = state.settings.employeeRoles || {};
-  const admins = new Set(state.settings.adminEmployees || []);
-  const exempt = new Set(state.settings.availabilityExemptEmployees || []);
-  const departmentOptions = ["Counter", "Service", "Kueche", "Reinigung", "Mechanik"];
+  const departments = textToDepartments($("#employeeDepartmentsText")?.value || departmentsToText(state.settings.employeeDepartments || {}));
+  const roles = textToRoles($("#employeeRolesText")?.value || rolesToText(state.settings.employeeRoles || {}));
+  const admins = new Set(linesToList($("#adminEmployeesText")?.value || (state.settings.adminEmployees || []).join("\n")));
+  const exempt = new Set(linesToList($("#availabilityExemptText")?.value || (state.settings.availabilityExemptEmployees || []).join("\n")));
+  const departmentOptions = departmentOptionsForEmployeeCards(departments);
   target.innerHTML = (state.settings.employees || []).map((name, index) => `
     <details class="employee-card" data-employee-card="${index}" data-original-employee-name="${escapeHtml(name)}">
       <summary>
@@ -3620,7 +3620,7 @@ function renderEmployeeDirectory() {
         </label>
         <div class="employee-card-checks">
           ${departmentOptions.map((department) => `
-            <label><input type="checkbox" data-employee-department="${department}" ${(departments[name] || []).includes(department) ? "checked" : ""}> ${department === "Kueche" ? "Küche" : department}</label>
+            <label><input type="checkbox" data-employee-department="${escapeHtml(department)}" ${(departments[name] || []).includes(department) ? "checked" : ""}> ${escapeHtml(departmentLabel(department))}</label>
           `).join("")}
           <label><input type="checkbox" data-employee-admin ${admins.has(name) ? "checked" : ""}> Admin-Rechte</label>
           <label><input type="checkbox" data-employee-exempt ${exempt.has(name) ? "checked" : ""}> Keine Verfügbarkeit nötig</label>
@@ -3638,6 +3638,32 @@ function roleLabel(role) {
   if (!role) return "Keine Rolle";
   if (role === "Kuechenchef") return "Küchenchef";
   return role;
+}
+
+function departmentOptionsForEmployeeCards(departments = {}) {
+  const positions = linesToList($("#positionsText")?.value || (state.settings.positions || []).join("\n"));
+  const selected = Object.values(departments).flat().map(canonicalDepartmentChoice).filter(Boolean);
+  const broad = ["Counter", "Service", "Kueche", "Reinigung", "Mechanik"];
+  const options = [...broad];
+  positions.forEach((position) => {
+    const exact = canonicalDepartmentChoice(position);
+    const group = departmentForPosition(position);
+    if (group && !options.includes(group)) options.push(group);
+    if (exact && !options.includes(exact)) options.push(exact);
+  });
+  selected.forEach((department) => {
+    if (department && !options.includes(department)) options.push(department);
+  });
+  return options;
+}
+
+function departmentLabel(value) {
+  const text = String(value || "").trim();
+  if (text === "Kueche") return "Küche";
+  if (text === "Kueche 1") return "Küche 1";
+  if (text === "Kueche 2") return "Küche 2";
+  if (text === "Spueler") return "Spüler";
+  return text;
 }
 
 function syncEmployeeDirectoryToTextareas() {
@@ -4049,13 +4075,25 @@ function textToDepartments(text) {
     const cleanName = (name || "").trim();
     const values = departmentParts.join("=")
       .split(",")
-      .map((item) => normalizeDepartment(item))
+      .map((item) => canonicalDepartmentChoice(item))
       .filter(Boolean);
     if (cleanName) {
       departments[cleanName] = [...new Set(values)];
     }
   });
   return departments;
+}
+
+function canonicalDepartmentChoice(value) {
+  const text = String(value || "").trim();
+  const clean = text.toLowerCase();
+  if (!clean) return "";
+  if (["counter", "service", "reinigung", "mechanik"].includes(clean)) return normalizeDepartment(text);
+  if (["küche", "kueche", "kuche"].includes(clean)) return "Kueche";
+  if (["spüler", "spueler", "spuler"].includes(clean)) return "Spueler";
+  return text
+    .replace(/^k[üu]che\b/i, "Kueche")
+    .replace(/^sp[üu]ler\b/i, "Spueler");
 }
 
 function normalizeDepartment(value) {
@@ -4086,13 +4124,14 @@ function positionClass(position) {
 
 function employeesForPosition(position) {
   const department = departmentForPosition(position);
+  const positionName = canonicalDepartmentChoice(position);
   if (department === "Service") return state.settings.employees || [];
   const departments = state.settings.employeeDepartments || {};
   const roles = state.settings.employeeRoles || {};
   const matching = state.settings.employees.filter((employee) => {
-    const employeeDepartments = departments[employee] || [];
+    const employeeDepartments = (departments[employee] || []).map(canonicalDepartmentChoice);
     const roleDepartment = normalizeDepartment(roles[employee] || "");
-    return employeeDepartments.includes(department) || roleDepartment === department;
+    return employeeDepartments.includes(department) || employeeDepartments.includes(positionName) || roleDepartment === department;
   });
   return matching.length ? matching : state.settings.employees;
 }
@@ -5132,6 +5171,8 @@ function bindEvents() {
     }
     $("#positionsText").value = [...existing, name].join("\n");
     renderPositionDirectory();
+    syncEmployeeDirectoryToTextareas();
+    renderEmployeeDirectory();
     [...document.querySelectorAll("[data-position-name]")].at(-1)?.focus();
   });
 
@@ -5140,10 +5181,16 @@ function bindEvents() {
     if (!button) return;
     button.closest(".position-row")?.remove();
     syncPositionDirectoryToTextarea();
+    syncEmployeeDirectoryToTextareas();
+    renderEmployeeDirectory();
     showToast("Dienstbereich entfernt. Bitte Einstellungen speichern.");
   });
 
-  $("#positionDirectory")?.addEventListener("input", syncPositionDirectoryToTextarea);
+  $("#positionDirectory")?.addEventListener("input", () => {
+    syncPositionDirectoryToTextarea();
+    syncEmployeeDirectoryToTextareas();
+    renderEmployeeDirectory();
+  });
 
   $("#saveSettings").addEventListener("click", () => saveSettings($("#saveSettings")));
   $("#saveEmployees")?.addEventListener("click", () => saveSettings($("#saveEmployees")));
