@@ -169,7 +169,7 @@ async function closeReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   appData.dayReports ||= {}; appData.dayReports[date] = { ...existing, closed: true, closedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Tagesbericht abgeschlossen.", ...terminalPayload(appData, activeTerminalDate(appData, date)) });
+  sendJson(res, 200, { ok: true, message: "Tagesbericht abgeschlossen.", ...terminalPayload(appData, date) });
 }
 
 function terminalPayload(appData, requestedDate) {

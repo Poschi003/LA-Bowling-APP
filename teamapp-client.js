@@ -735,7 +735,10 @@ function dayReportValuesHtml(report = {}) {
 function dayReportA4Html(dateKey, report = {}) {
   const invoiceTotalValue = reportItemsTotal(report.invoiceCustomers);
   const expenseTotalValue = reportItemsTotal(report.expenses);
-  const employeeRows = dayReportEmployeeRowsHtml(dateKey, report);
+  const cashTotalValue = barTotal(report);
+  const ecTotalValue = reportMoneyNumber(report.ecTotal);
+  const totalRevenueValue = cashTotalValue + ecTotalValue - invoiceTotalValue;
+  const cashToHandOverValue = cashTotalValue - expenseTotalValue;
   return `
     <section class="a4-report">
       <div class="a4-report-head">
@@ -751,28 +754,29 @@ function dayReportA4Html(dateKey, report = {}) {
       </div>
 
       <div class="a4-report-kpis">
-        ${reportFieldEnabled("barBowling") ? a4Kpi("Bar Bowling", formatReportMoney(report.barBowling)) : ""}
-        ${reportFieldEnabled("barGastro") ? a4Kpi("Bar Gastro", formatReportMoney(report.barGastro)) : ""}
-        ${reportFieldEnabled("barTotal") ? a4Kpi("Bar gesamt", formatReportMoney(barTotal(report))) : ""}
+        ${reportFieldEnabled("barTotal") ? a4Kpi("Gesamt Bar", formatReportMoney(cashTotalValue)) : ""}
         ${reportFieldEnabled("ecTotal") ? a4Kpi("EC gesamt", formatReportMoney(report.ecTotal)) : ""}
         ${reportFieldEnabled("invoiceCustomers") ? a4Kpi("Auf Rechnung", formatReportMoney(invoiceTotalValue)) : ""}
         ${reportFieldEnabled("expenses") ? a4Kpi("Ausgaben", formatReportMoney(expenseTotalValue)) : ""}
+        ${a4Kpi("Gesamtumsatz", formatReportMoney(totalRevenueValue))}
+        ${a4Kpi("Bargeld abzugeben", formatReportMoney(cashToHandOverValue))}
       </div>
 
       <div class="a4-report-grid">
-        <section class="a4-report-block a4-report-block-wide">
+        <section class="a4-report-block a4-report-block-wide a4-report-staff">
           <h4>Personalzeiten</h4>
-          ${employeeRows || `<p class="hint">Keine Arbeitszeiten erfasst.</p>`}
+          ${dayReportEmployeeRowsHtml(dateKey, report) || `<p class="hint">Keine Arbeitszeiten erfasst.</p>`}
         </section>
-        <section class="a4-report-block">
-          <h4>Umsatzaufteilung</h4>
+        <section class="a4-report-block a4-report-block-wide">
+          <h4>Abrechnung</h4>
           <table class="a4-report-table">
             <tbody>
-              <tr><th>Bar Bowling</th><td>${formatReportMoney(report.barBowling)}</td></tr>
-              <tr><th>Bar Gastro</th><td>${formatReportMoney(report.barGastro)}</td></tr>
-              <tr><th>Bar gesamt</th><td>${formatReportMoney(barTotal(report))}</td></tr>
-              <tr><th>EC gesamt</th><td>${formatReportMoney(report.ecTotal)}</td></tr>
-              <tr><th>Auf Rechnung</th><td>${formatReportMoney(invoiceTotalValue)}</td></tr>
+              <tr><th>Gesamt Bar</th><td>${formatReportMoney(cashTotalValue)}</td></tr>
+              <tr><th>Gesamt EC</th><td>${formatReportMoney(report.ecTotal)}</td></tr>
+              <tr><th>Bezahlung auf Rechnung</th><td>- ${formatReportMoney(invoiceTotalValue)}</td></tr>
+              <tr><th>Gesamtumsatz</th><td>${formatReportMoney(totalRevenueValue)}</td></tr>
+              <tr><th>Ausgaben</th><td>- ${formatReportMoney(expenseTotalValue)}</td></tr>
+              <tr><th>Bargeld abzugeben</th><td>${formatReportMoney(cashToHandOverValue)}</td></tr>
             </tbody>
           </table>
         </section>
@@ -793,29 +797,22 @@ function a4Kpi(label, value) {
 function dayReportEmployeeRowsHtml(dateKey, report = {}) {
   const employees = reportEmployeesForDate(dateKey, report);
   if (!employees.length) return "";
-  const totalHours = employees.reduce((sum, employee) => {
-    const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
-    return sum + hoursBetween(entry.from, entry.to);
-  }, 0);
   const rows = employees.map((employee) => {
     const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
     const hours = hoursBetween(entry.from, entry.to);
-    const extra = (report.extraEmployees || []).some((item) => (typeof item === "string" ? item : item.employee) === employee);
     return `
       <tr>
         <th>${escapeHtml(employee)}</th>
         <td>${escapeHtml(entry.from || "--:--")}</td>
         <td>${escapeHtml(entry.to || "--:--")}</td>
         <td>${formatHours(hours)}</td>
-        <td>${extra ? "Zusätzlich" : "Dienstplan"}</td>
       </tr>
     `;
   }).join("");
   return `
     <table class="a4-report-table">
-      <thead><tr><th>Mitarbeiter</th><th>Beginn</th><th>Ende</th><th>Stunden</th><th>Art</th></tr></thead>
+      <thead><tr><th>Name</th><th>Von</th><th>Bis</th><th>Gearbeitete Stunden</th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr><th>Gesamt</th><td></td><td></td><td>${formatHours(totalHours)}</td><td></td></tr></tfoot>
     </table>
   `;
 }
@@ -841,14 +838,13 @@ function a4InvoiceBlock(items = []) {
     <section class="a4-report-block">
       <h4>Rechnungskunden</h4>
       ${items.length ? `<table class="a4-report-table">
-        <thead><tr><th>Kunde</th><th>Bowling</th><th>Gastro</th><th>Gesamt</th><th>Beleg</th></tr></thead>
+        <thead><tr><th>Kunde</th><th>Bowling</th><th>Gastro</th><th>Gesamt</th></tr></thead>
         <tbody>${items.map((item, index) => `
           <tr>
             <th>${escapeHtml(item.name || `Kunde ${index + 1}`)}</th>
             <td>${formatReportMoney(item.bowlingAmount)}</td>
             <td>${formatReportMoney(item.gastroAmount)}</td>
             <td>${formatReportMoney(invoiceTotal(item))}</td>
-            <td>${invoiceReceiptLinksHtml(item) || "-"}</td>
           </tr>
         `).join("")}</tbody>
       </table>` : `<p class="hint">Keine Rechnungskunden.</p>`}
@@ -1313,18 +1309,28 @@ function reportItemsTotal(items = []) {
 }
 
 function barTotal(report = {}) {
-  return Number(report.barBowling || 0) + Number(report.barGastro || 0);
+  return reportMoneyNumber(report.barBowling) + reportMoneyNumber(report.barGastro);
+}
+
+function reportMoneyNumber(value) {
+  const number = Number(String(value || "").replace(",", "."));
+  return Number.isFinite(number) ? number : 0;
 }
 
 function invoiceTotal(item = {}) {
-  const splitTotal = Number(item.bowlingAmount || 0) + Number(item.gastroAmount || 0);
-  return splitTotal || Number(item.amount || 0);
+  const splitTotal = reportMoneyNumber(item.bowlingAmount) + reportMoneyNumber(item.gastroAmount);
+  return splitTotal || reportMoneyNumber(item.amount);
 }
 
 function exportDayReport(dateKey) {
   const report = state.dayReports?.[dateKey];
   if (!report) return;
   const lineIf = (key, line) => reportFieldEnabled(key) ? [line] : [];
+  const invoiceTotalValue = reportItemsTotal(report.invoiceCustomers);
+  const expenseTotalValue = reportItemsTotal(report.expenses);
+  const cashTotalValue = barTotal(report);
+  const totalRevenueValue = cashTotalValue + reportMoneyNumber(report.ecTotal) - invoiceTotalValue;
+  const cashToHandOverValue = cashTotalValue - expenseTotalValue;
   const employees = reportEmployeesForDate(dateKey, report);
   const lines = [
     `Tagesbericht ${formatDate(dateKey)}`,
@@ -1338,25 +1344,18 @@ function exportDayReport(dateKey) {
       return `- ${employee} | ${entry.from || "--:--"} bis ${entry.to || "--:--"} | ${formatHours(hoursBetween(entry.from, entry.to))}`;
     }) : ["- Keine Arbeitszeiten erfasst."]),
     "",
-    ...lineIf("ecTotal", `EC gesamt: ${formatReportMoney(report.ecTotal)}`),
-    ...lineIf("barBowling", `Bar Bowling: ${formatReportMoney(report.barBowling)}`),
-    ...lineIf("barGastro", `Bar Gastro: ${formatReportMoney(report.barGastro)}`),
-    ...lineIf("barTotal", `Bar gesamt: ${formatReportMoney(barTotal(report))}`),
-    ...lineIf("invoiceCustomers", `Rechnungskunden gesamt: ${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}`),
-    ...lineIf("expenses", `Ausgaben gesamt: ${formatReportMoney(reportItemsTotal(report.expenses))}`),
+    `Gesamt Bar: ${formatReportMoney(cashTotalValue)}`,
+    `Gesamt EC: ${formatReportMoney(report.ecTotal)}`,
+    `Bezahlung auf Rechnung: - ${formatReportMoney(invoiceTotalValue)}`,
+    `Gesamtumsatz: ${formatReportMoney(totalRevenueValue)}`,
+    `Ausgaben: - ${formatReportMoney(expenseTotalValue)}`,
+    `Bargeld abzugeben: ${formatReportMoney(cashToHandOverValue)}`,
     ...(reportFieldEnabled("preparation") ? [reportPreparationLine(dateKey, report)] : []),
     "",
     ...(reportFieldEnabled("handovers") ? ["Übergaben:", ...(report.handovers || []).map((item) => `- ${item.time || "--:--"} | ${item.from || "-"} an ${item.to || "-"} | ${item.note || "-"}`)] : []),
     "",
     ...(reportFieldEnabled("invoiceCustomers") ? ["Rechnungskunden:", ...(report.invoiceCustomers || []).map((item) => [
-      `- ${item.name || "Kunde"} | ${item.area === "gastro" ? "Gastro" : "Bowling"} | ${formatReportMoney(item.amount)}`,
-      `  Adresse: ${item.address || "-"}`,
-      `  Ansprechpartner: ${item.contact || "-"}`,
-      `  Telefon: ${item.phone || "-"}`,
-      `  Tipp: ${item.tip || "-"}`,
-      `  E-Mail: ${item.email || "-"}`,
-      `  Bowling: ${formatReportMoney(item.bowlingAmount)} | Gastro: ${formatReportMoney(item.gastroAmount)}`,
-      `  Beleg: ${invoiceReceiptNameText(item)}`
+      `- ${item.name || "Kunde"} | Bowling ${formatReportMoney(item.bowlingAmount)} | Gastro ${formatReportMoney(item.gastroAmount)} | Gesamt ${formatReportMoney(invoiceTotal(item))}`
     ].join("\n"))] : []),
     "",
     ...(reportFieldEnabled("expenses") ? ["Ausgaben:", ...(report.expenses || []).map((item) => `- ${item.name || "Ausgabe"} | ${item.category || "-"} | ${formatReportMoney(item.amount)} | Beleg: ${item.receiptName || "-"}`)] : []),
@@ -2193,6 +2192,18 @@ function updateReportBarTotal() {
   target.value = (parseMoneyInput($("#reportBarBowling")?.value) + parseMoneyInput($("#reportBarGastro")?.value))
     .toFixed(2)
     .replace(".", ",");
+  renderDayReportA4Summary(state.terminalDate || todayKey(), reportPreviewFromForm());
+}
+
+function reportPreviewFromForm() {
+  return {
+    ...(state.terminalReport || {}),
+    ecTotal: $("#reportEcTotal")?.value || state.terminalReport?.ecTotal || "",
+    barBowling: $("#reportBarBowling")?.value || state.terminalReport?.barBowling || "",
+    barGastro: $("#reportBarGastro")?.value || state.terminalReport?.barGastro || "",
+    openingHours: $("#terminalOpeningHours")?.value || state.terminalReport?.openingHours || "",
+    shiftLeader: $("#terminalShiftLeader")?.value || state.terminalReport?.shiftLeader || ""
+  };
 }
 
 function renderTerminal() {
@@ -5082,6 +5093,7 @@ function bindEvents() {
 
   $("#reportBarBowling")?.addEventListener("input", updateReportBarTotal);
   $("#reportBarGastro")?.addEventListener("input", updateReportBarTotal);
+  $("#reportEcTotal")?.addEventListener("input", () => renderDayReportA4Summary(state.terminalDate || todayKey(), reportPreviewFromForm()));
 
   $("#closeDayReport")?.addEventListener("click", async () => {
     if (!confirm("Tagesbericht abschließen? Danach kann er nicht mehr verändert werden.")) return;
