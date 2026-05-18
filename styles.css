@@ -1570,6 +1570,27 @@ button:disabled {
   border: 1px solid #d7e8dc;
 }
 
+.legend-holiday,
+.calendar-special-badge.holiday {
+  background: #fff1f2;
+  color: #b00020;
+  border: 1px solid #ffc2ca;
+}
+
+.legend-preholiday,
+.calendar-special-badge.preholiday {
+  background: #fff7ed;
+  color: #8a3f13;
+  border: 1px solid #fed7aa;
+}
+
+.legend-weekend,
+.calendar-special-badge.weekend {
+  background: #eef2ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
 .legend-close,
 .calendar-closing {
   background: #fbf2f2;
@@ -1581,6 +1602,7 @@ button:disabled {
   display: grid;
   gap: 4px;
   margin-bottom: 12px;
+  overflow-x: auto;
 }
 
 .admin-calendar-weekdays,
@@ -1588,6 +1610,7 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
+  min-width: 720px;
 }
 
 .admin-calendar-weekdays span {
@@ -1598,14 +1621,14 @@ button:disabled {
 }
 
 .admin-calendar-day {
-  min-height: 76px;
+  min-height: 112px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #fff;
-  padding: 6px;
+  padding: 7px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
@@ -1615,6 +1638,66 @@ button:disabled {
   border-color: var(--brand);
   background: #fffafa;
   box-shadow: none;
+}
+
+.admin-calendar-day.is-outside-month {
+  background: #f8fafc;
+  opacity: 0.55;
+}
+
+.admin-calendar-day.is-weekend {
+  border-color: #c7d2fe;
+}
+
+.admin-calendar-day.is-holiday {
+  border-color: #ff9aaa;
+  background: #fff1f2;
+}
+
+.admin-calendar-day.is-preholiday {
+  border-color: #fdba74;
+  background: #fff7ed;
+}
+
+.admin-calendar-day.is-today {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.admin-calendar-date-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.admin-calendar-date-head strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.admin-calendar-date-head span {
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.admin-calendar-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 18px;
+}
+
+.calendar-special-badge {
+  border-radius: var(--radius-sm);
+  padding: 2px 5px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.2;
 }
 
 .calendar-task {

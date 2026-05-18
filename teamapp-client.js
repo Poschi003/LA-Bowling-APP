@@ -1929,21 +1929,61 @@ function renderTaskCalendar() {
   const target = $("#adminTaskCalendar");
   if (!target) return;
   const month = $("#taskCalendarMonth")?.value || state.selectedMonth;
-  const weeks = groupedMonthWeeks(month);
+  const weeks = calendarWeeksForMonth(month);
   target.innerHTML = `
     <div class="admin-calendar-weekdays">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((day) => `<span>${day}</span>`).join("")}</div>
     <div class="admin-calendar-grid">
-      ${weeks.map((week) => week.dates.map((date) => calendarDayHtml(isoDate(date))).join("")).join("")}
+      ${weeks.map((week) => week.map((day) => calendarDayHtml(day)).join("")).join("")}
     </div>
   `;
 }
 
-function calendarDayHtml(dateKey) {
+function calendarWeeksForMonth(month) {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const first = new Date(year, monthIndex - 1, 1, 12);
+  const last = new Date(year, monthIndex, 0, 12);
+  const start = weekStart(first);
+  const end = weekEnd(last);
+  const weeks = [];
+  let week = [];
+  for (let cursor = new Date(start); cursor <= end; cursor = addDays(cursor, 1)) {
+    const date = new Date(cursor);
+    week.push({ date, inMonth: date.getMonth() === monthIndex - 1 });
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
+  }
+  return weeks;
+}
+
+function calendarDayHtml(day) {
+  const date = day.date;
+  const dateKey = isoDate(date);
   const tasks = (state.taskTemplates || [])
     .filter((task) => (task.category || "running") === "running" && taskAppliesToDate(task, dateKey));
+  const holiday = holidayInfo(dateKey);
+  const selected = ($("#calendarTaskDate")?.value || todayKey()) === dateKey;
+  const today = todayKey() === dateKey;
+  const weekend = [0, 6].includes(date.getDay());
+  const classes = [
+    "admin-calendar-day",
+    day.inMonth ? "" : "is-outside-month",
+    weekend ? "is-weekend" : "",
+    today ? "is-today" : "",
+    selected ? "selected" : "",
+    holiday.className ? `is-${holiday.className}` : ""
+  ].filter(Boolean).join(" ");
   return `
-    <article class="admin-calendar-day" data-calendar-date="${dateKey}">
-      <strong>${formatShortDate(new Date(`${dateKey}T12:00:00`))}</strong>
+    <article class="${classes}" data-calendar-date="${dateKey}" data-calendar-in-month="${day.inMonth ? "true" : "false"}">
+      <div class="admin-calendar-date-head">
+        <strong>${escapeHtml(weekdays[date.getDay()])} ${formatShortDate(date)}</strong>
+        ${today ? `<span>Heute</span>` : ""}
+      </div>
+      <div class="admin-calendar-tags">
+        ${holiday.label ? `<b class="calendar-special-badge ${escapeHtml(holiday.className)}">${escapeHtml(holiday.label)}</b>` : ""}
+        ${weekend ? `<b class="calendar-special-badge weekend">Wochenende</b>` : ""}
+      </div>
       ${tasks.map((task) => `
         <span class="calendar-task calendar-${task.category || "running"}">
           ${escapeHtml(task.title)}
@@ -4237,13 +4277,16 @@ function holidayMap(year) {
   const easter = easterDate(year);
   const items = [
     [`${year}-01-01`, "Neujahr"],
-    [`${year}-01-06`, "Hl. Drei Koenige"],
+    [`${year}-01-06`, "Hl. Drei Könige"],
     [isoDate(addDays(easter, -2)), "Karfreitag"],
+    [isoDate(easter), "Ostersonntag"],
     [isoDate(addDays(easter, 1)), "Ostermontag"],
     [`${year}-05-01`, "Tag der Arbeit"],
     [isoDate(addDays(easter, 39)), "Christi Himmelfahrt"],
+    [isoDate(addDays(easter, 49)), "Pfingstsonntag"],
     [isoDate(addDays(easter, 50)), "Pfingstmontag"],
     [isoDate(addDays(easter, 60)), "Fronleichnam"],
+    [`${year}-08-15`, "Mariä Himmelfahrt"],
     [`${year}-10-03`, "Tag der Deutschen Einheit"],
     [`${year}-11-01`, "Allerheiligen"],
     [`${year}-12-25`, "1. Weihnachtstag"],
@@ -4985,6 +5028,11 @@ function bindEvents() {
   $("#prepTaskFrequency")?.addEventListener("change", updatePrepClosingTaskFields);
   $("#closingTaskFrequency")?.addEventListener("change", updatePrepClosingTaskFields);
   $("#taskCalendarMonth")?.addEventListener("change", renderTaskCalendar);
+  $("#calendarTaskDate")?.addEventListener("change", (event) => {
+    const month = String(event.target.value || "").slice(0, 7);
+    if ($("#taskCalendarMonth") && month && $("#taskCalendarMonth").value !== month) $("#taskCalendarMonth").value = month;
+    renderTaskCalendar();
+  });
 
   $("#adminTaskCalendar")?.addEventListener("click", (event) => {
     const deleteButton = event.target.closest("[data-calendar-delete-task]");
@@ -4996,7 +5044,10 @@ function bindEvents() {
     const day = event.target.closest("[data-calendar-date]");
     if (!day) return;
     $("#calendarTaskDate").value = day.dataset.calendarDate;
-    $$(".admin-calendar-day").forEach((item) => item.classList.toggle("selected", item === day));
+    const month = day.dataset.calendarDate.slice(0, 7);
+    if ($("#taskCalendarMonth") && $("#taskCalendarMonth").value !== month) $("#taskCalendarMonth").value = month;
+    renderTaskCalendar();
+    $("#calendarTaskTitle")?.focus();
   });
 
   $("#addCalendarTask")?.addEventListener("click", async () => {
