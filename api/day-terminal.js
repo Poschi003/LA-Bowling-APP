@@ -391,6 +391,8 @@ function cleanTaskTemplate(task) {
     intervalDays: Math.max(1, Math.min(365, Number(task.intervalDays || 1))),
     weekdays: Array.isArray(task.weekdays) ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6) : [],
     dayOfMonth: Math.min(31, Math.max(1, Number(task.dayOfMonth || 1))),
+    popupEnabled: task.popupEnabled === true || task.popupEnabled === "true",
+    popupTime: cleanTime(task.popupTime),
     createdAt: cleanText(task.createdAt || new Date().toISOString(), 40)
   };
 }
