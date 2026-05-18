@@ -1925,6 +1925,23 @@ function renderAdminTasks() {
   renderTaskCalendar();
 }
 
+function setCalendarTaskDate(dateKey) {
+  const dateInput = $("#calendarTaskDate");
+  if (dateInput) dateInput.value = dateKey;
+  const popupDate = $("#calendarTaskPopupDate");
+  if (popupDate) popupDate.textContent = formatDate(dateKey);
+}
+
+function openCalendarTaskPopup(dateKey) {
+  setCalendarTaskDate(dateKey);
+  $("#calendarTaskPopup")?.classList.remove("hidden");
+  window.setTimeout(() => $("#calendarTaskTitle")?.focus(), 30);
+}
+
+function closeCalendarTaskPopup() {
+  $("#calendarTaskPopup")?.classList.add("hidden");
+}
+
 function renderTaskCalendar() {
   const target = $("#adminTaskCalendar");
   if (!target) return;
@@ -5031,7 +5048,13 @@ function bindEvents() {
   $("#calendarTaskDate")?.addEventListener("change", (event) => {
     const month = String(event.target.value || "").slice(0, 7);
     if ($("#taskCalendarMonth") && month && $("#taskCalendarMonth").value !== month) $("#taskCalendarMonth").value = month;
+    if (event.target.value) setCalendarTaskDate(event.target.value);
     renderTaskCalendar();
+  });
+
+  $("#closeCalendarTaskPopup")?.addEventListener("click", closeCalendarTaskPopup);
+  $("#calendarTaskPopup")?.addEventListener("click", (event) => {
+    if (event.target.id === "calendarTaskPopup") closeCalendarTaskPopup();
   });
 
   $("#adminTaskCalendar")?.addEventListener("click", (event) => {
@@ -5047,13 +5070,13 @@ function bindEvents() {
     const month = day.dataset.calendarDate.slice(0, 7);
     if ($("#taskCalendarMonth") && $("#taskCalendarMonth").value !== month) $("#taskCalendarMonth").value = month;
     renderTaskCalendar();
-    $("#calendarTaskTitle")?.focus();
+    openCalendarTaskPopup(day.dataset.calendarDate);
   });
 
   $("#addCalendarTask")?.addEventListener("click", async () => {
     const intervalDays = Number($("#calendarTaskInterval")?.value || 0);
     const date = $("#calendarTaskDate")?.value || todayKey();
-    await addAdminTask({
+    const saved = await addAdminTask({
       titleSelector: "#calendarTaskTitle",
       noteSelector: "#calendarTaskNote",
       category: "running",
@@ -5063,6 +5086,7 @@ function bindEvents() {
       endDate: $("#calendarTaskEndDate")?.value || "",
       intervalDays: intervalDays || 1
     });
+    if (saved) closeCalendarTaskPopup();
   });
 
   $("#addPrepTask")?.addEventListener("click", async () => {
@@ -5111,7 +5135,7 @@ function bindEvents() {
     const title = titleInput?.value.trim() || "";
     if (!title) {
       showToast("Bitte Aufgabe eingeben.");
-      return;
+      return false;
     }
     const task = {
       title,
@@ -5138,8 +5162,10 @@ function bindEvents() {
       renderAdminTasks();
       await refreshTerminalTasks();
       showToast("Aufgabe gespeichert.");
+      return true;
     } catch (error) {
       showError(error);
+      return false;
     }
   }
 

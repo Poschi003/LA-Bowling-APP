@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260518-kalender-v1">
+    <link rel="stylesheet" href="styles.css?v=20260518-kalender-popup-v1">
   </head>
   <body>
     <header class="topbar">
@@ -406,12 +406,6 @@
           <summary>Aufgabenkalender</summary>
           <div class="admin-calendar-tools">
             <label>Kalendermonat<input id="taskCalendarMonth" type="month"></label>
-            <label>Gewähltes Datum<input id="calendarTaskDate" type="date"></label>
-            <label>Kalendereintrag<input id="calendarTaskTitle" placeholder="z.B. Restmüll rausstellen"></label>
-            <label>Intervall Tage<input id="calendarTaskInterval" type="number" min="1" step="1" placeholder="leer = einmalig"></label>
-            <label>Bis Datum<input id="calendarTaskEndDate" type="date"></label>
-            <label>Notiz<input id="calendarTaskNote" placeholder="optional"></label>
-            <button id="addCalendarTask" class="primary" type="button">In Kalender eintragen</button>
             <div class="admin-calendar-legend">
               <span class="legend-run">Kalender / laufender Betrieb</span>
               <span class="legend-holiday">Feiertag</span>
@@ -420,6 +414,25 @@
             </div>
           </div>
           <div id="adminTaskCalendar" class="admin-task-calendar"></div>
+          <div id="calendarTaskPopup" class="admin-calendar-popup hidden" role="dialog" aria-modal="true">
+            <section class="admin-calendar-popup-panel">
+              <div class="admin-calendar-popup-head">
+                <div>
+                  <strong>Kalendereintrag</strong>
+                  <span id="calendarTaskPopupDate">Datum wählen</span>
+                </div>
+                <button id="closeCalendarTaskPopup" class="secondary" type="button">Schließen</button>
+              </div>
+              <div class="admin-calendar-popup-form">
+                <label>Gewähltes Datum<input id="calendarTaskDate" type="date"></label>
+                <label>Kalendereintrag<input id="calendarTaskTitle" placeholder="z.B. Restmüll rausstellen"></label>
+                <label>Intervall Tage<input id="calendarTaskInterval" type="number" min="1" step="1" placeholder="leer = einmalig"></label>
+                <label>Bis Datum<input id="calendarTaskEndDate" type="date"></label>
+                <label>Notiz<input id="calendarTaskNote" placeholder="optional"></label>
+                <button id="addCalendarTask" class="primary" type="button">In Kalender eintragen</button>
+              </div>
+            </section>
+          </div>
           <div id="adminTaskList" class="admin-task-board">
             <details class="admin-task-section task-preparation">
               <summary>Vorbereitung</summary>
@@ -668,7 +681,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260518-kalender-v1"></script>
+    <script src="teamapp-client.js?v=20260518-kalender-popup-v1"></script>
     <script src="terminal-roles-addon.js?v=20260506-terminal-roles-v1"></script>
   </body>
 </html>

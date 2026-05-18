@@ -1535,11 +1535,17 @@ button:disabled {
 }
 
 .admin-calendar-tools {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  align-items: end;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.admin-calendar-tools label {
+  min-width: 220px;
+  margin: 0;
 }
 
 .admin-calendar-legend {
@@ -1548,6 +1554,63 @@ button:disabled {
   gap: 6px;
   font-size: 11px;
   font-weight: 700;
+}
+
+.admin-calendar-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 47;
+  display: grid;
+  place-items: center;
+  background: rgba(17, 17, 17, 0.38);
+  padding: 18px;
+}
+
+.admin-calendar-popup.hidden {
+  display: none !important;
+}
+
+.admin-calendar-popup-panel {
+  width: min(760px, 100%);
+  border: 1px solid var(--line);
+  border-top: 6px solid var(--brand);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: 0 20px 55px rgba(17, 17, 17, 0.22);
+  overflow: hidden;
+}
+
+.admin-calendar-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--line);
+  padding: 12px;
+}
+
+.admin-calendar-popup-head div {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-calendar-popup-head strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.admin-calendar-popup-head span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.admin-calendar-popup-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
 }
 
 .admin-calendar-legend span,
