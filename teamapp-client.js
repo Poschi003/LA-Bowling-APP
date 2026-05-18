@@ -124,6 +124,7 @@ const defaultData = {
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const DAILY_FREE_BREAK_MINUTES = 30;
 
 function currentMonthValue() {
   return monthValue(new Date());
@@ -847,19 +848,20 @@ function dayReportEmployeeRowsHtml(dateKey, report = {}) {
   if (!employees.length) return "";
   const rows = employees.map((employee) => {
     const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
-    const hours = hoursBetween(entry.from, entry.to);
+    const hours = paidHours(entry);
     return `
       <tr>
         <th>${escapeHtml(employee)}</th>
         <td>${escapeHtml(entry.from || "--:--")}</td>
         <td>${escapeHtml(entry.to || "--:--")}</td>
+        <td>${breakMinutes(entry) ? `${formatMinutes(breakMinutes(entry))} / Abzug ${formatMinutes(breakDeductionMinutes(entry))}` : "-"}</td>
         <td>${formatHours(hours)}</td>
       </tr>
     `;
   }).join("");
   return `
     <table class="a4-report-table">
-      <thead><tr><th>Name</th><th>Von</th><th>Bis</th><th>Gearbeitete Stunden</th></tr></thead>
+      <thead><tr><th>Name</th><th>Von</th><th>Bis</th><th>Pause/Rauchen</th><th>Arbeitszeit</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
@@ -1400,7 +1402,7 @@ function exportDayReport(dateKey) {
     "Personalzeiten:",
     ...(employees.length ? employees.map((employee) => {
       const entry = state.timesheets?.[employee]?.[dateKey] || {};
-      return `- ${employee} | ${entry.from || "--:--"} bis ${entry.to || "--:--"} | ${formatHours(hoursBetween(entry.from, entry.to))}`;
+      return `- ${employee} | ${entry.from || "--:--"} bis ${entry.to || "--:--"} | ${formatHours(paidHours(entry))}${breakMinutes(entry) ? ` | ${breakSummaryText(entry)}` : ""}`;
     }) : ["- Keine Arbeitszeiten erfasst."]),
     "",
     `Gesamt Bar: ${formatReportMoney(cashTotalValue)}`,
@@ -2193,12 +2195,12 @@ function renderTimesheet() {
   const totals = timesheetTotals();
   const rows = shiftDates.map((dateKey) => {
     const entry = entries[dateKey] || {};
-    const hours = hoursBetween(entry.from, entry.to);
+    const hours = paidHours(entry);
     return `
       <article class="timesheet-row" data-date="${dateKey}">
         <div>
           <strong>${formatDate(dateKey)}</strong>
-          <span>${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")} · ${formatHours(hours)}</span>
+          <span>${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")} · ${formatHours(hours)}${breakMinutes(entry) ? ` · ${escapeHtml(breakSummaryText(entry))}` : ""}</span>
         </div>
         <label>Trinkgeld<input type="number" min="0" step="0.01" data-ts-field="tip" value="${escapeHtml(entry.tip || "")}" placeholder="0,00"></label>
         <button class="secondary" data-save-timesheet="${dateKey}">Speichern</button>
@@ -2236,7 +2238,7 @@ function timesheetTotals() {
   const entries = state.activeEmployee ? (state.timesheets[state.activeEmployee] || {}) : {};
   return Object.entries(entries).reduce((totals, [dateKey, entry]) => {
     if (!dateKey.startsWith(state.selectedMonth)) return totals;
-    totals.hours += hoursBetween(entry.from, entry.to);
+    totals.hours += paidHours(entry);
     totals.tip += Number(entry.tip || 0);
     return totals;
   }, { hours: 0, tip: 0 });
@@ -2244,12 +2246,60 @@ function timesheetTotals() {
 
 function hoursBetween(from, to) {
   if (!from || !to) return 0;
-  const [fromH, fromM] = from.split(":").map(Number);
-  const [toH, toM] = to.split(":").map(Number);
+  return minutesBetween(from, to) / 60;
+}
+
+function minutesBetween(from, to) {
+  if (!from || !to) return 0;
+  const [fromH, fromM] = String(from).split(":").map(Number);
+  const [toH, toM] = String(to).split(":").map(Number);
+  if (![fromH, fromM, toH, toM].every(Number.isFinite)) return 0;
   let start = fromH * 60 + fromM;
   let end = toH * 60 + toM;
   if (end < start) end += 24 * 60;
-  return Math.max(0, (end - start) / 60);
+  return Math.max(0, end - start);
+}
+
+function breaksForEntry(entry = {}) {
+  return Array.isArray(entry.breaks)
+    ? entry.breaks.filter((item) => item && (item.from || item.to))
+    : [];
+}
+
+function breakMinutes(entry = {}) {
+  return breaksForEntry(entry).reduce((total, item) => total + minutesBetween(item.from, item.to), 0);
+}
+
+function breakDeductionMinutes(entry = {}) {
+  return Math.max(0, breakMinutes(entry) - DAILY_FREE_BREAK_MINUTES);
+}
+
+function paidHours(entry = {}) {
+  const gross = hoursBetween(entry.from, entry.to);
+  return Math.max(0, gross - breakDeductionMinutes(entry) / 60);
+}
+
+function hasOpenBreak(entry = {}) {
+  return breaksForEntry(entry).some((item) => item.from && !item.to);
+}
+
+function formatMinutes(value) {
+  const minutes = Math.max(0, Math.round(Number(value || 0)));
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours ? `${hours} h ${String(rest).padStart(2, "0")} min` : `${rest} min`;
+}
+
+function breakSummaryText(entry = {}) {
+  const total = breakMinutes(entry);
+  const deduction = breakDeductionMinutes(entry);
+  return `Pause/Rauchen ${formatMinutes(total)} | frei ${formatMinutes(DAILY_FREE_BREAK_MINUTES)} | Abzug ${formatMinutes(deduction)}`;
+}
+
+function breakListHtml(entry = {}) {
+  const breaks = breaksForEntry(entry);
+  if (!breaks.length) return `<span>Noch keine Pause/Rauchen dokumentiert.</span>`;
+  return breaks.map((item, index) => `<span>${index + 1}. ${escapeHtml(item.from || "--:--")} bis ${escapeHtml(item.to || "läuft")}</span>`).join("");
 }
 
 function formatHours(value) {
@@ -2323,7 +2373,9 @@ function renderTerminal() {
   $(".terminal-add")?.classList.remove("hidden");
   $("#terminalEmployees").innerHTML = employees.length ? employees.map((employee) => {
     const entry = entries[employee]?.[dateKey] || {};
-    const hours = hoursBetween(entry.from, entry.to);
+    const hours = paidHours(entry);
+    const openBreak = hasOpenBreak(entry);
+    const pauseMinutes = breakMinutes(entry);
     const planned = terminalIsPlanned(employee);
     const plannedShift = terminalPlannedShiftFor(employee);
     return `
@@ -2335,6 +2387,7 @@ function renderTerminal() {
           </div>
           <strong class="terminal-shift-time">${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")}</strong>
           ${hours ? `<span class="terminal-hours">${formatHours(hours)}</span>` : ""}
+          ${pauseMinutes || openBreak ? `<span class="terminal-hours pause-pill">${escapeHtml(breakSummaryText(entry))}</span>` : ""}
         </div>
         <div class="terminal-time-edit">
           <label>Beginn<input type="time" data-terminal-time="from" value="${escapeHtml(entry.from || "")}" ${reportClosed ? "disabled" : ""}></label>
@@ -2344,7 +2397,13 @@ function renderTerminal() {
         <div class="terminal-actions">
           <button class="primary" data-terminal-punch="start" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstbeginn</button>
           <button class="secondary" data-terminal-punch="end" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstende</button>
+          <button class="secondary" data-terminal-break="start" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed || openBreak ? "disabled" : ""}>Pause/Rauchen abmelden</button>
+          <button class="primary" data-terminal-break="end" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed || !openBreak ? "disabled" : ""}>Wieder anmelden</button>
         </div>
+        ${pauseMinutes || openBreak ? `<div class="terminal-break-summary">
+          <strong>${escapeHtml(breakSummaryText(entry))}</strong>
+          <div>${breakListHtml(entry)}</div>
+        </div>` : ""}
       </article>
     `;
   }).join("") : `<p class="hint">Für heute ist noch niemand im Dienstplan eingeteilt.</p>`;
@@ -3157,7 +3216,7 @@ function renderTerminalCosts(dateKey, employees) {
   const planned = terminalPlannedCosts();
   const actualHours = employees.reduce((total, employee) => {
     const entry = state.terminalEntries?.[employee]?.[dateKey] || {};
-    return total + hoursBetween(entry.from, entry.to);
+    return total + paidHours(entry);
   }, 0);
   const actualCost = actualHours * hourlyRate;
   const difference = actualCost - planned.cost;
@@ -3523,6 +3582,7 @@ function employeeOverviewHtml() {
                   <strong>${formatDate(shift.date)}</strong>
                   <span>${escapeHtml(shift.from || "?")} - ${escapeHtml(shift.to || "?")}</span>
                   <span>${formatHours(shift.hours)}</span>
+                  ${shift.breakMinutes ? `<small>${escapeHtml(shift.breakSummary)}</small>` : ""}
                   ${shift.adminOnly ? `<small>Nur Admin${shift.adminNote ? ` | ${escapeHtml(shift.adminNote)}` : ""}</small>` : ""}
                 </div>
               `).join("") || `<p class="hint">Keine Arbeitszeiten für diesen Monat erfasst.</p>`}
@@ -3552,7 +3612,7 @@ function totalsForEmployee(employee) {
   const entries = state.timesheets?.[employee] || {};
   return Object.entries(entries).reduce((totals, [dateKey, entry]) => {
     if (!dateKey.startsWith(state.selectedMonth)) return totals;
-    totals.hours += hoursBetween(entry.from, entry.to);
+    totals.hours += paidHours(entry);
     totals.tip += Number(entry.tip || 0);
     return totals;
   }, { hours: 0, tip: 0 });
@@ -3566,7 +3626,9 @@ function timesheetDetailsForEmployee(employee) {
       date,
       from: entry.from || "",
       to: entry.to || "",
-      hours: hoursBetween(entry.from, entry.to),
+      hours: paidHours(entry),
+      breakMinutes: breakMinutes(entry),
+      breakSummary: breakSummaryText(entry),
       adminOnly: Boolean(entry.adminOnly || entry.source === "admin-manual"),
       adminNote: entry.adminNote || ""
     }))
@@ -5368,6 +5430,26 @@ function bindEvents() {
       } finally {
         adjustButton.textContent = oldText;
         adjustButton.disabled = false;
+      }
+      return;
+    }
+    const breakButton = event.target.closest("[data-terminal-break]");
+    if (breakButton) {
+      const oldText = breakButton.textContent;
+      breakButton.disabled = true;
+      breakButton.textContent = "Speichert...";
+      try {
+        const result = await terminalAction({
+          action: "break-punch",
+          employee: breakButton.dataset.terminalEmployee,
+          breakType: breakButton.dataset.terminalBreak
+        });
+        showToast(result.message || "Pause gespeichert.");
+      } catch (error) {
+        showError(error);
+      } finally {
+        breakButton.textContent = oldText;
+        breakButton.disabled = false;
       }
       return;
     }

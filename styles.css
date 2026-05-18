@@ -2221,6 +2221,42 @@ button:disabled {
   padding: 4px 8px;
 }
 
+.terminal-hours.pause-pill {
+  background: #fff7df;
+  color: #5f3b00;
+}
+
+.terminal-break-summary {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  border: 1px dashed #f0c36a;
+  border-radius: var(--radius);
+  background: #fff7df;
+  color: #5f3b00;
+  padding: 8px 10px;
+}
+
+.terminal-break-summary strong {
+  color: #5f3b00;
+  font-size: 13px;
+  margin: 0;
+}
+
+.terminal-break-summary div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.terminal-break-summary span {
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: #5f3b00;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
 .terminal-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
