@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260518-kalender-popup-v1">
+    <link rel="stylesheet" href="styles.css?v=20260518-task-popup-v1">
   </head>
   <body>
     <header class="topbar">
@@ -429,6 +429,8 @@
                 <label>Intervall Tage<input id="calendarTaskInterval" type="number" min="1" step="1" placeholder="leer = einmalig"></label>
                 <label>Bis Datum<input id="calendarTaskEndDate" type="date"></label>
                 <label>Notiz<input id="calendarTaskNote" placeholder="optional"></label>
+                <label class="calendar-popup-option"><input id="calendarTaskPopupEnabled" type="checkbox"> Als Popup anzeigen</label>
+                <label id="calendarTaskPopupTimeField" class="hidden">Popup-Uhrzeit<input id="calendarTaskPopupTime" type="time"></label>
                 <button id="addCalendarTask" class="primary" type="button">In Kalender eintragen</button>
               </div>
             </section>
@@ -681,7 +683,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260518-kalender-popup-v1"></script>
+    <script src="teamapp-client.js?v=20260518-task-popup-v1"></script>
     <script src="terminal-roles-addon.js?v=20260506-terminal-roles-v1"></script>
   </body>
 </html>

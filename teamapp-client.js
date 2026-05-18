@@ -195,13 +195,18 @@ function formatDateTime(value) {
 
 function taskFrequencyLabel(task = {}) {
   const category = taskCategoryLabel(task.category);
-  if (task.frequency === "daily") return `${category} | Täglich`;
-  if (task.frequency === "weekly") return `${category} | Wöchentlich ${((task.weekdays || []).map((day) => weekdays[Number(day)]).filter(Boolean).join(", ") || "")}`;
-  if (task.frequency === "monthly") return `${category} | Monatlich am ${Number(task.dayOfMonth || 1)}.`;
-  if (task.frequency === "interval") return `${category} | Alle ${Number(task.intervalDays || 1)} Tage ab ${task.startDate ? formatDate(task.startDate) : formatDate(task.date || todayKey())}${task.endDate ? ` bis ${formatDate(task.endDate)}` : ""}`;
-  if (task.frequency === "next-day") return `${category} | Für nächsten Tag${task.date ? ` (${formatDate(task.date)})` : ""}`;
-  if (task.frequency === "once") return `${category} | Einmalig${task.date ? ` (${formatDate(task.date)})` : ""}`;
+  const popup = taskPopupLabel(task);
+  if (task.frequency === "daily") return `${category} | Täglich${popup}`;
+  if (task.frequency === "weekly") return `${category} | Wöchentlich ${((task.weekdays || []).map((day) => weekdays[Number(day)]).filter(Boolean).join(", ") || "")}${popup}`;
+  if (task.frequency === "monthly") return `${category} | Monatlich am ${Number(task.dayOfMonth || 1)}.${popup}`;
+  if (task.frequency === "interval") return `${category} | Alle ${Number(task.intervalDays || 1)} Tage ab ${task.startDate ? formatDate(task.startDate) : formatDate(task.date || todayKey())}${task.endDate ? ` bis ${formatDate(task.endDate)}` : ""}${popup}`;
+  if (task.frequency === "next-day") return `${category} | Für nächsten Tag${task.date ? ` (${formatDate(task.date)})` : ""}${popup}`;
+  if (task.frequency === "once") return `${category} | Einmalig${task.date ? ` (${formatDate(task.date)})` : ""}${popup}`;
   return "Aufgabe";
+}
+
+function taskPopupLabel(task = {}) {
+  return task.popupEnabled && task.popupTime ? ` | Popup ${task.popupTime}` : "";
 }
 
 function taskCategoryLabel(value) {
@@ -1934,12 +1939,18 @@ function setCalendarTaskDate(dateKey) {
 
 function openCalendarTaskPopup(dateKey) {
   setCalendarTaskDate(dateKey);
+  updateCalendarPopupFields();
   $("#calendarTaskPopup")?.classList.remove("hidden");
   window.setTimeout(() => $("#calendarTaskTitle")?.focus(), 30);
 }
 
 function closeCalendarTaskPopup() {
   $("#calendarTaskPopup")?.classList.add("hidden");
+}
+
+function updateCalendarPopupFields() {
+  const enabled = Boolean($("#calendarTaskPopupEnabled")?.checked);
+  $("#calendarTaskPopupTimeField")?.classList.toggle("hidden", !enabled);
 }
 
 function renderTaskCalendar() {
@@ -2002,8 +2013,9 @@ function calendarDayHtml(day) {
         ${weekend ? `<b class="calendar-special-badge weekend">Wochenende</b>` : ""}
       </div>
       ${tasks.map((task) => `
-        <span class="calendar-task calendar-${task.category || "running"}">
-          ${escapeHtml(task.title)}
+        <span class="calendar-task calendar-${task.category || "running"} ${task.popupEnabled && task.popupTime ? "has-popup" : ""}">
+          <span class="calendar-task-title">${escapeHtml(task.title)}</span>
+          ${task.popupEnabled && task.popupTime ? `<span class="calendar-popup-badge">Popup ${escapeHtml(task.popupTime)}</span>` : ""}
           <button type="button" aria-label="Eintrag löschen" data-calendar-delete-task="${escapeHtml(task.id)}">×</button>
         </span>
       `).join("")}
@@ -2613,6 +2625,7 @@ function renderTerminalTasks(report, reportClosed) {
                   <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
                   <span>
                     <strong>${escapeHtml(task.title)}</strong>
+                    ${task.popupEnabled && task.popupTime ? `<small>Popup ${escapeHtml(task.popupTime)}</small>` : ""}
                     ${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}
                   </span>
                 </label>
@@ -2686,11 +2699,13 @@ function checkTerminalReminders(report, reportClosed) {
 function dueReminder(dateKey, report, openingText = "") {
   const reminders = normalizeReminderTemplates(state.terminalReminders);
   const checks = [...(report.toiletChecks || []), ...(report.reminderChecks || [])];
+  const checked = new Set((checks || []).map((item) => item.checkKey));
+  const taskPopup = dueTaskPopupReminder(dateKey, report, checked);
+  if (taskPopup) return taskPopup;
   const match = String(openingText || openingHoursFor(dateKey)).match(/(\d{2}):(\d{2})/);
   if (!match) return null;
   const now = new Date();
   const current = now.getHours() * 60 + now.getMinutes();
-  const checked = new Set((checks || []).map((item) => item.checkKey));
   for (const reminder of reminders) {
     const start = Number(match[1]) * 60 + Number(match[2]) + Number(reminder.startAfterOpeningMinutes || 60);
     if (current < start) continue;
@@ -2699,6 +2714,32 @@ function dueReminder(dateKey, report, openingText = "") {
       if (!checked.has(key)) {
         return { checkKey: key, text: reminder.text, title: reminder.text, reminderId: reminder.id };
       }
+    }
+  }
+  return null;
+}
+
+function dueTaskPopupReminder(dateKey, report = {}, checked = new Set()) {
+  const now = new Date();
+  const current = now.getHours() * 60 + now.getMinutes();
+  const done = report.taskCompletions || {};
+  const tasks = (state.terminalTasks || [])
+    .filter((task) => task.popupEnabled && task.popupTime)
+    .sort((a, b) => String(a.popupTime || "").localeCompare(String(b.popupTime || "")));
+  for (const task of tasks) {
+    if (done[task.id]) continue;
+    const match = String(task.popupTime || "").match(/^(\d{2}):(\d{2})$/);
+    if (!match) continue;
+    const dueMinute = Number(match[1]) * 60 + Number(match[2]);
+    if (current < dueMinute) continue;
+    const key = `${dateKey}-task-popup-${task.id}-${task.popupTime}`;
+    if (!checked.has(key)) {
+      return {
+        checkKey: key,
+        text: task.note ? `${task.title}\n${task.note}` : task.title,
+        title: "Aufgaben-Popup",
+        reminderId: task.id
+      };
     }
   }
   return null;
@@ -5056,6 +5097,7 @@ function bindEvents() {
   $("#calendarTaskPopup")?.addEventListener("click", (event) => {
     if (event.target.id === "calendarTaskPopup") closeCalendarTaskPopup();
   });
+  $("#calendarTaskPopupEnabled")?.addEventListener("change", updateCalendarPopupFields);
 
   $("#adminTaskCalendar")?.addEventListener("click", (event) => {
     const deleteButton = event.target.closest("[data-calendar-delete-task]");
@@ -5084,7 +5126,9 @@ function bindEvents() {
       date,
       startDate: date,
       endDate: $("#calendarTaskEndDate")?.value || "",
-      intervalDays: intervalDays || 1
+      intervalDays: intervalDays || 1,
+      popupEnabled: $("#calendarTaskPopupEnabled")?.checked || false,
+      popupTime: $("#calendarTaskPopupTime")?.value || ""
     });
     if (saved) closeCalendarTaskPopup();
   });
@@ -5137,6 +5181,10 @@ function bindEvents() {
       showToast("Bitte Aufgabe eingeben.");
       return false;
     }
+    if (config.popupEnabled && !config.popupTime) {
+      showToast("Bitte Popup-Uhrzeit eintragen.");
+      return false;
+    }
     const task = {
       title,
       frequency: config.frequency,
@@ -5147,7 +5195,9 @@ function bindEvents() {
       endDate: config.endDate || "",
       intervalDays: config.intervalDays || 1,
       weekdays: config.weekdays || [],
-      dayOfMonth: config.dayOfMonth || 1
+      dayOfMonth: config.dayOfMonth || 1,
+      popupEnabled: Boolean(config.popupEnabled),
+      popupTime: config.popupEnabled ? config.popupTime : ""
     };
     try {
       state.taskTemplates = [withTaskDefaults(task), ...(state.taskTemplates || [])];
@@ -5158,6 +5208,9 @@ function bindEvents() {
       if (config.titleSelector === "#calendarTaskTitle") {
         $("#calendarTaskInterval").value = "";
         $("#calendarTaskEndDate").value = "";
+        $("#calendarTaskPopupEnabled").checked = false;
+        $("#calendarTaskPopupTime").value = "";
+        updateCalendarPopupFields();
       }
       renderAdminTasks();
       await refreshTerminalTasks();

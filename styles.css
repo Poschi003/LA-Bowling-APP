@@ -1613,6 +1613,23 @@ button:disabled {
   padding: 12px;
 }
 
+.calendar-popup-option {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 9px 10px;
+  font-weight: 850;
+}
+
+.calendar-popup-option input {
+  width: 18px;
+  height: 18px;
+}
+
 .admin-calendar-legend span,
 .calendar-task {
   border-radius: var(--radius-sm);
@@ -1772,6 +1789,27 @@ button:disabled {
   justify-content: space-between;
   gap: 5px;
   min-width: 0;
+}
+
+.calendar-task.has-popup {
+  border-color: #f97316;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.calendar-task-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-popup-badge {
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  background: rgba(154, 52, 18, 0.1);
+  padding: 1px 4px;
+  font-size: 9px;
+  font-weight: 900;
 }
 
 .calendar-task button {
@@ -2258,6 +2296,7 @@ button:disabled {
   color: var(--ink);
   font-size: clamp(22px, 4vw, 36px);
   font-weight: 900;
+  white-space: pre-line;
 }
 
 .toilet-reminder button {
