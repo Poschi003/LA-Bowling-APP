@@ -498,10 +498,42 @@ function verifyAdmin(settings, pin) {
   return verifyPin(pin, settings.adminPinHash || settings.adminPin);
 }
 
+function employeePinKeys(employee) {
+  const clean = String(employee || "").trim();
+  const names = [clean];
+  const parts = clean.replace(",", " ").split(/\s+/).filter(Boolean);
+  if (clean.includes(",")) {
+    const [last, rest = ""] = clean.split(",");
+    const first = rest.trim().split(/\s+/).filter(Boolean)[0] || "";
+    if (first && last.trim()) names.push(`${first} ${last.trim()}`);
+    if (first) names.push(first);
+    if (last.trim()) names.push(last.trim());
+  }
+  if (parts.length > 1) {
+    names.push(parts[0]);
+    names.push(parts[parts.length - 1]);
+    names.push(`${parts[0]} ${parts[parts.length - 1]}`);
+  }
+  return [...new Set(names.filter(Boolean))];
+}
+
+function employeePinCandidates(settings, employee) {
+  const exact = String(employee || "").trim();
+  const exactCandidates = [
+    settings.employeePinHashes?.[exact],
+    settings.employeePins?.[exact]
+  ];
+  const aliasCandidates = employeePinKeys(exact)
+    .filter((key) => key !== exact)
+    .flatMap((key) => [settings.employeePinHashes?.[key], settings.employeePins?.[key]]);
+  return [...new Set([...exactCandidates, ...aliasCandidates].filter(Boolean))];
+}
+
 function employeeByPin(settings, pin) {
   for (const employee of settings.employees || []) {
-    const stored = settings.employeePinHashes?.[employee] || settings.employeePins?.[employee];
-    if (verifyPin(pin, stored)) return employee;
+    for (const stored of employeePinCandidates(settings, employee)) {
+      if (verifyPin(pin, stored)) return employee;
+    }
   }
   return "";
 }
