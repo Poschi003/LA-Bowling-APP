@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260518-task-popup-v1">
+    <link rel="stylesheet" href="styles.css?v=20260520-terminal-zentrale-v1">
   </head>
   <body>
     <header class="topbar">
@@ -150,8 +150,10 @@
             </section>
           </div>
           <nav class="terminal-tabs" aria-label="Terminal-Bereiche">
-            <button class="terminal-tab active" data-terminal-tab="service" type="button">Arbeitszeit</button>
+            <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
+            <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
+            <button class="terminal-tab" data-terminal-tab="cleaning" type="button">Reinigung</button>
           </nav>
           <section id="terminalTasksSection" class="terminal-section hidden">
             <div class="terminal-section-head">
@@ -173,6 +175,16 @@
             </div>
             <div id="terminalCostSummary" class="terminal-cost-summary"></div>
             <div id="terminalEmployees" class="terminal-employees"></div>
+          </section>
+          <section id="terminalCleaningSection" class="terminal-section hidden">
+            <div class="terminal-section-head">
+              <div>
+                <h3>Reinigungspläne</h3>
+                <p class="hint">Tägliche und wöchentliche Kontrollen mit ausführender Person dokumentieren.</p>
+              </div>
+              <button id="printCleaningPlan" class="secondary" type="button">Reinigungsplan drucken</button>
+            </div>
+            <div id="terminalCleaningList" class="terminal-cleaning-list"></div>
           </section>
           <details id="dayReportPrintArea" class="day-report">
             <summary class="day-report-title">
@@ -683,7 +695,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260518-task-popup-v1"></script>
+    <script src="teamapp-client.js?v=20260520-terminal-zentrale-v1"></script>
     <script src="terminal-roles-addon.js?v=20260506-terminal-roles-v1"></script>
   </body>
 </html>

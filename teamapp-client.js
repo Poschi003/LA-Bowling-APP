@@ -20,7 +20,7 @@
   weather: null,
   weatherLoading: false,
   terminalToken: "",
-  terminalTab: "service",
+  terminalTab: "tasks",
   terminalDate: "",
   terminalEntries: {},
   terminalReport: {},
@@ -29,6 +29,7 @@
   terminalReminders: [],
   pendingToiletCheck: "",
   pendingReminder: null,
+  terminalReminderRefreshInFlight: false,
   terminalDayMetaEditing: false,
   terminalCorrectionMode: false,
   invoiceTerminalToken: window.localStorage?.getItem("invoiceTerminalToken") || "",
@@ -47,6 +48,30 @@ const defaultReminderTemplates = [
     startAfterOpeningMinutes: 60,
     intervalMinutes: 60,
     active: true
+  }
+];
+const defaultCleaningPlans = [
+  {
+    group: "daily",
+    label: "Täglich",
+    tasks: [
+      { id: "daily-toilets", title: "Toiletten reinigen und Verbrauchsmaterial auffüllen" },
+      { id: "daily-counter", title: "Counter, EC-Geräte und Kassenbereich reinigen" },
+      { id: "daily-gastro", title: "Tische, Sitzbereiche und Gastroflächen reinigen" },
+      { id: "daily-lanes", title: "Bahnbereich, Kugeln und Schuhe sichtbar kontrollieren" },
+      { id: "daily-trash", title: "Müll und Leergut aus Gästebereichen entfernen" }
+    ]
+  },
+  {
+    group: "weekly",
+    label: "Wöchentlich",
+    tasks: [
+      { id: "weekly-fridges", title: "Kühlungen und Getränkelager reinigen/kontrollieren" },
+      { id: "weekly-shoe-racks", title: "Schuhregale und Leihschuhe gründlich reinigen" },
+      { id: "weekly-storage", title: "Lagerflächen ordnen und Boden reinigen" },
+      { id: "weekly-glass", title: "Glasflächen, Türen und Eingangsbereich gründlich reinigen" },
+      { id: "weekly-sanitary", title: "Sanitärbereich Grundkontrolle dokumentieren" }
+    ]
   }
 ];
 const motivationQuotes = [
@@ -2414,12 +2439,11 @@ function renderTerminal() {
   if (!panel) return;
   const todoMode = isTodoMode();
   if (todoMode) state.terminalTab = "tasks";
-  if (!todoMode && state.terminalTab === "tasks") state.terminalTab = "service";
-  if ($("#terminalTitle")) $("#terminalTitle").textContent = todoMode ? "TO DO" : "Tages-Terminal";
+  if ($("#terminalTitle")) $("#terminalTitle").textContent = "Tages-Terminal";
   if ($("#terminalCodeLabel")) $("#terminalCodeLabel").textContent = todoMode ? "TO-DO-Code" : "Terminal-Code";
-  if ($("#unlockTerminal")) $("#unlockTerminal").textContent = todoMode ? "TO DO öffnen" : "Terminal öffnen";
-  $("#printDayReport")?.classList.toggle("hidden", todoMode);
-  $(".terminal-tabs")?.classList.toggle("hidden", todoMode);
+  if ($("#unlockTerminal")) $("#unlockTerminal").textContent = "Terminal öffnen";
+  $("#printDayReport")?.classList.toggle("hidden", false);
+  $(".terminal-tabs")?.classList.remove("hidden");
   $("#terminalLogin")?.classList.toggle("hidden", Boolean(state.terminalToken));
   $("#terminalContent")?.classList.toggle("hidden", !state.terminalToken);
   const dateKey = state.terminalDate || todayKey();
@@ -2435,6 +2459,7 @@ function renderTerminal() {
   renderTerminalDayMeta(dateKey, report, reportClosed);
   renderTerminalCorrectionBanner(dateKey, report);
   renderTerminalTasks(report, reportClosed);
+  renderCleaningPlan(report, reportClosed);
   renderHandovers(report, reportClosed);
   renderToiletStatus(report);
   checkTerminalReminders(report, reportClosed);
@@ -2509,10 +2534,11 @@ function applyDayReportVisibility() {
 }
 
 function renderTerminalTabs() {
-  const active = isTodoMode() ? "tasks" : (state.terminalTab || "service");
+  const active = state.terminalTab || "tasks";
   $$(".terminal-tab").forEach((button) => button.classList.toggle("active", button.dataset.terminalTab === active));
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "tasks");
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "service");
+  $("#terminalCleaningSection")?.classList.toggle("hidden", active !== "cleaning");
   $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "finance");
 }
 
@@ -2638,6 +2664,43 @@ function renderTerminalTasks(report, reportClosed) {
   }).join("") || `<p class="hint">Alle To Do Aufgaben sind erledigt.</p>`;
 }
 
+function renderCleaningPlan(report, reportClosed) {
+  const target = $("#terminalCleaningList");
+  if (!target) return;
+  const completions = report.cleaningCompletions || {};
+  const employees = state.settings.employees || [];
+  const employeeOptions = (selected = "") => `<option value="">Person auswählen</option>${employees.map((employee) => `<option value="${escapeHtml(employee)}" ${selected === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`).join("")}`;
+  target.innerHTML = defaultCleaningPlans.map((group) => `
+    <section class="terminal-cleaning-group">
+      <div class="terminal-task-group-head">
+        <h4>${escapeHtml(group.label)}</h4>
+        <span>${group.tasks.filter((task) => completions[task.id]).length}/${group.tasks.length} unterschrieben</span>
+      </div>
+      <div class="terminal-cleaning-items">
+        ${group.tasks.map((task) => {
+          const done = completions[task.id];
+          return `
+            <article class="terminal-cleaning-row ${done ? "is-done" : ""}">
+              <label>
+                <input type="checkbox" data-cleaning-task="${escapeHtml(task.id)}" ${done ? "checked" : ""} ${reportClosed ? "disabled" : ""}>
+                <span>${escapeHtml(task.title)}</span>
+              </label>
+              <select data-cleaning-employee="${escapeHtml(task.id)}" ${done || reportClosed ? "disabled" : ""}>
+                ${employeeOptions(done?.employee || "")}
+              </select>
+              <div class="cleaning-signature">
+                <small>Unterschrift</small>
+                <strong>${done?.employee ? escapeHtml(done.employee) : "offen"}</strong>
+                <span>${done?.doneAt ? formatDateTime(done.doneAt) : ""}</span>
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
 function renderHandovers(report, reportClosed) {
   const from = $("#handoverFrom");
   const to = $("#handoverTo");
@@ -2743,6 +2806,43 @@ function dueTaskPopupReminder(dateKey, report = {}, checked = new Set()) {
     }
   }
   return null;
+}
+
+async function refreshTerminalReminderState() {
+  if (!state.terminalToken || state.terminalReminderRefreshInFlight) {
+    if (state.terminalToken) checkTerminalReminders(state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    return;
+  }
+  state.terminalReminderRefreshInFlight = true;
+  try {
+    const result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "load",
+        date: state.terminalDate || todayKey(),
+        terminalToken: state.terminalToken
+      })
+    });
+    const report = result.report || {};
+    state.terminalDate = result.date || state.terminalDate || todayKey();
+    state.terminalTasks = result.tasks || state.terminalTasks || [];
+    state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
+    state.terminalReport = {
+      ...(state.terminalReport || {}),
+      closed: report.closed,
+      closedAt: report.closedAt || state.terminalReport?.closedAt || "",
+      taskCompletions: report.taskCompletions || state.terminalReport?.taskCompletions || {},
+      cleaningCompletions: report.cleaningCompletions || state.terminalReport?.cleaningCompletions || {},
+      toiletChecks: report.toiletChecks || state.terminalReport?.toiletChecks || [],
+      reminderChecks: report.reminderChecks || state.terminalReport?.reminderChecks || []
+    };
+    renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
+    checkTerminalReminders(state.terminalReport, Boolean(state.terminalReport?.closed));
+  } catch (error) {
+    checkTerminalReminders(state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+  } finally {
+    state.terminalReminderRefreshInFlight = false;
+  }
 }
 
 function setDayReportLocked(isLocked, report = {}) {
@@ -3054,7 +3154,11 @@ async function collectDayReportPayload() {
     invoiceCustomers: await collectReportEntries("invoice"),
     expenses: await collectReportEntries("expense"),
     documents: await collectReportDocuments(),
-    notes: $("#reportNotes").value
+    notes: $("#reportNotes").value,
+    taskCompletions: state.terminalReport.taskCompletions || {},
+    cleaningCompletions: state.terminalReport.cleaningCompletions || {},
+    toiletChecks: state.terminalReport.toiletChecks || [],
+    reminderChecks: state.terminalReport.reminderChecks || []
   };
 }
 
@@ -3098,6 +3202,7 @@ async function collectCustomerInvoiceDeskPayload() {
     documents: await collectCustomerInvoiceDocuments(),
     notes: report.notes || "",
     taskCompletions: report.taskCompletions || {},
+    cleaningCompletions: report.cleaningCompletions || {},
     toiletChecks: report.toiletChecks || [],
     reminderChecks: report.reminderChecks || []
   };
@@ -3596,6 +3701,7 @@ async function confirmToiletCheck() {
       expenses: await collectReportEntries("expense"),
       notes: $("#reportNotes")?.value || state.terminalReport.notes || "",
       taskCompletions: state.terminalReport.taskCompletions || {},
+      cleaningCompletions: state.terminalReport.cleaningCompletions || {},
       toiletChecks: checks,
       reminderChecks
     });
@@ -4282,14 +4388,30 @@ function positionClass(position) {
   return `position-${positionCategory(position) || "sonstige"}`;
 }
 
+function employeeNameKeys(employee) {
+  const clean = String(employee || "").trim();
+  const parts = clean.replace(",", " ").split(/\s+/).filter(Boolean);
+  const names = [clean];
+  if (parts.length > 1) {
+    names.push(parts[0], parts[parts.length - 1], `${parts[0]} ${parts[parts.length - 1]}`);
+  }
+  return [...new Set(names.filter(Boolean))];
+}
+
+function departmentsForEmployee(departments, employee) {
+  for (const key of employeeNameKeys(employee)) {
+    if (Array.isArray(departments[key])) return departments[key];
+  }
+  return [];
+}
+
 function employeesForPosition(position) {
   const department = departmentForPosition(position);
   const positionName = canonicalDepartmentChoice(position);
-  if (department === "Service") return state.settings.employees || [];
   const departments = state.settings.employeeDepartments || {};
   const roles = state.settings.employeeRoles || {};
   const matching = state.settings.employees.filter((employee) => {
-    const employeeDepartments = (departments[employee] || []).map(canonicalDepartmentChoice);
+    const employeeDepartments = departmentsForEmployee(departments, employee).map(canonicalDepartmentChoice);
     const roleDepartment = normalizeDepartment(roles[employee] || "");
     return employeeDepartments.includes(department) || employeeDepartments.includes(positionName) || roleDepartment === department;
   });
@@ -5460,6 +5582,38 @@ function bindEvents() {
     }
   });
 
+  $("#terminalContent")?.addEventListener("change", async (event) => {
+    const cleaningInput = event.target.closest("[data-cleaning-task]");
+    if (!cleaningInput) return;
+    const taskId = cleaningInput.dataset.cleaningTask;
+    const done = cleaningInput.checked;
+    const employeeSelect = $(`[data-cleaning-employee="${cssEscape(taskId)}"]`);
+    const employee = employeeSelect?.value || "";
+    if (done && !employee) {
+      cleaningInput.checked = false;
+      showToast("Bitte ausführende Person auswählen.");
+      return;
+    }
+    const previousCompletions = cloneData(state.terminalReport?.cleaningCompletions || {});
+    state.terminalReport = {
+      ...(state.terminalReport || {}),
+      cleaningCompletions: {
+        ...(state.terminalReport?.cleaningCompletions || {}),
+        ...(done ? { [taskId]: { done: true, employee, doneAt: new Date().toISOString() } } : {})
+      }
+    };
+    if (!done) delete state.terminalReport.cleaningCompletions[taskId];
+    renderCleaningPlan(state.terminalReport, Boolean(state.terminalReport?.closed));
+    try {
+      await terminalAction({ action: "complete-cleaning", id: taskId, employee, done });
+      showToast(done ? "Reinigung dokumentiert." : "Reinigung wieder geöffnet.");
+    } catch (error) {
+      state.terminalReport = { ...(state.terminalReport || {}), cleaningCompletions: previousCompletions };
+      renderCleaningPlan(state.terminalReport, Boolean(state.terminalReport?.closed));
+      showError(error);
+    }
+  });
+
   $("#confirmToiletCheck")?.addEventListener("click", async () => {
     if (!state.pendingToiletCheck) return;
     try {
@@ -5704,6 +5858,11 @@ function bindEvents() {
     if (report) report.open = true;
     window.print();
   });
+  $("#printCleaningPlan")?.addEventListener("click", () => {
+    document.body.classList.add("print-cleaning-plan");
+    window.setTimeout(() => window.print(), 20);
+    window.setTimeout(() => document.body.classList.remove("print-cleaning-plan"), 800);
+  });
   $("#printSchedule").addEventListener("click", () => window.print());
 }
 
@@ -5936,8 +6095,11 @@ async function saveSchedule(published) {
 
 bindEvents();
 window.setInterval(() => {
-  if (state.terminalToken) checkTerminalReminders(state.terminalReport || {}, Boolean(state.terminalReport?.closed));
-}, 60000);
+  if (state.terminalToken) refreshTerminalReminderState();
+}, 30000);
+window.addEventListener("focus", () => {
+  if (state.terminalToken) refreshTerminalReminderState();
+});
 if (isTerminalMode()) document.body.classList.add("terminal-mode");
 if (isTodoMode()) document.body.classList.add("todo-mode");
 if (isCustomerInvoiceMode()) document.body.classList.add("customer-invoice-mode");
