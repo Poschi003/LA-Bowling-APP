@@ -2105,6 +2105,52 @@ button:disabled {
   font-weight: 800;
 }
 
+.terminal-leader-messages {
+  display: grid;
+  gap: 12px;
+  border: 2px solid rgba(225, 23, 47, 0.35);
+  border-left: 8px solid var(--brand);
+  border-radius: var(--radius);
+  background: #fff5f6;
+  padding: 14px;
+}
+
+.terminal-leader-message-head,
+.terminal-leader-message div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.terminal-leader-message-head strong {
+  color: var(--brand-strong);
+  font-size: 20px;
+}
+
+.terminal-leader-message-head span,
+.terminal-leader-message small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.terminal-leader-message {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(225, 23, 47, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.terminal-leader-message p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
 .terminal-handover-anchor {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -2297,6 +2343,16 @@ button:disabled {
   gap: 10px;
   margin: 0;
   font-weight: 850;
+}
+
+.terminal-cleaning-row label span {
+  display: grid;
+  gap: 3px;
+}
+
+.terminal-cleaning-row label small {
+  color: var(--muted);
+  font-weight: 750;
 }
 
 .terminal-cleaning-row input[type="checkbox"] {
