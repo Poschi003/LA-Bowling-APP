@@ -20,6 +20,7 @@ module.exports = async function handler(req, res) {
     if (action === "adjust-time") return adjustTime(body, res);
     if (action === "add-employee") return addEmployee(body, res);
     if (action === "complete-task") return completeTask(body, res);
+    if (action === "complete-cleaning") return completeCleaning(body, res);
     if (action === "confirm-toilet" || action === "toilet-check") return confirmToilet(body, res);
     if (action === "confirm-reminder") return confirmReminder(body, res);
     if (action === "save-day-meta") return saveDayMeta(body, res);
@@ -191,7 +192,7 @@ async function saveReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen und kann nicht mehr geaendert werden." });
   appData.dayReports ||= {};
-  appData.dayReports[date] = { ...existing, ecTotal: cleanMoney(body.ecTotal), barBowling: cleanMoney(body.barBowling), barGastro: cleanMoney(body.barGastro), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), updatedAt: new Date().toISOString() };
+  appData.dayReports[date] = { ...existing, ecTotal: cleanMoney(body.ecTotal), barBowling: cleanMoney(body.barBowling), barGastro: cleanMoney(body.barGastro), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), updatedAt: new Date().toISOString() };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
 }
@@ -209,6 +210,25 @@ async function completeTask(body, res) {
     delete taskCompletions[id];
   }
   appData.dayReports[date] = { ...report, taskCompletions, updatedAt: new Date().toISOString() };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
+}
+
+async function completeCleaning(body, res) {
+  const appData = await readAppData(), date = cleanDate(body.date), id = String(body.id || "");
+  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  if (!id) return sendJson(res, 400, { error: "Reinigungsaufgabe fehlt." });
+  appData.dayReports ||= {};
+  const report = appData.dayReports[date] || {};
+  const cleaningCompletions = { ...(report.cleaningCompletions || {}) };
+  if (body.done) {
+    const employee = cleanText(body.employee, 160);
+    if (!employee) return sendJson(res, 400, { error: "Bitte ausfuehrende Person auswaehlen." });
+    cleaningCompletions[id] = { done: true, employee, doneAt: new Date().toISOString() };
+  } else {
+    delete cleaningCompletions[id];
+  }
+  appData.dayReports[date] = { ...report, cleaningCompletions, updatedAt: new Date().toISOString() };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
 }
@@ -313,13 +333,14 @@ function reportHasActivity(report = {}) {
     (report.expenses || []).length ||
     (report.handovers || []).length ||
     Object.keys(report.taskCompletions || {}).length ||
+    Object.keys(report.cleaningCompletions || {}).length ||
     (report.toiletChecks || []).length ||
     (report.reminderChecks || []).length
   );
 }
 
 function defaultReport(report = {}) {
-  return { ecTotal: "", barBowling: "", barGastro: "", invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, toiletChecks: [], reminderChecks: [], ...report };
+  return { ecTotal: "", barBowling: "", barGastro: "", invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], ...report };
 }
 
 function tasksForDate(appData, dateKey) {
@@ -350,6 +371,15 @@ function intervalAppliesToDate(task, dateKey) {
 function cleanTaskCompletions(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).map(([id, item]) => [String(id), { done: Boolean(item?.done), doneAt: String(item?.doneAt || "") }]));
+}
+
+function cleanCleaningCompletions(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([id, item]) => [String(id), {
+    done: Boolean(item?.done),
+    employee: cleanText(item?.employee, 160),
+    doneAt: String(item?.doneAt || "")
+  }]));
 }
 
 function cleanToiletChecks(value) {
