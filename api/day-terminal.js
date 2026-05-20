@@ -23,6 +23,7 @@ module.exports = async function handler(req, res) {
     if (action === "complete-cleaning") return completeCleaning(body, res);
     if (action === "confirm-toilet" || action === "toilet-check") return confirmToilet(body, res);
     if (action === "confirm-reminder") return confirmReminder(body, res);
+    if (action === "confirm-terminal-message") return confirmTerminalMessage(body, res);
     if (action === "save-day-meta") return saveDayMeta(body, res);
     if (action === "add-handover") return addHandover(body, res);
     if (action === "save-report") return saveReport(body, res);
@@ -192,7 +193,7 @@ async function saveReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen und kann nicht mehr geaendert werden." });
   appData.dayReports ||= {};
-  appData.dayReports[date] = { ...existing, ecTotal: cleanMoney(body.ecTotal), barBowling: cleanMoney(body.barBowling), barGastro: cleanMoney(body.barGastro), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), updatedAt: new Date().toISOString() };
+  appData.dayReports[date] = { ...existing, ecTotal: cleanMoney(body.ecTotal), barBowling: cleanMoney(body.barBowling), barGastro: cleanMoney(body.barGastro), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), updatedAt: new Date().toISOString() };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
 }
@@ -263,6 +264,34 @@ async function confirmReminder(body, res) {
   sendJson(res, 200, { ok: true, message: "Erinnerung quittiert.", ...terminalPayload(appData, date) });
 }
 
+async function confirmTerminalMessage(body, res) {
+  const appData = await readAppData(), date = cleanDate(body.date), id = cleanText(body.messageId, 120);
+  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  if (!id) return sendJson(res, 400, { error: "Nachricht fehlt." });
+  const message = (appData.terminalMessages || []).find((item) => item.id === id);
+  const checkedAt = new Date().toISOString();
+  appData.dayReports ||= {};
+  const report = appData.dayReports[date] || {};
+  const terminalMessageChecks = cleanTerminalMessageChecks(report.terminalMessageChecks);
+  if (!terminalMessageChecks.some((item) => item.messageId === id)) {
+    terminalMessageChecks.push({
+      messageId: id,
+      text: cleanText(message?.text, 240),
+      shiftLeader: cleanText(report.shiftLeader, 160),
+      checkedAt
+    });
+  }
+  if (message) {
+    message.active = false;
+    message.acknowledgedAt = checkedAt;
+    message.acknowledgedBy = cleanText(report.shiftLeader, 160);
+    message.acknowledgedDate = date;
+  }
+  appData.dayReports[date] = { ...report, terminalMessageChecks, updatedAt: new Date().toISOString() };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Schichtleiter-Nachricht quittiert.", ...terminalPayload(appData, date) });
+}
+
 async function saveDayMeta(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
@@ -302,7 +331,7 @@ async function closeReport(body, res) {
 function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), reminders: appData.reminderTemplates || [] };
+  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: appData.cleaningTemplates || [], reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData) };
 }
 
 function activeTerminalDate(appData, requestedDate) {
@@ -335,12 +364,19 @@ function reportHasActivity(report = {}) {
     Object.keys(report.taskCompletions || {}).length ||
     Object.keys(report.cleaningCompletions || {}).length ||
     (report.toiletChecks || []).length ||
-    (report.reminderChecks || []).length
+    (report.reminderChecks || []).length ||
+    (report.terminalMessageChecks || []).length
   );
 }
 
 function defaultReport(report = {}) {
-  return { ecTotal: "", barBowling: "", barGastro: "", invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], ...report };
+  return { ecTotal: "", barBowling: "", barGastro: "", invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+}
+
+function activeTerminalMessages(appData) {
+  return (appData.terminalMessages || [])
+    .filter((message) => message && message.active !== false && message.id && message.text)
+    .slice(0, 30);
 }
 
 function tasksForDate(appData, dateKey) {
@@ -388,6 +424,16 @@ function cleanToiletChecks(value) {
     checkKey: String(item.checkKey || "").slice(0, 40),
     checkedAt: String(item.checkedAt || new Date().toISOString()).slice(0, 40)
   })).filter((item) => item.checkKey);
+}
+
+function cleanTerminalMessageChecks(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 80).map((item) => ({
+    messageId: cleanText(item.messageId, 120),
+    text: cleanText(item.text, 240),
+    shiftLeader: cleanText(item.shiftLeader, 160),
+    checkedAt: cleanText(item.checkedAt || new Date().toISOString(), 40)
+  })).filter((item) => item.messageId);
 }
 
 function cleanHandover(item = {}) {

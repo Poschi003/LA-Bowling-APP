@@ -41,6 +41,28 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 200, { ok: true, messages: appData.messages });
     }
 
+    if (body.action === "add-terminal-message") {
+      const text = String(body.text || "").trim().slice(0, 1000);
+      if (!text) return sendJson(res, 400, { error: "Nachricht fehlt." });
+      appData.terminalMessages ||= [];
+      appData.terminalMessages.unshift({
+        id: `terminal-msg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        text,
+        active: true,
+        createdAt: new Date().toISOString()
+      });
+      appData.terminalMessages = appData.terminalMessages.slice(0, 40);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, terminalMessages: appData.terminalMessages });
+    }
+
+    if (body.action === "delete-terminal-message") {
+      const id = String(body.id || "");
+      appData.terminalMessages = (appData.terminalMessages || []).filter((message) => message.id !== id);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, terminalMessages: appData.terminalMessages });
+    }
+
     if (body.action === "add-task-template") {
       const task = cleanTaskTemplate(body.task || {});
       if (!task.title) return sendJson(res, 400, { error: "Aufgabe fehlt." });
@@ -71,6 +93,22 @@ module.exports = async function handler(req, res) {
       appData.reminderTemplates = (appData.reminderTemplates || []).filter((reminder) => reminder.id !== id);
       await writeAppData(appData);
       return sendJson(res, 200, { ok: true, reminderTemplates: appData.reminderTemplates });
+    }
+
+    if (body.action === "add-cleaning-template") {
+      const task = cleanCleaningTemplate(body.task || {});
+      if (!task.title) return sendJson(res, 400, { error: "Reinigungsaufgabe fehlt." });
+      appData.cleaningTemplates ||= [];
+      appData.cleaningTemplates.unshift(task);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, cleaningTemplates: appData.cleaningTemplates });
+    }
+
+    if (body.action === "delete-cleaning-template") {
+      const id = String(body.id || "");
+      appData.cleaningTemplates = (appData.cleaningTemplates || []).filter((task) => task.id !== id);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, cleaningTemplates: appData.cleaningTemplates });
     }
 
     if (Array.isArray(body.employees)) {
@@ -128,6 +166,9 @@ module.exports = async function handler(req, res) {
     }
     if (Array.isArray(body.taskTemplates)) {
       appData.taskTemplates = body.taskTemplates.map(cleanTaskTemplate).filter((task) => task.title);
+    }
+    if (Array.isArray(body.cleaningTemplates)) {
+      appData.cleaningTemplates = body.cleaningTemplates.map(cleanCleaningTemplate).filter((task) => task.title);
     }
     if (typeof body.businessName === "string" && body.businessName.trim()) {
       appData.settings.businessName = body.businessName.trim();
@@ -203,6 +244,21 @@ function cleanReminder(reminder) {
     intervalMinutes: Math.max(5, Math.min(360, Number(reminder.intervalMinutes || 60))),
     active: reminder.active !== false,
     createdAt: new Date().toISOString()
+  };
+}
+
+function cleanCleaningTemplate(task) {
+  const frequency = ["daily", "weekly"].includes(task.frequency) ? task.frequency : "daily";
+  const weekdays = frequency === "weekly" && Array.isArray(task.weekdays)
+    ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6)
+    : [];
+  return {
+    id: String(task.id || `cleaning-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    title: String(task.title || "").trim().slice(0, 180),
+    note: String(task.note || "").trim().slice(0, 600),
+    frequency,
+    weekdays: frequency === "weekly" ? (weekdays.length ? weekdays : [1]) : [],
+    createdAt: String(task.createdAt || new Date().toISOString()).slice(0, 40)
   };
 }
 

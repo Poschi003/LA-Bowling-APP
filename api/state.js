@@ -37,8 +37,10 @@ module.exports = async function handler(req, res) {
         timesheets: appData.timesheets?.[month] || {},
         dayReports: appData.dayReports || {},
         messages: appData.messages || [],
+        terminalMessages: appData.terminalMessages || [],
         weather,
         taskTemplates: appData.taskTemplates || [],
+        cleaningTemplates: appData.cleaningTemplates || [],
         reminderTemplates: appData.reminderTemplates || [],
         missingAvailability,
         availabilityChangeRequests: availabilityChangeRequests.filter((request) => request.status === "open")

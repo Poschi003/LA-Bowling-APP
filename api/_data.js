@@ -15,6 +15,19 @@ const defaultPins = {
   "Kevin Leicht": "1010"
 };
 
+const defaultCleaningTemplates = [
+  { id: "daily-toilets", title: "Toiletten reinigen und Verbrauchsmaterial auffuellen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "daily-counter", title: "Counter, EC-Geraete und Kassenbereich reinigen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "daily-gastro", title: "Tische, Sitzbereiche und Gastroflaechen reinigen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "daily-lanes", title: "Bahnbereich, Kugeln und Schuhe sichtbar kontrollieren", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "daily-trash", title: "Muell und Leergut aus Gaestebereichen entfernen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-fridges", title: "Kuehlungen und Getraenkelager reinigen/kontrollieren", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-shoe-racks", title: "Schuhregale und Leihschuhe gruendlich reinigen", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-storage", title: "Lagerflaechen ordnen und Boden reinigen", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-glass", title: "Glasflaechen, Tueren und Eingangsbereich gruendlich reinigen", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-sanitary", title: "Sanitaerbereich Grundkontrolle dokumentieren", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" }
+];
+
 const defaultData = {
   settings: {
     adminPin: process.env.DEFAULT_ADMIN_PIN || "1234",
@@ -75,6 +88,7 @@ const defaultData = {
   availability: {},
   schedules: {},
   timesheets: {},
+  cleaningTemplates: defaultCleaningTemplates,
   taskTemplates: [
     {
       id: "default-prep-kasse",
@@ -138,6 +152,7 @@ const defaultData = {
     }
   ],
   messages: [],
+  terminalMessages: [],
   swaps: [],
   availabilityChangeRequests: []
 };
@@ -194,9 +209,11 @@ function mergeData(value) {
     availability: value?.availability || base.availability,
     schedules: normalizeSchedules(value?.schedules || base.schedules),
     timesheets: value?.timesheets || base.timesheets,
+    cleaningTemplates: Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates,
     taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates),
     reminderTemplates: Array.isArray(value?.reminderTemplates) ? value.reminderTemplates : base.reminderTemplates,
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
+    terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };
