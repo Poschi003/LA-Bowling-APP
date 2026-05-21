@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260520-terminal-zentrale-v1">
+    <link rel="stylesheet" href="styles.css?v=20260520-reinigungsplan-v1">
   </head>
   <body>
     <header class="topbar">
@@ -124,6 +124,7 @@
           </div>
           <div id="terminalDayMetaDisplay" class="terminal-day-meta-display hidden"></div>
           <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
+          <div id="terminalLeaderMessages" class="terminal-leader-messages hidden"></div>
           <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
             <div class="terminal-task-group-head">
               <div>
@@ -415,6 +416,18 @@
         </details>
 
         <details class="settings-box admin-priority">
+          <summary>Nachricht ans Terminal</summary>
+          <div class="message-editor form-grid">
+            <label>
+              Nachricht für Schichtleitung
+              <textarea id="terminalMessageText" rows="3" placeholder="Wird im Terminal angezeigt, bis sie quittiert wird"></textarea>
+            </label>
+            <button id="sendTerminalMessage" class="primary" type="button">An Terminal senden</button>
+          </div>
+          <div id="adminTerminalMessagesList" class="swap-list"></div>
+        </details>
+
+        <details class="settings-box admin-priority">
           <summary>Aufgabenkalender</summary>
           <div class="admin-calendar-tools">
             <label>Kalendermonat<input id="taskCalendarMonth" type="month"></label>
@@ -508,6 +521,18 @@
             <button id="addReminder" class="primary" type="button">Erinnerung hinzufügen</button>
           </div>
           <div id="adminReminderList" class="admin-task-table"></div>
+        </details>
+
+        <details class="settings-box admin-priority">
+          <summary>Reinigungspläne</summary>
+          <div class="admin-task-form">
+            <label>Aufgabe<input id="cleaningTaskTitle" placeholder="z.B. Toiletten reinigen"></label>
+            <label>Rhythmus<select id="cleaningTaskFrequency"><option value="daily">Täglich</option><option value="weekly">Wöchentlich</option></select></label>
+            <label id="cleaningWeekdayField">Wochentag<select id="cleaningTaskWeekday"></select></label>
+            <label>Notiz<input id="cleaningTaskNote" placeholder="optional"></label>
+            <button id="addCleaningTask" class="primary" type="button">Hinzufügen</button>
+          </div>
+          <div id="adminCleaningTaskTable" class="admin-task-table"></div>
         </details>
 
         <details class="settings-box admin-priority">
@@ -695,8 +720,8 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260520-terminal-zentrale-v1"></script>
-    <script src="terminal-roles-addon.js?v=20260506-terminal-roles-v1"></script>
+    <script src="teamapp-client.js?v=20260520-terminal-zentrale-v2"></script>
+    <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>
 

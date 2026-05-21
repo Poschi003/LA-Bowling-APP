@@ -13,6 +13,7 @@
   chefTab: "reports",
   timesheets: {},
   messages: [],
+  terminalMessages: [],
   dayReports: {},
   missingAvailability: [],
   swaps: { open: [], mine: [], myShifts: [], admin: [] },
@@ -27,6 +28,7 @@
   terminalSchedule: {},
   terminalTasks: [],
   terminalReminders: [],
+  terminalCleaningTemplates: [],
   pendingToiletCheck: "",
   pendingReminder: null,
   terminalReminderRefreshInFlight: false,
@@ -36,6 +38,7 @@
   invoiceDate: todayKey(),
   invoiceReport: {},
   taskTemplates: [],
+  cleaningTemplates: [],
   reminderTemplates: [],
   plannerEditWeeks: []
 };
@@ -74,6 +77,15 @@ const defaultCleaningPlans = [
     ]
   }
 ];
+const defaultCleaningTemplates = defaultCleaningPlans.flatMap((group) =>
+  group.tasks.map((task) => ({
+    ...task,
+    frequency: group.group === "weekly" ? "weekly" : "daily",
+    weekdays: group.group === "weekly" ? [1] : [],
+    note: "",
+    createdAt: "2026-05-20T00:00:00.000Z"
+  }))
+);
 const motivationQuotes = [
   "Gemeinsam wird der Tag leichter.",
   "Ein gutes Team merkt man im laufenden Betrieb.",
@@ -142,7 +154,9 @@ const defaultData = {
   availability: {},
   schedules: {},
   timesheets: {},
+  cleaningTemplates: defaultCleaningTemplates,
   messages: [],
+  terminalMessages: [],
   dayReports: {},
   availabilityChangeRequests: []
 };
@@ -380,7 +394,9 @@ async function loadState() {
   state.allSchedules = data.schedules || {};
   state.timesheets = data.timesheets || {};
   state.messages = data.messages || [];
+  state.terminalMessages = data.terminalMessages || [];
   state.taskTemplates = data.taskTemplates || [];
+  state.cleaningTemplates = normalizeCleaningTemplates(data.cleaningTemplates);
   state.reminderTemplates = normalizeReminderTemplates(data.reminderTemplates);
   state.dayReports = data.dayReports || {};
   state.weather = data.weather || state.weather;
@@ -470,7 +486,9 @@ function mergeData(value) {
     availability: value && value.availability ? value.availability : base.availability,
     schedules: value && value.schedules ? value.schedules : base.schedules,
     timesheets: value && value.timesheets ? value.timesheets : base.timesheets,
+    cleaningTemplates: normalizeCleaningTemplates(Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates),
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
+    terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     dayReports: value && value.dayReports ? value.dayReports : base.dayReports,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };
@@ -505,6 +523,24 @@ function normalizeReminderTemplates(reminders) {
   return list.length ? list : cloneData(defaultReminderTemplates);
 }
 
+function normalizeCleaningTemplates(tasks) {
+  if (!Array.isArray(tasks)) return cloneData(defaultCleaningTemplates);
+  return tasks.map(cleanCleaningTemplateClient).filter((task) => task.title);
+}
+
+function cleanCleaningTemplateClient(task = {}) {
+  const frequency = ["daily", "weekly"].includes(task.frequency) ? task.frequency : "daily";
+  const weekdays = Array.isArray(task.weekdays) ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6) : [];
+  return {
+    id: String(task.id || `cleaning-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    title: String(task.title || "").trim().slice(0, 180),
+    note: String(task.note || "").trim().slice(0, 600),
+    frequency,
+    weekdays: frequency === "weekly" ? (weekdays.length ? weekdays : [1]) : [],
+    createdAt: String(task.createdAt || new Date().toISOString())
+  };
+}
+
 function renderAll() {
   $("#appTitle").textContent = isCustomerInvoiceMode() ? "Bezahlung auf Rechnung" : isTodoMode() ? "TO DO" : state.settings.businessName;
   if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = formatDate(localDateValue());
@@ -525,7 +561,9 @@ function renderAll() {
   renderAdminSwaps();
   renderAdminAvailabilityRequests();
   renderAdminMessages();
+  renderAdminTerminalMessages();
   renderAdminTasks();
+  renderAdminCleaningTasks();
   renderAdminReminders();
   renderAdminAvailabilityPreview();
   renderAdminCorrection();
@@ -1934,6 +1972,26 @@ function renderAdminMessages() {
   `).join("") : `<p class="hint">Keine Nachrichten aktiv.</p>`;
 }
 
+function renderAdminTerminalMessages() {
+  const container = $("#adminTerminalMessagesList");
+  if (!container) return;
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  const messages = state.terminalMessages || [];
+  container.innerHTML = messages.length ? messages.map((message) => `
+    <article class="swap-card admin-swap-card">
+      <div>
+        <strong>Terminal / Schichtleitung</strong>
+        <span>${escapeHtml(message.text)}</span>
+        <p class="hint">${message.acknowledgedAt ? `Quittiert${message.acknowledgedBy ? ` von ${escapeHtml(message.acknowledgedBy)}` : ""} am ${escapeHtml(formatDateTime(message.acknowledgedAt))}` : `Offen${message.createdAt ? ` seit ${escapeHtml(formatDateTime(message.createdAt))}` : ""}`}</p>
+      </div>
+      <button class="secondary" data-delete-terminal-message="${escapeHtml(message.id)}" type="button">Löschen</button>
+    </article>
+  `).join("") : `<p class="hint">Keine Terminal-Nachrichten aktiv.</p>`;
+}
+
 function renderAdminTasks() {
   const container = $("#adminTaskList");
   if (!container) return;
@@ -1953,6 +2011,53 @@ function renderAdminTasks() {
   renderTaskTable("#runningTaskTable", tasks.filter((task) => (task.category || "running") === "running"));
   renderTaskTable("#closingTaskTable", tasks.filter((task) => task.category === "closing"));
   renderTaskCalendar();
+}
+
+function renderAdminCleaningTasks() {
+  const container = $("#adminCleaningTaskTable");
+  if (!container) return;
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  fillCleaningWeekdaySelect();
+  updateCleaningTaskFields();
+  const tasks = normalizeCleaningTemplates(state.cleaningTemplates);
+  if (!tasks.length) {
+    container.innerHTML = `<p class="hint">Keine Reinigungsaufgaben angelegt.</p>`;
+    return;
+  }
+  container.innerHTML = `
+    <div class="admin-task-row admin-task-row-head">
+      <span>Aufgabe</span><span>Rhythmus</span><span>Notiz</span><span></span>
+    </div>
+    ${tasks.map((task) => `
+      <div class="admin-task-row">
+        <span><strong>${escapeHtml(task.title)}</strong></span>
+        <span>${escapeHtml(cleaningFrequencyLabel(task))}</span>
+        <span>${task.note ? escapeHtml(task.note) : "-"}</span>
+        <button class="secondary" data-delete-cleaning-task="${escapeHtml(task.id)}" type="button">Löschen</button>
+      </div>
+    `).join("")}
+  `;
+}
+
+function fillCleaningWeekdaySelect() {
+  const select = $("#cleaningTaskWeekday");
+  if (!select || select.options.length) return;
+  select.innerHTML = weekdays.map((day, index) => `<option value="${index}">${day}</option>`).join("");
+  select.value = "1";
+}
+
+function updateCleaningTaskFields() {
+  const frequency = $("#cleaningTaskFrequency")?.value || "daily";
+  $("#cleaningWeekdayField")?.classList.toggle("hidden", frequency !== "weekly");
+}
+
+function cleaningFrequencyLabel(task) {
+  if (task.frequency === "daily") return "Täglich";
+  const days = (task.weekdays || []).map((day) => weekdays[Number(day)]).filter(Boolean);
+  return days.length ? `Wöchentlich: ${days.join(", ")}` : "Wöchentlich";
 }
 
 function setCalendarTaskDate(dateKey) {
@@ -2458,6 +2563,7 @@ function renderTerminal() {
   renderTerminalTabs();
   renderTerminalDayMeta(dateKey, report, reportClosed);
   renderTerminalCorrectionBanner(dateKey, report);
+  renderTerminalLeaderMessages(report, reportClosed);
   renderTerminalTasks(report, reportClosed);
   renderCleaningPlan(report, reportClosed);
   renderHandovers(report, reportClosed);
@@ -2605,6 +2711,33 @@ function renderTerminalCorrectionBanner(dateKey, report = {}) {
   `;
 }
 
+function renderTerminalLeaderMessages(report = {}, reportClosed = false) {
+  const target = $("#terminalLeaderMessages");
+  if (!target) return;
+  const checked = new Set((report.terminalMessageChecks || []).map((item) => item.messageId));
+  const messages = (state.terminalMessages || []).filter((message) => message && message.active !== false && !checked.has(message.id));
+  target.classList.toggle("hidden", !messages.length);
+  if (!messages.length) {
+    target.innerHTML = "";
+    return;
+  }
+  target.innerHTML = `
+    <div class="terminal-leader-message-head">
+      <strong>Nachricht an Schichtleitung</strong>
+      <span>${messages.length === 1 ? "1 offene Nachricht" : `${messages.length} offene Nachrichten`}</span>
+    </div>
+    ${messages.map((message) => `
+      <article class="terminal-leader-message">
+        <p>${escapeHtml(message.text)}</p>
+        <div>
+          <small>${message.createdAt ? escapeHtml(formatDateTime(message.createdAt)) : ""}</small>
+          <button class="primary" data-confirm-terminal-message="${escapeHtml(message.id)}" type="button" ${reportClosed ? "disabled" : ""}>Quittieren</button>
+        </div>
+      </article>
+    `).join("")}
+  `;
+}
+
 function shiftLeaderEmployees() {
   const employees = state.settings.employees || [];
   const wanted = [
@@ -2634,9 +2767,8 @@ function renderTerminalTasks(report, reportClosed) {
   ];
   target.innerHTML = groups.map(([category, label]) => {
     const items = tasks.filter((task) => (task.category || "running") === category);
-    const openItems = items.filter((task) => !done[task.id]);
     const completed = items.filter((task) => done[task.id]).length;
-    if (!openItems.length) return "";
+    if (!items.length) return "";
     return `
       <section class="terminal-task-group terminal-task-${category}">
         <div class="terminal-task-group-head">
@@ -2644,13 +2776,15 @@ function renderTerminalTasks(report, reportClosed) {
           <span>${completed}/${items.length} erledigt</span>
         </div>
         <div class="terminal-task-items">
-          ${openItems.map((task) => {
+          ${items.map((task) => {
+            const taskDone = Boolean(done[task.id]);
             return `
-              <article class="terminal-task">
+              <article class="terminal-task ${taskDone ? "is-done" : ""}">
                 <label>
-                  <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
+                  <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${taskDone ? "checked" : ""} ${reportClosed ? "disabled" : ""}>
                   <span>
                     <strong>${escapeHtml(task.title)}</strong>
+                    ${taskDone ? `<small>Erledigt${done[task.id]?.doneAt ? ` am ${escapeHtml(formatDateTime(done[task.id].doneAt))}` : ""}</small>` : ""}
                     ${task.popupEnabled && task.popupTime ? `<small>Popup ${escapeHtml(task.popupTime)}</small>` : ""}
                     ${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}
                   </span>
@@ -2670,7 +2804,12 @@ function renderCleaningPlan(report, reportClosed) {
   const completions = report.cleaningCompletions || {};
   const employees = state.settings.employees || [];
   const employeeOptions = (selected = "") => `<option value="">Person auswählen</option>${employees.map((employee) => `<option value="${escapeHtml(employee)}" ${selected === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`).join("")}`;
-  target.innerHTML = defaultCleaningPlans.map((group) => `
+  const groups = cleaningPlanGroupsForDate(state.terminalDate || todayKey());
+  if (!groups.some((group) => group.tasks.length)) {
+    target.innerHTML = `<p class="hint">Für heute sind keine Reinigungsaufgaben geplant.</p>`;
+    return;
+  }
+  target.innerHTML = groups.filter((group) => group.tasks.length).map((group) => `
     <section class="terminal-cleaning-group">
       <div class="terminal-task-group-head">
         <h4>${escapeHtml(group.label)}</h4>
@@ -2683,7 +2822,7 @@ function renderCleaningPlan(report, reportClosed) {
             <article class="terminal-cleaning-row ${done ? "is-done" : ""}">
               <label>
                 <input type="checkbox" data-cleaning-task="${escapeHtml(task.id)}" ${done ? "checked" : ""} ${reportClosed ? "disabled" : ""}>
-                <span>${escapeHtml(task.title)}</span>
+                <span>${escapeHtml(task.title)}${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}</span>
               </label>
               <select data-cleaning-employee="${escapeHtml(task.id)}" ${done || reportClosed ? "disabled" : ""}>
                 ${employeeOptions(done?.employee || "")}
@@ -2699,6 +2838,21 @@ function renderCleaningPlan(report, reportClosed) {
       </div>
     </section>
   `).join("");
+}
+
+function cleaningPlanGroupsForDate(dateKey) {
+  const tasks = normalizeCleaningTemplates(state.terminalToken ? state.terminalCleaningTemplates : state.cleaningTemplates);
+  const due = tasks.filter((task) => cleaningTaskAppliesToDate(task, dateKey));
+  return [
+    { group: "daily", label: "Täglich", tasks: due.filter((task) => task.frequency === "daily") },
+    { group: "weekly", label: "Wöchentlich / Wochentag", tasks: due.filter((task) => task.frequency === "weekly") }
+  ];
+}
+
+function cleaningTaskAppliesToDate(task, dateKey) {
+  if (task.frequency === "daily") return true;
+  const weekday = new Date(`${dateKey}T12:00:00`).getDay();
+  return (task.weekdays || []).map(Number).includes(weekday);
 }
 
 function renderHandovers(report, reportClosed) {
@@ -2827,6 +2981,8 @@ async function refreshTerminalReminderState() {
     state.terminalDate = result.date || state.terminalDate || todayKey();
     state.terminalTasks = result.tasks || state.terminalTasks || [];
     state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
+    state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.terminalCleaningTemplates);
+    state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
     state.terminalReport = {
       ...(state.terminalReport || {}),
       closed: report.closed,
@@ -2834,7 +2990,8 @@ async function refreshTerminalReminderState() {
       taskCompletions: report.taskCompletions || state.terminalReport?.taskCompletions || {},
       cleaningCompletions: report.cleaningCompletions || state.terminalReport?.cleaningCompletions || {},
       toiletChecks: report.toiletChecks || state.terminalReport?.toiletChecks || [],
-      reminderChecks: report.reminderChecks || state.terminalReport?.reminderChecks || []
+      reminderChecks: report.reminderChecks || state.terminalReport?.reminderChecks || [],
+      terminalMessageChecks: report.terminalMessageChecks || state.terminalReport?.terminalMessageChecks || []
     };
     renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
     checkTerminalReminders(state.terminalReport, Boolean(state.terminalReport?.closed));
@@ -3480,6 +3637,8 @@ async function terminalAction(payload) {
   state.terminalSchedule = result.schedule || {};
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
+  state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
+  state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
   state.terminalDayMetaEditing = false;
   state.terminalCorrectionMode = Boolean(result.correctionMode || state.terminalReport?.correctionOpen);
   state.timesheets = result.entries || state.timesheets || {};
@@ -3502,6 +3661,8 @@ async function terminalLogin(code) {
   state.terminalSchedule = result.schedule || {};
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
+  state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
+  state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
   state.terminalCorrectionMode = false;
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
@@ -3547,6 +3708,8 @@ async function openCorrectionReport(button) {
     state.terminalSchedule = result.schedule || {};
     state.terminalTasks = result.tasks || [];
     state.terminalReminders = normalizeReminderTemplates(result.reminders);
+    state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
+    state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
     state.terminalCorrectionMode = true;
     state.timesheets = result.entries || state.timesheets || {};
     const status = $("#correctionStatus");
@@ -3600,6 +3763,8 @@ async function closeCorrectionReport(button) {
       state.terminalSchedule = result.schedule || state.terminalSchedule || {};
       state.terminalTasks = result.tasks || state.terminalTasks || [];
       state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
+      state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.terminalCleaningTemplates);
+      state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
     }
     const status = $("#correctionStatus");
     if (status) status.textContent = result.message || "Tagesbericht wieder abgeschlossen.";
@@ -4368,9 +4533,11 @@ function normalizeDepartment(value) {
   if (clean.startsWith("counter")) return "Counter";
   if (clean.startsWith("service")) return "Service";
   if (clean.startsWith("küche") || clean.startsWith("kueche") || clean.startsWith("kuche")) return "Kueche";
+  if (clean.includes("koch") || clean.includes("küchenchef") || clean.includes("kuechenchef") || clean.includes("kuchenchef")) return "Kueche";
   if (clean.startsWith("spüler") || clean.startsWith("spueler") || clean.startsWith("spuler")) return "Kueche";
   if (clean.startsWith("reinigung")) return "Reinigung";
   if (clean.startsWith("mechanik")) return "Mechanik";
+  if (clean.includes("mechaniker")) return "Mechanik";
   return value.trim();
 }
 
@@ -5204,6 +5371,49 @@ function bindEvents() {
     }
   });
 
+  $("#sendTerminalMessage")?.addEventListener("click", async () => {
+    const text = $("#terminalMessageText")?.value.trim() || "";
+    if (!text) {
+      showToast("Bitte Terminal-Nachricht eingeben.");
+      return;
+    }
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({
+          action: "add-terminal-message",
+          text
+        })
+      });
+      state.terminalMessages = result.terminalMessages || [];
+      $("#terminalMessageText").value = "";
+      renderAdminTerminalMessages();
+      renderTerminalLeaderMessages(state.terminalReport, Boolean(state.terminalReport?.closed));
+      showToast("Terminal-Nachricht gesendet.");
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  $("#adminTerminalMessagesList")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-delete-terminal-message]");
+    if (!button) return;
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({ action: "delete-terminal-message", id: button.dataset.deleteTerminalMessage })
+      });
+      state.terminalMessages = result.terminalMessages || [];
+      renderAdminTerminalMessages();
+      renderTerminalLeaderMessages(state.terminalReport, Boolean(state.terminalReport?.closed));
+      showToast("Terminal-Nachricht gelöscht.");
+    } catch (error) {
+      showError(error);
+    }
+  });
+
   $("#runningTaskFrequency")?.addEventListener("change", updateRunningTaskFields);
   $("#prepTaskFrequency")?.addEventListener("change", updatePrepClosingTaskFields);
   $("#closingTaskFrequency")?.addEventListener("change", updatePrepClosingTaskFields);
@@ -5372,6 +5582,15 @@ function bindEvents() {
     }
   }
 
+  async function refreshTerminalCleaning() {
+    if (!state.terminalToken) return;
+    try {
+      await terminalAction({ action: "load" });
+    } catch (error) {
+      console.warn("Reinigungsplan konnte nicht aktualisiert werden:", error);
+    }
+  }
+
   function withTaskDefaults(task) {
     return {
       id: `task-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -5426,6 +5645,55 @@ function bindEvents() {
       state.reminderTemplates = result.reminderTemplates || [];
       renderAdminReminders();
       showToast("Erinnerung gelöscht.");
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  $("#cleaningTaskFrequency")?.addEventListener("change", updateCleaningTaskFields);
+
+  $("#addCleaningTask")?.addEventListener("click", async () => {
+    const title = $("#cleaningTaskTitle")?.value.trim() || "";
+    const frequency = $("#cleaningTaskFrequency")?.value || "daily";
+    if (!title) return showToast("Bitte Reinigungsaufgabe eingeben.");
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({
+          action: "add-cleaning-template",
+          task: {
+            title,
+            frequency,
+            weekdays: frequency === "weekly" ? [Number($("#cleaningTaskWeekday")?.value || 1)] : [],
+            note: $("#cleaningTaskNote")?.value || ""
+          }
+        })
+      });
+      state.cleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates);
+      $("#cleaningTaskTitle").value = "";
+      $("#cleaningTaskNote").value = "";
+      renderAdminCleaningTasks();
+      await refreshTerminalCleaning();
+      showToast("Reinigungsaufgabe gespeichert.");
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  $("#adminCleaningTaskTable")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-delete-cleaning-task]");
+    if (!button) return;
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({ action: "delete-cleaning-template", id: button.dataset.deleteCleaningTask })
+      });
+      state.cleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates);
+      renderAdminCleaningTasks();
+      await refreshTerminalCleaning();
+      showToast("Reinigungsaufgabe gelöscht.");
     } catch (error) {
       showError(error);
     }
@@ -5538,6 +5806,24 @@ function bindEvents() {
     if (tab) {
       state.terminalTab = tab.dataset.terminalTab;
       renderTerminal();
+      return;
+    }
+    const terminalMessageButton = event.target.closest("[data-confirm-terminal-message]");
+    if (terminalMessageButton) {
+      const oldText = terminalMessageButton.textContent;
+      terminalMessageButton.disabled = true;
+      terminalMessageButton.textContent = "Quittiert...";
+      try {
+        const result = await terminalAction({
+          action: "confirm-terminal-message",
+          messageId: terminalMessageButton.dataset.confirmTerminalMessage
+        });
+        showToast(result.message || "Nachricht quittiert.");
+      } catch (error) {
+        terminalMessageButton.disabled = false;
+        terminalMessageButton.textContent = oldText;
+        showError(error);
+      }
       return;
     }
     const editDayMeta = event.target.closest("#editTerminalDayMeta");
