@@ -828,9 +828,10 @@ function dayReportsForMonthHtml(month) {
 
 function dayReportSummaryLine(report = {}) {
   return [
-    `Bar Gastro ${formatReportMoney(report.barGastro)}`,
-    `Bar Bowling ${formatReportMoney(report.barBowling)}`,
     `Bar gesamt ${formatReportMoney(barTotal(report))}`,
+    `EC ${formatReportMoney(reportEcTotal(report))}`,
+    `Umsatz ${formatReportMoney(reportRevenueTotal(report))}`,
+    `Trinkgeld ${formatReportMoney(reportTipTotal(report))}`,
     `Rechnung ${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}`,
     `Ausgaben ${formatReportMoney(reportItemsTotal(report.expenses))}`
   ].join(" · ");
@@ -839,12 +840,15 @@ function dayReportSummaryLine(report = {}) {
 function dayReportValuesHtml(report = {}) {
   return `
     <div class="day-report-values">
-      ${reportFieldEnabled("barGastro") ? `<span><small>Bar Gastro</small><strong>${formatReportMoney(report.barGastro)}</strong></span>` : ""}
-      ${reportFieldEnabled("barBowling") ? `<span><small>Bar Bowling</small><strong>${formatReportMoney(report.barBowling)}</strong></span>` : ""}
       ${reportFieldEnabled("barTotal") ? `<span><small>Bar gesamt</small><strong>${formatReportMoney(barTotal(report))}</strong></span>` : ""}
+      <span><small>Umsatz Bowling</small><strong>${formatReportMoney(report.revenueBowling || report.barBowling)}</strong></span>
+      <span><small>Umsatz Gastro</small><strong>${formatReportMoney(report.revenueGastro || report.barGastro)}</strong></span>
+      <span><small>Trinkgeld</small><strong>${formatReportMoney(reportTipTotal(report))}</strong></span>
       ${reportFieldEnabled("invoiceCustomers") ? `<span><small>Rechnung</small><strong>${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}</strong></span>` : ""}
       ${reportFieldEnabled("expenses") ? `<span><small>Ausgaben</small><strong>${formatReportMoney(reportItemsTotal(report.expenses))}</strong></span>` : ""}
-      ${reportFieldEnabled("ecTotal") ? `<span><small>EC gesamt</small><strong>${formatReportMoney(report.ecTotal)}</strong></span>` : ""}
+      ${reportFieldEnabled("ecTotal") && report.ecTerminal1 ? `<span><small>EC Terminal 1</small><strong>${formatReportMoney(report.ecTerminal1)}</strong></span>` : ""}
+      ${reportFieldEnabled("ecTotal") && report.ecTerminal2 ? `<span><small>EC Terminal 2</small><strong>${formatReportMoney(report.ecTerminal2)}</strong></span>` : ""}
+      ${reportFieldEnabled("ecTotal") ? `<span><small>EC gesamt</small><strong>${formatReportMoney(reportEcTotal(report))}</strong></span>` : ""}
     </div>
   `;
 }
@@ -853,9 +857,10 @@ function dayReportA4Html(dateKey, report = {}) {
   const invoiceTotalValue = reportItemsTotal(report.invoiceCustomers);
   const expenseTotalValue = reportItemsTotal(report.expenses);
   const cashTotalValue = barTotal(report);
-  const ecTotalValue = reportMoneyNumber(report.ecTotal);
-  const totalRevenueValue = cashTotalValue + ecTotalValue - invoiceTotalValue;
-  const cashToHandOverValue = cashTotalValue - expenseTotalValue;
+  const ecTotalValue = reportEcTotal(report);
+  const totalRevenueValue = reportRevenueTotal(report);
+  const tipTotalValue = reportTipTotal(report);
+  const cashToHandOverValue = Math.max(0, cashTotalValue - tipTotalValue);
   return `
     <section class="a4-report">
       <div class="a4-report-head">
@@ -872,10 +877,11 @@ function dayReportA4Html(dateKey, report = {}) {
 
       <div class="a4-report-kpis">
         ${reportFieldEnabled("barTotal") ? a4Kpi("Gesamt Bar", formatReportMoney(cashTotalValue)) : ""}
-        ${reportFieldEnabled("ecTotal") ? a4Kpi("EC gesamt", formatReportMoney(report.ecTotal)) : ""}
+        ${reportFieldEnabled("ecTotal") ? a4Kpi("EC gesamt", formatReportMoney(ecTotalValue)) : ""}
         ${reportFieldEnabled("invoiceCustomers") ? a4Kpi("Auf Rechnung", formatReportMoney(invoiceTotalValue)) : ""}
         ${reportFieldEnabled("expenses") ? a4Kpi("Ausgaben", formatReportMoney(expenseTotalValue)) : ""}
         ${a4Kpi("Gesamtumsatz", formatReportMoney(totalRevenueValue))}
+        ${a4Kpi("Trinkgeld", formatReportMoney(tipTotalValue))}
         ${a4Kpi("Bargeld abzugeben", formatReportMoney(cashToHandOverValue))}
       </div>
 
@@ -889,10 +895,15 @@ function dayReportA4Html(dateKey, report = {}) {
           <table class="a4-report-table">
             <tbody>
               <tr><th>Gesamt Bar</th><td>${formatReportMoney(cashTotalValue)}</td></tr>
-              <tr><th>Gesamt EC</th><td>${formatReportMoney(report.ecTotal)}</td></tr>
-              <tr><th>Bezahlung auf Rechnung</th><td>- ${formatReportMoney(invoiceTotalValue)}</td></tr>
+              ${report.ecTerminal1 ? `<tr><th>EC Terminal 1</th><td>${formatReportMoney(report.ecTerminal1)}</td></tr>` : ""}
+              ${report.ecTerminal2 ? `<tr><th>EC Terminal 2</th><td>${formatReportMoney(report.ecTerminal2)}</td></tr>` : ""}
+              <tr><th>Gesamt EC</th><td>${formatReportMoney(ecTotalValue)}</td></tr>
+              <tr><th>Umsatz Bowling</th><td>${formatReportMoney(report.revenueBowling || report.barBowling)}</td></tr>
+              <tr><th>Umsatz Gastro</th><td>${formatReportMoney(report.revenueGastro || report.barGastro)}</td></tr>
+              <tr><th>Bezahlung auf Rechnung</th><td>${formatReportMoney(invoiceTotalValue)}</td></tr>
               <tr><th>Gesamtumsatz</th><td>${formatReportMoney(totalRevenueValue)}</td></tr>
-              <tr><th>Ausgaben</th><td>- ${formatReportMoney(expenseTotalValue)}</td></tr>
+              <tr><th>Trinkgeld</th><td>${formatReportMoney(tipTotalValue)}</td></tr>
+              <tr><th>Ausgaben</th><td>${formatReportMoney(expenseTotalValue)}</td></tr>
               <tr><th>Bargeld abzugeben</th><td>${formatReportMoney(cashToHandOverValue)}</td></tr>
             </tbody>
           </table>
@@ -1438,7 +1449,24 @@ function reportItemsTotal(items = []) {
 }
 
 function barTotal(report = {}) {
+  if (report.cashTotal !== "" && report.cashTotal != null) return reportMoneyNumber(report.cashTotal);
   return reportMoneyNumber(report.barBowling) + reportMoneyNumber(report.barGastro);
+}
+
+function reportEcTotal(report = {}) {
+  const splitTotal = reportMoneyNumber(report.ecTerminal1) + reportMoneyNumber(report.ecTerminal2);
+  return splitTotal || reportMoneyNumber(report.ecTotal);
+}
+
+function reportRevenueTotal(report = {}) {
+  const split = reportMoneyNumber(report.revenueBowling || report.barBowling) + reportMoneyNumber(report.revenueGastro || report.barGastro);
+  if (split) return split;
+  return Math.max(0, barTotal(report) + reportEcTotal(report) - reportItemsTotal(report.invoiceCustomers));
+}
+
+function reportTipTotal(report = {}) {
+  if (report.tipTotal !== "" && report.tipTotal != null) return reportMoneyNumber(report.tipTotal);
+  return Math.max(0, barTotal(report) + reportEcTotal(report) - reportRevenueTotal(report));
 }
 
 function reportMoneyNumber(value) {
@@ -1458,8 +1486,10 @@ function exportDayReport(dateKey) {
   const invoiceTotalValue = reportItemsTotal(report.invoiceCustomers);
   const expenseTotalValue = reportItemsTotal(report.expenses);
   const cashTotalValue = barTotal(report);
-  const totalRevenueValue = cashTotalValue + reportMoneyNumber(report.ecTotal) - invoiceTotalValue;
-  const cashToHandOverValue = cashTotalValue - expenseTotalValue;
+  const ecTotalValue = reportEcTotal(report);
+  const totalRevenueValue = reportRevenueTotal(report);
+  const tipTotalValue = reportTipTotal(report);
+  const cashToHandOverValue = Math.max(0, cashTotalValue - tipTotalValue);
   const employees = reportEmployeesForDate(dateKey, report);
   const lines = [
     `Tagesbericht ${formatDate(dateKey)}`,
@@ -1474,10 +1504,15 @@ function exportDayReport(dateKey) {
     }) : ["- Keine Arbeitszeiten erfasst."]),
     "",
     `Gesamt Bar: ${formatReportMoney(cashTotalValue)}`,
-    `Gesamt EC: ${formatReportMoney(report.ecTotal)}`,
-    `Bezahlung auf Rechnung: - ${formatReportMoney(invoiceTotalValue)}`,
+    ...(report.ecTerminal1 ? [`EC Terminal 1: ${formatReportMoney(report.ecTerminal1)}`] : []),
+    ...(report.ecTerminal2 ? [`EC Terminal 2: ${formatReportMoney(report.ecTerminal2)}`] : []),
+    `Gesamt EC: ${formatReportMoney(ecTotalValue)}`,
+    `Umsatz Bowling: ${formatReportMoney(report.revenueBowling || report.barBowling)}`,
+    `Umsatz Gastro: ${formatReportMoney(report.revenueGastro || report.barGastro)}`,
+    `Bezahlung auf Rechnung: ${formatReportMoney(invoiceTotalValue)}`,
     `Gesamtumsatz: ${formatReportMoney(totalRevenueValue)}`,
-    `Ausgaben: - ${formatReportMoney(expenseTotalValue)}`,
+    `Trinkgeld: ${formatReportMoney(tipTotalValue)}`,
+    `Ausgaben: ${formatReportMoney(expenseTotalValue)}`,
     `Bargeld abzugeben: ${formatReportMoney(cashToHandOverValue)}`,
     ...(reportFieldEnabled("preparation") ? [reportPreparationLine(dateKey, report)] : []),
     "",
@@ -2519,21 +2554,47 @@ function parseMoneyInput(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function ecInputValue(selector, reportKey) {
+  const field = $(selector);
+  if (field) return field.value;
+  return state.terminalReport?.[reportKey] || "";
+}
+
+function ecTotalFromFormOrReport() {
+  const terminal1 = ecInputValue("#reportEcTerminal1", "ecTerminal1");
+  const terminal2 = ecInputValue("#reportEcTerminal2", "ecTerminal2");
+  if (String(terminal1 || terminal2).trim()) {
+    return parseMoneyInput(terminal1) + parseMoneyInput(terminal2);
+  }
+  return parseMoneyInput(state.terminalReport?.ecTotal || $("#reportEcTotal")?.value || "");
+}
+
+function updateEcTotalField() {
+  const field = $("#reportEcTotal");
+  if (!field) return;
+  field.value = ecTotalFromFormOrReport().toFixed(2).replace(".", ",");
+}
+
 function updateReportBarTotal() {
-  const target = $("#reportBarTotal");
-  if (!target) return;
-  target.value = (parseMoneyInput($("#reportBarBowling")?.value) + parseMoneyInput($("#reportBarGastro")?.value))
-    .toFixed(2)
-    .replace(".", ",");
+  updateEcTotalField();
+  renderTipDistribution();
   renderDayReportA4Summary(state.terminalDate || todayKey(), reportPreviewFromForm());
 }
 
 function reportPreviewFromForm() {
+  const cashTotal = $("#reportCashTotal")?.value || state.terminalReport?.cashTotal || "";
+  const revenueBowling = $("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "";
+  const revenueGastro = $("#reportRevenueGastro")?.value || state.terminalReport?.revenueGastro || state.terminalReport?.barGastro || "";
   return {
     ...(state.terminalReport || {}),
-    ecTotal: $("#reportEcTotal")?.value || state.terminalReport?.ecTotal || "",
-    barBowling: $("#reportBarBowling")?.value || state.terminalReport?.barBowling || "",
-    barGastro: $("#reportBarGastro")?.value || state.terminalReport?.barGastro || "",
+    cashTotal,
+    ecTerminal1: $("#reportEcTerminal1")?.value || state.terminalReport?.ecTerminal1 || "",
+    ecTerminal2: $("#reportEcTerminal2")?.value || state.terminalReport?.ecTerminal2 || "",
+    ecTotal: ecTotalFromFormOrReport().toFixed(2),
+    revenueBowling,
+    revenueGastro,
+    barBowling: revenueBowling,
+    barGastro: revenueGastro,
     openingHours: $("#terminalOpeningHours")?.value || state.terminalReport?.openingHours || "",
     shiftLeader: $("#terminalShiftLeader")?.value || state.terminalReport?.shiftLeader || ""
   };
@@ -2547,7 +2608,6 @@ function renderTerminal() {
   if ($("#terminalTitle")) $("#terminalTitle").textContent = "Tages-Terminal";
   if ($("#terminalCodeLabel")) $("#terminalCodeLabel").textContent = todoMode ? "TO-DO-Code" : "Terminal-Code";
   if ($("#unlockTerminal")) $("#unlockTerminal").textContent = "Terminal öffnen";
-  $("#printDayReport")?.classList.toggle("hidden", false);
   $(".terminal-tabs")?.classList.remove("hidden");
   $("#terminalLogin")?.classList.toggle("hidden", Boolean(state.terminalToken));
   $("#terminalContent")?.classList.toggle("hidden", !state.terminalToken);
@@ -2570,6 +2630,7 @@ function renderTerminal() {
   renderToiletStatus(report);
   checkTerminalReminders(report, reportClosed);
   renderTerminalCosts(dateKey, employees);
+  renderTipDistribution();
   $(".terminal-add")?.classList.remove("hidden");
   $("#terminalEmployees").innerHTML = employees.length ? employees.map((employee) => {
     const entry = entries[employee]?.[dateKey] || {};
@@ -2608,9 +2669,11 @@ function renderTerminal() {
     `;
   }).join("") : `<p class="hint">Für heute ist noch niemand im Dienstplan eingeteilt.</p>`;
 
-  $("#reportEcTotal").value = report.ecTotal || "";
-  $("#reportBarBowling").value = report.barBowling || "";
-  $("#reportBarGastro").value = report.barGastro || "";
+  $("#reportCashTotal").value = report.cashTotal || "";
+  $("#reportEcTerminal1").value = report.ecTerminal1 || "";
+  $("#reportEcTerminal2").value = report.ecTerminal2 || "";
+  $("#reportRevenueBowling").value = report.revenueBowling || report.barBowling || "";
+  $("#reportRevenueGastro").value = report.revenueGastro || report.barGastro || "";
   updateReportBarTotal();
   $("#reportNotes").value = report.notes || "";
   renderReportEntryLists(report);
@@ -2644,8 +2707,10 @@ function renderTerminalTabs() {
   $$(".terminal-tab").forEach((button) => button.classList.toggle("active", button.dataset.terminalTab === active));
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "tasks");
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "service");
+  $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "finance");
+  $("#terminalTipsSection")?.classList.toggle("hidden", active !== "tips");
   $("#terminalCleaningSection")?.classList.toggle("hidden", active !== "cleaning");
-  $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "finance");
+  $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "report");
 }
 
 function renderTerminalDayMeta(dateKey, report, reportClosed) {
@@ -3009,10 +3074,10 @@ function setDayReportLocked(isLocked, report = {}) {
   $("#dayReportLockStatus").textContent = isLocked
     ? `Abgeschlossen${report.closedAt ? ` am ${formatDateTime(report.closedAt)}` : ""}. Keine Änderungen mehr möglich.`
     : "Vor dem Tagesabschluss speichern und prüfen.";
-  target.querySelectorAll("input, textarea, select").forEach((field) => {
+  $$("#dayReportPrintArea input, #dayReportPrintArea textarea, #dayReportPrintArea select, #terminalFinanceSection input, #terminalFinanceSection textarea, #terminalFinanceSection select, #terminalTipsSection input, #terminalTipsSection textarea, #terminalTipsSection select").forEach((field) => {
     field.disabled = isLocked;
   });
-  target.querySelectorAll("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-remove-report-entry], #saveDayReport").forEach((button) => {
+  $$("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-remove-report-entry], #saveDayReport, #saveTipDistribution").forEach((button) => {
     button.disabled = isLocked;
   });
   const closeButton = $("#closeDayReport");
@@ -3300,11 +3365,19 @@ async function collectReportDocuments() {
 }
 
 async function collectDayReportPayload() {
+  const tipResult = calculateTipDistribution(state.terminalDate || todayKey());
   return {
     action: "save-report",
-    ecTotal: $("#reportEcTotal").value,
-    barBowling: $("#reportBarBowling").value,
-    barGastro: $("#reportBarGastro").value,
+    cashTotal: $("#reportCashTotal")?.value || "",
+    ecTerminal1: $("#reportEcTerminal1")?.value || "",
+    ecTerminal2: $("#reportEcTerminal2")?.value || "",
+    ecTotal: ecTotalFromFormOrReport().toFixed(2),
+    revenueBowling: $("#reportRevenueBowling")?.value || "",
+    revenueGastro: $("#reportRevenueGastro")?.value || "",
+    barBowling: $("#reportRevenueBowling")?.value || "",
+    barGastro: $("#reportRevenueGastro")?.value || "",
+    tipTotal: tipResult.tipTotal.toFixed(2),
+    tipsByEmployee: Object.fromEntries(tipResult.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
     openingHours: $("#terminalOpeningHours")?.value || "",
     shiftLeader: $("#terminalShiftLeader")?.value || "",
     handovers: state.terminalReport.handovers || [],
@@ -3602,6 +3675,125 @@ function renderTerminalCosts(dateKey, employees) {
   `;
 }
 
+function renderTipDistribution() {
+  const summary = $("#tipSummary");
+  const list = $("#tipDistributionList");
+  if (!summary || !list) return;
+  const result = calculateTipDistribution(state.terminalDate || todayKey());
+  summary.innerHTML = `
+    <article>
+      <span>Gesamtumsatz</span>
+      <strong>${formatMoney(result.totalRevenue)}</strong>
+      <small>Bowling + Gastro</small>
+    </article>
+    <article>
+      <span>Trinkgeld</span>
+      <strong>${formatMoney(result.tipTotal)}</strong>
+      <small>Bar + EC minus Umsatz</small>
+    </article>
+    <article>
+      <span>Abzugeben an Chef</span>
+      <strong>${formatMoney(result.cashToBoss)}</strong>
+      <small>Bar gesamt minus Trinkgeld</small>
+    </article>
+  `;
+  const groups = ["Counter", "Service", "Kueche"].map((area) => ({
+    area,
+    rows: result.rows.filter((row) => row.area === area)
+  })).filter((group) => group.rows.length);
+  list.innerHTML = groups.length ? groups.map((group) => `
+    <section class="tip-group">
+      <div class="terminal-task-group-head">
+        <h4>${escapeHtml(departmentLabel(group.area))}</h4>
+        <span>${formatMoney(group.rows.reduce((sum, row) => sum + row.tip, 0))}</span>
+      </div>
+      <div class="tip-rows">
+        ${group.rows.map((row) => `
+          <article class="tip-row">
+            <strong>${escapeHtml(row.employee)}</strong>
+            <span>${formatHours(row.hours)}</span>
+            <span>${row.factor < 1 ? "Küchenfaktor 75%" : "Normal"}</span>
+            <strong>${formatMoney(row.tip)}</strong>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `).join("") : `<p class="hint">Noch keine abgeschlossenen Arbeitszeiten für Counter, Service oder Küche.</p>`;
+}
+
+function calculateTipDistribution(dateKey) {
+  const cashTotal = parseMoneyInput($("#reportCashTotal")?.value || state.terminalReport?.cashTotal || "");
+  const ecTotal = ecTotalFromFormOrReport();
+  const revenueBowling = parseMoneyInput($("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "");
+  const revenueGastro = parseMoneyInput($("#reportRevenueGastro")?.value || state.terminalReport?.revenueGastro || state.terminalReport?.barGastro || "");
+  const totalRevenue = revenueBowling + revenueGastro;
+  const tipTotal = Math.max(0, cashTotal + ecTotal - totalRevenue);
+  const openingTime = tipOpeningTime(dateKey);
+  const employees = terminalEmployeesForDay(dateKey);
+  const entries = state.terminalEntries || {};
+  const baseRows = employees.map((employee) => {
+    const entry = entries[employee]?.[dateKey] || {};
+    const area = tipAreaForEmployee(employee);
+    const hours = paidHoursAfterOpening(entry, openingTime);
+    return { employee, area, hours };
+  }).filter((row) => ["Counter", "Service", "Kueche"].includes(row.area) && row.hours > 0);
+  const kitchenCount = baseRows.filter((row) => row.area === "Kueche").length;
+  const rowsWithWeight = baseRows.map((row) => {
+    const factor = row.area === "Kueche" && kitchenCount >= 2 ? 0.75 : 1;
+    return { ...row, factor, weight: row.hours * factor };
+  });
+  const totalWeight = rowsWithWeight.reduce((sum, row) => sum + row.weight, 0);
+  const rows = rowsWithWeight.map((row) => ({
+    ...row,
+    tip: totalWeight > 0 ? tipTotal * row.weight / totalWeight : 0
+  }));
+  return {
+    cashTotal,
+    ecTotal,
+    revenueBowling,
+    revenueGastro,
+    totalRevenue,
+    tipTotal,
+    cashToBoss: Math.max(0, cashTotal - tipTotal),
+    rows
+  };
+}
+
+function tipOpeningTime(dateKey) {
+  const text = $("#terminalOpeningHours")?.value || state.terminalReport?.openingHours || openingHoursFor(dateKey) || "";
+  const match = String(text).match(/(\d{1,2}):(\d{2})/);
+  return match ? `${String(match[1]).padStart(2, "0")}:${match[2]}` : "00:00";
+}
+
+function paidHoursAfterOpening(entry = {}, openingTime = "00:00") {
+  if (!entry.from || !entry.to) return 0;
+  const from = laterTime(entry.from, openingTime);
+  return paidHours({ ...entry, from });
+}
+
+function laterTime(left, right) {
+  return timeToMinutes(left) >= timeToMinutes(right) ? left : right;
+}
+
+function timeToMinutes(value) {
+  const [hours, minutes] = String(value || "00:00").split(":").map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function tipAreaForEmployee(employee) {
+  for (const [position, value] of Object.entries(state.terminalSchedule || {})) {
+    if (!position.includes("__") && value === employee) return departmentForPosition(position);
+  }
+  const extra = (state.terminalReport?.extraEmployees || [])
+    .map((item) => typeof item === "string" ? { employee: item, role: "" } : item)
+    .find((item) => item.employee === employee);
+  if (extra?.role) return departmentForPosition(extra.role);
+  const roleDepartment = normalizeDepartment(state.settings.employeeRoles?.[employee] || "");
+  if (roleDepartment) return roleDepartment;
+  const departments = departmentsForEmployee(state.settings.employeeDepartments || {}, employee).map(canonicalDepartmentChoice);
+  return ["Counter", "Service", "Kueche"].find((area) => departments.includes(area)) || "";
+}
+
 function terminalPlannedCosts() {
   const hourlyRate = currentHourlyRate();
   const totalHours = Object.entries(state.terminalSchedule || {}).reduce((sum, [position, employee]) => {
@@ -3856,9 +4048,14 @@ async function confirmToiletCheck() {
   try {
     await terminalAction({
       action: "save-report",
-      ecTotal: $("#reportEcTotal")?.value || state.terminalReport.ecTotal || "",
-      barBowling: $("#reportBarBowling")?.value || state.terminalReport.barBowling || "",
-      barGastro: $("#reportBarGastro")?.value || state.terminalReport.barGastro || "",
+      cashTotal: $("#reportCashTotal")?.value || state.terminalReport.cashTotal || "",
+      ecTerminal1: $("#reportEcTerminal1")?.value || state.terminalReport.ecTerminal1 || "",
+      ecTerminal2: $("#reportEcTerminal2")?.value || state.terminalReport.ecTerminal2 || "",
+      ecTotal: ecTotalFromFormOrReport().toFixed(2),
+      revenueBowling: $("#reportRevenueBowling")?.value || state.terminalReport.revenueBowling || state.terminalReport.barBowling || "",
+      revenueGastro: $("#reportRevenueGastro")?.value || state.terminalReport.revenueGastro || state.terminalReport.barGastro || "",
+      barBowling: $("#reportRevenueBowling")?.value || state.terminalReport.barBowling || "",
+      barGastro: $("#reportRevenueGastro")?.value || state.terminalReport.barGastro || "",
       openingHours: $("#terminalOpeningHours")?.value || state.terminalReport.openingHours || "",
       shiftLeader: $("#terminalShiftLeader")?.value || state.terminalReport.shiftLeader || "",
       handovers: state.terminalReport.handovers || [],
@@ -6078,7 +6275,7 @@ function bindEvents() {
     list.insertAdjacentHTML("beforeend", expenseRowHtml());
   });
 
-  $("#dayReportPrintArea")?.addEventListener("click", (event) => {
+  $("#terminalFinanceSection")?.addEventListener("click", (event) => {
     const draftButton = event.target.closest("[data-save-invoice-draft]");
     if (draftButton) {
       saveInvoiceRow(draftButton, false);
@@ -6118,9 +6315,42 @@ function bindEvents() {
     }
   });
 
-  $("#reportBarBowling")?.addEventListener("input", updateReportBarTotal);
-  $("#reportBarGastro")?.addEventListener("input", updateReportBarTotal);
-  $("#reportEcTotal")?.addEventListener("input", () => renderDayReportA4Summary(state.terminalDate || todayKey(), reportPreviewFromForm()));
+  ["#reportCashTotal", "#reportEcTerminal1", "#reportEcTerminal2", "#reportRevenueBowling", "#reportRevenueGastro"].forEach((selector) => {
+    $(selector)?.addEventListener("input", updateReportBarTotal);
+  });
+
+  $("#saveTipDistribution")?.addEventListener("click", async () => {
+    const button = $("#saveTipDistribution");
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Speichert...";
+    try {
+      const result = calculateTipDistribution(state.terminalDate || todayKey());
+      await terminalAction({
+        action: "save-tips",
+        cashTotal: $("#reportCashTotal")?.value || "",
+        ecTerminal1: $("#reportEcTerminal1")?.value || "",
+        ecTerminal2: $("#reportEcTerminal2")?.value || "",
+        ecTotal: ecTotalFromFormOrReport().toFixed(2),
+        revenueBowling: $("#reportRevenueBowling")?.value || "",
+        revenueGastro: $("#reportRevenueGastro")?.value || "",
+        tipTotal: result.tipTotal.toFixed(2),
+        tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)]))
+      });
+      button.textContent = "Gespeichert";
+      showToast("Trinkgeld wurde verteilt.");
+      window.setTimeout(() => {
+        button.textContent = oldText;
+      }, 1400);
+    } catch (error) {
+      button.textContent = oldText;
+      showError(error);
+    } finally {
+      window.setTimeout(() => {
+        button.disabled = false;
+      }, 300);
+    }
+  });
 
   $("#closeDayReport")?.addEventListener("click", async () => {
     if (!confirm("Tagesbericht abschließen? Danach kann er nicht mehr verändert werden.")) return;
@@ -6139,7 +6369,9 @@ function bindEvents() {
     }
   });
 
-  $("#printDayReport")?.addEventListener("click", () => {
+  $("#printDayReport")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
     const report = $("#dayReportPrintArea");
     if (report) report.open = true;
     window.print();

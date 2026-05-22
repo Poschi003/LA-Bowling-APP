@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260520-reinigungsplan-v1">
+    <link rel="stylesheet" href="styles.css?v=20260522-terminal-trinkgeld-v2">
   </head>
   <body>
     <header class="topbar">
@@ -106,7 +106,6 @@
             <h2 id="terminalTitle">Tages-Terminal</h2>
             <p id="terminalDate">Heute</p>
           </div>
-          <button id="printDayReport" class="secondary">Tagesbericht drucken</button>
         </div>
         <div id="terminalLogin" class="form-grid">
           <label>
@@ -125,36 +124,13 @@
           <div id="terminalDayMetaDisplay" class="terminal-day-meta-display hidden"></div>
           <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
           <div id="terminalLeaderMessages" class="terminal-leader-messages hidden"></div>
-          <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
-            <div class="terminal-task-group-head">
-              <div>
-                <h4>Übergabe</h4>
-                <span id="handoverCount">0 Übergaben</span>
-              </div>
-              <button id="openHandover" class="secondary" type="button">Übergabe eintragen</button>
-            </div>
-            <div id="handoverList" class="terminal-handover-list"></div>
-          </section>
-          <div id="handoverModal" class="handover-modal hidden" role="dialog" aria-modal="true">
-            <section class="terminal-handover">
-              <div class="terminal-task-group-head">
-                <h4>Übergabe Schichtleitung</h4>
-                <button id="closeHandover" class="secondary" type="button">Schließen</button>
-              </div>
-              <div class="terminal-handover-form form-grid">
-              <label>Von<select id="handoverFrom"></select></label>
-              <label>An<select id="handoverTo"></select></label>
-              <label>Uhrzeit<input id="handoverTime" type="time"></label>
-              <label>Offene Punkte<textarea id="handoverNote" rows="3" placeholder="Was muss die nächste Schicht wissen?"></textarea></label>
-              <button id="saveHandover" class="primary" type="button">Übergabe speichern</button>
-              </div>
-            </section>
-          </div>
           <nav class="terminal-tabs" aria-label="Terminal-Bereiche">
             <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
             <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
+            <button class="terminal-tab" data-terminal-tab="tips" type="button">Trinkgeld</button>
             <button class="terminal-tab" data-terminal-tab="cleaning" type="button">Reinigung</button>
+            <button class="terminal-tab" data-terminal-tab="report" type="button">Tagesbericht</button>
           </nav>
           <section id="terminalTasksSection" class="terminal-section hidden">
             <div class="terminal-section-head">
@@ -167,6 +143,31 @@
             <div id="toiletCheckStatus" class="toilet-check-status"></div>
           </section>
           <section id="terminalServiceSection" class="terminal-section hidden">
+            <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
+              <div class="terminal-task-group-head">
+                <div>
+                  <h4>Übergabe</h4>
+                  <span id="handoverCount">0 Übergaben</span>
+                </div>
+                <button id="openHandover" class="secondary" type="button">Übergabe eintragen</button>
+              </div>
+              <div id="handoverList" class="terminal-handover-list"></div>
+            </section>
+            <div id="handoverModal" class="handover-modal hidden" role="dialog" aria-modal="true">
+              <section class="terminal-handover">
+                <div class="terminal-task-group-head">
+                  <h4>Übergabe Schichtleitung</h4>
+                  <button id="closeHandover" class="secondary" type="button">Schließen</button>
+                </div>
+                <div class="terminal-handover-form form-grid">
+                <label>Von<select id="handoverFrom"></select></label>
+                <label>An<select id="handoverTo"></select></label>
+                <label>Uhrzeit<input id="handoverTime" type="time"></label>
+                <label>Offene Punkte<textarea id="handoverNote" rows="3" placeholder="Was muss die nächste Schicht wissen?"></textarea></label>
+                <button id="saveHandover" class="primary" type="button">Übergabe speichern</button>
+                </div>
+              </section>
+            </div>
             <div class="terminal-add form-grid">
               <label>
                 Ungeplanten Mitarbeiter hinzufügen
@@ -177,30 +178,12 @@
             <div id="terminalCostSummary" class="terminal-cost-summary"></div>
             <div id="terminalEmployees" class="terminal-employees"></div>
           </section>
-          <section id="terminalCleaningSection" class="terminal-section hidden">
+          <section id="terminalFinanceSection" class="terminal-section hidden">
             <div class="terminal-section-head">
               <div>
-                <h3>Reinigungspläne</h3>
-                <p class="hint">Tägliche und wöchentliche Kontrollen mit ausführender Person dokumentieren.</p>
+                <h3>Finanz</h3>
+                <p class="hint">Rechnungskunden, Ausgaben und Abschlussdokumente für den Tagesbericht.</p>
               </div>
-              <button id="printCleaningPlan" class="secondary" type="button">Reinigungsplan drucken</button>
-            </div>
-            <div id="terminalCleaningList" class="terminal-cleaning-list"></div>
-          </section>
-          <details id="dayReportPrintArea" class="day-report">
-            <summary class="day-report-title">
-              <div>
-                <h3>Tagesbericht</h3>
-                <p id="dayReportLockStatus" class="hint"></p>
-              </div>
-              <span class="day-report-toggle-label">Öffnen</span>
-            </summary>
-            <div id="dayReportA4Summary" class="day-report-a4-summary"></div>
-            <div class="day-report-grid">
-              <label data-report-field-box="ecTotal">EC gesamt<input id="reportEcTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
-              <label data-report-field-box="barBowling">Bar Bowling<input id="reportBarBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
-              <label data-report-field-box="barGastro">Bar Gastro<input id="reportBarGastro" type="number" min="0" step="0.01" placeholder="0,00"></label>
-              <label data-report-field-box="barTotal">Bar gesamt<input id="reportBarTotal" type="text" readonly placeholder="0,00"></label>
             </div>
             <details class="report-subsection" data-report-field-box="invoiceCustomers">
               <summary>Kunden auf Rechnung</summary>
@@ -220,6 +203,45 @@
               </div>
               <div id="reportDocumentStatus" class="report-entry-list"></div>
             </details>
+          </section>
+          <section id="terminalTipsSection" class="terminal-section hidden">
+            <div class="terminal-section-head">
+              <div>
+                <h3>Trinkgeld</h3>
+                <p class="hint">Trinkgeld wird nach Arbeitszeit ab Öffnung auf Counter, Service und Küche verteilt.</p>
+              </div>
+              <button id="saveTipDistribution" class="primary" type="button">Trinkgeld speichern</button>
+            </div>
+            <div class="tip-input-grid">
+              <label>Bar gesamt<input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
+              <label>EC Terminal 1<input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"></label>
+              <label>EC Terminal 2<input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"></label>
+              <label>EC gesamt<input id="reportEcTotal" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
+              <label>Umsatz Bowling<input id="reportRevenueBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
+              <label>Umsatz Gastro<input id="reportRevenueGastro" type="number" min="0" step="0.01" placeholder="0,00"></label>
+            </div>
+            <div id="tipSummary" class="tip-summary"></div>
+            <div id="tipDistributionList" class="tip-distribution-list"></div>
+          </section>
+          <section id="terminalCleaningSection" class="terminal-section hidden">
+            <div class="terminal-section-head">
+              <div>
+                <h3>Reinigungspläne</h3>
+                <p class="hint">Tägliche und wöchentliche Kontrollen mit ausführender Person dokumentieren.</p>
+              </div>
+              <button id="printCleaningPlan" class="secondary" type="button">Reinigungsplan drucken</button>
+            </div>
+            <div id="terminalCleaningList" class="terminal-cleaning-list"></div>
+          </section>
+          <details id="dayReportPrintArea" class="day-report">
+            <summary class="day-report-title">
+              <div>
+                <h3>Tagesbericht</h3>
+                <p id="dayReportLockStatus" class="hint"></p>
+              </div>
+              <button id="printDayReport" class="secondary" type="button">Tagesbericht drucken</button>
+            </summary>
+            <div id="dayReportA4Summary" class="day-report-a4-summary"></div>
             <label data-report-field-box="notes">Notizen<textarea id="reportNotes" rows="5"></textarea></label>
             <div class="day-report-actions">
               <button id="saveDayReport" class="primary">Tagesbericht speichern</button>
@@ -720,7 +742,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260520-terminal-zentrale-v2"></script>
+    <script src="teamapp-client.js?v=20260522-terminal-trinkgeld-v2"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

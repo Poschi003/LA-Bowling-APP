@@ -2015,7 +2015,7 @@ button:disabled {
 
 .terminal-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 8px;
 }
 
@@ -2042,6 +2042,72 @@ button:disabled {
   border-radius: var(--radius);
   background: #fff;
   padding: 14px;
+}
+
+.tip-input-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.tip-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tip-summary article {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  padding: 12px;
+}
+
+.tip-summary span,
+.tip-summary small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.tip-summary strong {
+  display: block;
+  margin: 4px 0;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.tip-distribution-list {
+  display: grid;
+  gap: 12px;
+}
+
+.tip-group {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #fff;
+}
+
+.tip-rows {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.tip-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 100px 140px 120px;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 10px;
+}
+
+.tip-row span {
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .terminal-day-head {
@@ -3599,6 +3665,9 @@ button:disabled {
   .terminal-actions,
   .terminal-cleaning-row,
   .terminal-cost-summary,
+  .tip-input-grid,
+  .tip-summary,
+  .tip-row,
   .day-report-grid,
   .day-report-values,
   .a4-report-head,
