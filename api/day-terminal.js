@@ -26,6 +26,7 @@ module.exports = async function handler(req, res) {
     if (action === "confirm-terminal-message") return confirmTerminalMessage(body, res);
     if (action === "save-day-meta") return saveDayMeta(body, res);
     if (action === "add-handover") return addHandover(body, res);
+    if (action === "save-tips") return saveTips(body, res);
     if (action === "save-report") return saveReport(body, res);
     if (action === "close-report") return closeReport(body, res);
     return sendJson(res, 400, { error: "Unbekannte Aktion." });
@@ -193,9 +194,32 @@ async function saveReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen und kann nicht mehr geaendert werden." });
   appData.dayReports ||= {};
-  appData.dayReports[date] = { ...existing, ecTotal: cleanMoney(body.ecTotal), barBowling: cleanMoney(body.barBowling), barGastro: cleanMoney(body.barGastro), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), updatedAt: new Date().toISOString() };
+  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), ecTotal: cleanMoney(body.ecTotal), revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueGastro: cleanMoney(body.revenueGastro ?? body.barGastro), barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: cleanMoney(body.barGastro ?? body.revenueGastro), tipTotal: cleanMoney(body.tipTotal), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), updatedAt: new Date().toISOString() };
+  applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
+}
+
+async function saveTips(body, res) {
+  const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  appData.dayReports ||= {};
+  const tipsByEmployee = cleanTipsByEmployee(body.tipsByEmployee || {});
+  appData.dayReports[date] = {
+    ...existing,
+    cashTotal: cleanMoney(body.cashTotal),
+    ecTotal: cleanMoney(body.ecTotal),
+    revenueBowling: cleanMoney(body.revenueBowling),
+    revenueGastro: cleanMoney(body.revenueGastro),
+    barBowling: cleanMoney(body.revenueBowling),
+    barGastro: cleanMoney(body.revenueGastro),
+    tipTotal: cleanMoney(body.tipTotal),
+    tipsByEmployee,
+    updatedAt: new Date().toISOString()
+  };
+  applyTipsToTimesheets(appData, date, tipsByEmployee);
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Trinkgeld gespeichert.", ...terminalPayload(appData, date) });
 }
 
 async function completeTask(body, res) {
@@ -370,7 +394,7 @@ function reportHasActivity(report = {}) {
 }
 
 function defaultReport(report = {}) {
-  return { ecTotal: "", barBowling: "", barGastro: "", invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+  return { cashTotal: "", ecTotal: "", revenueBowling: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
 }
 
 function activeTerminalMessages(appData) {
@@ -416,6 +440,32 @@ function cleanCleaningCompletions(value) {
     employee: cleanText(item?.employee, 160),
     doneAt: String(item?.doneAt || "")
   }]));
+}
+
+function cleanTipsByEmployee(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([employee, amount]) => [
+    cleanText(employee, 160),
+    cleanMoney(amount)
+  ]).filter(([employee]) => employee));
+}
+
+function applyTipsToTimesheets(appData, date, tipsByEmployee = {}) {
+  const month = date.slice(0, 7);
+  appData.timesheets ||= {};
+  appData.timesheets[month] ||= {};
+  for (const [employee, tip] of Object.entries(tipsByEmployee || {})) {
+    if (!(appData.settings.employees || []).includes(employee)) continue;
+    appData.timesheets[month][employee] ||= {};
+    const existing = appData.timesheets[month][employee][date] || {};
+    if (!existing.from && !existing.to) continue;
+    appData.timesheets[month][employee][date] = {
+      ...existing,
+      tip,
+      tipSource: "terminal-distribution",
+      updatedAt: new Date().toISOString()
+    };
+  }
 }
 
 function cleanToiletChecks(value) {
