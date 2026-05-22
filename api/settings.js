@@ -248,16 +248,12 @@ function cleanReminder(reminder) {
 }
 
 function cleanCleaningTemplate(task) {
-  const frequency = ["daily", "weekly"].includes(task.frequency) ? task.frequency : "daily";
-  const weekdays = frequency === "weekly" && Array.isArray(task.weekdays)
-    ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6)
-    : [];
   return {
     id: String(task.id || `cleaning-${Date.now()}-${Math.random().toString(16).slice(2)}`),
     title: String(task.title || "").trim().slice(0, 180),
     note: String(task.note || "").trim().slice(0, 600),
-    frequency,
-    weekdays: frequency === "weekly" ? (weekdays.length ? weekdays : [1]) : [],
+    frequency: "weekly",
+    weekdays: [],
     createdAt: String(task.createdAt || new Date().toISOString()).slice(0, 40)
   };
 }

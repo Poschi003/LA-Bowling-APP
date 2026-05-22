@@ -362,7 +362,7 @@ async function closeReport(body, res) {
 function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: appData.cleaningTemplates || [], reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData) };
+  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData) };
 }
 
 function activeTerminalDate(appData, requestedDate) {
@@ -402,6 +402,33 @@ function reportHasActivity(report = {}) {
 
 function defaultReport(report = {}) {
   return { cashTotal: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", revenueBowling: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+}
+
+function weeklyCleaningTemplates(templates = []) {
+  return (Array.isArray(templates) ? templates : []).filter((task) => task && task.frequency === "weekly" && task.title);
+}
+
+function weeklyCleaningCompletions(appData, dateKey) {
+  const range = weekRange(dateKey);
+  const completions = {};
+  Object.entries(appData.dayReports || {}).forEach(([reportDate, report]) => {
+    if (reportDate < range.start || reportDate > range.end) return;
+    Object.entries(report?.cleaningCompletions || {}).forEach(([id, item]) => {
+      if (!item?.done) return;
+      completions[id] = { ...item, date: reportDate };
+    });
+  });
+  return completions;
+}
+
+function weekRange(dateKey) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  const diffToMonday = (date.getDay() + 6) % 7;
+  const start = new Date(date);
+  start.setDate(date.getDate() - diffToMonday);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { start: localDate(start), end: localDate(end) };
 }
 
 function activeTerminalMessages(appData) {
