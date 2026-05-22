@@ -197,7 +197,15 @@ async function saveReport(body, res) {
   const ecTerminal1 = Object.prototype.hasOwnProperty.call(body, "ecTerminal1") ? cleanMoney(body.ecTerminal1) : existing.ecTerminal1 || "";
   const ecTerminal2 = Object.prototype.hasOwnProperty.call(body, "ecTerminal2") ? cleanMoney(body.ecTerminal2) : existing.ecTerminal2 || "";
   const ecTotal = cleanEcTotal(body.ecTotal, ecTerminal1, ecTerminal2);
-  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), ecTerminal1, ecTerminal2, ecTotal, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueGastro: cleanMoney(body.revenueGastro ?? body.barGastro), barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: cleanMoney(body.barGastro ?? body.revenueGastro), tipTotal: cleanMoney(body.tipTotal), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), updatedAt: new Date().toISOString() };
+  const revenueDrinks = cleanMoney(body.revenueDrinks ?? existing.revenueDrinks);
+  const revenueFood = cleanMoney(body.revenueFood ?? existing.revenueFood);
+  const revenueOther = cleanMoney(body.revenueOther ?? existing.revenueOther);
+  const revenueGastro = cleanGastroTotal(body.revenueGastro ?? body.barGastro ?? existing.revenueGastro ?? existing.barGastro, revenueDrinks, revenueFood, revenueOther);
+  const invoiceCustomers = await cleanReportItems(body.invoiceCustomers, "invoice", date);
+  const expenses = await cleanReportItems(body.expenses, "expense", date);
+  const documents = await cleanReportDocuments(body.documents || existing.documents, date);
+  upsertCustomerDirectory(appData, invoiceCustomers);
+  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), ecTerminal1, ecTerminal2, ecTotal, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), updatedAt: new Date().toISOString() };
   applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
@@ -210,6 +218,10 @@ async function saveTips(body, res) {
   const tipsByEmployee = cleanTipsByEmployee(body.tipsByEmployee || {});
   const ecTerminal1 = cleanMoney(body.ecTerminal1);
   const ecTerminal2 = cleanMoney(body.ecTerminal2);
+  const revenueDrinks = cleanMoney(body.revenueDrinks);
+  const revenueFood = cleanMoney(body.revenueFood);
+  const revenueOther = cleanMoney(body.revenueOther);
+  const revenueGastro = cleanGastroTotal(body.revenueGastro, revenueDrinks, revenueFood, revenueOther);
   appData.dayReports[date] = {
     ...existing,
     cashTotal: cleanMoney(body.cashTotal),
@@ -217,9 +229,12 @@ async function saveTips(body, res) {
     ecTerminal2,
     ecTotal: cleanEcTotal(body.ecTotal, ecTerminal1, ecTerminal2),
     revenueBowling: cleanMoney(body.revenueBowling),
-    revenueGastro: cleanMoney(body.revenueGastro),
+    revenueDrinks,
+    revenueFood,
+    revenueOther,
+    revenueGastro,
     barBowling: cleanMoney(body.revenueBowling),
-    barGastro: cleanMoney(body.revenueGastro),
+    barGastro: revenueGastro,
     tipTotal: cleanMoney(body.tipTotal),
     tipsByEmployee,
     updatedAt: new Date().toISOString()
@@ -362,7 +377,7 @@ async function closeReport(body, res) {
 function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData) };
+  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory) };
 }
 
 function activeTerminalDate(appData, requestedDate) {
@@ -401,7 +416,7 @@ function reportHasActivity(report = {}) {
 }
 
 function defaultReport(report = {}) {
-  return { cashTotal: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", revenueBowling: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+  return { cashTotal: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", revenueBowling: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
 }
 
 function weeklyCleaningTemplates(templates = []) {
@@ -570,6 +585,11 @@ function cleanEcTotal(value, ecTerminal1 = "", ecTerminal2 = "") {
   if (first || second) return (Number(first || 0) + Number(second || 0)).toFixed(2);
   return cleanMoney(value);
 }
+function cleanGastroTotal(value, drinks = "", food = "", other = "") {
+  const parts = [drinks, food, other].map(cleanMoney);
+  if (parts.some(Boolean)) return parts.reduce((sum, part) => sum + Number(part || 0), 0).toFixed(2);
+  return cleanMoney(value);
+}
 function cleanTime(value) { const text = String(value || "").trim(); return /^\d{2}:\d{2}$/.test(text) ? text : ""; }
 function normalizeBreaks(value) {
   if (!Array.isArray(value)) return [];
@@ -671,6 +691,53 @@ async function cleanReportItems(items, type, date) {
     return item;
   }));
   return cleaned.filter((i) => i.name || i.amount || i.note || i.receiptData || i.receiptPath || i.bowlingReceiptData || i.bowlingReceiptPath || i.gastroReceiptData || i.gastroReceiptPath || i.address || i.contact || i.phone || i.tip || i.email);
+}
+function upsertCustomerDirectory(appData, customers) {
+  const byKey = new Map();
+  normalizeCustomerDirectory(appData.customerDirectory).forEach((customer) => {
+    const key = customerDirectoryKey(customer);
+    if (key) byKey.set(key, customer);
+  });
+  (Array.isArray(customers) ? customers : [customers]).forEach((customer) => {
+    const entry = customerDirectoryEntry(customer);
+    const key = customerDirectoryKey(entry);
+    if (!key) return;
+    byKey.set(key, { ...(byKey.get(key) || {}), ...entry, updatedAt: new Date().toISOString() });
+  });
+  appData.customerDirectory = [...byKey.values()]
+    .filter((customer) => customer.name)
+    .sort((a, b) => a.name.localeCompare(b.name, "de"))
+    .slice(0, 500);
+}
+function normalizeCustomerDirectory(customers) {
+  const byKey = new Map();
+  (Array.isArray(customers) ? customers : []).forEach((customer) => {
+    const entry = customerDirectoryEntry(customer);
+    const key = customerDirectoryKey(entry);
+    if (key) byKey.set(key, { ...(byKey.get(key) || {}), ...entry });
+  });
+  return [...byKey.values()].filter((customer) => customer.name).sort((a, b) => a.name.localeCompare(b.name, "de")).slice(0, 500);
+}
+function customerDirectoryEntry(item = {}) {
+  return {
+    id: cleanText(item.id || customerDirectoryKey(item) || `customer-${Date.now()}-${Math.random().toString(16).slice(2)}`, 120),
+    name: cleanText(item.name, 160),
+    contact: cleanText(item.contact, 160),
+    phone: cleanText(item.phone, 80),
+    email: cleanText(item.email, 180),
+    address: cleanText(item.address, 600),
+    tip: cleanText(item.tip, 160),
+    note: cleanText(item.note, 600),
+    createdAt: cleanText(item.createdAt || new Date().toISOString(), 80),
+    updatedAt: cleanText(item.updatedAt || item.createdAt || new Date().toISOString(), 80)
+  };
+}
+function customerDirectoryKey(item = {}) {
+  const email = cleanText(item.email, 180).toLowerCase();
+  if (email) return `mail:${email}`;
+  const name = cleanText(item.name, 160).toLowerCase();
+  const phone = cleanText(item.phone, 80).replace(/\s+/g, "");
+  return name ? `name:${name}|${phone}` : "";
 }
 function verifyTerminalCode(settings, code) { return verifyPin(code, settings?.terminalCodeHash || settings?.terminalCode || process.env.DEFAULT_TERMINAL_CODE || "2468"); }
 function verifyPin(pin, stored) { if (!pin || !stored) return false; if (!String(stored).startsWith("pbkdf2_sha256$")) return String(pin) === String(stored); const [, iterations, salt, digest] = String(stored).split("$"), test = crypto.pbkdf2Sync(String(pin), salt, Number(iterations), 32, "sha256").toString("hex"); return crypto.timingSafeEqual(Buffer.from(test, "hex"), Buffer.from(digest, "hex")); }
