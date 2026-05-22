@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260522-weekly-cleaning-v1">
+    <link rel="stylesheet" href="styles.css?v=20260522-dashboard-lesebestaetigung-v1">
   </head>
   <body>
     <header class="topbar">
@@ -412,10 +412,7 @@
                 <option value="employees">Einzelne Mitarbeiter</option>
               </select>
             </label>
-            <label>
-              Einzelne Mitarbeiter, eine Person pro Zeile
-              <textarea id="messageEmployees" rows="3" placeholder="Nur bei Einzelne Mitarbeiter nötig"></textarea>
-            </label>
+            <div id="messageEmployeePicker" class="message-employee-picker checkbox-grid hidden"></div>
             <label>
               Nachricht
               <textarea id="messageText" rows="3" placeholder="Nachricht fürs Dashboard"></textarea>
@@ -584,12 +581,9 @@
             </section>
             <section>
               <h4>Tagesbericht</h4>
-              <p class="settings-note">Der Tagesbericht ist das Abschlussdokument fuer den Chef: Personalzeiten, Umsaetze, Rechnungskunden, Ausgaben und Abschlussdokumente gehoeren in eine klare A4-Ansicht.</p>
+              <p class="settings-note">Der Tagesbericht ist das Abschlussdokument fuer den Chef: Umsaetze, Rechnungskunden, EC, Ausgaben und Abgabe an Chef gehoeren in eine klare A4-Ansicht.</p>
               <div class="checkbox-grid report-definition-grid">
                 <label><input type="checkbox" data-day-report-field="ecTotal"> EC gesamt</label>
-                <label><input type="checkbox" data-day-report-field="barBowling"> Bar Bowling</label>
-                <label><input type="checkbox" data-day-report-field="barGastro"> Bar Gastro</label>
-                <label><input type="checkbox" data-day-report-field="barTotal"> Bar gesamt</label>
                 <label><input type="checkbox" data-day-report-field="invoiceCustomers"> Kunden auf Rechnung</label>
                 <label><input type="checkbox" data-day-report-field="expenses"> Ausgaben</label>
                 <label><input type="checkbox" data-day-report-field="documents"> Penta / Handschrift</label>
@@ -728,7 +722,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260522-weekly-cleaning-v1"></script>
+    <script src="teamapp-client.js?v=20260522-dashboard-lesebestaetigung-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

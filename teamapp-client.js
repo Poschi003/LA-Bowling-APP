@@ -548,6 +548,7 @@ function renderAll() {
   renderAdminPublishedList();
   renderAdminSwaps();
   renderAdminAvailabilityRequests();
+  renderMessageEmployeePicker();
   renderAdminMessages();
   renderAdminTerminalMessages();
   renderAdminTasks();
@@ -650,7 +651,7 @@ function renderHome() {
 }
 
 function renderDashboardMessages() {
-  const messages = state.messages || [];
+  const messages = dashboardMessagesForActiveEmployee();
   if (!messages.length) return "";
   return `
     <section class="dashboard-messages">
@@ -658,16 +659,46 @@ function renderDashboardMessages() {
         <article class="dashboard-message">
           <strong>${messageTargetLabel(message)}</strong>
           <p>${escapeHtml(message.text)}</p>
+          <button class="secondary dashboard-message-read" data-ack-message="${escapeHtml(message.id)}" type="button">Gelesen</button>
         </article>
       `).join("")}
     </section>
   `;
 }
 
+function dashboardMessagesForActiveEmployee() {
+  if (!state.activeEmployee) return [];
+  return (state.messages || []).filter((message) => {
+    if (message.readBy?.[state.activeEmployee]) return false;
+    return messageRecipientsClient(message).includes(state.activeEmployee);
+  });
+}
+
 function messageTargetLabel(message) {
   if (message.target === "all") return "Nachricht an alle";
-  if (message.target === "employees") return "Nachricht";
+  if (message.target === "employees") {
+    const recipients = messageRecipientsClient(message);
+    return recipients.length === 1 ? `Nachricht an ${recipients[0]}` : `Nachricht an ${recipients.length || ""} Mitarbeiter`;
+  }
   return `Nachricht ${message.target}`;
+}
+
+function messageRecipientsClient(message = {}) {
+  if (Array.isArray(message.recipients) && message.recipients.length) return message.recipients;
+  const employees = state.settings?.employees || [];
+  if (message.target === "all") return employees;
+  if (message.target === "employees") {
+    const wanted = new Set((message.employees || []).map(String));
+    return employees.filter((employee) => wanted.has(employee));
+  }
+  return employees.filter((employee) => employeeMatchesDepartment(employee, message.target));
+}
+
+function employeeMatchesDepartment(employee, target) {
+  const wanted = normalizeDepartment(target);
+  const departments = departmentsForEmployee(state.settings?.employeeDepartments || {}, employee).map(normalizeDepartment);
+  const role = normalizeDepartment(state.settings?.employeeRoles?.[employee] || "");
+  return departments.includes(wanted) || role === wanted;
 }
 
 function renderHomeStats() {
@@ -816,27 +847,24 @@ function dayReportsForMonthHtml(month) {
 
 function dayReportSummaryLine(report = {}) {
   return [
-    `Bar gesamt ${formatReportMoney(barTotal(report))}`,
-    `EC ${formatReportMoney(reportEcTotal(report))}`,
     `Umsatz ${formatReportMoney(reportRevenueTotal(report))}`,
-    `Trinkgeld ${formatReportMoney(reportTipTotal(report))}`,
     `Rechnung ${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}`,
-    `Ausgaben ${formatReportMoney(reportItemsTotal(report.expenses))}`
+    `EC ${formatReportMoney(reportEcTotal(report))}`,
+    `Ausgaben ${formatReportMoney(reportItemsTotal(report.expenses))}`,
+    `Abgabe Chef ${formatReportMoney(reportChefHandoverTotal(report))}`
   ].join(" · ");
 }
 
 function dayReportValuesHtml(report = {}) {
   return `
     <div class="day-report-values">
-      ${reportFieldEnabled("barTotal") ? `<span><small>Bar gesamt</small><strong>${formatReportMoney(barTotal(report))}</strong></span>` : ""}
       <span><small>Umsatz Bowling</small><strong>${formatReportMoney(report.revenueBowling || report.barBowling)}</strong></span>
       <span><small>Umsatz Gastro</small><strong>${formatReportMoney(report.revenueGastro || report.barGastro)}</strong></span>
-      <span><small>Trinkgeld</small><strong>${formatReportMoney(reportTipTotal(report))}</strong></span>
+      <span><small>Umsatz gesamt</small><strong>${formatReportMoney(reportRevenueTotal(report))}</strong></span>
       ${reportFieldEnabled("invoiceCustomers") ? `<span><small>Rechnung</small><strong>${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}</strong></span>` : ""}
+      <span><small>EC</small><strong>${formatReportMoney(reportEcTotal(report))}</strong></span>
       ${reportFieldEnabled("expenses") ? `<span><small>Ausgaben</small><strong>${formatReportMoney(reportItemsTotal(report.expenses))}</strong></span>` : ""}
-      ${reportFieldEnabled("ecTotal") && report.ecTerminal1 ? `<span><small>EC Terminal 1</small><strong>${formatReportMoney(report.ecTerminal1)}</strong></span>` : ""}
-      ${reportFieldEnabled("ecTotal") && report.ecTerminal2 ? `<span><small>EC Terminal 2</small><strong>${formatReportMoney(report.ecTerminal2)}</strong></span>` : ""}
-      ${reportFieldEnabled("ecTotal") ? `<span><small>EC gesamt</small><strong>${formatReportMoney(reportEcTotal(report))}</strong></span>` : ""}
+      <span><small>Abgabe an Chef</small><strong>${formatReportMoney(reportChefHandoverTotal(report))}</strong></span>
     </div>
   `;
 }
@@ -844,11 +872,11 @@ function dayReportValuesHtml(report = {}) {
 function dayReportA4Html(dateKey, report = {}) {
   const invoiceTotalValue = reportItemsTotal(report.invoiceCustomers);
   const expenseTotalValue = reportItemsTotal(report.expenses);
-  const cashTotalValue = barTotal(report);
   const ecTotalValue = reportEcTotal(report);
+  const bowlingRevenueValue = reportMoneyNumber(report.revenueBowling || report.barBowling);
+  const gastroRevenueValue = reportMoneyNumber(report.revenueGastro || report.barGastro);
   const totalRevenueValue = reportRevenueTotal(report);
-  const tipTotalValue = reportTipTotal(report);
-  const cashToHandOverValue = Math.max(0, cashTotalValue - tipTotalValue);
+  const chefHandoverValue = reportChefHandoverTotal(report);
   return `
     <section class="a4-report">
       <div class="a4-report-head">
@@ -863,41 +891,25 @@ function dayReportA4Html(dateKey, report = {}) {
         </dl>
       </div>
 
-      <div class="a4-report-kpis">
-        ${reportFieldEnabled("barTotal") ? a4Kpi("Gesamt Bar", formatReportMoney(cashTotalValue)) : ""}
-        ${reportFieldEnabled("ecTotal") ? a4Kpi("EC gesamt", formatReportMoney(ecTotalValue)) : ""}
-        ${reportFieldEnabled("invoiceCustomers") ? a4Kpi("Auf Rechnung", formatReportMoney(invoiceTotalValue)) : ""}
-        ${reportFieldEnabled("expenses") ? a4Kpi("Ausgaben", formatReportMoney(expenseTotalValue)) : ""}
-        ${a4Kpi("Gesamtumsatz", formatReportMoney(totalRevenueValue))}
-        ${a4Kpi("Trinkgeld", formatReportMoney(tipTotalValue))}
-        ${a4Kpi("Bargeld abzugeben", formatReportMoney(cashToHandOverValue))}
-      </div>
-
       <div class="a4-report-grid">
+        <section class="a4-report-block a4-report-block-wide a4-report-finance-summary">
+          <h4>Abrechnung</h4>
+          <div class="a4-report-lines">
+            ${a4ReportLine("Umsatz Bowling", formatReportMoney(bowlingRevenueValue))}
+            ${a4ReportLine("Umsatz Gastro", formatReportMoney(gastroRevenueValue))}
+            ${a4ReportLine("Umsatz gesamt", formatReportMoney(totalRevenueValue), "a4-report-total")}
+            ${a4ReportLine("Bezahlung auf Rechnung", formatReportMoney(invoiceTotalValue), "a4-report-secondary")}
+            ${a4ReportLine("EC", formatReportMoney(ecTotalValue), "a4-report-secondary")}
+            ${a4ReportLine("Ausgaben", formatReportMoney(expenseTotalValue), "a4-report-secondary")}
+            ${a4ReportLine("Abgabe an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
+          </div>
+        </section>
+        ${reportFieldEnabled("invoiceCustomers") ? a4InvoiceBlock(report.invoiceCustomers) : ""}
+        ${reportFieldEnabled("expenses") ? a4ExpenseBlock(report.expenses) : ""}
         <section class="a4-report-block a4-report-block-wide a4-report-staff">
           <h4>Personalzeiten</h4>
           ${dayReportEmployeeRowsHtml(dateKey, report) || `<p class="hint">Keine Arbeitszeiten erfasst.</p>`}
         </section>
-        <section class="a4-report-block a4-report-block-wide">
-          <h4>Abrechnung</h4>
-          <table class="a4-report-table">
-            <tbody>
-              <tr><th>Gesamt Bar</th><td>${formatReportMoney(cashTotalValue)}</td></tr>
-              ${report.ecTerminal1 ? `<tr><th>EC Terminal 1</th><td>${formatReportMoney(report.ecTerminal1)}</td></tr>` : ""}
-              ${report.ecTerminal2 ? `<tr><th>EC Terminal 2</th><td>${formatReportMoney(report.ecTerminal2)}</td></tr>` : ""}
-              <tr><th>Gesamt EC</th><td>${formatReportMoney(ecTotalValue)}</td></tr>
-              <tr><th>Umsatz Bowling</th><td>${formatReportMoney(report.revenueBowling || report.barBowling)}</td></tr>
-              <tr><th>Umsatz Gastro</th><td>${formatReportMoney(report.revenueGastro || report.barGastro)}</td></tr>
-              <tr><th>Bezahlung auf Rechnung</th><td>${formatReportMoney(invoiceTotalValue)}</td></tr>
-              <tr><th>Gesamtumsatz</th><td>${formatReportMoney(totalRevenueValue)}</td></tr>
-              <tr><th>Trinkgeld</th><td>${formatReportMoney(tipTotalValue)}</td></tr>
-              <tr><th>Ausgaben</th><td>${formatReportMoney(expenseTotalValue)}</td></tr>
-              <tr><th>Bargeld abzugeben</th><td>${formatReportMoney(cashToHandOverValue)}</td></tr>
-            </tbody>
-          </table>
-        </section>
-        ${reportFieldEnabled("invoiceCustomers") ? a4InvoiceBlock(report.invoiceCustomers) : ""}
-        ${reportFieldEnabled("expenses") ? a4ExpenseBlock(report.expenses) : ""}
         ${reportFieldEnabled("documents") ? a4DocumentsBlock(report.documents) : ""}
         ${reportFieldEnabled("handovers") ? a4HandoversBlock(report.handovers) : ""}
         ${reportFieldEnabled("notes") ? a4NotesBlock(report.notes) : ""}
@@ -908,6 +920,15 @@ function dayReportA4Html(dateKey, report = {}) {
 
 function a4Kpi(label, value) {
   return `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`;
+}
+
+function a4ReportLine(label, value, className = "") {
+  return `
+    <div class="a4-report-line ${className}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
 }
 
 function dayReportEmployeeRowsHtml(dateKey, report = {}) {
@@ -952,19 +973,16 @@ function reportEmployeesForDate(dateKey, report = {}) {
 
 function a4InvoiceBlock(items = []) {
   return `
-    <section class="a4-report-block">
+    <section class="a4-report-block a4-report-compact">
       <h4>Rechnungskunden</h4>
-      ${items.length ? `<table class="a4-report-table">
-        <thead><tr><th>Kunde</th><th>Bowling</th><th>Gastro</th><th>Gesamt</th></tr></thead>
-        <tbody>${items.map((item, index) => `
-          <tr>
-            <th>${escapeHtml(item.name || `Kunde ${index + 1}`)}</th>
-            <td>${formatReportMoney(item.bowlingAmount)}</td>
-            <td>${formatReportMoney(item.gastroAmount)}</td>
-            <td>${formatReportMoney(invoiceTotal(item))}</td>
-          </tr>
-        `).join("")}</tbody>
-      </table>` : `<p class="hint">Keine Rechnungskunden.</p>`}
+      ${items.length ? `<div class="a4-compact-list">
+        ${items.map((item, index) => `
+          <div class="a4-compact-row">
+            <span>${escapeHtml(item.name || `Kunde ${index + 1}`)}</span>
+            <strong>${formatReportMoney(invoiceTotal(item))}</strong>
+          </div>
+        `).join("")}
+      </div>` : `<p class="hint">Keine Rechnungskunden.</p>`}
     </section>
   `;
 }
@@ -1457,6 +1475,16 @@ function reportTipTotal(report = {}) {
   return Math.max(0, barTotal(report) + reportEcTotal(report) - reportRevenueTotal(report));
 }
 
+function reportChefHandoverTotal(report = {}) {
+  return Math.max(
+    0,
+    reportRevenueTotal(report)
+      - reportEcTotal(report)
+      - reportItemsTotal(report.invoiceCustomers)
+      - reportItemsTotal(report.expenses)
+  );
+}
+
 function reportMoneyNumber(value) {
   const number = Number(String(value || "").replace(",", "."));
   return Number.isFinite(number) ? number : 0;
@@ -1473,11 +1501,9 @@ function exportDayReport(dateKey) {
   const lineIf = (key, line) => reportFieldEnabled(key) ? [line] : [];
   const invoiceTotalValue = reportItemsTotal(report.invoiceCustomers);
   const expenseTotalValue = reportItemsTotal(report.expenses);
-  const cashTotalValue = barTotal(report);
   const ecTotalValue = reportEcTotal(report);
   const totalRevenueValue = reportRevenueTotal(report);
-  const tipTotalValue = reportTipTotal(report);
-  const cashToHandOverValue = Math.max(0, cashTotalValue - tipTotalValue);
+  const chefHandoverValue = reportChefHandoverTotal(report);
   const employees = reportEmployeesForDate(dateKey, report);
   const lines = [
     `Tagesbericht ${formatDate(dateKey)}`,
@@ -1491,24 +1517,18 @@ function exportDayReport(dateKey) {
       return `- ${employee} | ${entry.from || "--:--"} bis ${entry.to || "--:--"} | ${formatHours(paidHours(entry))}${breakMinutes(entry) ? ` | ${breakSummaryText(entry)}` : ""}`;
     }) : ["- Keine Arbeitszeiten erfasst."]),
     "",
-    `Gesamt Bar: ${formatReportMoney(cashTotalValue)}`,
-    ...(report.ecTerminal1 ? [`EC Terminal 1: ${formatReportMoney(report.ecTerminal1)}`] : []),
-    ...(report.ecTerminal2 ? [`EC Terminal 2: ${formatReportMoney(report.ecTerminal2)}`] : []),
-    `Gesamt EC: ${formatReportMoney(ecTotalValue)}`,
     `Umsatz Bowling: ${formatReportMoney(report.revenueBowling || report.barBowling)}`,
     `Umsatz Gastro: ${formatReportMoney(report.revenueGastro || report.barGastro)}`,
-    `Bezahlung auf Rechnung: ${formatReportMoney(invoiceTotalValue)}`,
     `Gesamtumsatz: ${formatReportMoney(totalRevenueValue)}`,
-    `Trinkgeld: ${formatReportMoney(tipTotalValue)}`,
+    `Bezahlung auf Rechnung: ${formatReportMoney(invoiceTotalValue)}`,
+    `EC: ${formatReportMoney(ecTotalValue)}`,
     `Ausgaben: ${formatReportMoney(expenseTotalValue)}`,
-    `Bargeld abzugeben: ${formatReportMoney(cashToHandOverValue)}`,
+    `Abgabe an Chef: ${formatReportMoney(chefHandoverValue)}`,
     ...(reportFieldEnabled("preparation") ? [reportPreparationLine(dateKey, report)] : []),
     "",
     ...(reportFieldEnabled("handovers") ? ["Übergaben:", ...(report.handovers || []).map((item) => `- ${item.time || "--:--"} | ${item.from || "-"} an ${item.to || "-"} | ${item.note || "-"}`)] : []),
     "",
-    ...(reportFieldEnabled("invoiceCustomers") ? ["Rechnungskunden:", ...(report.invoiceCustomers || []).map((item) => [
-      `- ${item.name || "Kunde"} | Bowling ${formatReportMoney(item.bowlingAmount)} | Gastro ${formatReportMoney(item.gastroAmount)} | Gesamt ${formatReportMoney(invoiceTotal(item))}`
-    ].join("\n"))] : []),
+    ...(reportFieldEnabled("invoiceCustomers") ? ["Rechnungskunden:", ...(report.invoiceCustomers || []).map((item) => `- ${item.name || "Kunde"} | ${formatReportMoney(invoiceTotal(item))}`)] : []),
     "",
     ...(reportFieldEnabled("expenses") ? ["Ausgaben:", ...(report.expenses || []).map((item) => `- ${item.name || "Ausgabe"} | ${item.category || "-"} | ${formatReportMoney(item.amount)} | Beleg: ${item.receiptName || "-"}`)] : []),
     "",
@@ -1989,10 +2009,43 @@ function renderAdminMessages() {
         <strong>${escapeHtml(messageTargetLabel(message))}</strong>
         <span>${escapeHtml(message.text)}</span>
         <p class="hint">${message.createdAt ? formatDateTime(message.createdAt) : ""}</p>
+        <p class="hint">${escapeHtml(messageReadStatusText(message))}</p>
       </div>
       <button class="secondary" data-delete-message="${escapeHtml(message.id)}" type="button">Löschen</button>
     </article>
   `).join("") : `<p class="hint">Keine Nachrichten aktiv.</p>`;
+}
+
+function renderMessageEmployeePicker() {
+  const picker = $("#messageEmployeePicker");
+  if (!picker) return;
+  const target = $("#messageTarget")?.value || "all";
+  picker.classList.toggle("hidden", target !== "employees");
+  if (target !== "employees") {
+    picker.innerHTML = "";
+    return;
+  }
+  const employees = state.settings?.employees || [];
+  picker.innerHTML = employees.length
+    ? employees.map((employee) => `
+      <label>
+        <input type="checkbox" value="${escapeHtml(employee)}" data-message-employee>
+        ${escapeHtml(employee)}
+      </label>
+    `).join("")
+    : `<p class="hint">Keine Mitarbeiter angelegt.</p>`;
+}
+
+function selectedMessageEmployees() {
+  return $$("[data-message-employee]:checked").map((input) => input.value).filter(Boolean);
+}
+
+function messageReadStatusText(message = {}) {
+  const recipients = messageRecipientsClient(message);
+  const total = recipients.length;
+  const read = Object.keys(message.readBy || {}).filter((employee) => !recipients.length || recipients.includes(employee)).length;
+  if (!total) return "Keine Empfänger hinterlegt.";
+  return `Gelesen: ${read}/${total}`;
 }
 
 function renderAdminTerminalMessages() {
@@ -3453,6 +3506,53 @@ async function collectCustomerInvoiceDeskPayload() {
     toiletChecks: report.toiletChecks || [],
     reminderChecks: report.reminderChecks || []
   };
+}
+
+async function acknowledgeDashboardMessage(messageId, button) {
+  if (!messageId || !state.employeeToken) {
+    showToast("Bitte erneut mit Mitarbeiter-PIN anmelden.");
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Speichert...";
+  }
+  try {
+    await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "ack-message",
+        employeeToken: state.employeeToken,
+        messageId
+      })
+    });
+    state.messages = (state.messages || []).map((message) => {
+      if (message.id !== messageId) return message;
+      return {
+        ...message,
+        readBy: {
+          ...(message.readBy || {}),
+          [state.activeEmployee]: new Date().toISOString()
+        }
+      };
+    }).filter((message) => {
+      if (message.id !== messageId) return true;
+      const recipients = messageRecipientsClient(message);
+      return !recipients.length || !recipients.every((employee) => message.readBy?.[employee]);
+    });
+    renderHome();
+    renderChef();
+    renderAdminMessages();
+    showToast("Nachricht als gelesen bestätigt.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText || "Gelesen";
+    }
+  }
 }
 
 async function loadCustomerInvoiceDesk() {
@@ -5101,6 +5201,11 @@ function bindEvents() {
   });
 
   $("#homeContent").addEventListener("click", (event) => {
+    const ackMessage = event.target.closest("[data-ack-message]");
+    if (ackMessage) {
+      acknowledgeDashboardMessage(ackMessage.dataset.ackMessage, ackMessage);
+      return;
+    }
     if (event.target.closest("[data-open-backoffice]")) {
       state.adminUnlocked = true;
       renderAll();
@@ -5547,8 +5652,14 @@ function bindEvents() {
 
   $("#sendMessage")?.addEventListener("click", async () => {
     const text = $("#messageText").value.trim();
+    const target = $("#messageTarget").value;
+    const employees = target === "employees" ? selectedMessageEmployees() : [];
     if (!text) {
       showToast("Bitte Nachricht eingeben.");
+      return;
+    }
+    if (target === "employees" && !employees.length) {
+      showToast("Bitte mindestens einen Mitarbeiter auswählen.");
       return;
     }
     try {
@@ -5557,20 +5668,22 @@ function bindEvents() {
         headers: { "x-admin-token": state.adminToken },
         body: JSON.stringify({
           action: "add-message",
-          target: $("#messageTarget").value,
-          employees: linesToList($("#messageEmployees").value),
+          target,
+          employees,
           text
         })
       });
       state.messages = result.messages || [];
       $("#messageText").value = "";
-      $("#messageEmployees").value = "";
+      $$("[data-message-employee]").forEach((input) => { input.checked = false; });
       renderAdminMessages();
       showToast("Nachricht veröffentlicht.");
     } catch (error) {
       showError(error);
     }
   });
+
+  $("#messageTarget")?.addEventListener("change", renderMessageEmployeePicker);
 
   $("#adminMessagesList")?.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-delete-message]");

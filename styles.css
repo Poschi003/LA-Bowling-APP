@@ -969,6 +969,15 @@ button.employee-badge-stat {
   margin: 6px 0 0;
 }
 
+.dashboard-message-read {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.message-employee-picker {
+  grid-column: 1 / -1;
+}
+
 .dashboard-weather-widget {
   display: grid;
   gap: 4px;
@@ -2804,6 +2813,78 @@ button:disabled {
   font-size: 15px;
 }
 
+.a4-report-lines {
+  display: grid;
+  gap: 6px;
+}
+
+.a4-report-line {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding: 7px 0;
+}
+
+.a4-report-line:first-child {
+  border-top: 0;
+}
+
+.a4-report-line span,
+.a4-compact-row span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.a4-report-line strong,
+.a4-compact-row strong {
+  color: var(--ink);
+  font-size: 15px;
+  text-align: right;
+}
+
+.a4-report-total {
+  border-top: 2px solid var(--line-strong);
+  font-weight: 900;
+}
+
+.a4-report-secondary {
+  color: var(--text);
+}
+
+.a4-report-handover-highlight {
+  margin-top: 4px;
+  border: 2px solid var(--brand);
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+  padding: 10px;
+}
+
+.a4-report-handover-highlight span,
+.a4-report-handover-highlight strong {
+  color: var(--brand);
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.a4-compact-list {
+  display: grid;
+  gap: 4px;
+}
+
+.a4-compact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding: 5px 0;
+}
+
+.a4-compact-row:first-child {
+  border-top: 0;
+}
+
 .a4-report-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4059,7 +4140,8 @@ button:disabled {
     border: 0;
     border-radius: 0;
     padding: 0;
-    gap: 3mm;
+    gap: 2mm;
+    font-size: 8.5pt;
   }
 
   body.print-chef-day-report .a4-report-head {
@@ -4072,21 +4154,15 @@ button:disabled {
     font-size: 16pt;
   }
 
-  body.print-chef-day-report .a4-report-kpis {
-    grid-template-columns: repeat(6, 1fr);
-    gap: 1.5mm;
-  }
-
-  body.print-chef-day-report .a4-report-kpis article,
   body.print-chef-day-report .a4-report-block {
     border: 0.25mm solid #111;
     border-radius: 0;
-    padding: 1.5mm;
+    padding: 1.3mm;
   }
 
   body.print-chef-day-report .a4-report-grid {
     grid-template-columns: 1fr 1fr;
-    gap: 2mm;
+    gap: 1.5mm;
   }
 
   body.print-chef-day-report .a4-report-block-wide {
@@ -4100,7 +4176,23 @@ button:disabled {
   body.print-chef-day-report .a4-report-table th,
   body.print-chef-day-report .a4-report-table td {
     border-top: 0.2mm solid #999;
-    padding: 1mm;
+    padding: 0.75mm;
+  }
+
+  body.print-chef-day-report .a4-report-line,
+  body.print-chef-day-report .a4-compact-row {
+    padding: 0.75mm 0;
+  }
+
+  body.print-chef-day-report .a4-report-handover-highlight {
+    padding: 1.5mm;
+    border: 0.35mm solid #111;
+  }
+
+  body.print-chef-day-report .a4-report-handover-highlight span,
+  body.print-chef-day-report .a4-report-handover-highlight strong {
+    color: #111;
+    font-size: 12pt;
   }
 
   body.print-chef-day-report .receipt-link {
@@ -4170,7 +4262,8 @@ button:disabled {
     border: 0;
     border-radius: 0;
     padding: 0;
-    gap: 3mm;
+    gap: 2mm;
+    font-size: 8.5pt;
   }
 
   body.terminal-mode .a4-report-head {
@@ -4183,21 +4276,15 @@ button:disabled {
     font-size: 16pt;
   }
 
-  body.terminal-mode .a4-report-kpis {
-    grid-template-columns: repeat(6, 1fr);
-    gap: 1.5mm;
-  }
-
-  body.terminal-mode .a4-report-kpis article,
   body.terminal-mode .a4-report-block {
     border: 0.25mm solid #111;
     border-radius: 0;
-    padding: 1.5mm;
+    padding: 1.3mm;
   }
 
   body.terminal-mode .a4-report-grid {
     grid-template-columns: 1fr 1fr;
-    gap: 2mm;
+    gap: 1.5mm;
   }
 
   body.terminal-mode .a4-report-block-wide {
@@ -4211,7 +4298,23 @@ button:disabled {
   body.terminal-mode .a4-report-table th,
   body.terminal-mode .a4-report-table td {
     border-top: 0.2mm solid #999;
-    padding: 1mm;
+    padding: 0.75mm;
+  }
+
+  body.terminal-mode .a4-report-line,
+  body.terminal-mode .a4-compact-row {
+    padding: 0.75mm 0;
+  }
+
+  body.terminal-mode .a4-report-handover-highlight {
+    padding: 1.5mm;
+    border: 0.35mm solid #111;
+  }
+
+  body.terminal-mode .a4-report-handover-highlight span,
+  body.terminal-mode .a4-report-handover-highlight strong {
+    color: #111;
+    font-size: 12pt;
   }
 
   body.terminal-mode .receipt-link {
