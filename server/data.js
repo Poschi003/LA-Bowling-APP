@@ -16,16 +16,11 @@ const defaultPins = {
 };
 
 const defaultCleaningTemplates = [
-  { id: "daily-toilets", title: "Toiletten reinigen und Verbrauchsmaterial auffuellen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
-  { id: "daily-counter", title: "Counter, EC-Geraete und Kassenbereich reinigen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
-  { id: "daily-gastro", title: "Tische, Sitzbereiche und Gastroflaechen reinigen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
-  { id: "daily-lanes", title: "Bahnbereich, Kugeln und Schuhe sichtbar kontrollieren", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
-  { id: "daily-trash", title: "Muell und Leergut aus Gaestebereichen entfernen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
-  { id: "weekly-fridges", title: "Kuehlungen und Getraenkelager reinigen/kontrollieren", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
-  { id: "weekly-shoe-racks", title: "Schuhregale und Leihschuhe gruendlich reinigen", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
-  { id: "weekly-storage", title: "Lagerflaechen ordnen und Boden reinigen", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
-  { id: "weekly-glass", title: "Glasflaechen, Tueren und Eingangsbereich gruendlich reinigen", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
-  { id: "weekly-sanitary", title: "Sanitaerbereich Grundkontrolle dokumentieren", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" }
+  { id: "weekly-fridges", title: "Kuehlungen und Getraenkelager reinigen/kontrollieren", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-shoe-racks", title: "Schuhregale und Leihschuhe gruendlich reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-storage", title: "Lagerflaechen ordnen und Boden reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-glass", title: "Glasflaechen, Tueren und Eingangsbereich gruendlich reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-sanitary", title: "Sanitaerbereich Grundkontrolle dokumentieren", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" }
 ];
 
 const defaultData = {
