@@ -2703,12 +2703,12 @@ function applyDayReportVisibility() {
 }
 
 function renderTerminalTabs() {
-  const active = state.terminalTab || "tasks";
+  const active = state.terminalTab === "tips" ? "finance" : state.terminalTab || "tasks";
+  state.terminalTab = active;
   $$(".terminal-tab").forEach((button) => button.classList.toggle("active", button.dataset.terminalTab === active));
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "tasks");
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "service");
   $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "finance");
-  $("#terminalTipsSection")?.classList.toggle("hidden", active !== "tips");
   $("#terminalCleaningSection")?.classList.toggle("hidden", active !== "cleaning");
   $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "report");
 }
@@ -3074,7 +3074,7 @@ function setDayReportLocked(isLocked, report = {}) {
   $("#dayReportLockStatus").textContent = isLocked
     ? `Abgeschlossen${report.closedAt ? ` am ${formatDateTime(report.closedAt)}` : ""}. Keine Änderungen mehr möglich.`
     : "Vor dem Tagesabschluss speichern und prüfen.";
-  $$("#dayReportPrintArea input, #dayReportPrintArea textarea, #dayReportPrintArea select, #terminalFinanceSection input, #terminalFinanceSection textarea, #terminalFinanceSection select, #terminalTipsSection input, #terminalTipsSection textarea, #terminalTipsSection select").forEach((field) => {
+  $$("#dayReportPrintArea input, #dayReportPrintArea textarea, #dayReportPrintArea select, #terminalFinanceSection input, #terminalFinanceSection textarea, #terminalFinanceSection select").forEach((field) => {
     field.disabled = isLocked;
   });
   $$("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-remove-report-entry], #saveDayReport, #saveTipDistribution").forEach((button) => {

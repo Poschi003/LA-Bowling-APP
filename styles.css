@@ -2050,6 +2050,12 @@ button:disabled {
   gap: 10px;
 }
 
+.tip-finance-block {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
 .tip-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

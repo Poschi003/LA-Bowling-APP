@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260522-terminal-trinkgeld-v2">
+    <link rel="stylesheet" href="styles.css?v=20260522-finanz-trinkgeld-v1">
   </head>
   <body>
     <header class="topbar">
@@ -128,7 +128,6 @@
             <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
             <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
-            <button class="terminal-tab" data-terminal-tab="tips" type="button">Trinkgeld</button>
             <button class="terminal-tab" data-terminal-tab="cleaning" type="button">Reinigung</button>
             <button class="terminal-tab" data-terminal-tab="report" type="button">Tagesbericht</button>
           </nav>
@@ -182,9 +181,28 @@
             <div class="terminal-section-head">
               <div>
                 <h3>Finanz</h3>
-                <p class="hint">Rechnungskunden, Ausgaben und Abschlussdokumente für den Tagesbericht.</p>
+                <p class="hint">Kassenabrechnung, Trinkgeld, Rechnungskunden, Ausgaben und Abschlussdokumente.</p>
               </div>
             </div>
+            <section class="report-subsection tip-finance-block">
+              <div class="terminal-section-head">
+                <div>
+                  <h3>Trinkgeld</h3>
+                  <p class="hint">Bar, EC und Umsatz erfassen. Das Trinkgeld wird automatisch nach Arbeitszeit verteilt.</p>
+                </div>
+                <button id="saveTipDistribution" class="primary" type="button">Trinkgeld speichern</button>
+              </div>
+              <div class="tip-input-grid">
+                <label>Bar gesamt<input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
+                <label>EC Terminal 1<input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"></label>
+                <label>EC Terminal 2<input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"></label>
+                <label>EC gesamt<input id="reportEcTotal" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
+                <label>Umsatz Bowling<input id="reportRevenueBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
+                <label>Umsatz Gastro<input id="reportRevenueGastro" type="number" min="0" step="0.01" placeholder="0,00"></label>
+              </div>
+              <div id="tipSummary" class="tip-summary"></div>
+              <div id="tipDistributionList" class="tip-distribution-list"></div>
+            </section>
             <details class="report-subsection" data-report-field-box="invoiceCustomers">
               <summary>Kunden auf Rechnung</summary>
               <div id="invoiceCustomersList" class="report-entry-list"></div>
@@ -203,25 +221,6 @@
               </div>
               <div id="reportDocumentStatus" class="report-entry-list"></div>
             </details>
-          </section>
-          <section id="terminalTipsSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Trinkgeld</h3>
-                <p class="hint">Trinkgeld wird nach Arbeitszeit ab Öffnung auf Counter, Service und Küche verteilt.</p>
-              </div>
-              <button id="saveTipDistribution" class="primary" type="button">Trinkgeld speichern</button>
-            </div>
-            <div class="tip-input-grid">
-              <label>Bar gesamt<input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
-              <label>EC Terminal 1<input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"></label>
-              <label>EC Terminal 2<input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"></label>
-              <label>EC gesamt<input id="reportEcTotal" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
-              <label>Umsatz Bowling<input id="reportRevenueBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
-              <label>Umsatz Gastro<input id="reportRevenueGastro" type="number" min="0" step="0.01" placeholder="0,00"></label>
-            </div>
-            <div id="tipSummary" class="tip-summary"></div>
-            <div id="tipDistributionList" class="tip-distribution-list"></div>
           </section>
           <section id="terminalCleaningSection" class="terminal-section hidden">
             <div class="terminal-section-head">
@@ -742,7 +741,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260522-terminal-trinkgeld-v2"></script>
+    <script src="teamapp-client.js?v=20260522-finanz-trinkgeld-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>
