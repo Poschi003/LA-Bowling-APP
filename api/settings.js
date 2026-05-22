@@ -21,12 +21,18 @@ module.exports = async function handler(req, res) {
     if (body.action === "add-message") {
       const text = String(body.text || "").trim().slice(0, 800);
       if (!text) return sendJson(res, 400, { error: "Nachricht fehlt." });
+      const target = cleanTarget(body.target);
+      const employees = cleanEmployeeList(body.employees, appData.settings);
+      const recipients = messageRecipients(appData.settings, { target, employees });
+      if (!recipients.length) return sendJson(res, 400, { error: "Bitte mindestens einen Empfänger auswählen." });
       appData.messages ||= [];
       appData.messages.unshift({
         id: `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         text,
-        target: cleanTarget(body.target),
-        employees: Array.isArray(body.employees) ? body.employees.map(String).map((name) => name.trim()).filter(Boolean) : [],
+        target,
+        employees,
+        recipients,
+        readBy: {},
         createdAt: new Date().toISOString()
       });
       appData.messages = appData.messages.slice(0, 30);
@@ -208,6 +214,38 @@ function cleanVisibility(value, keys) {
 function cleanTarget(value) {
   const text = String(value || "all").trim();
   return ["all", "Counter", "Service", "Kueche", "Reinigung", "Mechanik", "employees"].includes(text) ? text : "all";
+}
+
+function cleanEmployeeList(value, settings = {}) {
+  const valid = new Set((settings.employees || []).map(String));
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map(String)
+    .map((name) => name.trim())
+    .filter((name) => name && valid.has(name)))];
+}
+
+function messageRecipients(settings = {}, message = {}) {
+  const employees = (settings.employees || []).map(String).filter(Boolean);
+  if (message.target === "all") return employees;
+  if (message.target === "employees") return cleanEmployeeList(message.employees, settings);
+  return employees.filter((employee) => employeeMatchesTarget(settings, employee, message.target));
+}
+
+function employeeMatchesTarget(settings = {}, employee, target) {
+  const wanted = normalizeDepartment(target);
+  const departments = (settings.employeeDepartments?.[employee] || []).map(normalizeDepartment);
+  const role = normalizeDepartment(settings.employeeRoles?.[employee] || "");
+  return departments.includes(wanted) || role === wanted;
+}
+
+function normalizeDepartment(value) {
+  const clean = String(value || "").trim().toLowerCase();
+  if (clean.startsWith("counter")) return "Counter";
+  if (clean.startsWith("service")) return "Service";
+  if (clean.startsWith("kÃ¼che") || clean.startsWith("küche") || clean.startsWith("kueche") || clean.startsWith("kuche")) return "Kueche";
+  if (clean.startsWith("reinigung")) return "Reinigung";
+  if (clean.startsWith("mechanik")) return "Mechanik";
+  return String(value || "").trim();
 }
 
 function cleanTaskTemplate(task) {

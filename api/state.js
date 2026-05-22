@@ -89,10 +89,48 @@ async function handlePost(req, res) {
   const body = await readJson(req);
   const action = String(body.action || "").trim();
 
+  if (action === "ack-message") {
+    return acknowledgeMessage(body, res);
+  }
   if (action.startsWith("schedule-")) {
     return handleScheduleMutation(req, res, body);
   }
   return saveCustomerInvoice(body, res);
+}
+
+async function acknowledgeMessage(body, res) {
+  const session = verifyToken(body.employeeToken, "employee");
+  if (!session?.employee) return sendJson(res, 401, { error: "Bitte erneut mit Mitarbeiter-PIN anmelden." });
+  const messageId = String(body.messageId || "");
+  if (!messageId) return sendJson(res, 400, { error: "Nachricht fehlt." });
+  const appData = await readAppData();
+  let changed = false;
+  appData.messages = (appData.messages || []).map((message) => {
+    if (message.id !== messageId) return message;
+    const recipients = messageRecipients(appData.settings, message);
+    if (!recipients.includes(session.employee)) return message;
+    changed = true;
+    return {
+      ...message,
+      recipients,
+      readBy: {
+        ...(message.readBy || {}),
+        [session.employee]: new Date().toISOString()
+      }
+    };
+  });
+  appData.messages = (appData.messages || []).filter((message) => {
+    if (message.id !== messageId) return true;
+    const recipients = messageRecipients(appData.settings, message);
+    if (!recipients.length) return false;
+    const readBy = message.readBy || {};
+    return !recipients.every((employee) => readBy[employee]);
+  });
+  if (changed) await writeAppData(appData);
+  return sendJson(res, 200, {
+    ok: true,
+    messages: messagesForEmployee(appData.messages || [], appData.settings, session.employee)
+  });
 }
 
 function serveAsset(req, res) {
@@ -406,21 +444,38 @@ function hourlyForecast(hourly = {}) {
 }
 
 function messagesForEmployee(messages, settings, employee) {
+  return (messages || []).filter((message) => {
+    if (message.readBy?.[employee]) return false;
+    return messageRecipients(settings, message).includes(employee);
+  });
+}
+
+function messageRecipients(settings, message = {}) {
+  if (Array.isArray(message.recipients) && message.recipients.length) {
+    return message.recipients.map(String).filter((employee) => (settings.employees || []).includes(employee));
+  }
+  const employees = (settings.employees || []).map(String).filter(Boolean);
+  if (message.target === "all") return employees;
+  if (message.target === "employees") {
+    const wanted = new Set((message.employees || []).map(String));
+    return employees.filter((employee) => wanted.has(employee));
+  }
+  return employees.filter((employee) => employeeMatchesMessageTarget(settings, employee, message.target));
+}
+
+function employeeMatchesMessageTarget(settings, employee, target) {
+  const wanted = normalizeDepartment(target);
   const departments = new Set((settings.employeeDepartments?.[employee] || []).map(normalizeDepartment));
   const role = normalizeDepartment(settings.employeeRoles?.[employee] || "");
   if (role) departments.add(role);
-  return (messages || []).filter((message) => {
-    if (message.target === "all") return true;
-    if (message.target === "employees") return (message.employees || []).includes(employee);
-    return departments.has(normalizeDepartment(message.target));
-  });
+  return departments.has(wanted);
 }
 
 function normalizeDepartment(value) {
   const clean = String(value || "").trim().toLowerCase();
   if (clean.startsWith("counter")) return "Counter";
   if (clean.startsWith("service")) return "Service";
-  if (clean.startsWith("kÃ¼che") || clean.startsWith("kueche") || clean.startsWith("kuche")) return "Kueche";
+  if (clean.startsWith("kÃ¼che") || clean.startsWith("küche") || clean.startsWith("kueche") || clean.startsWith("kuche")) return "Kueche";
   if (clean.startsWith("reinigung")) return "Reinigung";
   if (clean.startsWith("mechanik")) return "Mechanik";
   return String(value || "").trim();
