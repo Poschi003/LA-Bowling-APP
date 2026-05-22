@@ -194,7 +194,10 @@ async function saveReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen und kann nicht mehr geaendert werden." });
   appData.dayReports ||= {};
-  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), ecTotal: cleanMoney(body.ecTotal), revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueGastro: cleanMoney(body.revenueGastro ?? body.barGastro), barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: cleanMoney(body.barGastro ?? body.revenueGastro), tipTotal: cleanMoney(body.tipTotal), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), updatedAt: new Date().toISOString() };
+  const ecTerminal1 = Object.prototype.hasOwnProperty.call(body, "ecTerminal1") ? cleanMoney(body.ecTerminal1) : existing.ecTerminal1 || "";
+  const ecTerminal2 = Object.prototype.hasOwnProperty.call(body, "ecTerminal2") ? cleanMoney(body.ecTerminal2) : existing.ecTerminal2 || "";
+  const ecTotal = cleanEcTotal(body.ecTotal, ecTerminal1, ecTerminal2);
+  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), ecTerminal1, ecTerminal2, ecTotal, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueGastro: cleanMoney(body.revenueGastro ?? body.barGastro), barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: cleanMoney(body.barGastro ?? body.revenueGastro), tipTotal: cleanMoney(body.tipTotal), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), updatedAt: new Date().toISOString() };
   applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
@@ -205,10 +208,14 @@ async function saveTips(body, res) {
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   appData.dayReports ||= {};
   const tipsByEmployee = cleanTipsByEmployee(body.tipsByEmployee || {});
+  const ecTerminal1 = cleanMoney(body.ecTerminal1);
+  const ecTerminal2 = cleanMoney(body.ecTerminal2);
   appData.dayReports[date] = {
     ...existing,
     cashTotal: cleanMoney(body.cashTotal),
-    ecTotal: cleanMoney(body.ecTotal),
+    ecTerminal1,
+    ecTerminal2,
+    ecTotal: cleanEcTotal(body.ecTotal, ecTerminal1, ecTerminal2),
     revenueBowling: cleanMoney(body.revenueBowling),
     revenueGastro: cleanMoney(body.revenueGastro),
     barBowling: cleanMoney(body.revenueBowling),
@@ -394,7 +401,7 @@ function reportHasActivity(report = {}) {
 }
 
 function defaultReport(report = {}) {
-  return { cashTotal: "", ecTotal: "", revenueBowling: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+  return { cashTotal: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", revenueBowling: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
 }
 
 function activeTerminalMessages(appData) {
@@ -529,6 +536,13 @@ function cleanText(value, max) { return String(value || "").trim().slice(0, max)
 function roundToQuarter(date) { const p = berlinParts(date), m = Number(p.hour) * 60 + Number(p.minute), r = Math.round(m / 15) * 15; return `${String(Math.floor(r / 60) % 24).padStart(2, "0")}:${String(r % 60).padStart(2, "0")}`; }
 function berlinParts(date) { const parts = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date); return Object.fromEntries(parts.filter((p) => p.type !== "literal").map((p) => [p.type, p.value])); }
 function cleanMoney(value) { const n = Number(String(value || "").replace(",", ".").trim()); return Number.isFinite(n) && String(value || "").trim() ? n.toFixed(2) : ""; }
+
+function cleanEcTotal(value, ecTerminal1 = "", ecTerminal2 = "") {
+  const first = cleanMoney(ecTerminal1);
+  const second = cleanMoney(ecTerminal2);
+  if (first || second) return (Number(first || 0) + Number(second || 0)).toFixed(2);
+  return cleanMoney(value);
+}
 function cleanTime(value) { const text = String(value || "").trim(); return /^\d{2}:\d{2}$/.test(text) ? text : ""; }
 function normalizeBreaks(value) {
   if (!Array.isArray(value)) return [];
