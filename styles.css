@@ -2284,6 +2284,10 @@ button:disabled {
   border-left-color: #dc2626;
 }
 
+.terminal-task-cleaning .terminal-task-group-head {
+  border-left-color: #f59e0b;
+}
+
 .terminal-task-items {
   display: grid;
   gap: 10px;
@@ -2369,6 +2373,13 @@ button:disabled {
 .terminal-task.is-done {
   background: var(--success-soft);
   border-color: var(--success);
+}
+
+.terminal-cleaning-todo {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px);
+  gap: 10px;
+  align-items: center;
 }
 
 .terminal-cleaning-list {
@@ -3670,6 +3681,7 @@ button:disabled {
   .terminal-time-edit,
   .terminal-actions,
   .terminal-cleaning-row,
+  .terminal-cleaning-todo,
   .terminal-cost-summary,
   .tip-input-grid,
   .tip-summary,

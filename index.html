@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260522-finanz-trinkgeld-v1">
+    <link rel="stylesheet" href="styles.css?v=20260522-weekly-cleaning-v1">
   </head>
   <body>
     <header class="topbar">
@@ -128,7 +128,6 @@
             <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
             <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
-            <button class="terminal-tab" data-terminal-tab="cleaning" type="button">Reinigung</button>
             <button class="terminal-tab" data-terminal-tab="report" type="button">Tagesbericht</button>
           </nav>
           <section id="terminalTasksSection" class="terminal-section hidden">
@@ -221,16 +220,6 @@
               </div>
               <div id="reportDocumentStatus" class="report-entry-list"></div>
             </details>
-          </section>
-          <section id="terminalCleaningSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Reinigungspläne</h3>
-                <p class="hint">Tägliche und wöchentliche Kontrollen mit ausführender Person dokumentieren.</p>
-              </div>
-              <button id="printCleaningPlan" class="secondary" type="button">Reinigungsplan drucken</button>
-            </div>
-            <div id="terminalCleaningList" class="terminal-cleaning-list"></div>
           </section>
           <details id="dayReportPrintArea" class="day-report">
             <summary class="day-report-title">
@@ -545,11 +534,9 @@
         </details>
 
         <details class="settings-box admin-priority">
-          <summary>Reinigungspläne</summary>
+          <summary>Wöchentliche Reinigung</summary>
           <div class="admin-task-form">
             <label>Aufgabe<input id="cleaningTaskTitle" placeholder="z.B. Toiletten reinigen"></label>
-            <label>Rhythmus<select id="cleaningTaskFrequency"><option value="daily">Täglich</option><option value="weekly">Wöchentlich</option></select></label>
-            <label id="cleaningWeekdayField">Wochentag<select id="cleaningTaskWeekday"></select></label>
             <label>Notiz<input id="cleaningTaskNote" placeholder="optional"></label>
             <button id="addCleaningTask" class="primary" type="button">Hinzufügen</button>
           </div>
@@ -741,7 +728,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260522-finanz-trinkgeld-v1"></script>
+    <script src="teamapp-client.js?v=20260522-weekly-cleaning-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

@@ -29,6 +29,7 @@
   terminalTasks: [],
   terminalReminders: [],
   terminalCleaningTemplates: [],
+  terminalWeeklyCleaningCompletions: {},
   pendingToiletCheck: "",
   pendingReminder: null,
   terminalReminderRefreshInFlight: false,
@@ -55,17 +56,6 @@ const defaultReminderTemplates = [
 ];
 const defaultCleaningPlans = [
   {
-    group: "daily",
-    label: "Täglich",
-    tasks: [
-      { id: "daily-toilets", title: "Toiletten reinigen und Verbrauchsmaterial auffüllen" },
-      { id: "daily-counter", title: "Counter, EC-Geräte und Kassenbereich reinigen" },
-      { id: "daily-gastro", title: "Tische, Sitzbereiche und Gastroflächen reinigen" },
-      { id: "daily-lanes", title: "Bahnbereich, Kugeln und Schuhe sichtbar kontrollieren" },
-      { id: "daily-trash", title: "Müll und Leergut aus Gästebereichen entfernen" }
-    ]
-  },
-  {
     group: "weekly",
     label: "Wöchentlich",
     tasks: [
@@ -80,8 +70,8 @@ const defaultCleaningPlans = [
 const defaultCleaningTemplates = defaultCleaningPlans.flatMap((group) =>
   group.tasks.map((task) => ({
     ...task,
-    frequency: group.group === "weekly" ? "weekly" : "daily",
-    weekdays: group.group === "weekly" ? [1] : [],
+    frequency: "weekly",
+    weekdays: [],
     note: "",
     createdAt: "2026-05-20T00:00:00.000Z"
   }))
@@ -525,18 +515,16 @@ function normalizeReminderTemplates(reminders) {
 
 function normalizeCleaningTemplates(tasks) {
   if (!Array.isArray(tasks)) return cloneData(defaultCleaningTemplates);
-  return tasks.map(cleanCleaningTemplateClient).filter((task) => task.title);
+  return tasks.map(cleanCleaningTemplateClient).filter((task) => task.title && task.frequency === "weekly");
 }
 
 function cleanCleaningTemplateClient(task = {}) {
-  const frequency = ["daily", "weekly"].includes(task.frequency) ? task.frequency : "daily";
-  const weekdays = Array.isArray(task.weekdays) ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6) : [];
   return {
     id: String(task.id || `cleaning-${Date.now()}-${Math.random().toString(16).slice(2)}`),
     title: String(task.title || "").trim().slice(0, 180),
     note: String(task.note || "").trim().slice(0, 600),
-    frequency,
-    weekdays: frequency === "weekly" ? (weekdays.length ? weekdays : [1]) : [],
+    frequency: "weekly",
+    weekdays: [],
     createdAt: String(task.createdAt || new Date().toISOString())
   };
 }
@@ -2064,7 +2052,7 @@ function renderAdminCleaningTasks() {
   }
   container.innerHTML = `
     <div class="admin-task-row admin-task-row-head">
-      <span>Aufgabe</span><span>Rhythmus</span><span>Notiz</span><span></span>
+      <span>Aufgabe</span><span>Status</span><span>Notiz</span><span></span>
     </div>
     ${tasks.map((task) => `
       <div class="admin-task-row">
@@ -2085,14 +2073,11 @@ function fillCleaningWeekdaySelect() {
 }
 
 function updateCleaningTaskFields() {
-  const frequency = $("#cleaningTaskFrequency")?.value || "daily";
-  $("#cleaningWeekdayField")?.classList.toggle("hidden", frequency !== "weekly");
+  $("#cleaningWeekdayField")?.classList.add("hidden");
 }
 
 function cleaningFrequencyLabel(task) {
-  if (task.frequency === "daily") return "Täglich";
-  const days = (task.weekdays || []).map((day) => weekdays[Number(day)]).filter(Boolean);
-  return days.length ? `Wöchentlich: ${days.join(", ")}` : "Wöchentlich";
+  return "Wöchentlich offen bis erledigt";
 }
 
 function setCalendarTaskDate(dateKey) {
@@ -2625,7 +2610,6 @@ function renderTerminal() {
   renderTerminalCorrectionBanner(dateKey, report);
   renderTerminalLeaderMessages(report, reportClosed);
   renderTerminalTasks(report, reportClosed);
-  renderCleaningPlan(report, reportClosed);
   renderHandovers(report, reportClosed);
   renderToiletStatus(report);
   checkTerminalReminders(report, reportClosed);
@@ -2703,13 +2687,12 @@ function applyDayReportVisibility() {
 }
 
 function renderTerminalTabs() {
-  const active = state.terminalTab === "tips" ? "finance" : state.terminalTab || "tasks";
+  const active = state.terminalTab === "tips" ? "finance" : state.terminalTab === "cleaning" ? "tasks" : state.terminalTab || "tasks";
   state.terminalTab = active;
   $$(".terminal-tab").forEach((button) => button.classList.toggle("active", button.dataset.terminalTab === active));
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "tasks");
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "service");
   $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "finance");
-  $("#terminalCleaningSection")?.classList.toggle("hidden", active !== "cleaning");
   $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "report");
 }
 
@@ -2821,46 +2804,82 @@ function renderTerminalTasks(report, reportClosed) {
   if (!target) return;
   const done = report.taskCompletions || {};
   const tasks = state.terminalTasks || [];
-  if (!tasks.length) {
-    target.innerHTML = `<p class="hint">Für heute sind keine Aufgaben eingetragen.</p>`;
-    return;
-  }
+  const cleaningDone = weeklyCleaningCompletionsForTerminal(report);
+  const allCleaningTasks = weeklyCleaningTasksForTerminal();
+  const cleaningTasks = allCleaningTasks.filter((task) => !cleaningDone[task.id]);
+  const cleaningTotal = allCleaningTasks.length;
+  const cleaningCompleted = allCleaningTasks.filter((task) => cleaningDone[task.id]).length;
+  const employeeOptions = (selected = "") => `<option value="">Person auswählen</option>${(state.settings.employees || []).map((employee) => `<option value="${escapeHtml(employee)}" ${selected === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`).join("")}`;
   const groups = [
     ["preparation", "Vorbereitung"],
     ["running", "Laufender Betrieb"],
     ["closing", "Schlussdienst"]
   ];
-  target.innerHTML = groups.map(([category, label]) => {
+  const taskHtml = groups.map(([category, label]) => {
     const items = tasks.filter((task) => (task.category || "running") === category);
+    const openItems = items.filter((task) => !done[task.id]);
     const completed = items.filter((task) => done[task.id]).length;
-    if (!items.length) return "";
+    if (!openItems.length) return "";
     return `
       <section class="terminal-task-group terminal-task-${category}">
         <div class="terminal-task-group-head">
           <h4>${label}</h4>
-          <span>${completed}/${items.length} erledigt</span>
+          <span>${completed}/${items.length} erledigt · ${openItems.length} offen</span>
         </div>
         <div class="terminal-task-items">
-          ${items.map((task) => {
-            const taskDone = Boolean(done[task.id]);
-            return `
-              <article class="terminal-task ${taskDone ? "is-done" : ""}">
+          ${openItems.map((task) => `
+              <article class="terminal-task">
                 <label>
-                  <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${taskDone ? "checked" : ""} ${reportClosed ? "disabled" : ""}>
+                  <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
                   <span>
                     <strong>${escapeHtml(task.title)}</strong>
-                    ${taskDone ? `<small>Erledigt${done[task.id]?.doneAt ? ` am ${escapeHtml(formatDateTime(done[task.id].doneAt))}` : ""}</small>` : ""}
                     ${task.popupEnabled && task.popupTime ? `<small>Popup ${escapeHtml(task.popupTime)}</small>` : ""}
                     ${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}
                   </span>
                 </label>
               </article>
-            `;
-          }).join("")}
+            `).join("")}
         </div>
       </section>
     `;
-  }).join("") || `<p class="hint">Alle To Do Aufgaben sind erledigt.</p>`;
+  }).join("");
+  const cleaningHtml = cleaningTasks.length ? `
+    <section class="terminal-task-group terminal-task-cleaning">
+      <div class="terminal-task-group-head">
+        <h4>Wöchentliche Reinigung</h4>
+        <span>${cleaningCompleted}/${cleaningTotal} diese Woche erledigt · ${cleaningTasks.length} offen</span>
+      </div>
+      <div class="terminal-task-items">
+        ${cleaningTasks.map((task) => `
+          <article class="terminal-task terminal-cleaning-todo">
+            <label>
+              <input type="checkbox" data-cleaning-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
+              <span>
+                <strong>${escapeHtml(task.title)}</strong>
+                ${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}
+              </span>
+            </label>
+            <select data-cleaning-employee="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
+              ${employeeOptions()}
+            </select>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  ` : "";
+  target.innerHTML = taskHtml + cleaningHtml || `<p class="hint">Alle To Do Aufgaben sind erledigt.</p>`;
+}
+
+function weeklyCleaningTasksForTerminal() {
+  return normalizeCleaningTemplates(state.terminalToken ? state.terminalCleaningTemplates : state.cleaningTemplates)
+    .filter((task) => task.frequency === "weekly");
+}
+
+function weeklyCleaningCompletionsForTerminal(report = {}) {
+  return {
+    ...(state.terminalWeeklyCleaningCompletions || {}),
+    ...(report.cleaningCompletions || {})
+  };
 }
 
 function renderCleaningPlan(report, reportClosed) {
@@ -2909,15 +2928,12 @@ function cleaningPlanGroupsForDate(dateKey) {
   const tasks = normalizeCleaningTemplates(state.terminalToken ? state.terminalCleaningTemplates : state.cleaningTemplates);
   const due = tasks.filter((task) => cleaningTaskAppliesToDate(task, dateKey));
   return [
-    { group: "daily", label: "Täglich", tasks: due.filter((task) => task.frequency === "daily") },
-    { group: "weekly", label: "Wöchentlich / Wochentag", tasks: due.filter((task) => task.frequency === "weekly") }
+    { group: "weekly", label: "Wöchentliche Reinigung", tasks: due.filter((task) => task.frequency === "weekly") }
   ];
 }
 
 function cleaningTaskAppliesToDate(task, dateKey) {
-  if (task.frequency === "daily") return true;
-  const weekday = new Date(`${dateKey}T12:00:00`).getDay();
-  return (task.weekdays || []).map(Number).includes(weekday);
+  return task.frequency === "weekly";
 }
 
 function renderHandovers(report, reportClosed) {
@@ -3047,6 +3063,7 @@ async function refreshTerminalReminderState() {
     state.terminalTasks = result.tasks || state.terminalTasks || [];
     state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
     state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.terminalCleaningTemplates);
+    state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || state.terminalWeeklyCleaningCompletions || {};
     state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
     state.terminalReport = {
       ...(state.terminalReport || {}),
@@ -3830,6 +3847,7 @@ async function terminalAction(payload) {
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
+  state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
   state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
   state.terminalDayMetaEditing = false;
   state.terminalCorrectionMode = Boolean(result.correctionMode || state.terminalReport?.correctionOpen);
@@ -3854,6 +3872,7 @@ async function terminalLogin(code) {
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
+  state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
   state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
   state.terminalCorrectionMode = false;
   state.timesheets = result.entries || state.timesheets || {};
@@ -3901,6 +3920,7 @@ async function openCorrectionReport(button) {
     state.terminalTasks = result.tasks || [];
     state.terminalReminders = normalizeReminderTemplates(result.reminders);
     state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
+    state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
     state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
     state.terminalCorrectionMode = true;
     state.timesheets = result.entries || state.timesheets || {};
@@ -3956,6 +3976,7 @@ async function closeCorrectionReport(button) {
       state.terminalTasks = result.tasks || state.terminalTasks || [];
       state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
       state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.terminalCleaningTemplates);
+      state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || state.terminalWeeklyCleaningCompletions || {};
       state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
     }
     const status = $("#correctionStatus");
@@ -5851,7 +5872,6 @@ function bindEvents() {
 
   $("#addCleaningTask")?.addEventListener("click", async () => {
     const title = $("#cleaningTaskTitle")?.value.trim() || "";
-    const frequency = $("#cleaningTaskFrequency")?.value || "daily";
     if (!title) return showToast("Bitte Reinigungsaufgabe eingeben.");
     try {
       const result = await api("/api/settings", {
@@ -5861,8 +5881,8 @@ function bindEvents() {
           action: "add-cleaning-template",
           task: {
             title,
-            frequency,
-            weekdays: frequency === "weekly" ? [Number($("#cleaningTaskWeekday")?.value || 1)] : [],
+            frequency: "weekly",
+            weekdays: [],
             note: $("#cleaningTaskNote")?.value || ""
           }
         })
@@ -6078,6 +6098,7 @@ function bindEvents() {
       return;
     }
     const previousCompletions = cloneData(state.terminalReport?.cleaningCompletions || {});
+    const previousWeeklyCompletions = cloneData(state.terminalWeeklyCleaningCompletions || {});
     state.terminalReport = {
       ...(state.terminalReport || {}),
       cleaningCompletions: {
@@ -6085,14 +6106,23 @@ function bindEvents() {
         ...(done ? { [taskId]: { done: true, employee, doneAt: new Date().toISOString() } } : {})
       }
     };
-    if (!done) delete state.terminalReport.cleaningCompletions[taskId];
-    renderCleaningPlan(state.terminalReport, Boolean(state.terminalReport?.closed));
+    if (done) {
+      state.terminalWeeklyCleaningCompletions = {
+        ...(state.terminalWeeklyCleaningCompletions || {}),
+        [taskId]: state.terminalReport.cleaningCompletions[taskId]
+      };
+    } else {
+      delete state.terminalReport.cleaningCompletions[taskId];
+      delete state.terminalWeeklyCleaningCompletions[taskId];
+    }
+    renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
     try {
       await terminalAction({ action: "complete-cleaning", id: taskId, employee, done });
       showToast(done ? "Reinigung dokumentiert." : "Reinigung wieder geöffnet.");
     } catch (error) {
       state.terminalReport = { ...(state.terminalReport || {}), cleaningCompletions: previousCompletions };
-      renderCleaningPlan(state.terminalReport, Boolean(state.terminalReport?.closed));
+      state.terminalWeeklyCleaningCompletions = previousWeeklyCompletions;
+      renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
       showError(error);
     }
   });
