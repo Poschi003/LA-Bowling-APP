@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260522-dashboard-lesebestaetigung-v1">
+    <link rel="stylesheet" href="styles.css?v=20260522-monatszahlen-finanzsplit-v1">
   </head>
   <body>
     <header class="topbar">
@@ -197,7 +197,10 @@
                 <label>EC Terminal 2<input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>EC gesamt<input id="reportEcTotal" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
                 <label>Umsatz Bowling<input id="reportRevenueBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Umsatz Gastro<input id="reportRevenueGastro" type="number" min="0" step="0.01" placeholder="0,00"></label>
+                <label>Getränke<input id="reportRevenueDrinks" type="number" min="0" step="0.01" placeholder="0,00"></label>
+                <label>Speisen<input id="reportRevenueFood" type="number" min="0" step="0.01" placeholder="0,00"></label>
+                <label>Sonstiges<input id="reportRevenueOther" type="number" min="0" step="0.01" placeholder="0,00"></label>
+                <label>Umsatz Gastro gesamt<input id="reportRevenueGastro" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
               </div>
               <div id="tipSummary" class="tip-summary"></div>
               <div id="tipDistributionList" class="tip-distribution-list"></div>
@@ -285,6 +288,18 @@
           </div>
           <div id="customerInvoiceStaffArea" class="customer-invoice-staff-area hidden">
             <div class="invoice-day-overview" id="customerInvoiceDaySummary"></div>
+            <details class="report-subsection customer-master-section" open>
+              <summary>Kundenstamm</summary>
+              <div class="customer-master-tools">
+                <label>Kunde suchen<input id="customerMasterSearch" placeholder="Firma, Ansprechpartner, E-Mail"></label>
+                <label>Kunde auswählen<select id="customerMasterSelect"></select></label>
+              </div>
+              <div id="customerMasterPreview" class="customer-master-preview"></div>
+              <div class="day-report-actions">
+                <button id="addCustomerFromMaster" class="primary" type="button">In Tagesbericht übernehmen</button>
+              </div>
+              <p class="hint customer-master-hint">Neue Rechnungskunden werden nach dem Speichern automatisch in diese Kartei übernommen.</p>
+            </details>
             <details class="report-subsection" open>
               <summary>Rechnungskunden vervollständigen</summary>
               <div id="customerInvoiceWorkList" class="report-entry-list"></div>
@@ -370,6 +385,7 @@
         <nav class="admin-workspace-tabs" aria-label="Admin-Arbeitsbereiche">
           <button class="admin-workspace-tab active" type="button" data-admin-workspace-tab="planning">Planung</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="employees">Mitarbeiter Sicht</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="numbers">Monatszahlen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="correction">Korrekturmodus</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="settings">Einstellungen</button>
@@ -393,6 +409,13 @@
           <summary>Mitarbeiter Sicht</summary>
           <p class="settings-note">Nur Admin: Hier kannst du Arbeitstage und Stunden nachtragen, auch wenn der Tagesbericht schon abgeschlossen ist.</p>
           <div id="adminEmployeeOverview" class="employee-overview"></div>
+        </details>
+        </section>
+
+        <section class="admin-workspace" data-admin-workspace="numbers">
+        <details class="settings-box admin-priority" open>
+          <summary>Monatszahlen</summary>
+          <div id="adminMonthlyNumbers" class="monthly-numbers"></div>
         </details>
         </section>
 
@@ -722,7 +745,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260522-dashboard-lesebestaetigung-v1"></script>
+    <script src="teamapp-client.js?v=20260522-monatszahlen-finanzsplit-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

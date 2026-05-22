@@ -38,6 +38,7 @@
   invoiceTerminalToken: window.localStorage?.getItem("invoiceTerminalToken") || "",
   invoiceDate: todayKey(),
   invoiceReport: {},
+  customerDirectory: [],
   taskTemplates: [],
   cleaningTemplates: [],
   reminderTemplates: [],
@@ -147,6 +148,7 @@ const defaultData = {
   cleaningTemplates: defaultCleaningTemplates,
   messages: [],
   terminalMessages: [],
+  customerDirectory: [],
   dayReports: {},
   availabilityChangeRequests: []
 };
@@ -479,6 +481,7 @@ function mergeData(value) {
     cleaningTemplates: normalizeCleaningTemplates(Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates),
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
+    customerDirectory: normalizeCustomerDirectory(value?.customerDirectory || base.customerDirectory),
     dayReports: value && value.dayReports ? value.dayReports : base.dayReports,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };
@@ -518,6 +521,43 @@ function normalizeCleaningTemplates(tasks) {
   return tasks.map(cleanCleaningTemplateClient).filter((task) => task.title && task.frequency === "weekly");
 }
 
+function normalizeCustomerDirectory(customers) {
+  const byKey = new Map();
+  (Array.isArray(customers) ? customers : []).forEach((customer) => {
+    const entry = customerDirectoryEntry(customer);
+    const key = customerDirectoryKey(entry);
+    if (!key) return;
+    byKey.set(key, { ...(byKey.get(key) || {}), ...entry });
+  });
+  return [...byKey.values()]
+    .filter((customer) => customer.name)
+    .sort((a, b) => a.name.localeCompare(b.name, "de"))
+    .slice(0, 500);
+}
+
+function customerDirectoryEntry(item = {}) {
+  return {
+    id: String(item.id || customerDirectoryKey(item) || cryptoId()),
+    name: String(item.name || "").trim().slice(0, 160),
+    contact: String(item.contact || "").trim().slice(0, 160),
+    phone: String(item.phone || "").trim().slice(0, 80),
+    email: String(item.email || "").trim().slice(0, 180),
+    address: String(item.address || "").trim().slice(0, 600),
+    tip: String(item.tip || "").trim().slice(0, 160),
+    note: String(item.note || "").trim().slice(0, 600),
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString())
+  };
+}
+
+function customerDirectoryKey(item = {}) {
+  const email = String(item.email || "").trim().toLowerCase();
+  if (email) return `mail:${email}`;
+  const name = String(item.name || "").trim().toLowerCase();
+  const phone = String(item.phone || "").replace(/\s+/g, "");
+  return name ? `name:${name}|${phone}` : "";
+}
+
 function cleanCleaningTemplateClient(task = {}) {
   return {
     id: String(task.id || `cleaning-${Date.now()}-${Math.random().toString(16).slice(2)}`),
@@ -546,6 +586,7 @@ function renderAll() {
   renderAdminLock();
   renderAdminEmployeeOverview();
   renderAdminPublishedList();
+  renderAdminMonthlyNumbers();
   renderAdminSwaps();
   renderAdminAvailabilityRequests();
   renderMessageEmployeePicker();
@@ -740,6 +781,7 @@ function chefDashboardHtml() {
     ["reports", "Tagesberichte", chefSectionEnabled("reports")],
     ["invoices", "Rechnung schreiben", openInvoiceCount > 0],
     ["employees", "Mitarbeiterübersicht", chefSectionEnabled("employees")],
+    ["numbers", "Monatszahlen", true],
     ["schedule", "Dienstplan", chefSectionEnabled("schedule")]
   ].filter(([, , visible]) => visible);
   if (!tabs.some(([key]) => key === state.chefTab)) state.chefTab = tabs[0]?.[0] || "";
@@ -767,8 +809,11 @@ function chefDashboardHtml() {
           <input id="chefEmployeeMonth" type="month" value="${escapeHtml(state.selectedMonth)}">
         </label>
       </div>
-      ${employeeOverviewHtml()}
+      ${employeeOverviewHtml({ allowCorrection: false })}
     </section>` : ""}
+    <section class="chef-section ${state.chefTab === "numbers" ? "active" : "hidden"}">
+      ${monthlyNumbersHtml("chef")}
+    </section>
     ${chefSectionEnabled("schedule") ? `<section class="chef-section ${state.chefTab === "schedule" ? "active" : "hidden"}">
       <div class="chef-current-plan">
         <h3>Aktueller Dienstplan</h3>
@@ -848,7 +893,7 @@ function dayReportsForMonthHtml(month) {
 function dayReportSummaryLine(report = {}) {
   return [
     `Umsatz ${formatReportMoney(reportRevenueTotal(report))}`,
-    `Rechnung ${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}`,
+    `Rechnung ${formatReportMoney(reportInvoiceTotal(report))}`,
     `EC ${formatReportMoney(reportEcTotal(report))}`,
     `Ausgaben ${formatReportMoney(reportItemsTotal(report.expenses))}`,
     `Abgabe Chef ${formatReportMoney(reportChefHandoverTotal(report))}`
@@ -856,12 +901,16 @@ function dayReportSummaryLine(report = {}) {
 }
 
 function dayReportValuesHtml(report = {}) {
+  const gastroParts = reportGastroParts(report);
   return `
     <div class="day-report-values">
       <span><small>Umsatz Bowling</small><strong>${formatReportMoney(report.revenueBowling || report.barBowling)}</strong></span>
-      <span><small>Umsatz Gastro</small><strong>${formatReportMoney(report.revenueGastro || report.barGastro)}</strong></span>
+      <span><small>Umsatz Gastro</small><strong>${formatReportMoney(gastroRevenueTotal(report))}</strong></span>
+      <span><small>Getränke</small><strong>${formatReportMoney(gastroParts.drinks || "")}</strong></span>
+      <span><small>Speisen</small><strong>${formatReportMoney(gastroParts.food || "")}</strong></span>
+      <span><small>Sonstiges</small><strong>${formatReportMoney(gastroParts.other || "")}</strong></span>
       <span><small>Umsatz gesamt</small><strong>${formatReportMoney(reportRevenueTotal(report))}</strong></span>
-      ${reportFieldEnabled("invoiceCustomers") ? `<span><small>Rechnung</small><strong>${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}</strong></span>` : ""}
+      ${reportFieldEnabled("invoiceCustomers") ? `<span><small>Rechnung</small><strong>${formatReportMoney(reportInvoiceTotal(report))}</strong></span>` : ""}
       <span><small>EC</small><strong>${formatReportMoney(reportEcTotal(report))}</strong></span>
       ${reportFieldEnabled("expenses") ? `<span><small>Ausgaben</small><strong>${formatReportMoney(reportItemsTotal(report.expenses))}</strong></span>` : ""}
       <span><small>Abgabe an Chef</small><strong>${formatReportMoney(reportChefHandoverTotal(report))}</strong></span>
@@ -870,11 +919,13 @@ function dayReportValuesHtml(report = {}) {
 }
 
 function dayReportA4Html(dateKey, report = {}) {
-  const invoiceTotalValue = reportItemsTotal(report.invoiceCustomers);
+  const printableInvoices = reportInvoiceCustomers(report);
+  const invoiceTotalValue = reportItemsTotal(printableInvoices);
   const expenseTotalValue = reportItemsTotal(report.expenses);
   const ecTotalValue = reportEcTotal(report);
   const bowlingRevenueValue = reportMoneyNumber(report.revenueBowling || report.barBowling);
-  const gastroRevenueValue = reportMoneyNumber(report.revenueGastro || report.barGastro);
+  const gastroParts = reportGastroParts(report);
+  const gastroRevenueValue = gastroRevenueTotal(report);
   const totalRevenueValue = reportRevenueTotal(report);
   const chefHandoverValue = reportChefHandoverTotal(report);
   return `
@@ -897,6 +948,9 @@ function dayReportA4Html(dateKey, report = {}) {
           <div class="a4-report-lines">
             ${a4ReportLine("Umsatz Bowling", formatReportMoney(bowlingRevenueValue))}
             ${a4ReportLine("Umsatz Gastro", formatReportMoney(gastroRevenueValue))}
+            ${a4ReportLine("davon Getränke", formatReportMoney(gastroParts.drinks || ""), "a4-report-secondary")}
+            ${a4ReportLine("davon Speisen", formatReportMoney(gastroParts.food || ""), "a4-report-secondary")}
+            ${a4ReportLine("davon Sonstiges", formatReportMoney(gastroParts.other || ""), "a4-report-secondary")}
             ${a4ReportLine("Umsatz gesamt", formatReportMoney(totalRevenueValue), "a4-report-total")}
             ${a4ReportLine("Bezahlung auf Rechnung", formatReportMoney(invoiceTotalValue), "a4-report-secondary")}
             ${a4ReportLine("EC", formatReportMoney(ecTotalValue), "a4-report-secondary")}
@@ -904,7 +958,7 @@ function dayReportA4Html(dateKey, report = {}) {
             ${a4ReportLine("Abgabe an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
           </div>
         </section>
-        ${reportFieldEnabled("invoiceCustomers") ? a4InvoiceBlock(report.invoiceCustomers) : ""}
+        ${reportFieldEnabled("invoiceCustomers") && printableInvoices.length ? a4InvoiceBlock(printableInvoices) : ""}
         ${reportFieldEnabled("expenses") ? a4ExpenseBlock(report.expenses) : ""}
         <section class="a4-report-block a4-report-block-wide a4-report-staff">
           <h4>Personalzeiten</h4>
@@ -1454,6 +1508,14 @@ function reportItemsTotal(items = []) {
   return items.reduce((sum, item) => sum + invoiceTotal(item), 0);
 }
 
+function reportInvoiceCustomers(report = {}) {
+  return (report.invoiceCustomers || []).filter((item) => invoiceIsReady(item));
+}
+
+function reportInvoiceTotal(report = {}) {
+  return reportItemsTotal(reportInvoiceCustomers(report));
+}
+
 function barTotal(report = {}) {
   if (report.cashTotal !== "" && report.cashTotal != null) return reportMoneyNumber(report.cashTotal);
   return reportMoneyNumber(report.barBowling) + reportMoneyNumber(report.barGastro);
@@ -1465,9 +1527,23 @@ function reportEcTotal(report = {}) {
 }
 
 function reportRevenueTotal(report = {}) {
-  const split = reportMoneyNumber(report.revenueBowling || report.barBowling) + reportMoneyNumber(report.revenueGastro || report.barGastro);
+  const split = reportMoneyNumber(report.revenueBowling || report.barBowling) + gastroRevenueTotal(report);
   if (split) return split;
-  return Math.max(0, barTotal(report) + reportEcTotal(report) - reportItemsTotal(report.invoiceCustomers));
+  return Math.max(0, barTotal(report) + reportEcTotal(report) - reportInvoiceTotal(report));
+}
+
+function reportGastroParts(report = {}) {
+  return {
+    drinks: reportMoneyNumber(report.revenueDrinks),
+    food: reportMoneyNumber(report.revenueFood),
+    other: reportMoneyNumber(report.revenueOther)
+  };
+}
+
+function gastroRevenueTotal(report = {}) {
+  const parts = reportGastroParts(report);
+  const split = parts.drinks + parts.food + parts.other;
+  return split || reportMoneyNumber(report.revenueGastro || report.barGastro);
 }
 
 function reportTipTotal(report = {}) {
@@ -1480,7 +1556,7 @@ function reportChefHandoverTotal(report = {}) {
     0,
     reportRevenueTotal(report)
       - reportEcTotal(report)
-      - reportItemsTotal(report.invoiceCustomers)
+      - reportInvoiceTotal(report)
       - reportItemsTotal(report.expenses)
   );
 }
@@ -1499,10 +1575,12 @@ function exportDayReport(dateKey) {
   const report = state.dayReports?.[dateKey];
   if (!report) return;
   const lineIf = (key, line) => reportFieldEnabled(key) ? [line] : [];
-  const invoiceTotalValue = reportItemsTotal(report.invoiceCustomers);
+  const printableInvoices = reportInvoiceCustomers(report);
+  const invoiceTotalValue = reportItemsTotal(printableInvoices);
   const expenseTotalValue = reportItemsTotal(report.expenses);
   const ecTotalValue = reportEcTotal(report);
   const totalRevenueValue = reportRevenueTotal(report);
+  const gastroParts = reportGastroParts(report);
   const chefHandoverValue = reportChefHandoverTotal(report);
   const employees = reportEmployeesForDate(dateKey, report);
   const lines = [
@@ -1518,7 +1596,10 @@ function exportDayReport(dateKey) {
     }) : ["- Keine Arbeitszeiten erfasst."]),
     "",
     `Umsatz Bowling: ${formatReportMoney(report.revenueBowling || report.barBowling)}`,
-    `Umsatz Gastro: ${formatReportMoney(report.revenueGastro || report.barGastro)}`,
+    `Umsatz Gastro: ${formatReportMoney(gastroRevenueTotal(report))}`,
+    `- Getränke: ${formatReportMoney(gastroParts.drinks || "")}`,
+    `- Speisen: ${formatReportMoney(gastroParts.food || "")}`,
+    `- Sonstiges: ${formatReportMoney(gastroParts.other || "")}`,
     `Gesamtumsatz: ${formatReportMoney(totalRevenueValue)}`,
     `Bezahlung auf Rechnung: ${formatReportMoney(invoiceTotalValue)}`,
     `EC: ${formatReportMoney(ecTotalValue)}`,
@@ -1528,7 +1609,7 @@ function exportDayReport(dateKey) {
     "",
     ...(reportFieldEnabled("handovers") ? ["Übergaben:", ...(report.handovers || []).map((item) => `- ${item.time || "--:--"} | ${item.from || "-"} an ${item.to || "-"} | ${item.note || "-"}`)] : []),
     "",
-    ...(reportFieldEnabled("invoiceCustomers") ? ["Rechnungskunden:", ...(report.invoiceCustomers || []).map((item) => `- ${item.name || "Kunde"} | ${formatReportMoney(invoiceTotal(item))}`)] : []),
+    ...(reportFieldEnabled("invoiceCustomers") && printableInvoices.length ? ["Rechnungskunden:", ...printableInvoices.map((item) => `- ${item.name || "Kunde"} | ${formatReportMoney(invoiceTotal(item))}`)] : []),
     "",
     ...(reportFieldEnabled("expenses") ? ["Ausgaben:", ...(report.expenses || []).map((item) => `- ${item.name || "Ausgabe"} | ${item.category || "-"} | ${formatReportMoney(item.amount)} | Beleg: ${item.receiptName || "-"}`)] : []),
     "",
@@ -2613,8 +2694,23 @@ function updateEcTotalField() {
   field.value = ecTotalFromFormOrReport().toFixed(2).replace(".", ",");
 }
 
+function gastroRevenueFromFormOrReport(report = state.terminalReport || {}) {
+  const drinks = parseMoneyInput($("#reportRevenueDrinks")?.value || report.revenueDrinks || "");
+  const food = parseMoneyInput($("#reportRevenueFood")?.value || report.revenueFood || "");
+  const other = parseMoneyInput($("#reportRevenueOther")?.value || report.revenueOther || "");
+  const split = drinks + food + other;
+  return split || parseMoneyInput($("#reportRevenueGastro")?.value || report.revenueGastro || report.barGastro || "");
+}
+
+function updateGastroTotalField() {
+  const field = $("#reportRevenueGastro");
+  if (!field) return;
+  field.value = gastroRevenueFromFormOrReport().toFixed(2).replace(".", ",");
+}
+
 function updateReportBarTotal() {
   updateEcTotalField();
+  updateGastroTotalField();
   renderTipDistribution();
   renderDayReportA4Summary(state.terminalDate || todayKey(), reportPreviewFromForm());
 }
@@ -2622,7 +2718,10 @@ function updateReportBarTotal() {
 function reportPreviewFromForm() {
   const cashTotal = $("#reportCashTotal")?.value || state.terminalReport?.cashTotal || "";
   const revenueBowling = $("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "";
-  const revenueGastro = $("#reportRevenueGastro")?.value || state.terminalReport?.revenueGastro || state.terminalReport?.barGastro || "";
+  const revenueDrinks = $("#reportRevenueDrinks")?.value || state.terminalReport?.revenueDrinks || "";
+  const revenueFood = $("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "";
+  const revenueOther = $("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || "";
+  const revenueGastro = gastroRevenueFromFormOrReport().toFixed(2);
   return {
     ...(state.terminalReport || {}),
     cashTotal,
@@ -2630,6 +2729,9 @@ function reportPreviewFromForm() {
     ecTerminal2: $("#reportEcTerminal2")?.value || state.terminalReport?.ecTerminal2 || "",
     ecTotal: ecTotalFromFormOrReport().toFixed(2),
     revenueBowling,
+    revenueDrinks,
+    revenueFood,
+    revenueOther,
     revenueGastro,
     barBowling: revenueBowling,
     barGastro: revenueGastro,
@@ -2710,6 +2812,9 @@ function renderTerminal() {
   $("#reportEcTerminal1").value = report.ecTerminal1 || "";
   $("#reportEcTerminal2").value = report.ecTerminal2 || "";
   $("#reportRevenueBowling").value = report.revenueBowling || report.barBowling || "";
+  $("#reportRevenueDrinks").value = report.revenueDrinks || "";
+  $("#reportRevenueFood").value = report.revenueFood || "";
+  $("#reportRevenueOther").value = report.revenueOther || "";
   $("#reportRevenueGastro").value = report.revenueGastro || report.barGastro || "";
   updateReportBarTotal();
   $("#reportNotes").value = report.notes || "";
@@ -3246,6 +3351,7 @@ function renderCustomerInvoiceDesk() {
   if (invoiceList) {
     invoiceList.innerHTML = invoices.map((item) => invoiceRowHtml(item)).join("") || `<p class="hint">Noch keine Rechnungskunden für heute.</p>`;
   }
+  renderCustomerMaster();
   const expenseList = $("#customerExpenseWorkList");
   if (expenseList) {
     expenseList.innerHTML = expenses.map((item) => expenseRowHtml(item)).join("") || `<p class="hint">Noch keine Ausgaben für heute.</p>`;
@@ -3253,6 +3359,74 @@ function renderCustomerInvoiceDesk() {
   renderCustomerInvoiceDocuments(report);
   const status = $("#customerInvoiceStaffStatus");
   if (status && !status.textContent) status.textContent = "Tagesübersicht geöffnet.";
+}
+
+function renderCustomerMaster() {
+  const select = $("#customerMasterSelect");
+  const preview = $("#customerMasterPreview");
+  if (!select || !preview) return;
+  const query = ($("#customerMasterSearch")?.value || "").trim().toLowerCase();
+  const customers = normalizeCustomerDirectory(state.customerDirectory);
+  const filtered = customers.filter((customer) => {
+    if (!query) return true;
+    return [
+      customer.name,
+      customer.contact,
+      customer.phone,
+      customer.email,
+      customer.address,
+      customer.tip,
+      customer.note
+    ].some((value) => String(value || "").toLowerCase().includes(query));
+  });
+  const previous = select.value;
+  select.innerHTML = filtered.length
+    ? filtered.map((customer) => `<option value="${escapeHtml(customer.id)}">${escapeHtml(customer.name)}${customer.contact ? ` - ${escapeHtml(customer.contact)}` : ""}</option>`).join("")
+    : `<option value="">Kein Kunde gefunden</option>`;
+  if (filtered.some((customer) => customer.id === previous)) {
+    select.value = previous;
+  }
+  const selected = filtered.find((customer) => customer.id === select.value) || filtered[0];
+  preview.innerHTML = selected ? customerMasterPreviewHtml(selected) : `<p class="hint">Noch keine Kunden in der Kartei. Sobald ein Rechnungskunde gespeichert wird, taucht er hier auf.</p>`;
+  const button = $("#addCustomerFromMaster");
+  if (button) button.disabled = !selected;
+}
+
+function customerMasterPreviewHtml(customer) {
+  return `
+    <strong>${escapeHtml(customer.name || "Kunde")}</strong>
+    ${customer.contact ? `<span>${escapeHtml(customer.contact)}</span>` : ""}
+    ${customer.email || customer.phone ? `<span>${escapeHtml([customer.email, customer.phone].filter(Boolean).join(" · "))}</span>` : ""}
+    ${customer.address ? `<span>${escapeHtml(customer.address)}</span>` : ""}
+    ${customer.tip ? `<span class="hint">Tipp: ${escapeHtml(customer.tip)}</span>` : ""}
+    ${customer.note ? `<span class="hint">Notiz: ${escapeHtml(customer.note)}</span>` : ""}
+  `;
+}
+
+function customerMasterToInvoice(customer = {}) {
+  return {
+    id: cryptoId(),
+    name: customer.name || "",
+    contact: customer.contact || "",
+    phone: customer.phone || "",
+    email: customer.email || "",
+    address: customer.address || "",
+    tip: customer.tip || "",
+    note: customer.note || "",
+    createdAt: new Date().toISOString(),
+    invoiceReady: false,
+    invoiceReadyAt: "",
+    invoiceDone: false,
+    invoiceDoneAt: "",
+    amount: "",
+    bowlingAmount: "",
+    gastroAmount: "",
+    receiptName: "",
+    receiptData: "",
+    receiptPath: "",
+    receiptUrl: "",
+    area: "rechnung"
+  };
 }
 
 function renderCustomerInvoiceDocuments(report = {}) {
@@ -3443,9 +3617,12 @@ async function collectDayReportPayload() {
     ecTerminal2: $("#reportEcTerminal2")?.value || "",
     ecTotal: ecTotalFromFormOrReport().toFixed(2),
     revenueBowling: $("#reportRevenueBowling")?.value || "",
-    revenueGastro: $("#reportRevenueGastro")?.value || "",
+    revenueDrinks: $("#reportRevenueDrinks")?.value || "",
+    revenueFood: $("#reportRevenueFood")?.value || "",
+    revenueOther: $("#reportRevenueOther")?.value || "",
+    revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
     barBowling: $("#reportRevenueBowling")?.value || "",
-    barGastro: $("#reportRevenueGastro")?.value || "",
+    barGastro: gastroRevenueFromFormOrReport().toFixed(2),
     tipTotal: tipResult.tipTotal.toFixed(2),
     tipsByEmployee: Object.fromEntries(tipResult.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
     openingHours: $("#terminalOpeningHours")?.value || "",
@@ -3492,6 +3669,11 @@ async function collectCustomerInvoiceDeskPayload() {
     action: "save-report",
     date: state.invoiceDate || todayKey(),
     ecTotal: report.ecTotal || "",
+    revenueBowling: report.revenueBowling || report.barBowling || "",
+    revenueDrinks: report.revenueDrinks || "",
+    revenueFood: report.revenueFood || "",
+    revenueOther: report.revenueOther || "",
+    revenueGastro: report.revenueGastro || report.barGastro || "",
     barBowling: report.barBowling || "",
     barGastro: report.barGastro || "",
     openingHours: report.openingHours || "",
@@ -3568,6 +3750,7 @@ async function loadCustomerInvoiceDesk() {
   state.invoiceDate = result.date || state.invoiceDate || todayKey();
   state.invoiceReport = result.report || {};
   state.settings = normalizeSettings(result.settings || state.settings);
+  state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
   renderCustomerInvoiceDesk();
 }
 
@@ -3591,6 +3774,7 @@ async function saveCustomerInvoiceDeskReport(button, successText = "Tagesübersi
     });
     state.invoiceDate = result.date || state.invoiceDate || todayKey();
     state.invoiceReport = result.report || {};
+    state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
     state.dayReports[state.invoiceDate] = state.invoiceReport;
     renderCustomerInvoiceDesk();
     $("#customerInvoiceStaffStatus").textContent = successText;
@@ -3842,7 +4026,7 @@ function calculateTipDistribution(dateKey) {
   const cashTotal = parseMoneyInput($("#reportCashTotal")?.value || state.terminalReport?.cashTotal || "");
   const ecTotal = ecTotalFromFormOrReport();
   const revenueBowling = parseMoneyInput($("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "");
-  const revenueGastro = parseMoneyInput($("#reportRevenueGastro")?.value || state.terminalReport?.revenueGastro || state.terminalReport?.barGastro || "");
+  const revenueGastro = gastroRevenueFromFormOrReport();
   const totalRevenue = revenueBowling + revenueGastro;
   const tipTotal = Math.max(0, cashTotal + ecTotal - totalRevenue);
   const openingTime = tipOpeningTime(dateKey);
@@ -3868,6 +4052,9 @@ function calculateTipDistribution(dateKey) {
     cashTotal,
     ecTotal,
     revenueBowling,
+    revenueDrinks: parseMoneyInput($("#reportRevenueDrinks")?.value || state.terminalReport?.revenueDrinks || ""),
+    revenueFood: parseMoneyInput($("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || ""),
+    revenueOther: parseMoneyInput($("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || ""),
     revenueGastro,
     totalRevenue,
     tipTotal,
@@ -3949,6 +4136,7 @@ async function terminalAction(payload) {
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
   state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
   state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+  state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
   state.terminalDayMetaEditing = false;
   state.terminalCorrectionMode = Boolean(result.correctionMode || state.terminalReport?.correctionOpen);
   state.timesheets = result.entries || state.timesheets || {};
@@ -3974,6 +4162,7 @@ async function terminalLogin(code) {
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
   state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
   state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+  state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
   state.terminalCorrectionMode = false;
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
@@ -4174,9 +4363,12 @@ async function confirmToiletCheck() {
       ecTerminal2: $("#reportEcTerminal2")?.value || state.terminalReport.ecTerminal2 || "",
       ecTotal: ecTotalFromFormOrReport().toFixed(2),
       revenueBowling: $("#reportRevenueBowling")?.value || state.terminalReport.revenueBowling || state.terminalReport.barBowling || "",
-      revenueGastro: $("#reportRevenueGastro")?.value || state.terminalReport.revenueGastro || state.terminalReport.barGastro || "",
+      revenueDrinks: $("#reportRevenueDrinks")?.value || state.terminalReport.revenueDrinks || "",
+      revenueFood: $("#reportRevenueFood")?.value || state.terminalReport.revenueFood || "",
+      revenueOther: $("#reportRevenueOther")?.value || state.terminalReport.revenueOther || "",
+      revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
       barBowling: $("#reportRevenueBowling")?.value || state.terminalReport.barBowling || "",
-      barGastro: $("#reportRevenueGastro")?.value || state.terminalReport.barGastro || "",
+      barGastro: gastroRevenueFromFormOrReport().toFixed(2),
       openingHours: $("#terminalOpeningHours")?.value || state.terminalReport.openingHours || "",
       shiftLeader: $("#terminalShiftLeader")?.value || state.terminalReport.shiftLeader || "",
       handovers: state.terminalReport.handovers || [],
@@ -4238,10 +4430,10 @@ function renderAdminEmployeeOverview() {
     container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
     return;
   }
-  container.innerHTML = employeeOverviewHtml();
+  container.innerHTML = employeeOverviewHtml({ allowCorrection: true });
 }
 
-function employeeOverviewHtml() {
+function employeeOverviewHtml({ allowCorrection = false } = {}) {
   const defaultDate = adminTimesheetDefaultDate();
   return `
     <div class="employee-overview-head">
@@ -4274,14 +4466,14 @@ function employeeOverviewHtml() {
                 </div>
               `).join("") || `<p class="hint">Keine Arbeitszeiten für diesen Monat erfasst.</p>`}
             </div>
-            <div class="admin-timesheet-form" data-admin-timesheet-form="${escapeHtml(employee)}">
+            ${allowCorrection ? `<div class="admin-timesheet-form" data-admin-timesheet-form="${escapeHtml(employee)}">
               <p class="hint">Nur Admin: vergessene Stunden und Tage können auch bei abgeschlossenen Tagesberichten ergänzt werden.</p>
               <label>Datum<input type="date" data-admin-ts-field="date" value="${escapeHtml(defaultDate)}"></label>
               <label>Beginn<input type="time" data-admin-ts-field="from"></label>
               <label>Ende<input type="time" data-admin-ts-field="to"></label>
               <label>Hinweis<input data-admin-ts-field="note" placeholder="z.B. vergessen einzutragen"></label>
               <button class="primary" type="button" data-admin-save-timesheet="${escapeHtml(employee)}">Stunden nachtragen</button>
-            </div>
+            </div>` : ""}
           </div>
         </details>
       `;
@@ -4320,6 +4512,109 @@ function timesheetDetailsForEmployee(employee) {
       adminNote: entry.adminNote || ""
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function renderAdminMonthlyNumbers() {
+  const container = $("#adminMonthlyNumbers");
+  if (!container) return;
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  container.innerHTML = monthlyNumbersHtml("admin");
+}
+
+function monthlyNumbersHtml(context = "chef") {
+  const id = context === "admin" ? "adminNumbersMonth" : "chefNumbersMonth";
+  const numbers = monthlyNumbersForMonth(state.selectedMonth);
+  return `
+    <section class="monthly-numbers-panel">
+      <div class="chef-section-head">
+        <h3>Monatszahlen</h3>
+        <label>Monat<input id="${id}" type="month" value="${escapeHtml(state.selectedMonth)}"></label>
+      </div>
+      <div class="monthly-number-grid">
+        <article><span>Gesamtumsatz</span><strong>${formatMoney(numbers.revenue.total)}</strong><small>Bowling + Gastro</small></article>
+        <article><span>Arbeitsstunden</span><strong>${formatHours(numbers.hours.total)}</strong><small>Counter + Service + Küche + Sonstige</small></article>
+        <article><span>Umsatz je Stunde</span><strong>${formatMoney(numbers.revenuePerHour)}</strong><small>Grundgerüst</small></article>
+      </div>
+      <div class="monthly-number-grid">
+        <article><span>Counter</span><strong>${formatHours(numbers.hours.Counter)}</strong></article>
+        <article><span>Service</span><strong>${formatHours(numbers.hours.Service)}</strong></article>
+        <article><span>Küche</span><strong>${formatHours(numbers.hours.Kueche)}</strong></article>
+        <article><span>Sonstige</span><strong>${formatHours(numbers.hours.Sonstige)}</strong></article>
+      </div>
+      <table class="monthly-number-table">
+        <tbody>
+          <tr><th>Umsatz Bowling</th><td>${formatMoney(numbers.revenue.bowling)}</td></tr>
+          <tr><th>Umsatz Gastro</th><td>${formatMoney(numbers.revenue.gastro)}</td></tr>
+          <tr><th>Getränke</th><td>${formatMoney(numbers.revenue.drinks)}</td></tr>
+          <tr><th>Speisen</th><td>${formatMoney(numbers.revenue.food)}</td></tr>
+          <tr><th>Sonstiges</th><td>${formatMoney(numbers.revenue.other)}</td></tr>
+          <tr><th>EC gesamt</th><td>${formatMoney(numbers.revenue.ec)}</td></tr>
+          <tr><th>Rechnungskunden</th><td>${formatMoney(numbers.revenue.invoices)}</td></tr>
+          <tr><th>Ausgaben</th><td>${formatMoney(numbers.revenue.expenses)}</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">Die Stunden werden nach Dienstplan-Position zugeordnet. Falls keine Position gefunden wird, nutzt die App die Mitarbeiter-Bereiche als Fallback.</p>
+    </section>
+  `;
+}
+
+function monthlyNumbersForMonth(month) {
+  const hours = { Counter: 0, Service: 0, Kueche: 0, Sonstige: 0, total: 0 };
+  Object.entries(state.timesheets || {}).forEach(([employee, entries]) => {
+    Object.entries(entries || {}).forEach(([dateKey, entry]) => {
+      if (!dateKey.startsWith(month) || !entry?.from || !entry?.to) return;
+      const paid = paidHours(entry);
+      const area = workAreaForEmployeeDate(employee, dateKey);
+      hours[area] = (hours[area] || 0) + paid;
+      hours.total += paid;
+    });
+  });
+  const revenue = { bowling: 0, gastro: 0, drinks: 0, food: 0, other: 0, ec: 0, invoices: 0, expenses: 0, total: 0 };
+  Object.entries(state.dayReports || {}).forEach(([dateKey, report]) => {
+    if (!dateKey.startsWith(month) || !report || typeof report !== "object") return;
+    const parts = reportGastroParts(report);
+    revenue.bowling += reportMoneyNumber(report.revenueBowling || report.barBowling);
+    revenue.drinks += parts.drinks;
+    revenue.food += parts.food;
+    revenue.other += parts.other;
+    revenue.gastro += gastroRevenueTotal(report);
+    revenue.ec += reportEcTotal(report);
+    revenue.invoices += reportInvoiceTotal(report);
+    revenue.expenses += reportItemsTotal(report.expenses);
+  });
+  revenue.total = revenue.bowling + revenue.gastro;
+  return {
+    hours,
+    revenue,
+    revenuePerHour: hours.total > 0 ? revenue.total / hours.total : 0
+  };
+}
+
+function workAreaForEmployeeDate(employee, dateKey) {
+  const schedule = state.allSchedules?.[dateKey.slice(0, 7)] || state.schedule || {};
+  const positions = Object.entries(schedule.days?.[dateKey] || {})
+    .filter(([key, value]) => !key.includes("__") && value === employee)
+    .map(([key]) => key);
+  for (const position of positions) {
+    const area = workAreaFromText(position);
+    if (area !== "Sonstige") return area;
+  }
+  const departments = state.settings.employeeDepartments?.[employee] || [];
+  for (const department of ["Counter", "Kueche", "Service"]) {
+    if (departments.some((value) => normalizeDepartment(value) === department)) return department;
+  }
+  return workAreaFromText(state.settings.employeeRoles?.[employee] || departments[0] || "");
+}
+
+function workAreaFromText(value) {
+  const text = String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (text.includes("counter")) return "Counter";
+  if (text.includes("kuche") || text.includes("kueche") || text.includes("koch") || text.includes("spul")) return "Kueche";
+  if (text.includes("service")) return "Service";
+  return "Sonstige";
 }
 
 function renderSettings() {
@@ -5293,7 +5588,7 @@ function bindEvents() {
   });
 
   $("#chefDashboard")?.addEventListener("change", (event) => {
-    if (!event.target.matches("#chefEmployeeMonth")) return;
+    if (!event.target.matches("#chefEmployeeMonth, #chefNumbersMonth")) return;
     state.selectedMonth = event.target.value;
     loadState().catch(showError);
   });
@@ -5354,6 +5649,7 @@ function bindEvents() {
       state.invoiceDate = result.date || todayKey();
       state.invoiceReport = result.report || {};
       state.settings = normalizeSettings(result.settings || state.settings);
+      state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
       window.localStorage?.setItem("invoiceTerminalToken", state.invoiceTerminalToken);
       $("#customerInvoiceStaffCode").value = "";
       renderCustomerInvoiceDesk();
@@ -5379,6 +5675,23 @@ function bindEvents() {
     if (!list) return;
     if (list.querySelector(".hint")) list.innerHTML = "";
     list.insertAdjacentHTML("beforeend", invoiceRowHtml());
+  });
+
+  $("#customerMasterSearch")?.addEventListener("input", renderCustomerMaster);
+  $("#customerMasterSelect")?.addEventListener("change", renderCustomerMaster);
+
+  $("#addCustomerFromMaster")?.addEventListener("click", () => {
+    const selectedId = $("#customerMasterSelect")?.value || "";
+    const customer = normalizeCustomerDirectory(state.customerDirectory).find((item) => item.id === selectedId);
+    if (!customer) {
+      showToast("Bitte zuerst einen Kunden aus der Kartei auswählen.");
+      return;
+    }
+    const list = $("#customerInvoiceWorkList");
+    if (!list) return;
+    if (list.querySelector(".hint")) list.innerHTML = "";
+    list.insertAdjacentHTML("beforeend", invoiceRowHtml(customerMasterToInvoice(customer)));
+    showToast(`${customer.name} wurde in den Tagesbericht übernommen.`);
   });
 
   $("#addCustomerExpenseWorkRow")?.addEventListener("click", () => {
@@ -6035,6 +6348,13 @@ function bindEvents() {
     saveAdminTimesheet(button);
   });
 
+  $("#adminContent")?.addEventListener("change", (event) => {
+    if (!event.target.matches("#adminNumbersMonth")) return;
+    state.selectedMonth = event.target.value;
+    if ($("#monthInput")) $("#monthInput").value = state.selectedMonth;
+    loadState().catch(showError);
+  });
+
   $("#addEmployeeCard")?.addEventListener("click", () => {
     syncEmployeeDirectoryToTextareas();
     const base = "Neuer Mitarbeiter";
@@ -6458,7 +6778,7 @@ function bindEvents() {
     }
   });
 
-  ["#reportCashTotal", "#reportEcTerminal1", "#reportEcTerminal2", "#reportRevenueBowling", "#reportRevenueGastro"].forEach((selector) => {
+  ["#reportCashTotal", "#reportEcTerminal1", "#reportEcTerminal2", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportRevenueGastro"].forEach((selector) => {
     $(selector)?.addEventListener("input", updateReportBarTotal);
   });
 
@@ -6476,7 +6796,10 @@ function bindEvents() {
         ecTerminal2: $("#reportEcTerminal2")?.value || "",
         ecTotal: ecTotalFromFormOrReport().toFixed(2),
         revenueBowling: $("#reportRevenueBowling")?.value || "",
-        revenueGastro: $("#reportRevenueGastro")?.value || "",
+        revenueDrinks: $("#reportRevenueDrinks")?.value || "",
+        revenueFood: $("#reportRevenueFood")?.value || "",
+        revenueOther: $("#reportRevenueOther")?.value || "",
+        revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
         tipTotal: result.tipTotal.toFixed(2),
         tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)]))
       });

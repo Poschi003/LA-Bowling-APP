@@ -2059,6 +2059,11 @@ button:disabled {
   gap: 10px;
 }
 
+.tip-input-grid input[readonly] {
+  background: var(--surface-soft);
+  font-weight: 800;
+}
+
 .tip-finance-block {
   display: grid;
   gap: 12px;
@@ -3141,6 +3146,38 @@ button:disabled {
   gap: 12px;
 }
 
+.customer-master-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+.customer-master-preview {
+  display: grid;
+  gap: 6px;
+  margin: 0 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 12px;
+  color: var(--text);
+}
+
+.customer-master-preview strong,
+.customer-master-preview span {
+  display: block;
+}
+
+.customer-master-preview .hint {
+  margin: 0;
+}
+
+.customer-master-hint {
+  margin: 0;
+  padding: 0 12px 12px;
+}
+
 .customer-firming-hint {
   margin: 0;
   border-left: 3px solid var(--brand);
@@ -3158,6 +3195,61 @@ button:disabled {
 .chef-dashboard {
   display: grid;
   gap: 18px;
+}
+
+.monthly-numbers-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.monthly-number-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.monthly-number-grid article {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 12px;
+}
+
+.monthly-number-grid span,
+.monthly-number-grid small,
+.monthly-number-table th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.monthly-number-grid strong {
+  color: var(--ink);
+  font-size: 21px;
+}
+
+.monthly-number-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #fff;
+}
+
+.monthly-number-table th,
+.monthly-number-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.monthly-number-table td {
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .chef-tabs {
@@ -3773,6 +3865,7 @@ button:disabled {
   .a4-report-grid,
   .invoice-day-overview,
   .invoice-entry-summary,
+  .customer-master-tools,
   .report-entry-grid {
     grid-template-columns: 1fr;
   }
