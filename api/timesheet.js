@@ -23,6 +23,9 @@ module.exports = async function handler(req, res) {
     const from = cleanTime(existing.from);
     const to = cleanTime(existing.to);
     if (!to) return sendJson(res, 400, { error: "Trinkgeld kann erst nach Dienstende eingetragen werden." });
+    if (existing.tipSource === "terminal-distribution") {
+      return sendJson(res, 409, { error: "Trinkgeld wurde bereits automatisch aus dem Tagesabschluss uebernommen." });
+    }
     const tip = Math.max(0, Number(String(body.tip || "0").replace(",", ".")) || 0);
 
     appData.timesheets[month][session.employee][date] = { ...existing, from, to, tip, updatedAt: new Date().toISOString() };
