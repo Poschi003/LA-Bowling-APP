@@ -3992,11 +3992,6 @@ function renderTipDistribution() {
       <strong>${formatMoney(displayDistributed)} ausgegeben · ${formatMoney(displayRemainder)} Rest gesammelt</strong>
       <small>${paid ? "Auszahlung bestätigt, Übersicht auf null gesetzt" : `Rechnerisch ${formatMoney(displayTipTotal)} · auf ${TIP_BILL_STEP}-Euro-Scheine gerundet`}</small>
     </article>
-    <article>
-      <span>Abzugeben an Chef</span>
-      <strong>${formatMoney(result.cashToBoss)}</strong>
-      <small>Bar gesamt minus rechnerisches Trinkgeld</small>
-    </article>
   `;
   const groups = ["Counter", "Service", "Kueche"].map((area) => ({
     area,
