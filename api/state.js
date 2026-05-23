@@ -7,6 +7,7 @@ const {
   readJson,
   sanitizeSchedules,
   sendJson,
+  syncReportTipsToTimesheets,
   verifyToken,
   writeAppData
 } = require("./_data");
@@ -21,17 +22,19 @@ module.exports = async function handler(req, res) {
     const employeeSession = verifyToken(req.query.employeeToken, "employee");
     const appData = await readAppData();
     const didCleanup = cleanupOldSchedules(appData);
-    if (didCleanup) await writeAppData(appData);
+    const didTipSync = syncReportTipsToTimesheets(appData);
+    if (didCleanup || didTipSync) await writeAppData(appData);
     const schedule = appData.schedules[month] || { month, published: false, days: {} };
     const nextMonth = req.query.nextMonth;
-    const missingAvailability = availabilityMissing(appData, nextMonth);
-    const availabilityChangeRequests = (appData.availabilityChangeRequests || []).filter((request) => !month || request.month === month);
+    const availabilityMonth = cleanMonth(req.query.availabilityMonth) || cleanMonth(appData.settings.availabilityTargetMonth) || cleanMonth(nextMonth) || month;
+    const missingAvailability = availabilityMissing(appData, availabilityMonth);
+    const availabilityChangeRequests = (appData.availabilityChangeRequests || []).filter((request) => !availabilityMonth || request.month === availabilityMonth);
     const weather = await fetchWeather();
 
     if (adminSession) {
       return sendJson(res, 200, {
         settings: publicSettings(appData.settings),
-        availability: appData.availability[month] || {},
+        availability: appData.availability[availabilityMonth] || {},
         schedule,
         schedules: appData.schedules || {},
         timesheets: appData.timesheets?.[month] || {},
@@ -53,7 +56,7 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 200, {
         settings: publicSettings(appData.settings),
         availability: {
-          [employeeSession.employee]: appData.availability[month]?.[employeeSession.employee] || {}
+          [employeeSession.employee]: appData.availability[availabilityMonth]?.[employeeSession.employee] || {}
         },
         schedule: publicSchedule,
         schedules: sanitizeSchedules(appData.schedules),
@@ -178,6 +181,7 @@ async function saveCustomerInvoice(body, res) {
     invoiceCustomers: [...invoiceCustomers, customer],
     updatedAt: new Date().toISOString()
   };
+  upsertCustomerDirectory(appData, customer);
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true, date });
 }
@@ -384,6 +388,53 @@ function cleanCustomer(item) {
   };
 }
 
+function upsertCustomerDirectory(appData, customers) {
+  const list = Array.isArray(customers) ? customers : [customers];
+  const byKey = new Map();
+  (Array.isArray(appData.customerDirectory) ? appData.customerDirectory : []).forEach((customer) => {
+    const entry = customerDirectoryEntry(customer);
+    const key = customerDirectoryKey(entry);
+    if (key) byKey.set(key, entry);
+  });
+  list.forEach((customer) => {
+    const entry = customerDirectoryEntry(customer);
+    const key = customerDirectoryKey(entry);
+    if (!key) return;
+    byKey.set(key, {
+      ...(byKey.get(key) || {}),
+      ...entry,
+      updatedAt: new Date().toISOString()
+    });
+  });
+  appData.customerDirectory = [...byKey.values()]
+    .filter((customer) => customer.name)
+    .sort((a, b) => a.name.localeCompare(b.name, "de"))
+    .slice(0, 500);
+}
+
+function customerDirectoryEntry(item = {}) {
+  return {
+    id: String(item.id || customerDirectoryKey(item) || `customer-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    name: String(item.name || "").trim().slice(0, 160),
+    contact: String(item.contact || "").trim().slice(0, 160),
+    phone: String(item.phone || "").trim().slice(0, 80),
+    email: String(item.email || "").trim().slice(0, 180),
+    address: String(item.address || "").trim().slice(0, 600),
+    tip: String(item.tip || "").trim().slice(0, 160),
+    note: String(item.note || "").trim().slice(0, 600),
+    createdAt: String(item.createdAt || new Date().toISOString()).slice(0, 80),
+    updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()).slice(0, 80)
+  };
+}
+
+function customerDirectoryKey(item = {}) {
+  const email = String(item.email || "").trim().toLowerCase();
+  if (email) return `mail:${email}`;
+  const name = String(item.name || "").trim().toLowerCase();
+  const phone = String(item.phone || "").replace(/\s+/g, "");
+  return name ? `name:${name}|${phone}` : "";
+}
+
 function localDate(date) {
   const parts = new Intl.DateTimeFormat("de-DE", {
     timeZone: "Europe/Berlin",
@@ -490,6 +541,11 @@ function availabilityMissing(appData, month) {
     const days = monthAvailability[employee] || {};
     return Object.keys(days).length === 0;
   });
+}
+
+function cleanMonth(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : "";
 }
 
 function cleanupOldSchedules(appData) {

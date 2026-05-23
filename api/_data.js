@@ -54,6 +54,8 @@ const defaultData = {
     },
     employeeRoles: {},
     availabilityExemptEmployees: [],
+    availabilityTargetMonth: defaultAvailabilityTargetMonth(),
+    availabilitySubmissionOpen: true,
     adminEmployees: [],
     positions: ["Counter 1", "Counter 2", "Service 1", "Service 2", "Service 3", "Service 4", "Service 5", "Kueche 1", "Kueche 2", "Spueler", "Reinigung", "Mechanik"],
     chefViewSections: {
@@ -148,6 +150,7 @@ const defaultData = {
   ],
   messages: [],
   terminalMessages: [],
+  customerDirectory: [],
   swaps: [],
   availabilityChangeRequests: []
 };
@@ -182,6 +185,8 @@ function mergeData(value) {
         ...(value?.settings?.employeeRoles || {})
       },
       availabilityExemptEmployees: value?.settings?.availabilityExemptEmployees || base.settings.availabilityExemptEmployees,
+      availabilityTargetMonth: normalizeMonth(value?.settings?.availabilityTargetMonth) || base.settings.availabilityTargetMonth,
+      availabilitySubmissionOpen: value?.settings?.availabilitySubmissionOpen !== false,
       adminEmployees: value?.settings?.adminEmployees || base.settings.adminEmployees,
       positions: ensureRequiredPositions(value?.settings?.positions || base.settings.positions),
       chefViewSections: {
@@ -209,6 +214,7 @@ function mergeData(value) {
     reminderTemplates: Array.isArray(value?.reminderTemplates) ? value.reminderTemplates : base.reminderTemplates,
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
+    customerDirectory: Array.isArray(value?.customerDirectory) ? value.customerDirectory : base.customerDirectory,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };
@@ -271,6 +277,8 @@ function publicSettings(settings) {
     employeeDepartments: settings.employeeDepartments || {},
     employeeRoles: settings.employeeRoles || {},
     availabilityExemptEmployees: settings.availabilityExemptEmployees || [],
+    availabilityTargetMonth: normalizeMonth(settings.availabilityTargetMonth) || defaultAvailabilityTargetMonth(),
+    availabilitySubmissionOpen: settings.availabilitySubmissionOpen !== false,
     adminEmployees: settings.adminEmployees || [],
     positions: ensureRequiredPositions(settings.positions || []),
     chefViewSections: settings.chefViewSections || defaultData.settings.chefViewSections,
@@ -319,6 +327,19 @@ function normalizeHourlyRate(value, fallback = 25) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return Math.max(0, Math.min(200, Math.round(normalizedFallback * 100) / 100));
   return Math.max(0, Math.min(200, Math.round(parsed * 100) / 100));
+}
+
+function normalizeMonth(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : "";
+}
+
+function defaultAvailabilityTargetMonth() {
+  const date = new Date();
+  date.setMonth(date.getMonth() + 1, 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
 }
 
 function sanitizeSchedules(schedules) {
@@ -598,6 +619,161 @@ function handleError(res, error) {
   sendJson(res, error.statusCode || 500, { error: error.message || String(error) });
 }
 
+function syncReportTipsToTimesheets(appData) {
+  if (!appData || typeof appData !== "object") return false;
+  const reports = appData.dayReports && typeof appData.dayReports === "object" ? appData.dayReports : {};
+  appData.timesheets ||= {};
+  let changed = false;
+
+  for (const [date, report] of Object.entries(reports)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !report || typeof report !== "object") continue;
+    const month = date.slice(0, 7);
+    appData.timesheets[month] ||= {};
+    const tips = reportTipsForSync(appData, date, report);
+    if (!Object.keys(tips).length) continue;
+
+    const existingTips = cleanTipMapForSync(report.tipsByEmployee || {});
+    if (JSON.stringify(existingTips) !== JSON.stringify(tips)) {
+      report.tipsByEmployee = tips;
+      changed = true;
+    }
+
+    for (const [employee, tip] of Object.entries(tips)) {
+      const entries = appData.timesheets[month][employee];
+      const existing = entries?.[date];
+      if (!existing || (!existing.from && !existing.to)) continue;
+      if (String(existing.tip || "") === tip && existing.tipSource === "terminal-distribution") continue;
+      appData.timesheets[month][employee][date] = {
+        ...existing,
+        tip,
+        tipSource: "terminal-distribution",
+        updatedAt: new Date().toISOString()
+      };
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function reportTipsForSync(appData, date, report) {
+  const explicit = cleanTipMapForSync(report.tipsByEmployee || {});
+  if (Object.values(explicit).some((amount) => tipMoneyNumber(amount) > 0)) return explicit;
+  return deriveTipsForReport(appData, date, report);
+}
+
+function deriveTipsForReport(appData, date, report) {
+  const tipTotal = reportTipTotalForSync(report);
+  if (tipTotal <= 0) return {};
+  const month = date.slice(0, 7);
+  const entriesByEmployee = appData.timesheets?.[month] || {};
+  const scheduleDay = appData.schedules?.[month]?.days?.[date] || {};
+  const openingTime = tipOpeningTimeForSync(report);
+  const rows = Object.entries(entriesByEmployee).map(([employee, entries]) => {
+    const entry = entries?.[date] || {};
+    const area = tipAreaForSync(appData.settings || {}, scheduleDay, report, employee);
+    const hours = paidHoursAfterOpeningForSync(entry, openingTime);
+    return { employee, area, hours };
+  }).filter((row) => ["Counter", "Service", "Kueche"].includes(row.area) && row.hours > 0);
+  const kitchenCount = rows.filter((row) => row.area === "Kueche").length;
+  const weighted = rows.map((row) => ({
+    ...row,
+    factor: row.area === "Kueche" && kitchenCount >= 2 ? 0.75 : 1
+  })).map((row) => ({
+    ...row,
+    weight: row.hours * row.factor
+  }));
+  const totalWeight = weighted.reduce((sum, row) => sum + row.weight, 0);
+  if (totalWeight <= 0) return {};
+  return cleanTipMapForSync(Object.fromEntries(weighted.map((row) => {
+    const rawTip = tipTotal * row.weight / totalWeight;
+    return [row.employee, roundTipToBillsForSync(rawTip)];
+  })));
+}
+
+function cleanTipMapForSync(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([employee, amount]) => [String(employee || "").trim(), tipMoneyString(amount)])
+    .filter(([employee, amount]) => employee && tipMoneyNumber(amount) > 0)
+    .sort(([left], [right]) => left.localeCompare(right, "de")));
+}
+
+function reportTipTotalForSync(report = {}) {
+  if (report.tipTotal !== "" && report.tipTotal != null) return tipMoneyNumber(report.tipTotal);
+  const cashTotal = tipMoneyNumber(report.cashTotal);
+  const ecTotal = tipMoneyNumber(report.ecTotal) || tipMoneyNumber(report.ecTerminal1) + tipMoneyNumber(report.ecTerminal2);
+  const personalConsumption = tipMoneyNumber(report.personalConsumption);
+  const revenueBowling = tipMoneyNumber(report.revenueBowling ?? report.barBowling);
+  const revenueGastro = tipMoneyNumber(report.revenueGastro ?? report.barGastro)
+    || tipMoneyNumber(report.revenueDrinks) + tipMoneyNumber(report.revenueFood) + tipMoneyNumber(report.revenueOther);
+  const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
+  return Math.max(0, cashTotal + ecTotal - totalRevenue);
+}
+
+function tipAreaForSync(settings, scheduleDay, report, employee) {
+  for (const [position, value] of Object.entries(scheduleDay || {})) {
+    if (position.includes("__")) continue;
+    if (String(value || "").trim() === employee) return tipDepartmentForSync(position);
+  }
+  const extra = (Array.isArray(report.extraEmployees) ? report.extraEmployees : [])
+    .map((item) => typeof item === "string" ? { employee: item, role: "" } : item)
+    .find((item) => String(item?.employee || "").trim() === employee);
+  if (extra?.role) return tipDepartmentForSync(extra.role);
+  const roleDepartment = tipDepartmentForSync(settings.employeeRoles?.[employee] || "");
+  if (roleDepartment) return roleDepartment;
+  const departments = settings.employeeDepartments?.[employee] || [];
+  const values = Array.isArray(departments) ? departments : String(departments || "").split(",");
+  return values.map(tipDepartmentForSync).find((area) => ["Counter", "Service", "Kueche"].includes(area)) || "";
+}
+
+function tipDepartmentForSync(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+  if (text.includes("counter")) return "Counter";
+  if (text.includes("service")) return "Service";
+  if (text.includes("kueche") || text.includes("kuche") || text.includes("küche") || text.includes("koch") || text.includes("spuel") || text.includes("spül")) return "Kueche";
+  return "";
+}
+
+function tipOpeningTimeForSync(report = {}) {
+  const match = String(report.openingHours || "").match(/(\d{1,2}):(\d{2})/);
+  return match ? `${String(match[1]).padStart(2, "0")}:${match[2]}` : "00:00";
+}
+
+function paidHoursAfterOpeningForSync(entry = {}, openingTime = "00:00") {
+  if (!entry.from || !entry.to) return 0;
+  const from = tipTimeToMinutes(entry.from) >= tipTimeToMinutes(openingTime) ? entry.from : openingTime;
+  return tipMinutesBetween(from, entry.to) / 60;
+}
+
+function tipMinutesBetween(from, to) {
+  const start = tipTimeToMinutes(from);
+  let end = tipTimeToMinutes(to);
+  if (end < start) end += 24 * 60;
+  return Math.max(0, end - start);
+}
+
+function tipTimeToMinutes(value) {
+  const [hours, minutes] = String(value || "00:00").split(":").map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function roundTipToBillsForSync(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 5) return 0;
+  return Math.floor(amount / 5) * 5;
+}
+
+function tipMoneyNumber(value) {
+  const parsed = Number(String(value ?? "0").replace(",", "."));
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function tipMoneyString(value) {
+  return (Math.round(tipMoneyNumber(value) * 100) / 100).toFixed(2);
+}
+
 module.exports = {
   createPinHash,
   defaultData,
@@ -612,6 +788,7 @@ module.exports = {
   sanitizeSchedules,
   sendJson,
   signToken,
+  syncReportTipsToTimesheets,
   uploadReceiptDataUrl,
   verifyAdmin,
   verifyToken,

@@ -38,6 +38,7 @@ module.exports = async function handler(req, res) {
 async function login(body, res) {
   const appData = await readAppData();
   if (!verifyTerminalCode(appData.settings, body.code)) return sendJson(res, 401, { error: "Code stimmt nicht." });
+  if (require("./_data").syncReportTipsToTimesheets(appData)) await writeAppData(appData);
   sendJson(res, 200, { ok: true, token: signToken({ type: "terminal", terminal: true }), ...terminalPayload(appData, activeTerminalDate(appData, cleanDate(body.date))) });
 }
 
@@ -94,6 +95,7 @@ async function adminCloseCorrection(body, res) {
 
 async function load(body, res, session = {}) {
   const appData = await readAppData();
+  if (require("./_data").syncReportTipsToTimesheets(appData)) await writeAppData(appData);
   const date = session.correctionDate || activeTerminalDate(appData, cleanDate(body.date));
   sendJson(res, 200, terminalPayload(appData, date));
 }
