@@ -669,12 +669,19 @@ function deriveTipsForReport(appData, date, report) {
   const entriesByEmployee = appData.timesheets?.[month] || {};
   const scheduleDay = appData.schedules?.[month]?.days?.[date] || {};
   const openingTime = tipOpeningTimeForSync(report);
-  const rows = Object.entries(entriesByEmployee).map(([employee, entries]) => {
+  let rows = Object.entries(entriesByEmployee).map(([employee, entries]) => {
     const entry = entries?.[date] || {};
     const area = tipAreaForSync(appData.settings || {}, scheduleDay, report, employee);
     const hours = paidHoursAfterOpeningForSync(entry, openingTime);
     return { employee, area, hours };
   }).filter((row) => ["Counter", "Service", "Kueche"].includes(row.area) && row.hours > 0);
+  if (!rows.length) {
+    rows = Object.entries(entriesByEmployee).map(([employee, entries]) => {
+      const entry = entries?.[date] || {};
+      const hours = paidHoursAfterOpeningForSync(entry, openingTime);
+      return { employee, area: "Service", hours };
+    }).filter((row) => row.hours > 0);
+  }
   const kitchenCount = rows.filter((row) => row.area === "Kueche").length;
   const weighted = rows.map((row) => ({
     ...row,
@@ -700,7 +707,10 @@ function cleanTipMapForSync(value) {
 }
 
 function reportTipTotalForSync(report = {}) {
-  if (report.tipTotal !== "" && report.tipTotal != null) return tipMoneyNumber(report.tipTotal);
+  const storedTipTotal = tipMoneyNumber(report.tipTotal);
+  if (storedTipTotal > 0) return storedTipTotal;
+  const payoutTotal = tipMoneyNumber(report.tipPayoutAmount) + tipMoneyNumber(report.tipPayoutRemainder);
+  if (payoutTotal > 0) return payoutTotal;
   const cashTotal = tipMoneyNumber(report.cashTotal);
   const ecTotal = tipMoneyNumber(report.ecTotal) || tipMoneyNumber(report.ecTerminal1) + tipMoneyNumber(report.ecTerminal2);
   const personalConsumption = tipMoneyNumber(report.personalConsumption);
