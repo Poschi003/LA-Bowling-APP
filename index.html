@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260522-monatszahlen-finanzsplit-v1">
+    <link rel="stylesheet" href="styles.css?v=20260523-trinkgeld-auto-v1">
   </head>
   <body>
     <header class="topbar">
@@ -83,7 +83,7 @@
         <div class="section-head">
           <div>
             <h2>Stundenübersicht</h2>
-            <p>Gearbeitete Dienste und optional Trinkgeld ergänzen.</p>
+            <p>Gearbeitete Dienste und automatisch verteiltes Trinkgeld.</p>
           </div>
         </div>
         <div id="timesheetSummary" class="timesheet-summary"></div>
@@ -187,7 +187,7 @@
               <div class="terminal-section-head">
                 <div>
                   <h3>Trinkgeld</h3>
-                  <p class="hint">Bar, EC und Umsatz erfassen. Das Trinkgeld wird automatisch nach Arbeitszeit verteilt.</p>
+                  <p class="hint">Bar, EC und Umsatz erfassen. Trinkgeld wird nach Arbeitszeit verteilt, auf Scheine gerundet und der Rest gesammelt.</p>
                 </div>
                 <button id="saveTipDistribution" class="primary" type="button">Trinkgeld speichern</button>
               </div>
@@ -196,6 +196,7 @@
                 <label>EC Terminal 1<input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>EC Terminal 2<input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>EC gesamt<input id="reportEcTotal" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
+                <label>Personalverzehr<input id="reportPersonalConsumption" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>Umsatz Bowling<input id="reportRevenueBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>Getränke<input id="reportRevenueDrinks" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>Speisen<input id="reportRevenueFood" type="number" min="0" step="0.01" placeholder="0,00"></label>
@@ -683,6 +684,17 @@
           </details>
           <details class="settings-sub">
             <summary>Verfügbarkeit und Dienstbereiche</summary>
+          <div class="availability-control-card">
+            <label>
+              Verfügbarkeit abgeben für
+              <input id="availabilityTargetMonthSetting" type="month">
+            </label>
+            <label class="checkline">
+              <input id="availabilitySubmissionOpenSetting" type="checkbox">
+              Abgabe für Mitarbeiter geöffnet
+            </label>
+            <p class="hint">Dieser Monat wird den Mitarbeitern automatisch angezeigt. Aktuell soll hier Juni stehen.</p>
+          </div>
           <div class="position-directory-toolbar">
             <button id="addPositionRow" class="primary" type="button">+ Dienstbereich hinzufügen</button>
             <span class="hint">Personen ohne Verfügbarkeit stellst du direkt in der Mitarbeiter-Kartei ein.</span>
@@ -745,7 +757,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260522-monatszahlen-finanzsplit-v1"></script>
+    <script src="teamapp-client.js?v=20260523-trinkgeld-auto-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

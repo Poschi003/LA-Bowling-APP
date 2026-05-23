@@ -33,6 +33,7 @@
   pendingToiletCheck: "",
   pendingReminder: null,
   terminalReminderRefreshInFlight: false,
+  timesheetRefreshInFlight: false,
   terminalDayMetaEditing: false,
   terminalCorrectionMode: false,
   invoiceTerminalToken: window.localStorage?.getItem("invoiceTerminalToken") || "",
@@ -115,6 +116,8 @@ const defaultData = {
     },
     employeeRoles: {},
     availabilityExemptEmployees: [],
+    availabilityTargetMonth: nextMonthValue(),
+    availabilitySubmissionOpen: true,
     adminEmployees: [],
     positions: ["Counter 1", "Counter 2", "Service 1", "Service 2", "Service 3", "Service 4", "Service 5", "Kueche 1", "Kueche 2", "Spueler", "Reinigung", "Mechanik"],
     chefViewSections: {
@@ -156,6 +159,7 @@ const defaultData = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const DAILY_FREE_BREAK_MINUTES = 30;
+const TIP_BILL_STEP = 5;
 
 function currentMonthValue() {
   return monthValue(new Date());
@@ -376,7 +380,7 @@ async function loadState() {
   state.schedule = state.schedule || { month: state.selectedMonth, published: false, days: {} };
   state.allSchedules = state.allSchedules || {};
   renderAll();
-  const params = new URLSearchParams({ month: state.selectedMonth, nextMonth: nextMonthValue() });
+  const params = new URLSearchParams({ month: state.selectedMonth, nextMonth: availabilityMonthValue(), availabilityMonth: availabilityMonthValue() });
   if (state.employeeToken) params.set("employeeToken", state.employeeToken);
   if (state.adminToken) params.set("adminToken", state.adminToken);
   const data = await api(`/api/state?${params.toString()}`);
@@ -456,6 +460,8 @@ function mergeData(value) {
       },
       availabilityExemptEmployees: incomingSettings.availabilityExemptEmployees || base.settings.availabilityExemptEmployees || []
       ,
+      availabilityTargetMonth: normalizeMonthValue(incomingSettings.availabilityTargetMonth) || base.settings.availabilityTargetMonth,
+      availabilitySubmissionOpen: incomingSettings.availabilitySubmissionOpen !== false,
       adminEmployees: incomingSettings.adminEmployees || base.settings.adminEmployees || [],
       positions: ensureRequiredPositions(incomingSettings.positions || base.settings.positions || []),
       chefViewSections: {
@@ -509,6 +515,15 @@ function normalizeHourlyRate(value, fallback = 25) {
 
 function currentHourlyRate() {
   return normalizeHourlyRate(state.settings?.hourlyRate, defaultData.settings.hourlyRate);
+}
+
+function normalizeMonthValue(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : "";
+}
+
+function availabilityMonthValue() {
+  return normalizeMonthValue(state.settings?.availabilityTargetMonth) || nextMonthValue();
 }
 
 function normalizeReminderTemplates(reminders) {
@@ -572,7 +587,8 @@ function cleanCleaningTemplateClient(task = {}) {
 function renderAll() {
   $("#appTitle").textContent = isCustomerInvoiceMode() ? "Bezahlung auf Rechnung" : isTodoMode() ? "TO DO" : state.settings.businessName;
   if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = formatDate(localDateValue());
-  $("#monthInput").value = state.selectedMonth;
+  $("#monthInput").value = availabilityMonthValue();
+  $("#monthInput").disabled = true;
   renderAccess();
   renderEmployeeSelect();
   renderAvailability();
@@ -895,6 +911,7 @@ function dayReportSummaryLine(report = {}) {
     `Umsatz ${formatReportMoney(reportRevenueTotal(report))}`,
     `Rechnung ${formatReportMoney(reportInvoiceTotal(report))}`,
     `EC ${formatReportMoney(reportEcTotal(report))}`,
+    ...(reportPersonalConsumptionTotal(report) ? [`Personalverzehr ${formatReportMoney(reportPersonalConsumptionTotal(report))}`] : []),
     `Ausgaben ${formatReportMoney(reportItemsTotal(report.expenses))}`,
     `Abgabe Chef ${formatReportMoney(reportChefHandoverTotal(report))}`
   ].join(" · ");
@@ -912,6 +929,7 @@ function dayReportValuesHtml(report = {}) {
       <span><small>Umsatz gesamt</small><strong>${formatReportMoney(reportRevenueTotal(report))}</strong></span>
       ${reportFieldEnabled("invoiceCustomers") ? `<span><small>Rechnung</small><strong>${formatReportMoney(reportInvoiceTotal(report))}</strong></span>` : ""}
       <span><small>EC</small><strong>${formatReportMoney(reportEcTotal(report))}</strong></span>
+      <span><small>Personalverzehr</small><strong>${formatReportMoney(reportPersonalConsumptionTotal(report))}</strong></span>
       ${reportFieldEnabled("expenses") ? `<span><small>Ausgaben</small><strong>${formatReportMoney(reportItemsTotal(report.expenses))}</strong></span>` : ""}
       <span><small>Abgabe an Chef</small><strong>${formatReportMoney(reportChefHandoverTotal(report))}</strong></span>
     </div>
@@ -923,6 +941,7 @@ function dayReportA4Html(dateKey, report = {}) {
   const invoiceTotalValue = reportItemsTotal(printableInvoices);
   const expenseTotalValue = reportItemsTotal(report.expenses);
   const ecTotalValue = reportEcTotal(report);
+  const personalConsumptionValue = reportPersonalConsumptionTotal(report);
   const bowlingRevenueValue = reportMoneyNumber(report.revenueBowling || report.barBowling);
   const gastroParts = reportGastroParts(report);
   const gastroRevenueValue = gastroRevenueTotal(report);
@@ -954,6 +973,7 @@ function dayReportA4Html(dateKey, report = {}) {
             ${a4ReportLine("Umsatz gesamt", formatReportMoney(totalRevenueValue), "a4-report-total")}
             ${a4ReportLine("Bezahlung auf Rechnung", formatReportMoney(invoiceTotalValue), "a4-report-secondary")}
             ${a4ReportLine("EC", formatReportMoney(ecTotalValue), "a4-report-secondary")}
+            ${a4ReportLine("Personalverzehr", formatReportMoney(personalConsumptionValue), "a4-report-secondary")}
             ${a4ReportLine("Ausgaben", formatReportMoney(expenseTotalValue), "a4-report-secondary")}
             ${a4ReportLine("Abgabe an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
           </div>
@@ -1526,10 +1546,18 @@ function reportEcTotal(report = {}) {
   return splitTotal || reportMoneyNumber(report.ecTotal);
 }
 
-function reportRevenueTotal(report = {}) {
+function reportPersonalConsumptionTotal(report = {}) {
+  return reportMoneyNumber(report.personalConsumption);
+}
+
+function reportGrossRevenueTotal(report = {}) {
   const split = reportMoneyNumber(report.revenueBowling || report.barBowling) + gastroRevenueTotal(report);
   if (split) return split;
   return Math.max(0, barTotal(report) + reportEcTotal(report) - reportInvoiceTotal(report));
+}
+
+function reportRevenueTotal(report = {}) {
+  return Math.max(0, reportGrossRevenueTotal(report) - reportPersonalConsumptionTotal(report));
 }
 
 function reportGastroParts(report = {}) {
@@ -1579,6 +1607,7 @@ function exportDayReport(dateKey) {
   const invoiceTotalValue = reportItemsTotal(printableInvoices);
   const expenseTotalValue = reportItemsTotal(report.expenses);
   const ecTotalValue = reportEcTotal(report);
+  const personalConsumptionValue = reportPersonalConsumptionTotal(report);
   const totalRevenueValue = reportRevenueTotal(report);
   const gastroParts = reportGastroParts(report);
   const chefHandoverValue = reportChefHandoverTotal(report);
@@ -1603,6 +1632,7 @@ function exportDayReport(dateKey) {
     `Gesamtumsatz: ${formatReportMoney(totalRevenueValue)}`,
     `Bezahlung auf Rechnung: ${formatReportMoney(invoiceTotalValue)}`,
     `EC: ${formatReportMoney(ecTotalValue)}`,
+    `Personalverzehr: ${formatReportMoney(personalConsumptionValue)}`,
     `Ausgaben: ${formatReportMoney(expenseTotalValue)}`,
     `Abgabe an Chef: ${formatReportMoney(chefHandoverValue)}`,
     ...(reportFieldEnabled("preparation") ? [reportPreparationLine(dateKey, report)] : []),
@@ -1794,9 +1824,12 @@ function renderEmployeeSelect() {
   $("#saveAvailability").classList.toggle("hidden", !loggedIn);
   $("#activeEmployeeName").textContent = loggedIn ? state.activeEmployee : "";
   const locked = loggedIn && availabilityIsSubmitted();
+  const monthLabel = formatMonth(availabilityMonthValue());
+  const isOpen = state.settings.availabilitySubmissionOpen !== false;
   $("#employeeViewHint").textContent = loggedIn
-    ? (locked ? "Verfügbarkeit wurde bereits abgegeben. Änderungen bitte anfragen." : "Markiere pro Tag, wann du kannst.")
+    ? (!isOpen ? `Die Verfuegbarkeit fuer ${monthLabel} ist aktuell geschlossen.` : (locked ? `Verfuegbarkeit fuer ${monthLabel} wurde bereits abgegeben. Aenderungen bitte anfragen.` : `Markiere fuer ${monthLabel} die Tage, an denen du kannst.`))
     : "Mitarbeiter-PIN eingeben, um die eigene Verfügbarkeit zu bearbeiten.";
+  $("#saveAvailability").disabled = !isOpen;
   $("#saveAvailability").textContent = locked ? "Änderung anfragen" : "Verfügbarkeit absenden";
 }
 
@@ -1809,7 +1842,7 @@ function renderAvailability() {
   const employeeDays = state.availability[employee] || {};
   const locked = availabilityIsSubmitted();
   const requestOpen = hasOpenAvailabilityRequest();
-  $("#availabilityGrid").innerHTML = renderWeekSections(state.selectedMonth, (date) => {
+  $("#availabilityGrid").innerHTML = renderWeekSections(availabilityMonthValue(), (date) => {
     const key = isoDate(date);
     const day = { ...emptyDay(), ...(employeeDays[key] || {}) };
     const holiday = holidayInfo(key);
@@ -1841,7 +1874,7 @@ function availabilityIsSubmitted() {
 
 function hasOpenAvailabilityRequest() {
   return (state.availabilityChangeRequests || []).some((request) => (
-    request.employee === state.activeEmployee && request.month === state.selectedMonth && request.status === "open"
+    request.employee === state.activeEmployee && request.month === availabilityMonthValue() && request.status === "open"
   ));
 }
 
@@ -2395,7 +2428,8 @@ function renderAdminAvailabilityPreview() {
     container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
     return;
   }
-  const dates = datesInMonth(state.selectedMonth);
+  const availabilityMonth = availabilityMonthValue();
+  const dates = datesInMonth(availabilityMonth);
   const employees = state.settings.employees || [];
   const cards = dates.map((date) => {
     const dateKey = isoDate(date);
@@ -2410,7 +2444,7 @@ function renderAdminAvailabilityPreview() {
   }).join("");
   container.innerHTML = `
     <div class="availability-preview-head">
-      <strong>${formatMonth(state.selectedMonth)}</strong>
+      <strong>${formatMonth(availabilityMonth)}</strong>
       <span>${employees.length} Mitarbeiter</span>
     </div>
     <div class="availability-preview-grid">${cards}</div>
@@ -2430,7 +2464,7 @@ function renderMissingAvailability() {
   const missing = state.missingAvailability || [];
   return `
     <section class="missing-section">
-      <h2>Fehlende Verfügbarkeit für ${formatMonth(nextMonthValue())}</h2>
+      <h2>Fehlende Verfügbarkeit für ${formatMonth(availabilityMonthValue())}</h2>
       ${missing.length
         ? `<div class="missing-list">${missing.map((name) => `<span>${escapeHtml(name)}</span>`).join("")}</div>`
         : `<p>Alle haben ihre Verfügbarkeit abgegeben.</p>`}
@@ -2549,14 +2583,19 @@ function renderTimesheet() {
   const rows = shiftDates.map((dateKey) => {
     const entry = entries[dateKey] || {};
     const hours = paidHours(entry);
+    const hasTip = entry.tip !== "" && entry.tip != null && Number(entry.tip || 0) > 0;
+    const tipSource = entry.tipSource === "terminal-distribution" ? "aus Tagesabschluss" : "manuell erfasst";
     return `
       <article class="timesheet-row" data-date="${dateKey}">
         <div>
           <strong>${formatDate(dateKey)}</strong>
           <span>${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")} · ${formatHours(hours)}${breakMinutes(entry) ? ` · ${escapeHtml(breakSummaryText(entry))}` : ""}</span>
         </div>
-        <label>Trinkgeld<input type="number" min="0" step="0.01" data-ts-field="tip" value="${escapeHtml(entry.tip || "")}" placeholder="0,00"></label>
-        <button class="secondary" data-save-timesheet="${dateKey}">Speichern</button>
+        <div class="timesheet-tip-display">
+          <span>Trinkgeld</span>
+          <strong>${hasTip ? formatMoney(entry.tip) : "Noch nicht verteilt"}</strong>
+          <small>${hasTip ? escapeHtml(tipSource) : "erscheint nach dem Tagesabschluss"}</small>
+        </div>
       </article>
     `;
   }).join("");
@@ -2722,12 +2761,14 @@ function reportPreviewFromForm() {
   const revenueFood = $("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "";
   const revenueOther = $("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || "";
   const revenueGastro = gastroRevenueFromFormOrReport().toFixed(2);
+  const personalConsumption = $("#reportPersonalConsumption")?.value || state.terminalReport?.personalConsumption || "";
   return {
     ...(state.terminalReport || {}),
     cashTotal,
     ecTerminal1: $("#reportEcTerminal1")?.value || state.terminalReport?.ecTerminal1 || "",
     ecTerminal2: $("#reportEcTerminal2")?.value || state.terminalReport?.ecTerminal2 || "",
     ecTotal: ecTotalFromFormOrReport().toFixed(2),
+    personalConsumption,
     revenueBowling,
     revenueDrinks,
     revenueFood,
@@ -2811,6 +2852,7 @@ function renderTerminal() {
   $("#reportCashTotal").value = report.cashTotal || "";
   $("#reportEcTerminal1").value = report.ecTerminal1 || "";
   $("#reportEcTerminal2").value = report.ecTerminal2 || "";
+  $("#reportPersonalConsumption").value = report.personalConsumption || "";
   $("#reportRevenueBowling").value = report.revenueBowling || report.barBowling || "";
   $("#reportRevenueDrinks").value = report.revenueDrinks || "";
   $("#reportRevenueFood").value = report.revenueFood || "";
@@ -3616,6 +3658,7 @@ async function collectDayReportPayload() {
     ecTerminal1: $("#reportEcTerminal1")?.value || "",
     ecTerminal2: $("#reportEcTerminal2")?.value || "",
     ecTotal: ecTotalFromFormOrReport().toFixed(2),
+    personalConsumption: $("#reportPersonalConsumption")?.value || "",
     revenueBowling: $("#reportRevenueBowling")?.value || "",
     revenueDrinks: $("#reportRevenueDrinks")?.value || "",
     revenueFood: $("#reportRevenueFood")?.value || "",
@@ -3624,6 +3667,7 @@ async function collectDayReportPayload() {
     barBowling: $("#reportRevenueBowling")?.value || "",
     barGastro: gastroRevenueFromFormOrReport().toFixed(2),
     tipTotal: tipResult.tipTotal.toFixed(2),
+    tipRemainder: tipResult.tipRemainder.toFixed(2),
     tipsByEmployee: Object.fromEntries(tipResult.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
     openingHours: $("#terminalOpeningHours")?.value || "",
     shiftLeader: $("#terminalShiftLeader")?.value || "",
@@ -3669,6 +3713,7 @@ async function collectCustomerInvoiceDeskPayload() {
     action: "save-report",
     date: state.invoiceDate || todayKey(),
     ecTotal: report.ecTotal || "",
+    personalConsumption: report.personalConsumption || "",
     revenueBowling: report.revenueBowling || report.barBowling || "",
     revenueDrinks: report.revenueDrinks || "",
     revenueFood: report.revenueFood || "",
@@ -3985,12 +4030,22 @@ function renderTipDistribution() {
     <article>
       <span>Gesamtumsatz</span>
       <strong>${formatMoney(result.totalRevenue)}</strong>
-      <small>Bowling + Gastro</small>
+      <small>Bowling + Gastro minus Personalverzehr</small>
     </article>
     <article>
       <span>Trinkgeld</span>
       <strong>${formatMoney(result.tipTotal)}</strong>
-      <small>Bar + EC minus Umsatz</small>
+      <small>Bar + EC minus Umsatz nach Personalverzehr</small>
+    </article>
+    <article>
+      <span>Ausgegeben</span>
+      <strong>${formatMoney(result.distributedTipTotal)}</strong>
+      <small>auf ${TIP_BILL_STEP}-Euro-Scheine gerundet</small>
+    </article>
+    <article>
+      <span>Rest gesammelt</span>
+      <strong>${formatMoney(result.tipRemainder)}</strong>
+      <small>bleibt im Trinkgeldtopf</small>
     </article>
     <article>
       <span>Abzugeben an Chef</span>
@@ -4014,6 +4069,7 @@ function renderTipDistribution() {
             <strong>${escapeHtml(row.employee)}</strong>
             <span>${formatHours(row.hours)}</span>
             <span>${row.factor < 1 ? "Küchenfaktor 75%" : "Normal"}</span>
+            <span class="tip-raw">Rechnerisch ${formatMoney(row.rawTip)}</span>
             <strong>${formatMoney(row.tip)}</strong>
           </article>
         `).join("")}
@@ -4025,9 +4081,10 @@ function renderTipDistribution() {
 function calculateTipDistribution(dateKey) {
   const cashTotal = parseMoneyInput($("#reportCashTotal")?.value || state.terminalReport?.cashTotal || "");
   const ecTotal = ecTotalFromFormOrReport();
+  const personalConsumption = parseMoneyInput($("#reportPersonalConsumption")?.value || state.terminalReport?.personalConsumption || "");
   const revenueBowling = parseMoneyInput($("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "");
   const revenueGastro = gastroRevenueFromFormOrReport();
-  const totalRevenue = revenueBowling + revenueGastro;
+  const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
   const tipTotal = Math.max(0, cashTotal + ecTotal - totalRevenue);
   const openingTime = tipOpeningTime(dateKey);
   const employees = terminalEmployeesForDay(dateKey);
@@ -4044,13 +4101,20 @@ function calculateTipDistribution(dateKey) {
     return { ...row, factor, weight: row.hours * factor };
   });
   const totalWeight = rowsWithWeight.reduce((sum, row) => sum + row.weight, 0);
-  const rows = rowsWithWeight.map((row) => ({
-    ...row,
-    tip: totalWeight > 0 ? tipTotal * row.weight / totalWeight : 0
-  }));
+  const rows = rowsWithWeight.map((row) => {
+    const rawTip = totalWeight > 0 ? tipTotal * row.weight / totalWeight : 0;
+    return {
+      ...row,
+      rawTip,
+      tip: roundTipToBills(rawTip)
+    };
+  });
+  const distributedTipTotal = rows.reduce((sum, row) => sum + row.tip, 0);
+  const tipRemainder = Math.max(0, tipTotal - distributedTipTotal);
   return {
     cashTotal,
     ecTotal,
+    personalConsumption,
     revenueBowling,
     revenueDrinks: parseMoneyInput($("#reportRevenueDrinks")?.value || state.terminalReport?.revenueDrinks || ""),
     revenueFood: parseMoneyInput($("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || ""),
@@ -4058,9 +4122,17 @@ function calculateTipDistribution(dateKey) {
     revenueGastro,
     totalRevenue,
     tipTotal,
+    distributedTipTotal,
+    tipRemainder,
     cashToBoss: Math.max(0, cashTotal - tipTotal),
     rows
   };
+}
+
+function roundTipToBills(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < TIP_BILL_STEP) return 0;
+  return Math.floor(amount / TIP_BILL_STEP) * TIP_BILL_STEP;
 }
 
 function tipOpeningTime(dateKey) {
@@ -4362,6 +4434,7 @@ async function confirmToiletCheck() {
       ecTerminal1: $("#reportEcTerminal1")?.value || state.terminalReport.ecTerminal1 || "",
       ecTerminal2: $("#reportEcTerminal2")?.value || state.terminalReport.ecTerminal2 || "",
       ecTotal: ecTotalFromFormOrReport().toFixed(2),
+      personalConsumption: $("#reportPersonalConsumption")?.value || state.terminalReport.personalConsumption || "",
       revenueBowling: $("#reportRevenueBowling")?.value || state.terminalReport.revenueBowling || state.terminalReport.barBowling || "",
       revenueDrinks: $("#reportRevenueDrinks")?.value || state.terminalReport.revenueDrinks || "",
       revenueFood: $("#reportRevenueFood")?.value || state.terminalReport.revenueFood || "",
@@ -4552,6 +4625,7 @@ function monthlyNumbersHtml(context = "chef") {
           <tr><th>Speisen</th><td>${formatMoney(numbers.revenue.food)}</td></tr>
           <tr><th>Sonstiges</th><td>${formatMoney(numbers.revenue.other)}</td></tr>
           <tr><th>EC gesamt</th><td>${formatMoney(numbers.revenue.ec)}</td></tr>
+          <tr><th>Personalverzehr</th><td>${formatMoney(numbers.revenue.personalConsumption)}</td></tr>
           <tr><th>Rechnungskunden</th><td>${formatMoney(numbers.revenue.invoices)}</td></tr>
           <tr><th>Ausgaben</th><td>${formatMoney(numbers.revenue.expenses)}</td></tr>
         </tbody>
@@ -4572,7 +4646,7 @@ function monthlyNumbersForMonth(month) {
       hours.total += paid;
     });
   });
-  const revenue = { bowling: 0, gastro: 0, drinks: 0, food: 0, other: 0, ec: 0, invoices: 0, expenses: 0, total: 0 };
+  const revenue = { bowling: 0, gastro: 0, drinks: 0, food: 0, other: 0, ec: 0, personalConsumption: 0, invoices: 0, expenses: 0, total: 0 };
   Object.entries(state.dayReports || {}).forEach(([dateKey, report]) => {
     if (!dateKey.startsWith(month) || !report || typeof report !== "object") return;
     const parts = reportGastroParts(report);
@@ -4582,10 +4656,11 @@ function monthlyNumbersForMonth(month) {
     revenue.other += parts.other;
     revenue.gastro += gastroRevenueTotal(report);
     revenue.ec += reportEcTotal(report);
+    revenue.personalConsumption += reportPersonalConsumptionTotal(report);
     revenue.invoices += reportInvoiceTotal(report);
     revenue.expenses += reportItemsTotal(report.expenses);
   });
-  revenue.total = revenue.bowling + revenue.gastro;
+  revenue.total = Math.max(0, revenue.bowling + revenue.gastro - revenue.personalConsumption);
   return {
     hours,
     revenue,
@@ -4624,6 +4699,8 @@ function renderSettings() {
   $("#terminalCodeSetting").value = "";
   if ($("#scheduleAutoDeleteDays")) $("#scheduleAutoDeleteDays").value = String(normalizeScheduleAutoDeleteDays(state.settings.scheduleAutoDeleteDays, 14));
   if ($("#hourlyRateSetting")) $("#hourlyRateSetting").value = String(normalizeHourlyRate(state.settings.hourlyRate, 25));
+  if ($("#availabilityTargetMonthSetting")) $("#availabilityTargetMonthSetting").value = availabilityMonthValue();
+  if ($("#availabilitySubmissionOpenSetting")) $("#availabilitySubmissionOpenSetting").checked = state.settings.availabilitySubmissionOpen !== false;
   $("#employeePinsText").placeholder = "Nur neue oder geaenderte PINs eintragen, Format: Name=PIN";
   $("#adminEmployeesText").value = (state.settings.adminEmployees || []).join("\n");
   $("#employeeDepartmentsText").value = departmentsToText(state.settings.employeeDepartments || {});
@@ -5329,6 +5406,12 @@ function employeeLogout() {
 function activateTab(name) {
   $$(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
   $$(".panel").forEach((panel) => panel.classList.toggle("active", panel.id === name));
+  if (name === "timesheet" && state.employeeToken && !state.timesheetRefreshInFlight) {
+    state.timesheetRefreshInFlight = true;
+    loadState().catch(showError).finally(() => {
+      state.timesheetRefreshInFlight = false;
+    });
+  }
 }
 
 async function adminLogin(pin) {
@@ -5359,6 +5442,10 @@ async function saveSettings(button) {
   try {
     syncEmployeeDirectoryToTextareas();
     syncPositionDirectoryToTextarea();
+    const availabilityTargetMonth = normalizeMonthValue($("#availabilityTargetMonthSetting")?.value) || availabilityMonthValue();
+    const availabilitySubmissionOpen = $("#availabilitySubmissionOpenSetting")?.checked !== false;
+    state.settings.availabilityTargetMonth = availabilityTargetMonth;
+    state.settings.availabilitySubmissionOpen = availabilitySubmissionOpen;
     await api("/api/settings", {
       method: "POST",
       headers: { "x-admin-token": state.adminToken },
@@ -5368,6 +5455,8 @@ async function saveSettings(button) {
         terminalCode: $("#terminalCodeSetting").value,
         scheduleAutoDeleteDays: Number($("#scheduleAutoDeleteDays")?.value || 14),
         hourlyRate: Number($("#hourlyRateSetting")?.value || 25),
+        availabilityTargetMonth,
+        availabilitySubmissionOpen,
         employees: $("#employeesText").value.split("\n"),
         employeePins: textToPins($("#employeePinsText").value),
         adminEmployees: linesToList($("#adminEmployeesText").value),
@@ -5769,7 +5858,7 @@ function bindEvents() {
           method: "POST",
           body: JSON.stringify({
             action: "request",
-            month: state.selectedMonth,
+            month: availabilityMonthValue(),
             employeeToken: state.employeeToken,
             note: $("#availabilityChangeNote") ? $("#availabilityChangeNote").value : ""
           })
@@ -5790,7 +5879,7 @@ function bindEvents() {
       await api("/api/availability", {
         method: "POST",
         body: JSON.stringify({
-          month: state.selectedMonth,
+          month: availabilityMonthValue(),
           employeeToken: state.employeeToken,
           days: collectAvailability()
         })
@@ -6778,7 +6867,7 @@ function bindEvents() {
     }
   });
 
-  ["#reportCashTotal", "#reportEcTerminal1", "#reportEcTerminal2", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportRevenueGastro"].forEach((selector) => {
+  ["#reportCashTotal", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportRevenueGastro"].forEach((selector) => {
     $(selector)?.addEventListener("input", updateReportBarTotal);
   });
 
@@ -6795,12 +6884,14 @@ function bindEvents() {
         ecTerminal1: $("#reportEcTerminal1")?.value || "",
         ecTerminal2: $("#reportEcTerminal2")?.value || "",
         ecTotal: ecTotalFromFormOrReport().toFixed(2),
+        personalConsumption: $("#reportPersonalConsumption")?.value || "",
         revenueBowling: $("#reportRevenueBowling")?.value || "",
         revenueDrinks: $("#reportRevenueDrinks")?.value || "",
         revenueFood: $("#reportRevenueFood")?.value || "",
         revenueOther: $("#reportRevenueOther")?.value || "",
         revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
         tipTotal: result.tipTotal.toFixed(2),
+        tipRemainder: result.tipRemainder.toFixed(2),
         tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)]))
       });
       button.textContent = "Gespeichert";
