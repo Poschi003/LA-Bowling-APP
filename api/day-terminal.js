@@ -26,6 +26,7 @@ module.exports = async function handler(req, res) {
     if (action === "save-day-meta") return saveDayMeta(body, res);
     if (action === "add-handover") return addHandover(body, res);
     if (action === "save-tips") return saveTips(body, res);
+    if (action === "confirm-employee-tip-payout") return confirmEmployeeTipPayout(body, res);
     if (action === "confirm-tip-payout") return confirmTipPayout(body, res);
     if (action === "save-report") return saveReport(body, res);
     if (action === "close-report") return closeReport(body, res);
@@ -252,6 +253,29 @@ async function confirmTipPayout(body, res) {
   sendJson(res, 200, { ok: true, message: "Trinkgeld-Auszahlung bestätigt.", ...terminalPayload(appData, date) });
 }
 
+async function confirmEmployeeTipPayout(body, res) {
+  const appData = await readAppData(), date = cleanDate(body.date);
+  const employee = cleanText(body.employee, 160);
+  if (!employee) return sendJson(res, 400, { error: "Mitarbeiter fehlt." });
+  const overview = tipPayoutOverview(appData);
+  const row = overview.employees.find((item) => item.employee === employee);
+  const amount = Number(row?.openAmount || 0);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return sendJson(res, 400, { error: "Für diesen Mitarbeiter ist kein Trinkgeld offen." });
+  }
+  appData.tipPayouts ||= {};
+  appData.tipPayouts[employee] = Array.isArray(appData.tipPayouts[employee]) ? appData.tipPayouts[employee] : [];
+  appData.tipPayouts[employee].push({
+    id: `tip-payout-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`,
+    employee,
+    amount: amount.toFixed(2),
+    terminalDate: date,
+    paidAt: new Date().toISOString()
+  });
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: `${employee}: Trinkgeld-Auszahlung bestätigt.`, ...terminalPayload(appData, date) });
+}
+
 async function completeTask(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), id = String(body.id || "");
   if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
@@ -385,7 +409,7 @@ async function closeReport(body, res) {
 function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory) };
+  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory) };
 }
 
 function activeTerminalDate(appData, requestedDate) {
@@ -425,6 +449,71 @@ function reportHasActivity(report = {}) {
 
 function defaultReport(report = {}) {
   return { cashTotal: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+}
+
+function tipPayoutOverview(appData) {
+  const employeeNames = new Set((appData.settings?.employees || []).map((name) => cleanText(name, 160)).filter(Boolean));
+  const earned = {};
+  const lastTipDate = {};
+  Object.entries(appData.timesheets || {}).forEach(([, employees]) => {
+    Object.entries(employees || {}).forEach(([employee, entries]) => {
+      const cleanEmployee = cleanText(employee, 160);
+      if (!cleanEmployee) return;
+      employeeNames.add(cleanEmployee);
+      Object.entries(entries || {}).forEach(([dateKey, entry]) => {
+        const amount = moneyNumber(entry?.tip);
+        if (amount <= 0) return;
+        earned[cleanEmployee] = (earned[cleanEmployee] || 0) + amount;
+        if (!lastTipDate[cleanEmployee] || dateKey > lastTipDate[cleanEmployee]) lastTipDate[cleanEmployee] = dateKey;
+      });
+    });
+  });
+  const payouts = normalizeTipPayouts(appData.tipPayouts);
+  Object.keys(payouts).forEach((employee) => employeeNames.add(employee));
+  const employees = [...employeeNames].sort((a, b) => a.localeCompare(b, "de")).map((employee) => {
+    const history = payouts[employee] || [];
+    const paid = history.reduce((sum, item) => sum + moneyNumber(item.amount), 0);
+    const earnedTotal = earned[employee] || 0;
+    const open = Math.max(0, earnedTotal - paid);
+    const lastPaid = history.at(-1) || null;
+    return {
+      employee,
+      earnedAmount: earnedTotal.toFixed(2),
+      paidAmount: paid.toFixed(2),
+      openAmount: open.toFixed(2),
+      lastTipDate: lastTipDate[employee] || "",
+      lastPaidAt: lastPaid?.paidAt || "",
+      payoutCount: history.length
+    };
+  });
+  return {
+    employees,
+    totalEarned: employees.reduce((sum, row) => sum + moneyNumber(row.earnedAmount), 0).toFixed(2),
+    totalPaid: employees.reduce((sum, row) => sum + moneyNumber(row.paidAmount), 0).toFixed(2),
+    totalOpen: employees.reduce((sum, row) => sum + moneyNumber(row.openAmount), 0).toFixed(2)
+  };
+}
+
+function normalizeTipPayouts(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  Object.entries(value).forEach(([employee, history]) => {
+    const cleanEmployee = cleanText(employee, 160);
+    if (!cleanEmployee) return;
+    result[cleanEmployee] = (Array.isArray(history) ? history : []).map((item) => ({
+      id: cleanText(item?.id, 80),
+      employee: cleanEmployee,
+      amount: cleanMoney(item?.amount) || "0.00",
+      terminalDate: /^\d{4}-\d{2}-\d{2}$/.test(String(item?.terminalDate || "")) ? String(item.terminalDate) : "",
+      paidAt: cleanText(item?.paidAt, 40)
+    })).filter((item) => moneyNumber(item.amount) > 0);
+  });
+  return result;
+}
+
+function moneyNumber(value) {
+  const n = Number(String(value ?? "").replace(",", ".").trim());
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
 function weeklyCleaningTemplates(templates = []) {

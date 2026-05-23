@@ -85,6 +85,7 @@ const defaultData = {
   availability: {},
   schedules: {},
   timesheets: {},
+  tipPayouts: {},
   cleaningTemplates: defaultCleaningTemplates,
   taskTemplates: [
     {
@@ -209,6 +210,7 @@ function mergeData(value) {
     availability: value?.availability || base.availability,
     schedules: normalizeSchedules(value?.schedules || base.schedules),
     timesheets: value?.timesheets || base.timesheets,
+    tipPayouts: value?.tipPayouts && typeof value.tipPayouts === "object" ? value.tipPayouts : base.tipPayouts,
     cleaningTemplates: Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates,
     taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates),
     reminderTemplates: Array.isArray(value?.reminderTemplates) ? value.reminderTemplates : base.reminderTemplates,
