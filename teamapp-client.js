@@ -4029,12 +4029,19 @@ function calculateTipDistribution(dateKey) {
   const openingTime = tipOpeningTime(dateKey);
   const employees = terminalEmployeesForDay(dateKey);
   const entries = state.terminalEntries || {};
-  const baseRows = employees.map((employee) => {
+  let baseRows = employees.map((employee) => {
     const entry = entries[employee]?.[dateKey] || {};
     const area = tipAreaForEmployee(employee);
     const hours = paidHoursAfterOpening(entry, openingTime);
     return { employee, area, hours };
   }).filter((row) => ["Counter", "Service", "Kueche"].includes(row.area) && row.hours > 0);
+  if (!baseRows.length) {
+    baseRows = Object.entries(entries).map(([employee, employeeEntries]) => {
+      const entry = employeeEntries?.[dateKey] || {};
+      const hours = paidHoursAfterOpening(entry, openingTime);
+      return { employee, area: "Service", hours };
+    }).filter((row) => row.hours > 0);
+  }
   const kitchenCount = baseRows.filter((row) => row.area === "Kueche").length;
   const rowsWithWeight = baseRows.map((row) => {
     const factor = row.area === "Kueche" && kitchenCount >= 2 ? 0.75 : 1;
