@@ -53,6 +53,7 @@ const defaultData = {
       "Kevin Leicht": ["Counter", "Service"]
     },
     employeeRoles: {},
+    fixedEmployees: [],
     availabilityExemptEmployees: [],
     availabilityTargetMonth: defaultAvailabilityTargetMonth(),
     availabilitySubmissionOpen: true,
@@ -185,6 +186,7 @@ function mergeData(value) {
       employeeRoles: {
         ...(value?.settings?.employeeRoles || {})
       },
+      fixedEmployees: value?.settings?.fixedEmployees || base.settings.fixedEmployees,
       availabilityExemptEmployees: value?.settings?.availabilityExemptEmployees || base.settings.availabilityExemptEmployees,
       availabilityTargetMonth: normalizeMonth(value?.settings?.availabilityTargetMonth) || base.settings.availabilityTargetMonth,
       availabilitySubmissionOpen: value?.settings?.availabilitySubmissionOpen !== false,
@@ -278,6 +280,7 @@ function publicSettings(settings) {
     employees: settings.employees,
     employeeDepartments: settings.employeeDepartments || {},
     employeeRoles: settings.employeeRoles || {},
+    fixedEmployees: settings.fixedEmployees || [],
     availabilityExemptEmployees: settings.availabilityExemptEmployees || [],
     availabilityTargetMonth: normalizeMonth(settings.availabilityTargetMonth) || defaultAvailabilityTargetMonth(),
     availabilitySubmissionOpen: settings.availabilitySubmissionOpen !== false,

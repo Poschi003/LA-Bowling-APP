@@ -155,8 +155,18 @@ module.exports = async function handler(req, res) {
     if (body.employeeRoles && typeof body.employeeRoles === "object") {
       appData.settings.employeeRoles = body.employeeRoles;
     }
+    if (Array.isArray(body.fixedEmployees)) {
+      const currentEmployees = new Set(appData.settings.employees || []);
+      appData.settings.fixedEmployees = [...new Set(body.fixedEmployees.map(String).map((name) => name.trim()).filter((name) => name && currentEmployees.has(name)))];
+    }
     if (Array.isArray(body.availabilityExemptEmployees)) {
       appData.settings.availabilityExemptEmployees = [...new Set(body.availabilityExemptEmployees.map(String).map((name) => name.trim()).filter(Boolean))];
+    }
+    if (typeof body.availabilityTargetMonth === "string" && /^\d{4}-\d{2}$/.test(body.availabilityTargetMonth.trim())) {
+      appData.settings.availabilityTargetMonth = body.availabilityTargetMonth.trim();
+    }
+    if (body.availabilitySubmissionOpen !== undefined) {
+      appData.settings.availabilitySubmissionOpen = body.availabilitySubmissionOpen !== false;
     }
     if (Array.isArray(body.adminEmployees)) {
       appData.settings.adminEmployees = [...new Set(body.adminEmployees.map(String).map((name) => name.trim()).filter(Boolean))];

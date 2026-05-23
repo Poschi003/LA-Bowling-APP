@@ -539,7 +539,7 @@ function availabilityMissing(appData, month) {
   return (appData.settings.employees || []).filter((employee) => {
     if (exempt.has(String(employee).trim().toLowerCase())) return false;
     const days = monthAvailability[employee] || {};
-    return Object.keys(days).length === 0;
+    return Object.keys(days).filter((key) => key !== "__meta").length === 0 && !days.__meta?.submitted;
   });
 }
 
