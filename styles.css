@@ -2179,6 +2179,37 @@ button:disabled {
   font-size: 12px;
 }
 
+.tip-payout-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) repeat(4, minmax(100px, 0.8fr)) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 10px;
+}
+
+.tip-payout-row.is-paid {
+  background: #f7faf7;
+}
+
+.tip-payout-row span {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.tip-payout-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tip-payout-row button {
+  min-width: 110px;
+}
+
 .terminal-day-head {
   display: grid;
   grid-template-columns: 150px minmax(180px, 1fr) minmax(180px, 1fr) auto;
@@ -3872,6 +3903,7 @@ button:disabled {
   .tip-input-grid,
   .tip-summary,
   .tip-row,
+  .tip-payout-row,
   .day-report-grid,
   .day-report-values,
   .a4-report-head,

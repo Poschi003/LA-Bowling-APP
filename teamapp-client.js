@@ -25,6 +25,7 @@
   terminalDate: "",
   terminalEntries: {},
   terminalReport: {},
+  tipOverview: { employees: [], totalEarned: "0.00", totalPaid: "0.00", totalOpen: "0.00" },
   terminalSchedule: {},
   terminalTasks: [],
   terminalReminders: [],
@@ -148,6 +149,7 @@ const defaultData = {
   availability: {},
   schedules: {},
   timesheets: {},
+  tipOverview: { employees: [], totalEarned: "0.00", totalPaid: "0.00", totalOpen: "0.00" },
   cleaningTemplates: defaultCleaningTemplates,
   messages: [],
   terminalMessages: [],
@@ -483,6 +485,7 @@ function mergeData(value) {
     availability: value && value.availability ? value.availability : base.availability,
     schedules: value && value.schedules ? value.schedules : base.schedules,
     timesheets: value && value.timesheets ? value.timesheets : base.timesheets,
+    tipOverview: value && value.tipOverview ? value.tipOverview : base.tipOverview,
     cleaningTemplates: normalizeCleaningTemplates(Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates),
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
@@ -3970,52 +3973,79 @@ function renderTipDistribution() {
   const summary = $("#tipSummary");
   const list = $("#tipDistributionList");
   if (!summary || !list) return;
-  const result = calculateTipDistribution(state.terminalDate || todayKey());
-  const paid = Boolean(state.terminalReport?.tipPayoutConfirmedAt);
+  const overview = normalizedTipOverview();
+  const rows = overview.employees;
+  const openRows = rows.filter((row) => reportMoneyNumber(row.openAmount) > 0);
   const status = $("#tipPayoutStatus");
   if (status) {
-    status.textContent = paid
-      ? `Auszahlung bestätigt${state.terminalReport?.tipPayoutConfirmedAt ? ` am ${formatDateTime(state.terminalReport.tipPayoutConfirmedAt)}` : ""}.`
-      : "Noch nicht als ausbezahlt bestätigt.";
+    status.textContent = openRows.length
+      ? `${openRows.length} Mitarbeiter mit offener Auszahlung. Auszahlung setzt nur diese Übersicht zurück.`
+      : "Keine offenen Trinkgeld-Auszahlungen. Mitarbeiter-App bleibt unverändert.";
   }
-  const confirmButton = $("#confirmTipPayout");
-  if (confirmButton) {
-    confirmButton.disabled = paid || result.distributedTipTotal <= 0;
-    confirmButton.textContent = paid ? "Auszahlung bestätigt" : "Auszahlung bestätigen";
-  }
-  const displayDistributed = paid ? 0 : result.distributedTipTotal;
-  const displayRemainder = paid ? 0 : result.tipRemainder;
-  const displayTipTotal = paid ? 0 : result.tipTotal;
   summary.innerHTML = `
-    <article class="tip-summary-wide">
-      <span>Rundung Trinkgeld</span>
-      <strong>${formatMoney(displayDistributed)} ausgegeben · ${formatMoney(displayRemainder)} Rest gesammelt</strong>
-      <small>${paid ? "Auszahlung bestätigt, Übersicht auf null gesetzt" : `Rechnerisch ${formatMoney(displayTipTotal)} · auf ${TIP_BILL_STEP}-Euro-Scheine gerundet`}</small>
+    <article>
+      <span>Offen auszuzahlen</span>
+      <strong>${formatMoney(overview.totalOpen)}</strong>
+      <small>nur Terminal-Übersicht</small>
+    </article>
+    <article>
+      <span>Bereits bestätigt</span>
+      <strong>${formatMoney(overview.totalPaid)}</strong>
+      <small>historische Mitarbeiterwerte bleiben erhalten</small>
     </article>
   `;
-  const groups = ["Counter", "Service", "Kueche"].map((area) => ({
-    area,
-    rows: result.rows.filter((row) => row.area === area)
-  })).filter((group) => group.rows.length);
-  list.innerHTML = groups.length ? groups.map((group) => `
+  list.innerHTML = rows.length ? `
     <section class="tip-group">
       <div class="terminal-task-group-head">
-        <h4>${escapeHtml(departmentLabel(group.area))}</h4>
-        <span>${formatMoney(paid ? 0 : group.rows.reduce((sum, row) => sum + row.tip, 0))}</span>
+        <h4>Mitarbeiter</h4>
+        <span>${formatMoney(overview.totalOpen)} offen</span>
       </div>
       <div class="tip-rows">
-        ${group.rows.map((row) => `
-          <article class="tip-row">
-            <strong>${escapeHtml(row.employee)}</strong>
-            <span>${formatHours(row.hours)}</span>
-            <span>${row.factor < 1 ? "Küchenfaktor 75%" : "Normal"}</span>
-            <span class="tip-raw">${paid ? "Ausbezahlt" : `Rechnerisch ${formatMoney(row.rawTip)}`}</span>
-            <strong>${formatMoney(paid ? 0 : row.tip)}</strong>
-          </article>
-        `).join("")}
+        ${rows.map((row) => {
+          const openAmount = reportMoneyNumber(row.openAmount);
+          const lastPaid = row.lastPaidAt ? formatDateTime(row.lastPaidAt) : "Noch keine Auszahlung";
+          return `
+            <article class="tip-payout-row ${openAmount > 0 ? "" : "is-paid"}">
+              <strong>${escapeHtml(row.employee)}</strong>
+              <span><small>Offen</small>${formatMoney(openAmount)}</span>
+              <span><small>Gesamt</small>${formatMoney(row.earnedAmount)}</span>
+              <span><small>Ausbezahlt</small>${formatMoney(row.paidAmount)}</span>
+              <span><small>Letzte Auszahlung</small>${escapeHtml(lastPaid)}</span>
+              <button class="primary" type="button" data-confirm-tip-payout-employee="${escapeHtml(row.employee)}" ${openAmount > 0 ? "" : "disabled"}>${openAmount > 0 ? "Ausbezahlt" : "0,00 €"}</button>
+            </article>
+          `;
+        }).join("")}
       </div>
     </section>
-  `).join("") : `<p class="hint">Noch keine abgeschlossenen Arbeitszeiten für Counter, Service oder Küche.</p>`;
+  ` : `<p class="hint">Noch keine Mitarbeiter in der Trinkgeld-Übersicht.</p>`;
+}
+
+function normalizedTipOverview() {
+  const overview = state.tipOverview || {};
+  const rowsByEmployee = new Map((Array.isArray(overview.employees) ? overview.employees : []).map((row) => [row.employee, row]));
+  (state.settings?.employees || []).forEach((employee) => {
+    if (!rowsByEmployee.has(employee)) {
+      rowsByEmployee.set(employee, { employee, earnedAmount: "0.00", paidAmount: "0.00", openAmount: "0.00", lastPaidAt: "", payoutCount: 0 });
+    }
+  });
+  const employees = [...rowsByEmployee.values()].map((row) => ({
+    employee: String(row.employee || ""),
+    earnedAmount: moneyText(row.earnedAmount),
+    paidAmount: moneyText(row.paidAmount),
+    openAmount: moneyText(row.openAmount),
+    lastPaidAt: row.lastPaidAt || "",
+    payoutCount: Number(row.payoutCount || 0)
+  })).filter((row) => row.employee).sort((a, b) => a.employee.localeCompare(b.employee, "de"));
+  return {
+    employees,
+    totalEarned: moneyText(overview.totalEarned ?? employees.reduce((sum, row) => sum + reportMoneyNumber(row.earnedAmount), 0)),
+    totalPaid: moneyText(overview.totalPaid ?? employees.reduce((sum, row) => sum + reportMoneyNumber(row.paidAmount), 0)),
+    totalOpen: moneyText(overview.totalOpen ?? employees.reduce((sum, row) => sum + reportMoneyNumber(row.openAmount), 0))
+  };
+}
+
+function moneyText(value) {
+  return reportMoneyNumber(value).toFixed(2);
 }
 
 function calculateTipDistribution(dateKey) {
@@ -4148,6 +4178,7 @@ async function terminalAction(payload) {
   state.terminalDate = result.date || state.terminalDate || isoDate(new Date());
   state.terminalEntries = result.entries || {};
   state.terminalReport = result.report || {};
+  state.tipOverview = result.tipOverview || state.tipOverview;
   state.dayReports[state.terminalDate] = state.terminalReport;
   state.terminalSchedule = result.schedule || {};
   state.terminalTasks = result.tasks || [];
@@ -4174,6 +4205,7 @@ async function terminalLogin(code) {
   state.terminalDate = result.date || isoDate(new Date());
   state.terminalEntries = result.entries || {};
   state.terminalReport = result.report || {};
+  state.tipOverview = result.tipOverview || state.tipOverview;
   state.dayReports[state.terminalDate] = state.terminalReport;
   state.terminalSchedule = result.schedule || {};
   state.terminalTasks = result.tasks || [];
@@ -4223,6 +4255,7 @@ async function openCorrectionReport(button) {
     state.settings = normalizeSettings(result.settings || state.settings);
     state.terminalEntries = result.entries || {};
     state.terminalReport = result.report || {};
+    state.tipOverview = result.tipOverview || state.tipOverview;
     state.dayReports[state.terminalDate] = state.terminalReport;
     state.terminalSchedule = result.schedule || {};
     state.terminalTasks = result.tasks || [];
@@ -4276,6 +4309,7 @@ async function closeCorrectionReport(button) {
     });
     state.terminalDate = result.date || date;
     state.terminalReport = result.report || state.terminalReport || {};
+    state.tipOverview = result.tipOverview || state.tipOverview;
     state.dayReports[state.terminalDate] = state.terminalReport;
     state.terminalCorrectionMode = false;
     if (state.terminalDate === date) {
@@ -6834,36 +6868,26 @@ function bindEvents() {
     }
   });
 
-  $("#confirmTipPayout")?.addEventListener("click", async () => {
-    const result = calculateTipDistribution(state.terminalDate || todayKey());
-    if (result.distributedTipTotal <= 0) {
+  $("#tipDistributionList")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-confirm-tip-payout-employee]");
+    if (!button) return;
+    const employee = button.dataset.confirmTipPayoutEmployee || "";
+    const row = normalizedTipOverview().employees.find((item) => item.employee === employee);
+    const amount = reportMoneyNumber(row?.openAmount);
+    if (!employee || amount <= 0) {
       showToast("Kein Trinkgeld zum Auszahlen vorhanden.");
       return;
     }
-    if (!confirm(`Auszahlung von ${formatMoney(result.distributedTipTotal)} bestätigen? Die Übersicht springt danach auf 0,00 €, die Mitarbeiterbeträge bleiben gespeichert.`)) return;
-    const button = $("#confirmTipPayout");
+    if (!confirm(`${employee}: Auszahlung von ${formatMoney(amount)} bestätigen? Nur der Terminal-Zähler springt auf 0,00 €, die Mitarbeiter-App bleibt unverändert.`)) return;
     const oldText = button.textContent;
     button.disabled = true;
     button.textContent = "Bestätigt...";
     try {
       await terminalAction({
-        action: "confirm-tip-payout",
-        cashTotal: $("#reportCashTotal")?.value || "",
-        ecTerminal1: $("#reportEcTerminal1")?.value || "",
-        ecTerminal2: $("#reportEcTerminal2")?.value || "",
-        ecTotal: ecTotalFromFormOrReport().toFixed(2),
-        personalConsumption: $("#reportPersonalConsumption")?.value || "",
-        revenueBowling: $("#reportRevenueBowling")?.value || "",
-        revenueDrinks: $("#reportRevenueDrinks")?.value || "",
-        revenueFood: $("#reportRevenueFood")?.value || "",
-        revenueOther: $("#reportRevenueOther")?.value || "",
-        revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
-        tipTotal: result.tipTotal.toFixed(2),
-        tipPayoutAmount: result.distributedTipTotal.toFixed(2),
-        tipRemainder: result.tipRemainder.toFixed(2),
-        tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)]))
+        action: "confirm-employee-tip-payout",
+        employee
       });
-      showToast("Trinkgeld-Auszahlung bestätigt.");
+      showToast(`${employee}: Trinkgeld-Auszahlung bestätigt.`);
     } catch (error) {
       button.textContent = oldText;
       button.disabled = false;
