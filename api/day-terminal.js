@@ -16,7 +16,6 @@ module.exports = async function handler(req, res) {
     if (!session.correctionDate && await reportIsInCorrection(body)) return sendJson(res, 423, { error: "Dieser Tagesbericht ist im Admin-Korrekturmodus geöffnet." });
     if (action === "load") return load(body, res, session);
     if (action === "punch") return punch(body, res);
-    if (action === "break-punch") return breakPunch(body, res);
     if (action === "adjust-time") return adjustTime(body, res);
     if (action === "add-employee") return addEmployee(body, res);
     if (action === "complete-task") return completeTask(body, res);
@@ -125,48 +124,9 @@ async function punch(body, res) {
   appData.timesheets ||= {}; appData.timesheets[month] ||= {}; appData.timesheets[month][employee] ||= {};
   const existing = appData.timesheets[month][employee][date] || {};
   const nextEntry = { ...existing, [punchType === "start" ? "from" : "to"]: time, updatedAt: new Date().toISOString(), source: "terminal" };
-  if (punchType === "end") {
-    const breaks = normalizeBreaks(existing.breaks);
-    for (let index = breaks.length - 1; index >= 0; index -= 1) {
-      if (breaks[index].from && !breaks[index].to) {
-        breaks[index] = { ...breaks[index], to: time, updatedAt: new Date().toISOString() };
-        nextEntry.breaks = breaks;
-        break;
-      }
-    }
-  }
   appData.timesheets[month][employee][date] = nextEntry;
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, message: `${employee}: ${punchType === "start" ? "Beginn" : "Ende"} ${time}`, ...terminalPayload(appData, date) });
-}
-
-async function breakPunch(body, res) {
-  const appData = await readAppData(), employee = String(body.employee || "").trim(), breakType = String(body.breakType || "").trim(), date = cleanDate(body.date);
-  if (!employee || !["start", "end"].includes(breakType)) return sendJson(res, 400, { error: "Mitarbeiter oder Pausen-Aktion fehlt." });
-  if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
-  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
-  const month = date.slice(0, 7), time = roundToQuarter(new Date());
-  appData.timesheets ||= {}; appData.timesheets[month] ||= {}; appData.timesheets[month][employee] ||= {};
-  const existing = appData.timesheets[month][employee][date] || {};
-  if (!existing.from) return sendJson(res, 400, { error: "Bitte zuerst Dienstbeginn eintragen." });
-  const breaks = normalizeBreaks(existing.breaks);
-  let openIndex = -1;
-  for (let index = breaks.length - 1; index >= 0; index -= 1) {
-    if (breaks[index].from && !breaks[index].to) {
-      openIndex = index;
-      break;
-    }
-  }
-  if (breakType === "start") {
-    if (openIndex >= 0) return sendJson(res, 400, { error: "Pause/Rauchen läuft bereits." });
-    breaks.push({ from: time, to: "", createdAt: new Date().toISOString() });
-  } else {
-    if (openIndex < 0) return sendJson(res, 400, { error: "Keine offene Pause gefunden." });
-    breaks[openIndex] = { ...breaks[openIndex], to: time, updatedAt: new Date().toISOString() };
-  }
-  appData.timesheets[month][employee][date] = { ...existing, breaks, updatedAt: new Date().toISOString(), source: existing.source || "terminal" };
-  await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: `${employee}: ${breakType === "start" ? "Pause/Rauchen abgemeldet" : "wieder angemeldet"} ${time}`, ...terminalPayload(appData, date) });
 }
 
 async function adjustTime(body, res) {
@@ -245,7 +205,7 @@ async function saveTips(body, res) {
   };
   applyTipsToTimesheets(appData, date, tipsByEmployee);
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Trinkgeld gespeichert.", ...terminalPayload(appData, date) });
+  sendJson(res, 200, { ok: true, message: "Umsatzdetails gespeichert.", ...terminalPayload(appData, date) });
 }
 
 async function completeTask(body, res) {
@@ -595,15 +555,6 @@ function cleanGastroTotal(value, drinks = "", food = "", other = "") {
   return cleanMoney(value);
 }
 function cleanTime(value) { const text = String(value || "").trim(); return /^\d{2}:\d{2}$/.test(text) ? text : ""; }
-function normalizeBreaks(value) {
-  if (!Array.isArray(value)) return [];
-  return value.slice(0, 20).map((item) => ({
-    from: cleanTime(item?.from),
-    to: cleanTime(item?.to),
-    createdAt: cleanText(item?.createdAt, 40),
-    updatedAt: cleanText(item?.updatedAt, 40)
-  })).filter((item) => item.from || item.to);
-}
 function cleanReceiptData(value) { const text = String(value || ""); return text.startsWith("data:") && text.length <= 700000 ? text : ""; }
 function cleanReceiptPath(value) { return String(value || "").trim().replace(/^\/+/, "").slice(0, 300); }
 function cleanReceiptUrl(value) { const text = String(value || "").trim(); return text.startsWith("/api/receipt?") ? text.slice(0, 500) : ""; }
