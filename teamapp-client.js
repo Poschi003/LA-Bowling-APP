@@ -158,7 +158,6 @@ const defaultData = {
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const DAILY_FREE_BREAK_MINUTES = 30;
 const TIP_BILL_STEP = 5;
 
 function currentMonthValue() {
@@ -951,13 +950,12 @@ function dayReportA4Html(dateKey, report = {}) {
     <section class="a4-report">
       <div class="a4-report-head">
         <div>
-          <span>Tagesabschluss</span>
+          <span>Tagesbericht</span>
           <h3>${escapeHtml(formatDate(dateKey))}</h3>
         </div>
         <dl>
           <div><dt>Schichtleitung</dt><dd>${escapeHtml(report.shiftLeader || "-")}</dd></div>
           <div><dt>Öffnungszeit</dt><dd>${escapeHtml(report.openingHours || "-")}</dd></div>
-          <div><dt>Status</dt><dd>${report.closed ? "Abgeschlossen" : "Offen"}</dd></div>
         </dl>
       </div>
 
@@ -965,16 +963,11 @@ function dayReportA4Html(dateKey, report = {}) {
         <section class="a4-report-block a4-report-block-wide a4-report-finance-summary">
           <h4>Abrechnung</h4>
           <div class="a4-report-lines">
-            ${a4ReportLine("Umsatz Bowling", formatReportMoney(bowlingRevenueValue))}
-            ${a4ReportLine("Umsatz Gastro", formatReportMoney(gastroRevenueValue))}
-            ${a4ReportLine("davon Getränke", formatReportMoney(gastroParts.drinks || ""), "a4-report-secondary")}
-            ${a4ReportLine("davon Speisen", formatReportMoney(gastroParts.food || ""), "a4-report-secondary")}
-            ${a4ReportLine("davon Sonstiges", formatReportMoney(gastroParts.other || ""), "a4-report-secondary")}
+            ${a4ReportLine("Bowling / Gastro", `${formatReportMoney(bowlingRevenueValue)} / ${formatReportMoney(gastroRevenueValue)}`)}
+            ${a4ReportLine("Getränke / Speisen / Sonstiges", `${formatReportMoney(gastroParts.drinks || "")} / ${formatReportMoney(gastroParts.food || "")} / ${formatReportMoney(gastroParts.other || "")}`, "a4-report-secondary")}
             ${a4ReportLine("Umsatz gesamt", formatReportMoney(totalRevenueValue), "a4-report-total")}
-            ${a4ReportLine("Bezahlung auf Rechnung", formatReportMoney(invoiceTotalValue), "a4-report-secondary")}
-            ${a4ReportLine("EC", formatReportMoney(ecTotalValue), "a4-report-secondary")}
-            ${a4ReportLine("Personalverzehr", formatReportMoney(personalConsumptionValue), "a4-report-secondary")}
-            ${a4ReportLine("Ausgaben", formatReportMoney(expenseTotalValue), "a4-report-secondary")}
+            ${a4ReportLine("Rechnung / EC", `${formatReportMoney(invoiceTotalValue)} / ${formatReportMoney(ecTotalValue)}`, "a4-report-secondary")}
+            ${a4ReportLine("Personalverzehr / Ausgaben", `${formatReportMoney(personalConsumptionValue)} / ${formatReportMoney(expenseTotalValue)}`, "a4-report-secondary")}
             ${a4ReportLine("Abgabe an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
           </div>
         </section>
@@ -1016,14 +1009,13 @@ function dayReportEmployeeRowsHtml(dateKey, report = {}) {
         <th>${escapeHtml(employee)}</th>
         <td>${escapeHtml(entry.from || "--:--")}</td>
         <td>${escapeHtml(entry.to || "--:--")}</td>
-        <td>${breakMinutes(entry) ? `${formatMinutes(breakMinutes(entry))} / Abzug ${formatMinutes(breakDeductionMinutes(entry))}` : "-"}</td>
         <td>${formatHours(hours)}</td>
       </tr>
     `;
   }).join("");
   return `
     <table class="a4-report-table">
-      <thead><tr><th>Name</th><th>Von</th><th>Bis</th><th>Pause/Rauchen</th><th>Arbeitszeit</th></tr></thead>
+      <thead><tr><th>Name</th><th>Von</th><th>Bis</th><th>Arbeitszeit</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
@@ -1621,7 +1613,7 @@ function exportDayReport(dateKey) {
     "Personalzeiten:",
     ...(employees.length ? employees.map((employee) => {
       const entry = state.timesheets?.[employee]?.[dateKey] || {};
-      return `- ${employee} | ${entry.from || "--:--"} bis ${entry.to || "--:--"} | ${formatHours(paidHours(entry))}${breakMinutes(entry) ? ` | ${breakSummaryText(entry)}` : ""}`;
+      return `- ${employee} | ${entry.from || "--:--"} bis ${entry.to || "--:--"} | ${formatHours(paidHours(entry))}`;
     }) : ["- Keine Arbeitszeiten erfasst."]),
     "",
     `Umsatz Bowling: ${formatReportMoney(report.revenueBowling || report.barBowling)}`,
@@ -2589,7 +2581,7 @@ function renderTimesheet() {
       <article class="timesheet-row" data-date="${dateKey}">
         <div>
           <strong>${formatDate(dateKey)}</strong>
-          <span>${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")} · ${formatHours(hours)}${breakMinutes(entry) ? ` · ${escapeHtml(breakSummaryText(entry))}` : ""}</span>
+          <span>${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")} · ${formatHours(hours)}</span>
         </div>
         <div class="timesheet-tip-display">
           <span>Trinkgeld</span>
@@ -2652,46 +2644,8 @@ function minutesBetween(from, to) {
   return Math.max(0, end - start);
 }
 
-function breaksForEntry(entry = {}) {
-  return Array.isArray(entry.breaks)
-    ? entry.breaks.filter((item) => item && (item.from || item.to))
-    : [];
-}
-
-function breakMinutes(entry = {}) {
-  return breaksForEntry(entry).reduce((total, item) => total + minutesBetween(item.from, item.to), 0);
-}
-
-function breakDeductionMinutes(entry = {}) {
-  return Math.max(0, breakMinutes(entry) - DAILY_FREE_BREAK_MINUTES);
-}
-
 function paidHours(entry = {}) {
-  const gross = hoursBetween(entry.from, entry.to);
-  return Math.max(0, gross - breakDeductionMinutes(entry) / 60);
-}
-
-function hasOpenBreak(entry = {}) {
-  return breaksForEntry(entry).some((item) => item.from && !item.to);
-}
-
-function formatMinutes(value) {
-  const minutes = Math.max(0, Math.round(Number(value || 0)));
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return hours ? `${hours} h ${String(rest).padStart(2, "0")} min` : `${rest} min`;
-}
-
-function breakSummaryText(entry = {}) {
-  const total = breakMinutes(entry);
-  const deduction = breakDeductionMinutes(entry);
-  return `Pause/Rauchen ${formatMinutes(total)} | frei ${formatMinutes(DAILY_FREE_BREAK_MINUTES)} | Abzug ${formatMinutes(deduction)}`;
-}
-
-function breakListHtml(entry = {}) {
-  const breaks = breaksForEntry(entry);
-  if (!breaks.length) return `<span>Noch keine Pause/Rauchen dokumentiert.</span>`;
-  return breaks.map((item, index) => `<span>${index + 1}. ${escapeHtml(item.from || "--:--")} bis ${escapeHtml(item.to || "läuft")}</span>`).join("");
+  return hoursBetween(entry.from, entry.to);
 }
 
 function formatHours(value) {
@@ -2815,8 +2769,6 @@ function renderTerminal() {
   $("#terminalEmployees").innerHTML = employees.length ? employees.map((employee) => {
     const entry = entries[employee]?.[dateKey] || {};
     const hours = paidHours(entry);
-    const openBreak = hasOpenBreak(entry);
-    const pauseMinutes = breakMinutes(entry);
     const planned = terminalIsPlanned(employee);
     const plannedShift = terminalPlannedShiftFor(employee);
     return `
@@ -2828,7 +2780,6 @@ function renderTerminal() {
           </div>
           <strong class="terminal-shift-time">${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")}</strong>
           ${hours ? `<span class="terminal-hours">${formatHours(hours)}</span>` : ""}
-          ${pauseMinutes || openBreak ? `<span class="terminal-hours pause-pill">${escapeHtml(breakSummaryText(entry))}</span>` : ""}
         </div>
         <div class="terminal-time-edit">
           <label>Beginn<input type="time" data-terminal-time="from" value="${escapeHtml(entry.from || "")}" ${reportClosed ? "disabled" : ""}></label>
@@ -2838,13 +2789,7 @@ function renderTerminal() {
         <div class="terminal-actions">
           <button class="primary" data-terminal-punch="start" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstbeginn</button>
           <button class="secondary" data-terminal-punch="end" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstende</button>
-          <button class="secondary" data-terminal-break="start" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed || openBreak ? "disabled" : ""}>Pause/Rauchen abmelden</button>
-          <button class="primary" data-terminal-break="end" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed || !openBreak ? "disabled" : ""}>Wieder anmelden</button>
         </div>
-        ${pauseMinutes || openBreak ? `<div class="terminal-break-summary">
-          <strong>${escapeHtml(breakSummaryText(entry))}</strong>
-          <div>${breakListHtml(entry)}</div>
-        </div>` : ""}
       </article>
     `;
   }).join("") : `<p class="hint">Für heute ist noch niemand im Dienstplan eingeteilt.</p>`;
@@ -4027,30 +3972,15 @@ function renderTipDistribution() {
   if (!summary || !list) return;
   const result = calculateTipDistribution(state.terminalDate || todayKey());
   summary.innerHTML = `
-    <article>
-      <span>Gesamtumsatz</span>
-      <strong>${formatMoney(result.totalRevenue)}</strong>
-      <small>Bowling + Gastro minus Personalverzehr</small>
-    </article>
-    <article>
-      <span>Trinkgeld</span>
-      <strong>${formatMoney(result.tipTotal)}</strong>
-      <small>Bar + EC minus Umsatz nach Personalverzehr</small>
-    </article>
-    <article>
-      <span>Ausgegeben</span>
-      <strong>${formatMoney(result.distributedTipTotal)}</strong>
-      <small>auf ${TIP_BILL_STEP}-Euro-Scheine gerundet</small>
-    </article>
-    <article>
-      <span>Rest gesammelt</span>
-      <strong>${formatMoney(result.tipRemainder)}</strong>
-      <small>bleibt im Trinkgeldtopf</small>
+    <article class="tip-summary-wide">
+      <span>Rundung Trinkgeld</span>
+      <strong>${formatMoney(result.distributedTipTotal)} ausgegeben · ${formatMoney(result.tipRemainder)} Rest gesammelt</strong>
+      <small>Rechnerisch ${formatMoney(result.tipTotal)} · auf ${TIP_BILL_STEP}-Euro-Scheine gerundet</small>
     </article>
     <article>
       <span>Abzugeben an Chef</span>
       <strong>${formatMoney(result.cashToBoss)}</strong>
-      <small>Bar gesamt minus Trinkgeld</small>
+      <small>Bar gesamt minus rechnerisches Trinkgeld</small>
     </article>
   `;
   const groups = ["Counter", "Service", "Kueche"].map((area) => ({
@@ -4534,7 +4464,6 @@ function employeeOverviewHtml({ allowCorrection = false } = {}) {
                   <strong>${formatDate(shift.date)}</strong>
                   <span>${escapeHtml(shift.from || "?")} - ${escapeHtml(shift.to || "?")}</span>
                   <span>${formatHours(shift.hours)}</span>
-                  ${shift.breakMinutes ? `<small>${escapeHtml(shift.breakSummary)}</small>` : ""}
                   ${shift.adminOnly ? `<small>Nur Admin${shift.adminNote ? ` | ${escapeHtml(shift.adminNote)}` : ""}</small>` : ""}
                 </div>
               `).join("") || `<p class="hint">Keine Arbeitszeiten für diesen Monat erfasst.</p>`}
@@ -4579,8 +4508,6 @@ function timesheetDetailsForEmployee(employee) {
       from: entry.from || "",
       to: entry.to || "",
       hours: paidHours(entry),
-      breakMinutes: breakMinutes(entry),
-      breakSummary: breakSummaryText(entry),
       adminOnly: Boolean(entry.adminOnly || entry.source === "admin-manual"),
       adminNote: entry.adminNote || ""
     }))
@@ -6752,26 +6679,6 @@ function bindEvents() {
       }
       return;
     }
-    const breakButton = event.target.closest("[data-terminal-break]");
-    if (breakButton) {
-      const oldText = breakButton.textContent;
-      breakButton.disabled = true;
-      breakButton.textContent = "Speichert...";
-      try {
-        const result = await terminalAction({
-          action: "break-punch",
-          employee: breakButton.dataset.terminalEmployee,
-          breakType: breakButton.dataset.terminalBreak
-        });
-        showToast(result.message || "Pause gespeichert.");
-      } catch (error) {
-        showError(error);
-      } finally {
-        breakButton.textContent = oldText;
-        breakButton.disabled = false;
-      }
-      return;
-    }
     const button = event.target.closest("[data-terminal-punch]");
     if (!button) return;
     const oldText = button.textContent;
@@ -6895,7 +6802,7 @@ function bindEvents() {
         tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)]))
       });
       button.textContent = "Gespeichert";
-      showToast("Trinkgeld wurde verteilt.");
+      showToast("Umsatzdetails gespeichert.");
       window.setTimeout(() => {
         button.textContent = oldText;
       }, 1400);
