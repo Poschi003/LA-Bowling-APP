@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260523-pause-entfernt-v1">
+    <link rel="stylesheet" href="styles.css?v=20260523-trinkgeld-uebersicht-v1">
   </head>
   <body>
     <header class="topbar">
@@ -128,6 +128,7 @@
             <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
             <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
+            <button class="terminal-tab" data-terminal-tab="tips" type="button">Trinkgeld</button>
             <button class="terminal-tab" data-terminal-tab="report" type="button">Tagesbericht</button>
           </nav>
           <section id="terminalTasksSection" class="terminal-section hidden">
@@ -203,8 +204,6 @@
                 <label>Sonstiges<input id="reportRevenueOther" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>Umsatz Gastro gesamt<input id="reportRevenueGastro" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
               </div>
-              <div id="tipSummary" class="tip-summary"></div>
-              <div id="tipDistributionList" class="tip-distribution-list"></div>
             </section>
             <details class="report-subsection" data-report-field-box="invoiceCustomers">
               <summary>Kunden auf Rechnung</summary>
@@ -224,6 +223,18 @@
               </div>
               <div id="reportDocumentStatus" class="report-entry-list"></div>
             </details>
+          </section>
+          <section id="terminalTipsSection" class="terminal-section hidden">
+            <div class="terminal-section-head">
+              <div>
+                <h3>Trinkgeld Übersicht</h3>
+                <p class="hint">Auszahlung kontrollieren und bestätigen. Die gespeicherten Mitarbeiterbeträge bleiben erhalten.</p>
+              </div>
+              <button id="confirmTipPayout" class="primary" type="button">Auszahlung bestätigen</button>
+            </div>
+            <div id="tipPayoutStatus" class="action-status"></div>
+            <div id="tipSummary" class="tip-summary"></div>
+            <div id="tipDistributionList" class="tip-distribution-list"></div>
           </section>
           <details id="dayReportPrintArea" class="day-report">
             <summary class="day-report-title">
@@ -757,7 +768,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260523-pause-entfernt-v1"></script>
+    <script src="teamapp-client.js?v=20260523-trinkgeld-uebersicht-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>
