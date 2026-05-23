@@ -116,6 +116,7 @@ const defaultData = {
       "Kevin Leicht": ["Counter", "Service"]
     },
     employeeRoles: {},
+    fixedEmployees: [],
     availabilityExemptEmployees: [],
     availabilityTargetMonth: nextMonthValue(),
     availabilitySubmissionOpen: true,
@@ -459,6 +460,7 @@ function mergeData(value) {
       employeeRoles: {
         ...(incomingSettings.employeeRoles || {})
       },
+      fixedEmployees: incomingSettings.fixedEmployees || base.settings.fixedEmployees || [],
       availabilityExemptEmployees: incomingSettings.availabilityExemptEmployees || base.settings.availabilityExemptEmployees || []
       ,
       availabilityTargetMonth: normalizeMonthValue(incomingSettings.availabilityTargetMonth) || base.settings.availabilityTargetMonth,
@@ -1813,6 +1815,7 @@ function renderLoginReminder(dateKey) {
 
 function renderEmployeeSelect() {
   const loggedIn = Boolean(state.activeEmployee);
+  const fixed = loggedIn && employeeIsFixed(state.activeEmployee);
   $("#employeeLogin").classList.toggle("hidden", loggedIn);
   $("#employeeActive").classList.toggle("hidden", !loggedIn);
   $("#saveAvailability").classList.toggle("hidden", !loggedIn);
@@ -1821,10 +1824,10 @@ function renderEmployeeSelect() {
   const monthLabel = formatMonth(availabilityMonthValue());
   const isOpen = state.settings.availabilitySubmissionOpen !== false;
   $("#employeeViewHint").textContent = loggedIn
-    ? (!isOpen ? `Die Verfuegbarkeit fuer ${monthLabel} ist aktuell geschlossen.` : (locked ? `Verfuegbarkeit fuer ${monthLabel} wurde bereits abgegeben. Aenderungen bitte anfragen.` : `Markiere fuer ${monthLabel} die Tage, an denen du kannst.`))
+    ? (!isOpen ? `Die Verfuegbarkeit fuer ${monthLabel} ist aktuell geschlossen.` : (locked ? `Verfuegbarkeit fuer ${monthLabel} wurde bereits abgegeben. Aenderungen bitte anfragen.` : (fixed ? `Markiere fuer ${monthLabel} nur die Tage, an denen du nicht kannst, bitte mit Grund.` : `Markiere fuer ${monthLabel} die Tage, an denen du kannst.`)))
     : "Mitarbeiter-PIN eingeben, um die eigene Verfügbarkeit zu bearbeiten.";
   $("#saveAvailability").disabled = !isOpen;
-  $("#saveAvailability").textContent = locked ? "Änderung anfragen" : "Verfügbarkeit absenden";
+  $("#saveAvailability").textContent = locked ? "Änderung anfragen" : (fixed ? "Ausnahmen absenden" : "Verfügbarkeit absenden");
 }
 
 function renderAvailability() {
@@ -1834,23 +1837,24 @@ function renderAvailability() {
   }
   const employee = state.activeEmployee;
   const employeeDays = state.availability[employee] || {};
+  const fixed = employeeIsFixed(employee);
   const locked = availabilityIsSubmitted();
   const requestOpen = hasOpenAvailabilityRequest();
   $("#availabilityGrid").innerHTML = renderWeekSections(availabilityMonthValue(), (date) => {
     const key = isoDate(date);
     const day = { ...emptyDay(), ...(employeeDays[key] || {}) };
     const holiday = holidayInfo(key);
-    const canWork = day.status === "yes";
+    const active = fixed ? day.status === "no" : day.status === "yes";
     return `
-      <article class="day-card ${canWork ? "can-work" : ""}" data-date="${key}">
+      <article class="day-card ${active ? (fixed ? "cannot-work" : "can-work") : ""} ${fixed ? "fixed-availability-card" : ""}" data-date="${key}" data-availability-mode="${fixed ? "fixed" : "standard"}">
         <div class="day-title">
           <span>${availabilityDayLabel(date)}${holiday.label ? " *" : ""}</span>
           ${holiday.label ? `<span class="weekday">${escapeHtml(holiday.label)}</span>` : ""}
         </div>
         <div class="status-row single">
-          <button data-status="yes" class="${canWork ? "active" : ""}" ${locked ? "disabled" : ""}>Kann</button>
+          <button data-status="${fixed ? "no" : "yes"}" class="${active ? "active" : ""}" ${locked ? "disabled" : ""}>${fixed ? "Kann nicht" : "Kann"}</button>
         </div>
-        <input type="text" data-field="note" value="${escapeHtml(day.note)}" placeholder="Notiz, z.B. nur frueh" ${locked ? "disabled" : ""}>
+        <input type="text" data-field="note" value="${escapeHtml(day.note)}" placeholder="${fixed ? "Grund, z.B. Urlaub oder Termin" : "Notiz, z.B. nur frueh"}" ${locked ? "disabled" : ""}>
       </article>
     `;
   }) + (locked ? `
@@ -1863,7 +1867,8 @@ function renderAvailability() {
 
 function availabilityIsSubmitted() {
   if (!state.activeEmployee) return false;
-  return Object.keys(state.availability[state.activeEmployee] || {}).length > 0;
+  const days = state.availability[state.activeEmployee] || {};
+  return Boolean(days.__meta?.submitted) || Object.keys(days).filter((key) => key !== "__meta").length > 0;
 }
 
 function hasOpenAvailabilityRequest() {
@@ -1874,17 +1879,35 @@ function hasOpenAvailabilityRequest() {
 
 function collectAvailability() {
   const days = {};
+  const fixed = employeeIsFixed(state.activeEmployee);
   $$("#availabilityGrid .day-card").forEach((card) => {
     const active = card.querySelector(".status-row button.active");
     if (!active) return;
     days[card.dataset.date] = {
-      status: "yes",
+      status: fixed ? "no" : "yes",
       from: "",
       to: "",
       note: card.querySelector('[data-field="note"]').value.trim()
     };
   });
   return days;
+}
+
+function availabilityValidationMessage() {
+  if (!employeeIsFixed(state.activeEmployee) || availabilityIsSubmitted()) return "";
+  const missing = [];
+  $$("#availabilityGrid .day-card").forEach((card) => {
+    const active = card.querySelector(".status-row button.active");
+    if (!active) return;
+    const note = card.querySelector('[data-field="note"]')?.value.trim();
+    if (!note) missing.push(card.dataset.date);
+  });
+  return missing.length ? "Bitte bei jedem markierten Kann-nicht-Tag einen Grund eintragen." : "";
+}
+
+function employeeIsFixed(employee) {
+  const fixed = new Set((state.settings.fixedEmployees || []).map((name) => String(name).trim().toLowerCase()));
+  return fixed.has(String(employee || "").trim().toLowerCase());
 }
 function renderScheduleDay(date, options = {}) {
   const key = isoDate(date);
@@ -2428,11 +2451,16 @@ function renderAdminAvailabilityPreview() {
   const cards = dates.map((date) => {
     const dateKey = isoDate(date);
     const available = employees.filter((employee) => state.availability?.[employee]?.[dateKey]?.status === "yes");
+    const unavailable = employees
+      .map((employee) => ({ employee, day: state.availability?.[employee]?.[dateKey] }))
+      .filter((entry) => entry.day?.status === "no");
+    const cardClass = available.length ? "has-availability" : (unavailable.length ? "has-unavailable" : "");
     return `
-      <article class="availability-preview-card ${available.length ? "has-availability" : ""}">
+      <article class="availability-preview-card ${cardClass}">
         <strong>${formatShortDate(date)}</strong>
         <span>${weekdays[date.getDay()]}</span>
-        <p>${available.length ? escapeHtml(available.join(", ")) : "Keine Zusagen"}</p>
+        <p>${available.length ? `Kann: ${escapeHtml(available.join(", "))}` : "Keine Zusagen"}</p>
+        ${unavailable.length ? `<p class="availability-cannot-line">Kann nicht: ${unavailable.map((entry) => `${escapeHtml(entry.employee)}${entry.day.note ? ` (${escapeHtml(entry.day.note)})` : ""}`).join(", ")}</p>` : ""}
       </article>
     `;
   }).join("");
@@ -4702,12 +4730,13 @@ function renderEmployeeDirectory() {
   const roles = textToRoles($("#employeeRolesText")?.value || rolesToText(state.settings.employeeRoles || {}));
   const admins = new Set(linesToList($("#adminEmployeesText")?.value || (state.settings.adminEmployees || []).join("\n")));
   const exempt = new Set(linesToList($("#availabilityExemptText")?.value || (state.settings.availabilityExemptEmployees || []).join("\n")));
+  const fixedEmployees = new Set((state.settings.fixedEmployees || []).map(String));
   const departmentOptions = departmentOptionsForEmployeeCards(departments);
   target.innerHTML = (state.settings.employees || []).map((name, index) => `
     <details class="employee-card" data-employee-card="${index}" data-original-employee-name="${escapeHtml(name)}">
       <summary>
         <strong>${escapeHtml(name)}</strong>
-        <span>${escapeHtml(roles[name] || "Keine Rolle")} · ${(departments[name] || []).join(", ") || "Keine Bereiche"}</span>
+        <span>${escapeHtml(roles[name] || "Keine Rolle")} · ${(departments[name] || []).join(", ") || "Keine Bereiche"}${fixedEmployees.has(name) ? " · Festanstellung" : ""}</span>
       </summary>
       <div class="employee-card-grid">
         <label>Name<input data-employee-field="name" value="${escapeHtml(name)}"></label>
@@ -4722,6 +4751,7 @@ function renderEmployeeDirectory() {
             <label><input type="checkbox" data-employee-department="${escapeHtml(department)}" ${(departments[name] || []).includes(department) ? "checked" : ""}> ${escapeHtml(departmentLabel(department))}</label>
           `).join("")}
           <label><input type="checkbox" data-employee-admin ${admins.has(name) ? "checked" : ""}> Admin-Rechte</label>
+          <label><input type="checkbox" data-employee-fixed ${fixedEmployees.has(name) ? "checked" : ""}> Festanstellung</label>
           <label><input type="checkbox" data-employee-exempt ${exempt.has(name) ? "checked" : ""}> Keine Verfügbarkeit nötig</label>
         </div>
         <div class="employee-card-actions">
@@ -4772,6 +4802,7 @@ function syncEmployeeDirectoryToTextareas() {
   const departments = {};
   const admins = [];
   const exempt = [];
+  const fixed = [];
   $$(".employee-card").forEach((card) => {
     const name = card.querySelector('[data-employee-field="name"]')?.value.trim();
     if (!name) return;
@@ -4787,6 +4818,7 @@ function syncEmployeeDirectoryToTextareas() {
     const deps = [...card.querySelectorAll("[data-employee-department]")].filter((input) => input.checked).map((input) => input.dataset.employeeDepartment);
     departments[name] = deps;
     if (card.querySelector("[data-employee-admin]")?.checked) admins.push(name);
+    if (card.querySelector("[data-employee-fixed]")?.checked) fixed.push(name);
     if (card.querySelector("[data-employee-exempt]")?.checked) exempt.push(name);
   });
   $("#employeesText").value = employees.join("\n");
@@ -4795,6 +4827,7 @@ function syncEmployeeDirectoryToTextareas() {
   $("#employeeDepartmentsText").value = Object.entries(departments).map(([name, deps]) => `${name}=${deps.join(",")}`).join("\n");
   $("#adminEmployeesText").value = admins.join("\n");
   $("#availabilityExemptText").value = exempt.join("\n");
+  state.settings.fixedEmployees = fixed;
 }
 
 function renderPositionDirectory() {
@@ -5043,10 +5076,19 @@ function plannerPositionHtml(position, dateKey, daySchedule = {}) {
 
 function availabilitySummary(dateKey) {
   const yes = [];
+  const no = [];
   for (const [employee, days] of Object.entries(state.availability)) {
-    if (days[dateKey] && days[dateKey].status === "yes") yes.push(employee);
+    const day = days?.[dateKey];
+    if (!day) continue;
+    if (day.status === "yes") yes.push(employee);
+    if (day.status === "no") {
+      no.push(`${employee}${day.note ? ` (${day.note})` : ""}`);
+    }
   }
-  return yes.length ? `Kann: ${yes.join(", ")}` : "Keine Zusagen";
+  const parts = [];
+  if (yes.length) parts.push(`Kann: ${yes.join(", ")}`);
+  if (no.length) parts.push(`Kann nicht: ${no.join(", ")}`);
+  return parts.length ? parts.join(" | ") : "Keine Zusagen";
 }
 
 function employeeHint(employee, dateKey) {
@@ -5055,6 +5097,9 @@ function employeeHint(employee, dateKey) {
   if (day.status === "yes") {
     const time = day.from || day.to ? ` ${day.from || "?"}-${day.to || "?"}` : "";
     return ` (kann${time})`;
+  }
+  if (day.status === "no") {
+    return ` (kann nicht${day.note ? `: ${day.note}` : ""})`;
   }
   return "";
 }
@@ -5440,6 +5485,7 @@ async function saveSettings(button) {
         adminEmployees: linesToList($("#adminEmployeesText").value),
         employeeDepartments: textToDepartments($("#employeeDepartmentsText").value),
         employeeRoles: textToRoles($("#employeeRolesText").value),
+        fixedEmployees: state.settings.fixedEmployees || [],
         availabilityExemptEmployees: linesToList($("#availabilityExemptText").value),
         positions: $("#positionsText").value.split("\n"),
         chefViewSections: visibilityFromInputs("[data-chef-section]", "chefSection"),
@@ -5552,8 +5598,10 @@ function bindEvents() {
     if (availabilityIsSubmitted()) return;
     if (!event.target.matches("button[data-status]")) return;
     const wasActive = event.target.classList.contains("active");
+    const card = event.target.closest(".day-card");
+    const activeClass = card?.dataset.availabilityMode === "fixed" ? "cannot-work" : "can-work";
     event.target.classList.toggle("active", !wasActive);
-    event.target.closest(".day-card").classList.toggle("can-work", !wasActive);
+    card?.classList.toggle(activeClass, !wasActive);
   });
 
   $("#publishedMonths").addEventListener("click", (event) => {
@@ -5853,12 +5901,20 @@ function bindEvents() {
     }
     button.textContent = "Speichert...";
     try {
+      const validation = availabilityValidationMessage();
+      if (validation) {
+        showToast(validation);
+        button.textContent = oldText;
+        button.disabled = false;
+        return;
+      }
       const employee = state.activeEmployee;
       await api("/api/availability", {
         method: "POST",
         body: JSON.stringify({
           month: availabilityMonthValue(),
           employeeToken: state.employeeToken,
+          mode: employeeIsFixed(employee) ? "fixed" : "standard",
           days: collectAvailability()
         })
       });
