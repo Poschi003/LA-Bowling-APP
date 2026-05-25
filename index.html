@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260525-finanz-trinkgeld-v2">
+    <link rel="stylesheet" href="styles.css?v=20260525-tip-bereiche-v1">
   </head>
   <body>
     <header class="topbar">
@@ -194,6 +194,7 @@
               </div>
               <div class="tip-input-grid">
                 <label>Bar gesamt<input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
+                <label>Ausgaben aus Kasse<input id="reportCashExpenses" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>EC Terminal 1<input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>EC Terminal 2<input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>EC gesamt<input id="reportEcTotal" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
@@ -770,7 +771,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260525-finanz-trinkgeld-v2"></script>
+    <script src="teamapp-client.js?v=20260525-tip-bereiche-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>
