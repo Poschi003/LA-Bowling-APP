@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260523-festanstellung-v1">
+    <link rel="stylesheet" href="styles.css?v=20260525-finanz-trinkgeld-v2">
   </head>
   <body>
     <header class="topbar">
@@ -204,6 +204,8 @@
                 <label>Sonstiges<input id="reportRevenueOther" type="number" min="0" step="0.01" placeholder="0,00"></label>
                 <label>Umsatz Gastro gesamt<input id="reportRevenueGastro" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
               </div>
+              <div id="financeTipDaySummary" class="tip-summary tip-day-summary"></div>
+              <div id="financeTipDayDistributionList" class="tip-distribution-list"></div>
             </section>
             <details class="report-subsection" data-report-field-box="invoiceCustomers">
               <summary>Kunden auf Rechnung</summary>
@@ -243,6 +245,7 @@
               </div>
               <button id="printDayReport" class="secondary" type="button">Tagesbericht drucken</button>
             </summary>
+            <div id="dayReportTipDayDistribution" class="tip-distribution-list day-report-tip-control"></div>
             <div id="dayReportA4Summary" class="day-report-a4-summary"></div>
             <label data-report-field-box="notes">Notizen<textarea id="reportNotes" rows="5"></textarea></label>
             <div class="day-report-actions">
@@ -767,7 +770,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260523-festanstellung-v1"></script>
+    <script src="teamapp-client.js?v=20260525-finanz-trinkgeld-v2"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

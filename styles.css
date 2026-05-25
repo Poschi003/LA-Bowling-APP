@@ -2129,7 +2129,7 @@ button:disabled {
 
 .tip-summary {
   display: grid;
-  grid-template-columns: minmax(240px, 1.5fr) minmax(160px, 0.8fr);
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
 }
 
@@ -2151,6 +2151,20 @@ button:disabled {
   margin: 4px 0;
   color: var(--ink);
   font-size: 20px;
+}
+
+.tip-summary-handover {
+  border-color: rgba(225, 23, 47, 0.35) !important;
+  background: var(--brand-soft) !important;
+}
+
+.tip-summary-handover span,
+.tip-summary-handover strong {
+  color: var(--brand) !important;
+}
+
+.tip-day-summary {
+  margin-top: 4px;
 }
 
 .tip-summary-wide strong {
@@ -2195,6 +2209,17 @@ button:disabled {
   font-size: 12px;
 }
 
+.tip-row-head {
+  background: var(--ink);
+  color: #fff;
+}
+
+.tip-row-head span,
+.tip-row-head strong {
+  color: #fff;
+  font-weight: 900;
+}
+
 .tip-payout-row {
   display: grid;
   grid-template-columns: minmax(170px, 1fr) repeat(4, minmax(100px, 0.8fr)) auto;
@@ -2224,6 +2249,14 @@ button:disabled {
 
 .tip-payout-row button {
   min-width: 110px;
+}
+
+.day-report-tip-control {
+  margin: 10px 0;
+}
+
+.a4-report-tip-control {
+  background: #fffaf4;
 }
 
 .terminal-day-head {
@@ -4381,6 +4414,7 @@ button:disabled {
   body.terminal-mode .day-report-grid,
   body.terminal-mode .report-subsection,
   body.terminal-mode .day-report > label[data-report-field-box],
+  body.terminal-mode .day-report > .day-report-tip-control,
   body.terminal-mode #printDayReport,
   body.terminal-mode #saveDayReport,
   body.terminal-mode #closeDayReport,

@@ -4050,6 +4050,25 @@ function renderDailyTipDistribution() {
   const listTargets = [$("#financeTipDayDistributionList"), $("#dayReportTipDayDistribution")].filter(Boolean);
   if (!summaryTargets.length && !listTargets.length) return;
   const result = calculateTipDistribution(state.terminalDate || todayKey());
+  const report = {
+    ...(state.terminalReport || {}),
+    cashTotal: result.cashTotal.toFixed(2),
+    ecTotal: result.ecTotal.toFixed(2),
+    personalConsumption: result.personalConsumption.toFixed(2),
+    revenueBowling: result.revenueBowling.toFixed(2),
+    revenueDrinks: result.revenueDrinks.toFixed(2),
+    revenueFood: result.revenueFood.toFixed(2),
+    revenueOther: result.revenueOther.toFixed(2),
+    revenueGastro: result.revenueGastro.toFixed(2),
+    barBowling: result.revenueBowling.toFixed(2),
+    barGastro: result.revenueGastro.toFixed(2),
+    tipTotal: result.tipTotal.toFixed(2),
+    tipRemainder: result.tipRemainder.toFixed(2),
+    tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)]))
+  };
+  const displayRows = dailyTipRowsForDisplay(result, state.terminalReport || {});
+  const distributed = displayRows.reduce((sum, row) => sum + Number(row.tip || 0), 0);
+  const chefHandover = reportChefHandoverTotal(report);
   const summaryHtml = `
     <article>
       <span>Trinkgeld gesamt</span>
@@ -4057,19 +4076,36 @@ function renderDailyTipDistribution() {
       <small>Bar + EC - Umsatz nach Personalverzehr</small>
     </article>
     <article>
-      <span>Aufgeteilt</span>
-      <strong>${formatMoney(result.distributedTipTotal)}</strong>
+      <span>Rest gesammelt</span>
+      <strong>${formatMoney(result.tipRemainder)}</strong>
+      <small>Aufgeteilt: ${formatMoney(distributed)}</small>
+    </article>
+    <article class="tip-summary-handover">
+      <span>Abgabe an Chef</span>
+      <strong>${formatMoney(chefHandover)}</strong>
+      <small>Umsatz minus EC, Rechnung und Ausgaben</small>
+    </article>
+    <article>
+      <span>Mitarbeiter</span>
+      <strong>${displayRows.length}</strong>
       <small>Rest gesammelt: ${formatMoney(result.tipRemainder)}</small>
     </article>
   `;
-  const listHtml = result.rows.length ? `
+  const listHtml = displayRows.length ? `
     <section class="tip-group">
       <div class="terminal-task-group-head">
-        <h4>Tages-Verteilung</h4>
-        <span>${result.rows.length} Mitarbeiter</span>
+        <h4>Wer bekommt wie viel Trinkgeld?</h4>
+        <span>${formatMoney(distributed)} verteilt</span>
       </div>
       <div class="tip-rows">
-        ${result.rows.map((row) => `
+        <article class="tip-row tip-row-head">
+          <strong>Mitarbeiter</strong>
+          <span>Bereich</span>
+          <span>Stunden</span>
+          <span>Berechnung</span>
+          <strong>Trinkgeld</strong>
+        </article>
+        ${displayRows.map((row) => `
           <article class="tip-row">
             <strong>${escapeHtml(row.employee)}</strong>
             <span>${escapeHtml(tipAreaLabel(row.area))}</span>
@@ -4083,6 +4119,26 @@ function renderDailyTipDistribution() {
   ` : `<p class="hint">Noch keine Trinkgeld-Verteilung möglich. Dafür braucht es Arbeitszeiten mit Dienstende und Umsatzdetails.</p>`;
   summaryTargets.forEach((target) => { target.innerHTML = summaryHtml; });
   listTargets.forEach((target) => { target.innerHTML = listHtml; });
+}
+
+function dailyTipRowsForDisplay(result = {}, report = {}) {
+  const calculatedRows = Array.isArray(result.rows) ? result.rows : [];
+  if (calculatedRows.length) return calculatedRows;
+  const savedRows = reportTipRows(report);
+  if (!savedRows.length) return [];
+  const dateKey = state.terminalDate || todayKey();
+  return savedRows.map((row) => {
+    const entry = state.terminalEntries?.[row.employee]?.[dateKey] || {};
+    const hours = paidHoursAfterOpening(entry, tipOpeningTime(dateKey));
+    return {
+      employee: row.employee,
+      area: tipAreaForEmployee(row.employee),
+      hours,
+      factor: 1,
+      rawTip: row.amount,
+      tip: row.amount
+    };
+  });
 }
 
 function tipAreaLabel(area) {
