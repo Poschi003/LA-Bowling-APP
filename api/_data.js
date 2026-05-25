@@ -22,6 +22,7 @@ const defaultCleaningTemplates = [
   { id: "weekly-glass", title: "Glasflaechen, Tueren und Eingangsbereich gruendlich reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
   { id: "weekly-sanitary", title: "Sanitaerbereich Grundkontrolle dokumentieren", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" }
 ];
+const TIP_ELIGIBLE_AREAS = ["Counter", "Service", "Kueche", "Spueler"];
 
 const defaultData = {
   settings: {
@@ -679,18 +680,19 @@ function deriveTipsForReport(appData, date, report) {
     const area = tipAreaForSync(appData.settings || {}, scheduleDay, report, employee);
     const hours = paidHoursAfterOpeningForSync(entry, openingTime);
     return { employee, area, hours };
-  }).filter((row) => ["Counter", "Service", "Kueche"].includes(row.area) && row.hours > 0);
+  }).filter((row) => isTipEligibleAreaForSync(row.area) && row.hours > 0);
   if (!rows.length) {
     rows = Object.entries(entriesByEmployee).map(([employee, entries]) => {
       const entry = entries?.[date] || {};
+      const area = tipAreaForSync(appData.settings || {}, scheduleDay, report, employee);
       const hours = paidHoursAfterOpeningForSync(entry, openingTime);
-      return { employee, area: "Service", hours };
-    }).filter((row) => row.hours > 0);
+      return { employee, area, hours };
+    }).filter((row) => isTipEligibleAreaForSync(row.area) && row.hours > 0);
   }
-  const kitchenCount = rows.filter((row) => row.area === "Kueche").length;
+  const kitchenCount = rows.filter((row) => isKitchenTipAreaForSync(row.area)).length;
   const weighted = rows.map((row) => ({
     ...row,
-    factor: row.area === "Kueche" && kitchenCount >= 2 ? 0.75 : 1
+    factor: isKitchenTipAreaForSync(row.area) && kitchenCount >= 2 ? 0.75 : 1
   })).map((row) => ({
     ...row,
     weight: row.hours * row.factor
@@ -739,16 +741,25 @@ function tipAreaForSync(settings, scheduleDay, report, employee) {
   if (roleDepartment) return roleDepartment;
   const departments = settings.employeeDepartments?.[employee] || [];
   const values = Array.isArray(departments) ? departments : String(departments || "").split(",");
-  return values.map(tipDepartmentForSync).find((area) => ["Counter", "Service", "Kueche"].includes(area)) || "";
+  return values.map(tipDepartmentForSync).find(isTipEligibleAreaForSync) || "";
 }
 
 function tipDepartmentForSync(value) {
   const text = String(value || "").trim().toLowerCase();
   if (!text) return "";
+  if (text.includes("spuel") || text.includes("spül")) return "Spueler";
   if (text.includes("counter")) return "Counter";
   if (text.includes("service")) return "Service";
-  if (text.includes("kueche") || text.includes("kuche") || text.includes("küche") || text.includes("koch") || text.includes("spuel") || text.includes("spül")) return "Kueche";
+  if (text.includes("kueche") || text.includes("kuche") || text.includes("küche") || text.includes("koch")) return "Kueche";
   return "";
+}
+
+function isTipEligibleAreaForSync(area) {
+  return TIP_ELIGIBLE_AREAS.includes(area);
+}
+
+function isKitchenTipAreaForSync(area) {
+  return area === "Kueche" || area === "Spueler";
 }
 
 function tipOpeningTimeForSync(report = {}) {
