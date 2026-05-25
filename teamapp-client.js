@@ -1959,9 +1959,7 @@ function renderScheduleDay(date, options = {}) {
   const assignments = state.schedule && state.schedule.days && state.schedule.days[key] ? state.schedule.days[key] : {};
   const holiday = holidayInfo(key);
   const filled = state.settings.positions.filter((position) => assignments[position]);
-  const visiblePositions = state.settings.positions.filter((position) => (
-    !isOptionalServiceSlot(position) || assignments[position]
-  ));
+  const visiblePositions = state.settings.positions.filter((position) => assignments[position]);
   const cells = visiblePositions.map((position) => {
     const assignedEmployee = assignments[position] || "";
     const ownShift = Boolean(state.activeEmployee && assignedEmployee === state.activeEmployee && !state.adminUnlocked);
@@ -1969,7 +1967,7 @@ function renderScheduleDay(date, options = {}) {
           <div class="position-cell ${positionClass(position)} ${assignedEmployee ? "filled" : ""} ${ownShift ? "own-shift clickable-shift" : ""}"
             ${ownShift ? `data-request-swap-date="${key}" data-request-swap-position="${escapeHtml(position)}"` : ""}>
             <span class="position-name">${escapeHtml(position)}</span>
-            <span class="assignment">${escapeHtml(assignedEmployee || "Noch offen")}</span>
+            <span class="assignment">${escapeHtml(assignedEmployee)}</span>
             ${ownShift ? `<span class="assignment-note">Zum Diensttausch anklicken</span>` : ""}
           </div>
         `;
@@ -1988,7 +1986,7 @@ function renderScheduleDay(date, options = {}) {
       <div class="position-grid">
         ${cells.join("")}
       </div>
-      ${options.today && filled.length === 0 ? `<div class="published-day-note">Es ist noch niemand eingeteilt.</div>` : ""}
+      ${options.today && filled.length === 0 ? `<div class="published-day-note">Es ist niemand eingeteilt.</div>` : ""}
       ${assignments.__dayNote ? `<div class="published-day-note">Tagesnotiz: ${escapeHtml(assignments.__dayNote)}</div>` : ""}
   `;
   if (options.collapsible) {
@@ -1997,13 +1995,14 @@ function renderScheduleDay(date, options = {}) {
         <summary class="day-header ${holiday.className}">
           <span>${formatDate(key)}</span>
           <span class="day-header-meta">
-            ${filled.length ? `<span class="day-badge">${filled.length} Dienste</span>` : `<span class="day-badge">Noch offen</span>`}
+            ${filled.length ? `<span class="day-badge">${filled.length} Dienste</span>` : ""}
             ${holiday.label ? `<span class="day-badge">${escapeHtml(holiday.label)}</span>` : ""}
           </span>
         </summary>
         <div class="position-grid">
           ${cells.join("")}
         </div>
+        ${filled.length === 0 ? `<div class="published-day-note">Es ist niemand eingeteilt.</div>` : ""}
         ${assignments.__dayNote ? `<div class="published-day-note">Tagesnotiz: ${escapeHtml(assignments.__dayNote)}</div>` : ""}
       </details>
     `;
