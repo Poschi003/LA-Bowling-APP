@@ -976,6 +976,7 @@ function dayReportA4Html(dateKey, report = {}) {
             ${a4ReportLine("Abgabe an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
           </div>
         </section>
+        ${a4TipDistributionBlock(report)}
         ${reportFieldEnabled("expenses") ? a4ExpenseBlock(report.expenses) : ""}
         <section class="a4-report-block a4-report-block-wide a4-report-staff">
           <h4>Personalzeiten</h4>
@@ -1000,6 +1001,44 @@ function a4ReportLine(label, value, className = "") {
       <strong>${escapeHtml(value)}</strong>
     </div>
   `;
+}
+
+function a4TipDistributionBlock(report = {}) {
+  const rows = reportTipRows(report);
+  const tipTotal = reportMoneyNumber(report.tipTotal);
+  const distributed = rows.reduce((sum, row) => sum + row.amount, 0);
+  const remainder = reportMoneyNumber(report.tipRemainder);
+  if (!rows.length && tipTotal <= 0 && remainder <= 0) return "";
+  return `
+    <section class="a4-report-block a4-report-block-wide a4-report-tip-control">
+      <h4>Trinkgeld-Verteilung</h4>
+      <table class="a4-report-table">
+        <thead>
+          <tr><th>Mitarbeiter</th><th>Betrag</th></tr>
+        </thead>
+        <tbody>
+          ${rows.length ? rows.map((row) => `
+            <tr>
+              <td>${escapeHtml(row.employee)}</td>
+              <td>${formatReportMoney(row.amount)}</td>
+            </tr>
+          `).join("") : `<tr><td colspan="2">Noch keine Verteilung gespeichert.</td></tr>`}
+        </tbody>
+        <tfoot>
+          <tr><th>Verteilt</th><td>${formatReportMoney(distributed)}</td></tr>
+          <tr><th>Rest gesammelt</th><td>${formatReportMoney(remainder)}</td></tr>
+          <tr><th>Trinkgeld gesamt</th><td>${formatReportMoney(tipTotal)}</td></tr>
+        </tfoot>
+      </table>
+    </section>
+  `;
+}
+
+function reportTipRows(report = {}) {
+  return Object.entries(report.tipsByEmployee || {})
+    .map(([employee, amount]) => ({ employee, amount: reportMoneyNumber(amount) }))
+    .filter((row) => row.employee && row.amount > 0)
+    .sort((a, b) => a.employee.localeCompare(b.employee, "de"));
 }
 
 function dayReportEmployeeRowsHtml(dateKey, report = {}) {
@@ -2746,6 +2785,7 @@ function reportPreviewFromForm() {
   const revenueOther = $("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || "";
   const revenueGastro = gastroRevenueFromFormOrReport().toFixed(2);
   const personalConsumption = $("#reportPersonalConsumption")?.value || state.terminalReport?.personalConsumption || "";
+  const tipResult = calculateTipDistribution(state.terminalDate || todayKey());
   return {
     ...(state.terminalReport || {}),
     cashTotal,
@@ -2760,6 +2800,9 @@ function reportPreviewFromForm() {
     revenueGastro,
     barBowling: revenueBowling,
     barGastro: revenueGastro,
+    tipTotal: tipResult.tipTotal.toFixed(2),
+    tipRemainder: tipResult.tipRemainder.toFixed(2),
+    tipsByEmployee: Object.fromEntries(tipResult.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
     openingHours: $("#terminalOpeningHours")?.value || state.terminalReport?.openingHours || "",
     shiftLeader: $("#terminalShiftLeader")?.value || state.terminalReport?.shiftLeader || ""
   };
@@ -3998,6 +4041,56 @@ function renderTerminalCosts(dateKey, employees) {
 }
 
 function renderTipDistribution() {
+  renderDailyTipDistribution();
+  renderTipPayoutOverview();
+}
+
+function renderDailyTipDistribution() {
+  const summaryTargets = [$("#financeTipDaySummary")].filter(Boolean);
+  const listTargets = [$("#financeTipDayDistributionList"), $("#dayReportTipDayDistribution")].filter(Boolean);
+  if (!summaryTargets.length && !listTargets.length) return;
+  const result = calculateTipDistribution(state.terminalDate || todayKey());
+  const summaryHtml = `
+    <article>
+      <span>Trinkgeld gesamt</span>
+      <strong>${formatMoney(result.tipTotal)}</strong>
+      <small>Bar + EC - Umsatz nach Personalverzehr</small>
+    </article>
+    <article>
+      <span>Aufgeteilt</span>
+      <strong>${formatMoney(result.distributedTipTotal)}</strong>
+      <small>Rest gesammelt: ${formatMoney(result.tipRemainder)}</small>
+    </article>
+  `;
+  const listHtml = result.rows.length ? `
+    <section class="tip-group">
+      <div class="terminal-task-group-head">
+        <h4>Tages-Verteilung</h4>
+        <span>${result.rows.length} Mitarbeiter</span>
+      </div>
+      <div class="tip-rows">
+        ${result.rows.map((row) => `
+          <article class="tip-row">
+            <strong>${escapeHtml(row.employee)}</strong>
+            <span>${escapeHtml(tipAreaLabel(row.area))}</span>
+            <span>${formatHours(row.hours)}</span>
+            <span class="tip-raw">${formatMoney(row.rawTip)} roh${row.factor !== 1 ? ` · Faktor ${String(row.factor).replace(".", ",")}` : ""}</span>
+            <strong>${formatMoney(row.tip)}</strong>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  ` : `<p class="hint">Noch keine Trinkgeld-Verteilung möglich. Dafür braucht es Arbeitszeiten mit Dienstende und Umsatzdetails.</p>`;
+  summaryTargets.forEach((target) => { target.innerHTML = summaryHtml; });
+  listTargets.forEach((target) => { target.innerHTML = listHtml; });
+}
+
+function tipAreaLabel(area) {
+  if (area === "Kueche") return "Küche";
+  return area || "Bereich offen";
+}
+
+function renderTipPayoutOverview() {
   const summary = $("#tipSummary");
   const list = $("#tipDistributionList");
   if (!summary || !list) return;
