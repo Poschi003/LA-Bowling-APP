@@ -162,6 +162,9 @@ async function saveCustomerInvoice(body, res) {
   if (action === "complete-invoice") {
     return completeInvoice(body, res);
   }
+  if (action === "delete-invoice-customer") {
+    return deleteInvoiceCustomer(body, res);
+  }
   if (action === "add-task-template" || action === "delete-task-template") {
     return saveTaskTemplate(body, res);
   }
@@ -212,6 +215,32 @@ async function completeInvoice(body, res) {
     };
   });
   if (!found) return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
+  report.updatedAt = new Date().toISOString();
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true });
+}
+
+async function deleteInvoiceCustomer(body, res) {
+  const appData = await readAppData();
+  const adminSession = verifyToken(body.adminToken || "", "admin");
+  const employeeSession = verifyToken(body.employeeToken || "", "employee");
+  const employee = employeeSession?.employee || "";
+  if (!adminSession && !employeeIsChef(appData.settings, employee)) {
+    return sendJson(res, 401, { error: "Bitte als Chef anmelden." });
+  }
+  const date = String(body.date || "").trim();
+  const invoiceId = String(body.invoiceId || "").trim();
+  const report = appData.dayReports?.[date];
+  if (!date || !invoiceId || !report || !Array.isArray(report.invoiceCustomers)) {
+    return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
+  }
+  let removed = false;
+  report.invoiceCustomers = report.invoiceCustomers.filter((invoice, index) => {
+    const match = String(invoice.id || index) === invoiceId;
+    if (match) removed = true;
+    return !match;
+  });
+  if (!removed) return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
   report.updatedAt = new Date().toISOString();
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true });
