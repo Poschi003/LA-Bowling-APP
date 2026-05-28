@@ -958,7 +958,7 @@ function dayReportA4Html(dateKey, report = {}) {
     <section class="a4-report official-day-report">
       <div class="a4-report-head official-report-head">
         <div class="a4-report-brand">
-          <img class="a4-report-logo" src="la-bowling-logo.png" alt="LA Bowling">
+          <img class="a4-report-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
           <h2>Offizieller Tagesbericht</h2>
           <p>Abschlussdokument für Kasse, Umsatz und Schichtleitung</p>
         </div>
@@ -7298,7 +7298,15 @@ function bindEvents() {
     event.stopPropagation();
     const report = $("#dayReportPrintArea");
     if (report) report.open = true;
+    const hadTerminalMode = document.body.classList.contains("terminal-mode");
+    document.body.classList.add("terminal-mode");
+    const cleanup = () => {
+      if (!hadTerminalMode) document.body.classList.remove("terminal-mode");
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
     window.print();
+    window.setTimeout(cleanup, 1200);
   });
   $("#printCleaningPlan")?.addEventListener("click", () => {
     document.body.classList.add("print-cleaning-plan");
