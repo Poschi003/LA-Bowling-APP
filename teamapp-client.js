@@ -957,15 +957,14 @@ function dayReportA4Html(dateKey, report = {}) {
   return `
     <section class="a4-report official-day-report">
       <div class="a4-report-head official-report-head">
-        <div>
-          <span>LA Bowling</span>
+        <div class="a4-report-brand">
+          <img class="a4-report-logo" src="la-bowling-logo.png" alt="LA Bowling">
           <h2>Offizieller Tagesbericht</h2>
           <p>Abschlussdokument für Kasse, Umsatz und Schichtleitung</p>
         </div>
         <dl>
           <div><dt>Berichtsdatum</dt><dd>${escapeHtml(formatDate(dateKey))}</dd></div>
           <div><dt>Schichtleitung</dt><dd>${escapeHtml(report.shiftLeader || "-")}</dd></div>
-          <div><dt>Öffnungszeit</dt><dd>${escapeHtml(report.openingHours || "-")}</dd></div>
           <div><dt>Status</dt><dd>${report.closed ? "Abgeschlossen" : "Offen"}</dd></div>
         </dl>
       </div>
@@ -1002,7 +1001,6 @@ function dayReportA4Html(dateKey, report = {}) {
           <h4>Personalzeiten</h4>
           ${dayReportEmployeeRowsHtml(dateKey, report) || `<p class="hint">Keine Arbeitszeiten erfasst.</p>`}
         </section>
-        ${reportFieldEnabled("documents") ? a4DocumentsBlock(report.documents) : ""}
         ${reportFieldEnabled("handovers") ? a4HandoversBlock(report.handovers) : ""}
         ${reportFieldEnabled("notes") ? a4NotesBlock(report.notes) : ""}
         <section class="a4-report-signature">

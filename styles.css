@@ -2901,6 +2901,19 @@ button:disabled {
   box-shadow: 0 10px 32px rgba(17, 17, 17, 0.08);
 }
 
+.a4-report-brand {
+  display: grid;
+  gap: 8px;
+}
+
+.a4-report-logo {
+  display: block;
+  width: min(310px, 100%);
+  max-height: 58px;
+  object-fit: contain;
+  object-position: left center;
+}
+
 .a4-report-head {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(320px, 0.9fr);
@@ -4745,17 +4758,20 @@ button:disabled {
 
   body.print-chef-day-report .a4-report,
   body.terminal-mode .a4-report {
-    gap: 1.5mm;
-    font-size: 7.4pt;
+    box-sizing: border-box;
+    gap: 2mm;
+    min-height: 276mm;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 8.8pt;
     page-break-inside: avoid;
   }
 
   body.print-chef-day-report .official-day-report,
   body.terminal-mode .official-day-report {
     border: 0.45mm solid #111;
-    border-top: 2mm solid #111;
+    border-top: 2.2mm solid #111;
     box-shadow: none;
-    padding: 2mm;
+    padding: 4mm;
   }
 
   body.print-chef-day-report .official-report-head,
@@ -4765,55 +4781,78 @@ button:disabled {
 
   body.print-chef-day-report .a4-report-head h2,
   body.terminal-mode .a4-report-head h2 {
-    font-size: 16pt;
+    font-size: 20pt;
   }
 
   body.print-chef-day-report .a4-report-head p,
   body.terminal-mode .a4-report-head p {
-    font-size: 7.5pt;
+    font-size: 8.6pt;
+  }
+
+  body.print-chef-day-report .a4-report-logo,
+  body.terminal-mode .a4-report-logo {
+    width: 82mm;
+    max-height: 17mm;
   }
 
   body.print-chef-day-report .a4-report-grid,
   body.terminal-mode .a4-report-grid {
     grid-template-columns: 1fr 1fr;
-    gap: 1mm;
+    gap: 1.8mm;
   }
 
   body.print-chef-day-report .a4-report-block,
   body.terminal-mode .a4-report-block {
-    padding: 1mm;
+    padding: 1.8mm;
     break-inside: avoid;
   }
 
   body.print-chef-day-report .a4-report-block h4,
   body.terminal-mode .a4-report-block h4 {
-    margin-bottom: 0.6mm;
-    font-size: 8.2pt;
+    margin-bottom: 1mm;
+    font-size: 9.8pt;
+  }
+
+  body.print-chef-day-report .a4-report-table,
+  body.terminal-mode .a4-report-table {
+    font-size: 8.8pt;
+  }
+
+  body.print-chef-day-report .a4-report-table th,
+  body.print-chef-day-report .a4-report-table td,
+  body.terminal-mode .a4-report-table th,
+  body.terminal-mode .a4-report-table td {
+    padding: 0.9mm 1mm;
+  }
+
+  body.print-chef-day-report .a4-report-line strong,
+  body.terminal-mode .a4-report-line strong {
+    font-size: 13pt;
   }
 
   body.print-chef-day-report .a4-report-signature,
   body.terminal-mode .a4-report-signature {
     grid-template-columns: 0.8fr 1.2fr;
     gap: 2mm;
-    margin-top: 1mm;
+    margin-top: auto;
   }
 
   body.print-chef-day-report .a4-report-signature div,
   body.terminal-mode .a4-report-signature div {
-    min-height: 15mm;
+    min-height: 22mm;
     border: 0.3mm solid #111;
     border-radius: 0;
-    padding: 1.2mm;
+    padding: 2mm;
   }
 
   body.print-chef-day-report .a4-report-signature span,
   body.terminal-mode .a4-report-signature span {
-    font-size: 6.8pt;
+    font-size: 7.8pt;
   }
 
   body.print-chef-day-report .a4-report-signature strong,
   body.terminal-mode .a4-report-signature strong {
-    margin-top: 5mm;
-    font-size: 9pt;
+    margin-top: 8mm;
+    font-size: 11pt;
   }
 }
