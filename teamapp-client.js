@@ -988,13 +988,15 @@ function dayReportA4Html(dateKey, report = {}) {
   return `
     <section class="a4-report official-day-report">
       <div class="a4-report-head official-report-head">
-        <div class="a4-report-brand">
-          <img class="a4-report-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
-          <h2>Tagesbericht vom ${escapeHtml(formatNumericDate(dateKey))}</h2>
+        <div class="a4-report-topline">
+          <div class="a4-report-brand">
+            <img class="a4-report-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
+          </div>
+          <dl>
+            <div><dt>Schichtleitung</dt><dd>${escapeHtml(report.shiftLeader || "-")}</dd></div>
+          </dl>
         </div>
-        <dl>
-          <div><dt>Schichtleitung</dt><dd>${escapeHtml(report.shiftLeader || "-")}</dd></div>
-        </dl>
+        <h2 class="a4-report-title">Tagesbericht vom ${escapeHtml(formatNumericDate(dateKey))}</h2>
       </div>
 
       <div class="a4-report-grid">
