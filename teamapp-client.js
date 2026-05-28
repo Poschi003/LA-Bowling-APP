@@ -1023,8 +1023,11 @@ function dayReportA4Html(dateKey, report = {}) {
             ["Ausgaben Kasse", expenseTotalValue]
           ])}
         </section>
-        <section class="a4-report-block a4-report-block-wide a4-report-chef-total">
-          ${a4ReportLine("Abzugeben an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
+        <section class="a4-report-block a4-report-block-wide a4-report-chef-total a4-chef-flat-total" style="padding:2px 8px !important; min-height:0 !important;">
+          <div class="a4-report-line a4-report-handover-highlight a4-chef-flat-line" style="padding:0 !important; min-height:0 !important; line-height:1 !important;">
+            <span style="font-size:12px !important; line-height:1 !important;">Abzugeben an Chef</span>
+            <strong style="font-size:15px !important; line-height:1 !important;">${escapeHtml(formatReportMoney(chefHandoverValue))}</strong>
+          </div>
         </section>
         ${reportFieldEnabled("invoiceCustomers") && printableInvoices.length ? a4InvoiceBlock(printableInvoices) : ""}
         ${reportFieldEnabled("expenses") && (report.expenses || []).length ? a4ExpenseBlock(report.expenses) : ""}

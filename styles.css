@@ -3258,6 +3258,17 @@ button:disabled {
   line-height: 1;
 }
 
+.a4-chef-flat-total {
+  padding: 2px 8px !important;
+  min-height: 0 !important;
+}
+
+.a4-chef-flat-line {
+  min-height: 0 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+}
+
 .a4-compact-list {
   display: grid;
   gap: 4px;
@@ -5218,11 +5229,24 @@ button:disabled {
     padding: 0.55mm 2mm;
   }
 
+  body.print-chef-day-report .a4-chef-flat-total,
+  body.terminal-mode .a4-chef-flat-total {
+    padding: 0.45mm 2mm !important;
+    min-height: 0 !important;
+  }
+
   body.print-chef-day-report .a4-report-chef-total .a4-report-line,
   body.terminal-mode .a4-report-chef-total .a4-report-line {
     min-height: 0;
     padding: 0;
     line-height: 1;
+  }
+
+  body.print-chef-day-report .a4-chef-flat-line,
+  body.terminal-mode .a4-chef-flat-line {
+    min-height: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
   }
 
   body.print-chef-day-report .a4-report-chef-total .a4-report-line span,
