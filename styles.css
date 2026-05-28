@@ -325,6 +325,14 @@ label {
   box-shadow: none;
 }
 
+.home-access.hidden,
+.home-access:has(#homeLogin.hidden) {
+  display: none !important;
+  margin: 0 !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
 .home-login {
   align-items: end;
   grid-template-columns: minmax(140px, 190px) auto;

@@ -645,6 +645,7 @@ function renderAccess() {
   $('[data-tab="swaps"]')?.classList.add("hidden");
   $$(".chef-only").forEach((element) => element.classList.toggle("hidden", !chef));
   $("#homeLogin")?.classList.toggle("hidden", loggedIn);
+  $(".home-access")?.classList.toggle("hidden", loggedIn);
   $("#homeGreeting")?.classList.toggle("hidden", !loggedIn);
   $("#topLogout")?.classList.toggle("hidden", !loggedIn && !state.adminToken);
   if ($("#homeEmployeeName")) {
