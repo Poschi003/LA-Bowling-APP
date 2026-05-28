@@ -3269,6 +3269,17 @@ button:disabled {
   line-height: 1 !important;
 }
 
+.a4-chef-mini-total {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  background: #fff0f2;
+  padding: 2px 8px;
+  min-height: 16px;
+  line-height: 1;
+}
+
 .a4-compact-list {
   display: grid;
   gap: 4px;
@@ -5246,6 +5257,14 @@ button:disabled {
   body.terminal-mode .a4-chef-flat-line {
     min-height: 0 !important;
     padding: 0 !important;
+    line-height: 1 !important;
+  }
+
+  body.print-chef-day-report .a4-chef-mini-total,
+  body.terminal-mode .a4-chef-mini-total {
+    grid-column: 1 / -1;
+    padding: 0.45mm 2mm !important;
+    min-height: 4mm !important;
     line-height: 1 !important;
   }
 
