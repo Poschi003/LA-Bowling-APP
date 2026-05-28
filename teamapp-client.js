@@ -955,13 +955,15 @@ function dayReportA4Html(dateKey, report = {}) {
   const totalRevenueValue = reportRevenueTotal(report);
   const chefHandoverValue = reportChefHandoverTotal(report);
   return `
-    <section class="a4-report">
-      <div class="a4-report-head">
+    <section class="a4-report official-day-report">
+      <div class="a4-report-head official-report-head">
         <div>
-          <span>Tagesbericht</span>
-          <h3>${escapeHtml(formatDate(dateKey))}</h3>
+          <span>LA Bowling</span>
+          <h2>Offizieller Tagesbericht</h2>
+          <p>Abschlussdokument für Kasse, Umsatz und Schichtleitung</p>
         </div>
         <dl>
+          <div><dt>Berichtsdatum</dt><dd>${escapeHtml(formatDate(dateKey))}</dd></div>
           <div><dt>Schichtleitung</dt><dd>${escapeHtml(report.shiftLeader || "-")}</dd></div>
           <div><dt>Öffnungszeit</dt><dd>${escapeHtml(report.openingHours || "-")}</dd></div>
           <div><dt>Status</dt><dd>${report.closed ? "Abgeschlossen" : "Offen"}</dd></div>

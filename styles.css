@@ -2894,6 +2894,13 @@ button:disabled {
   padding: 14px;
 }
 
+.official-day-report {
+  border: 2px solid #111;
+  border-top: 8px solid var(--brand);
+  border-radius: 0;
+  box-shadow: 0 10px 32px rgba(17, 17, 17, 0.08);
+}
+
 .a4-report-head {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(320px, 0.9fr);
@@ -2901,6 +2908,10 @@ button:disabled {
   align-items: start;
   border-bottom: 2px solid var(--ink);
   padding-bottom: 10px;
+}
+
+.official-report-head {
+  border-bottom: 3px solid #111;
 }
 
 .a4-report-head span,
@@ -2916,6 +2927,19 @@ button:disabled {
 .a4-report-head h3 {
   margin: 2px 0 0;
   font-size: 24px;
+}
+
+.a4-report-head h2 {
+  margin: 2px 0 0;
+  color: #111;
+  font-size: 28px;
+  line-height: 1.05;
+}
+
+.a4-report-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-weight: 750;
 }
 
 .a4-report-head dl {
@@ -2996,6 +3020,12 @@ button:disabled {
   font-weight: 850;
 }
 
+.a4-money-table th,
+.a4-money-table td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
 .a4-money-strong th,
 .a4-money-strong td {
   border-top: 2px solid var(--line-strong);
@@ -3031,6 +3061,11 @@ button:disabled {
 .a4-report-chef-total {
   border-color: var(--brand);
   background: var(--brand-soft);
+}
+
+.a4-report-chef-total .a4-report-line {
+  border-top: 0;
+  grid-template-columns: minmax(180px, 1fr) auto;
 }
 
 .a4-compact-list {
@@ -4700,6 +4735,29 @@ button:disabled {
     gap: 1.5mm;
     font-size: 7.4pt;
     page-break-inside: avoid;
+  }
+
+  body.print-chef-day-report .official-day-report,
+  body.terminal-mode .official-day-report {
+    border: 0.45mm solid #111;
+    border-top: 2mm solid #111;
+    box-shadow: none;
+    padding: 2mm;
+  }
+
+  body.print-chef-day-report .official-report-head,
+  body.terminal-mode .official-report-head {
+    border-bottom: 0.55mm solid #111;
+  }
+
+  body.print-chef-day-report .a4-report-head h2,
+  body.terminal-mode .a4-report-head h2 {
+    font-size: 16pt;
+  }
+
+  body.print-chef-day-report .a4-report-head p,
+  body.terminal-mode .a4-report-head p {
+    font-size: 7.5pt;
   }
 
   body.print-chef-day-report .a4-report-grid,
