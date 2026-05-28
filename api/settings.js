@@ -1,5 +1,6 @@
 ﻿const {
   createPinHash,
+  defaultData,
   handleError,
   publicSettings,
   readAppData,
@@ -81,6 +82,7 @@ module.exports = async function handler(req, res) {
     if (body.action === "delete-task-template") {
       const id = String(body.id || "");
       appData.taskTemplates = (appData.taskTemplates || []).filter((task) => task.id !== id);
+      rememberDeletedDefaultTasks(appData);
       await writeAppData(appData);
       return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
     }
@@ -182,6 +184,7 @@ module.exports = async function handler(req, res) {
     }
     if (Array.isArray(body.taskTemplates)) {
       appData.taskTemplates = body.taskTemplates.map(cleanTaskTemplate).filter((task) => task.title);
+      rememberDeletedDefaultTasks(appData);
     }
     if (Array.isArray(body.cleaningTemplates)) {
       appData.cleaningTemplates = body.cleaningTemplates.map(cleanCleaningTemplate).filter((task) => task.title);
@@ -216,6 +219,15 @@ module.exports = async function handler(req, res) {
     handleError(res, error);
   }
 };
+
+function rememberDeletedDefaultTasks(appData) {
+  const currentIds = new Set((appData.taskTemplates || []).map((task) => task.id).filter(Boolean));
+  const deleted = new Set(appData.deletedTaskTemplateIds || []);
+  for (const task of defaultData.taskTemplates || []) {
+    if (!currentIds.has(task.id)) deleted.add(task.id);
+  }
+  appData.deletedTaskTemplateIds = [...deleted];
+}
 
 function cleanVisibility(value, keys) {
   return Object.fromEntries(keys.map((key) => [key, value[key] !== false]));

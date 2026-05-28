@@ -141,6 +141,7 @@ const defaultData = {
       createdAt: "2026-05-09T00:00:00.000Z"
     }
   ],
+  deletedTaskTemplateIds: [],
   reminderTemplates: [
     {
       id: "default-toilet-reminder",
@@ -164,6 +165,7 @@ function cloneData(value) {
 
 function mergeData(value) {
   const base = cloneData(defaultData);
+  const deletedTaskTemplateIds = normalizeDeletedIds(value?.deletedTaskTemplateIds);
   const merged = {
     ...base,
     ...(value || {}),
@@ -215,7 +217,8 @@ function mergeData(value) {
     timesheets: value?.timesheets || base.timesheets,
     tipPayouts: value?.tipPayouts && typeof value.tipPayouts === "object" ? value.tipPayouts : base.tipPayouts,
     cleaningTemplates: Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates,
-    taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates),
+    taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates, deletedTaskTemplateIds),
+    deletedTaskTemplateIds,
     reminderTemplates: Array.isArray(value?.reminderTemplates) ? value.reminderTemplates : base.reminderTemplates,
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
@@ -266,12 +269,17 @@ function weekStartKey(dateKey) {
   return `${year}-${month}-${dayOfMonth}`;
 }
 
-function mergeTaskTemplates(value, defaults) {
+function normalizeDeletedIds(value) {
+  return Array.isArray(value) ? [...new Set(value.map(String).filter(Boolean))] : [];
+}
+
+function mergeTaskTemplates(value, defaults, deletedIds = []) {
   const incoming = Array.isArray(value) ? value : [];
   const ids = new Set(incoming.map((task) => task?.id).filter(Boolean));
+  const deleted = new Set(deletedIds);
   return [
     ...incoming,
-    ...defaults.filter((task) => !ids.has(task.id))
+    ...defaults.filter((task) => !ids.has(task.id) && !deleted.has(task.id))
   ];
 }
 

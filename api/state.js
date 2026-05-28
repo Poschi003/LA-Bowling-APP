@@ -1,6 +1,7 @@
 ﻿const fs = require("fs");
 const path = require("path");
 const {
+  defaultData,
   handleError,
   publicSettings,
   readAppData,
@@ -230,8 +231,14 @@ async function saveTaskTemplate(body, res) {
   }
   const id = String(body.id || "");
   appData.taskTemplates = (appData.taskTemplates || []).filter((task) => task.id !== id);
+  rememberDeletedDefaultTask(appData, id);
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
+}
+
+function rememberDeletedDefaultTask(appData, id) {
+  if (!(defaultData.taskTemplates || []).some((task) => task.id === id)) return;
+  appData.deletedTaskTemplateIds = [...new Set([...(appData.deletedTaskTemplateIds || []), id])];
 }
 
 async function handleScheduleMutation(req, res, body) {

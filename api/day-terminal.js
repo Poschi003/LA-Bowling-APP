@@ -1,5 +1,6 @@
 ﻿const { handleError, publicSettings, readAppData, readJson, sendJson, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
 const crypto = require("crypto");
+const { defaultData } = require("./_data");
 
 module.exports = async function handler(req, res) {
   try {
@@ -115,8 +116,14 @@ async function saveTaskTemplate(body, res) {
   }
   const id = String(body.id || "");
   appData.taskTemplates = (appData.taskTemplates || []).filter((task) => task.id !== id);
+  rememberDeletedDefaultTask(appData, id);
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
+}
+
+function rememberDeletedDefaultTask(appData, id) {
+  if (!(defaultData.taskTemplates || []).some((task) => task.id === id)) return;
+  appData.deletedTaskTemplateIds = [...new Set([...(appData.deletedTaskTemplateIds || []), id])];
 }
 
 async function punch(body, res) {
@@ -166,11 +173,12 @@ async function saveReport(body, res) {
   const revenueOther = cleanMoney(body.revenueOther ?? existing.revenueOther);
   const revenueGastro = cleanGastroTotal(body.revenueGastro ?? body.barGastro ?? existing.revenueGastro ?? existing.barGastro, revenueDrinks, revenueFood, revenueOther);
   const personalConsumption = cleanMoney(body.personalConsumption ?? existing.personalConsumption);
+  const cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
   const invoiceCustomers = await cleanReportItems(body.invoiceCustomers, "invoice", date);
   const expenses = await cleanReportItems(body.expenses, "expense", date);
   const documents = await cleanReportDocuments(body.documents || existing.documents, date);
   upsertCustomerDirectory(appData, invoiceCustomers);
-  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), ecTerminal1, ecTerminal2, ecTotal, personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
+  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
   applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
@@ -188,9 +196,11 @@ async function saveTips(body, res) {
   const revenueOther = cleanMoney(body.revenueOther);
   const revenueGastro = cleanGastroTotal(body.revenueGastro, revenueDrinks, revenueFood, revenueOther);
   const personalConsumption = cleanMoney(body.personalConsumption ?? existing.personalConsumption);
+  const cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
   appData.dayReports[date] = {
     ...existing,
     cashTotal: cleanMoney(body.cashTotal),
+    cashExpenses,
     ecTerminal1,
     ecTerminal2,
     ecTotal: cleanEcTotal(body.ecTotal, ecTerminal1, ecTerminal2),
@@ -229,6 +239,7 @@ async function confirmTipPayout(body, res) {
   appData.dayReports[date] = {
     ...existing,
     cashTotal: Object.prototype.hasOwnProperty.call(body, "cashTotal") ? cleanMoney(body.cashTotal) : existing.cashTotal || "",
+    cashExpenses: cleanMoney(body.cashExpenses ?? existing.cashExpenses),
     ecTerminal1,
     ecTerminal2,
     ecTotal: cleanEcTotal(body.ecTotal ?? existing.ecTotal, ecTerminal1, ecTerminal2),
@@ -436,6 +447,7 @@ function reportHasActivity(report = {}) {
     report.openingHours ||
     report.shiftLeader ||
     report.notes ||
+    report.cashExpenses ||
     (report.invoiceCustomers || []).length ||
     (report.expenses || []).length ||
     (report.handovers || []).length ||
@@ -448,7 +460,7 @@ function reportHasActivity(report = {}) {
 }
 
 function defaultReport(report = {}) {
-  return { cashTotal: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+  return { cashTotal: "", cashExpenses: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
 }
 
 function tipPayoutOverview(appData) {
