@@ -126,6 +126,7 @@
           <div id="terminalLeaderMessages" class="terminal-leader-messages hidden"></div>
           <nav class="terminal-tabs" aria-label="Terminal-Bereiche">
             <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
+            <button class="terminal-tab" data-terminal-tab="checks" type="button">Kontrollen</button>
             <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
             <button class="terminal-tab" data-terminal-tab="tips" type="button">Trinkgeld</button>
@@ -140,6 +141,15 @@
             </div>
             <div id="terminalTaskList" class="terminal-task-list"></div>
             <div id="toiletCheckStatus" class="toilet-check-status"></div>
+          </section>
+          <section id="terminalChecksSection" class="terminal-section hidden">
+            <div class="terminal-section-head">
+              <div>
+                <h3>Kontrollen & Popups</h3>
+                <p class="hint">Hier steht, wann Toiletten-Kontrollen und Aufgaben-Popups quittiert wurden.</p>
+              </div>
+            </div>
+            <div id="terminalCheckLog" class="terminal-check-log"></div>
           </section>
           <section id="terminalServiceSection" class="terminal-section hidden">
             <section id="terminalHandoverAnchor" class="terminal-handover-anchor">

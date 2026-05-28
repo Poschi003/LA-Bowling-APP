@@ -946,6 +946,8 @@ function dayReportA4Html(dateKey, report = {}) {
   const invoiceTotalValue = reportItemsTotal(printableInvoices);
   const expenseTotalValue = reportCashExpensesTotal(report);
   const ecTotalValue = reportEcTotal(report);
+  const ecTerminal1Value = reportMoneyNumber(report.ecTerminal1);
+  const ecTerminal2Value = reportMoneyNumber(report.ecTerminal2);
   const personalConsumptionValue = reportPersonalConsumptionTotal(report);
   const bowlingRevenueValue = reportMoneyNumber(report.revenueBowling || report.barBowling);
   const gastroParts = reportGastroParts(report);
@@ -962,22 +964,37 @@ function dayReportA4Html(dateKey, report = {}) {
         <dl>
           <div><dt>Schichtleitung</dt><dd>${escapeHtml(report.shiftLeader || "-")}</dd></div>
           <div><dt>Öffnungszeit</dt><dd>${escapeHtml(report.openingHours || "-")}</dd></div>
+          <div><dt>Status</dt><dd>${report.closed ? "Abgeschlossen" : "Offen"}</dd></div>
         </dl>
       </div>
 
       <div class="a4-report-grid">
-        <section class="a4-report-block a4-report-block-wide a4-report-finance-summary">
-          <h4>Abrechnung</h4>
-          <div class="a4-report-lines">
-            ${a4ReportLine("Bowling / Gastro", `${formatReportMoney(bowlingRevenueValue)} / ${formatReportMoney(gastroRevenueValue)}`)}
-            ${a4ReportLine("Getränke / Speisen / Sonstiges", `${formatReportMoney(gastroParts.drinks || "")} / ${formatReportMoney(gastroParts.food || "")} / ${formatReportMoney(gastroParts.other || "")}`, "a4-report-secondary")}
-            ${a4ReportLine("Umsatz gesamt", formatReportMoney(totalRevenueValue), "a4-report-total")}
-            ${a4ReportLine("Rechnung / EC", `${formatReportMoney(invoiceTotalValue)} / ${formatReportMoney(ecTotalValue)}`, "a4-report-secondary")}
-            ${a4ReportLine("Personalverzehr / Ausgaben", `${formatReportMoney(personalConsumptionValue)} / ${formatReportMoney(expenseTotalValue)}`, "a4-report-secondary")}
-            ${a4ReportLine("Abgabe an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
-          </div>
+        <section class="a4-report-block a4-report-finance-summary">
+          <h4>Umsätze</h4>
+          ${a4MoneyTable([
+            ["Umsatz Bowling", bowlingRevenueValue],
+            ["Getränke", gastroParts.drinks],
+            ["Speisen", gastroParts.food],
+            ["Sonstiges", gastroParts.other],
+            ["Umsatz Gastro gesamt", gastroRevenueValue],
+            ["Umsatz gesamt", totalRevenueValue, "strong"]
+          ])}
         </section>
-        ${a4TipDistributionBlock(report)}
+        <section class="a4-report-block a4-report-finance-summary">
+          <h4>Zahlarten & Abzüge</h4>
+          ${a4MoneyTable([
+            ["Bezahlung auf Rechnung", invoiceTotalValue],
+            ["EC Terminal 1", ecTerminal1Value],
+            ["EC Terminal 2", ecTerminal2Value],
+            ["EC gesamt", ecTotalValue, "strong"],
+            ["Personalverzehr", personalConsumptionValue],
+            ["Ausgaben Kasse", expenseTotalValue]
+          ])}
+        </section>
+        <section class="a4-report-block a4-report-block-wide a4-report-chef-total">
+          ${a4ReportLine("Abgabe an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
+        </section>
+        ${reportFieldEnabled("invoiceCustomers") ? a4InvoiceBlock(printableInvoices) : ""}
         ${reportFieldEnabled("expenses") ? a4ExpenseBlock(report.expenses) : ""}
         <section class="a4-report-block a4-report-block-wide a4-report-staff">
           <h4>Personalzeiten</h4>
@@ -986,8 +1003,33 @@ function dayReportA4Html(dateKey, report = {}) {
         ${reportFieldEnabled("documents") ? a4DocumentsBlock(report.documents) : ""}
         ${reportFieldEnabled("handovers") ? a4HandoversBlock(report.handovers) : ""}
         ${reportFieldEnabled("notes") ? a4NotesBlock(report.notes) : ""}
+        <section class="a4-report-signature">
+          <div>
+            <span>Datum</span>
+            <strong>${escapeHtml(formatDate(todayKey()))}</strong>
+          </div>
+          <div>
+            <span>Unterschrift Schichtleitung</span>
+            <strong>${escapeHtml(report.shiftLeader || "-")}</strong>
+          </div>
+        </section>
       </div>
     </section>
+  `;
+}
+
+function a4MoneyTable(rows = []) {
+  return `
+    <table class="a4-report-table a4-money-table">
+      <tbody>
+        ${rows.map(([label, value, mode]) => `
+          <tr class="${mode === "strong" ? "a4-money-strong" : ""}">
+            <th>${escapeHtml(label)}</th>
+            <td>${formatReportMoney(value)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
   `;
 }
 
@@ -2257,7 +2299,7 @@ function renderAdminTasks() {
   updateRunningTaskFields();
   if ($("#taskCalendarMonth") && !$("#taskCalendarMonth").value) $("#taskCalendarMonth").value = state.selectedMonth;
   if ($("#calendarTaskDate") && !$("#calendarTaskDate").value) $("#calendarTaskDate").value = todayKey();
-  const tasks = state.taskTemplates || [];
+  const tasks = sortTaskTemplates(state.taskTemplates || []);
   renderTaskTable("#prepTaskTable", tasks.filter((task) => task.category === "preparation"));
   renderTaskTable("#runningTaskTable", tasks.filter((task) => (task.category || "running") === "running"));
   renderTaskTable("#closingTaskTable", tasks.filter((task) => task.category === "closing"));
@@ -2366,7 +2408,7 @@ function calendarWeeksForMonth(month) {
 function calendarDayHtml(day) {
   const date = day.date;
   const dateKey = isoDate(date);
-  const tasks = (state.taskTemplates || [])
+  const tasks = sortTaskTemplates(state.taskTemplates || [])
     .filter((task) => (task.category || "running") === "running" && taskAppliesToDate(task, dateKey));
   const holiday = holidayInfo(dateKey);
   const selected = ($("#calendarTaskDate")?.value || todayKey()) === dateKey;
@@ -2450,14 +2492,15 @@ function fillWeekdaySelects() {
 function renderTaskTable(selector, tasks) {
   const target = $(selector);
   if (!target) return;
-  target.innerHTML = tasks.length ? `
+  const sortedTasks = sortTaskTemplates(tasks || []);
+  target.innerHTML = sortedTasks.length ? `
     <div class="admin-task-row admin-task-row-head">
       <span>Aufgabe</span>
       <span>Wann</span>
       <span>Notiz</span>
       <span></span>
     </div>
-    ${tasks.map((task) => `
+    ${sortedTasks.map((task) => `
       <div class="admin-task-row">
         <strong>${escapeHtml(task.title)}</strong>
         <span>${escapeHtml(taskFrequencyLabel(task).replace(`${taskCategoryLabel(task.category)} | `, ""))}</span>
@@ -2466,6 +2509,18 @@ function renderTaskTable(selector, tasks) {
       </div>
     `).join("")}
   ` : `<p class="hint">Noch keine Aufgaben eingetragen.</p>`;
+}
+
+function sortTaskTemplates(tasks = []) {
+  return tasks
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.task.createdAt || "") || 0;
+      const bTime = Date.parse(b.task.createdAt || "") || 0;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.index - b.index;
+    })
+    .map(({ task }) => task);
 }
 
 function updateRunningTaskFields() {
@@ -2841,7 +2896,7 @@ function renderTerminal() {
   const panel = $("#terminal");
   if (!panel) return;
   const todoMode = isTodoMode();
-  if (todoMode) state.terminalTab = "tasks";
+  if (todoMode && !["tasks", "checks"].includes(state.terminalTab)) state.terminalTab = "tasks";
   if ($("#terminalTitle")) $("#terminalTitle").textContent = "Tages-Terminal";
   if ($("#terminalCodeLabel")) $("#terminalCodeLabel").textContent = todoMode ? "TO-DO-Code" : "Terminal-Code";
   if ($("#unlockTerminal")) $("#unlockTerminal").textContent = "Terminal öffnen";
@@ -2864,6 +2919,7 @@ function renderTerminal() {
   renderTerminalTasks(report, reportClosed);
   renderHandovers(report, reportClosed);
   renderToiletStatus(report);
+  renderTerminalChecks(report);
   checkTerminalReminders(report, reportClosed);
   renderTerminalCosts(dateKey, employees);
   renderTipDistribution();
@@ -2939,6 +2995,7 @@ function renderTerminalTabs() {
   state.terminalTab = active;
   $$(".terminal-tab").forEach((button) => button.classList.toggle("active", button.dataset.terminalTab === active));
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "tasks");
+  $("#terminalChecksSection")?.classList.toggle("hidden", active !== "checks");
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "service");
   $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "finance");
   $("#terminalTipsSection")?.classList.toggle("hidden", active !== "tips");
@@ -3052,7 +3109,7 @@ function renderTerminalTasks(report, reportClosed) {
   const target = $("#terminalTaskList");
   if (!target) return;
   const done = report.taskCompletions || {};
-  const tasks = state.terminalTasks || [];
+  const tasks = sortTaskTemplates(state.terminalTasks || []);
   const cleaningDone = weeklyCleaningCompletionsForTerminal(report);
   const allCleaningTasks = weeklyCleaningTasksForTerminal();
   const cleaningTasks = allCleaningTasks.filter((task) => !cleaningDone[task.id]);
@@ -3229,6 +3286,55 @@ function renderToiletStatus(report) {
   target.classList.add("hidden");
 }
 
+function renderTerminalChecks(report = {}) {
+  const target = $("#terminalCheckLog");
+  if (!target) return;
+  const reminderChecks = (report.reminderChecks || []).map((item) => ({
+    key: item.checkKey || "",
+    text: item.text || "Toiletten-Kontrolle durchführen",
+    checkedAt: item.checkedAt || "",
+    type: checkLogType(item)
+  }));
+  const reminderKeys = new Set(reminderChecks.map((item) => item.key));
+  const toiletOnly = (report.toiletChecks || [])
+    .filter((item) => item.checkKey && !reminderKeys.has(item.checkKey))
+    .map((item) => ({
+      key: item.checkKey || "",
+      text: "Toiletten-Kontrolle durchführen",
+      checkedAt: item.checkedAt || "",
+      type: "Toilette"
+    }));
+  const entries = [...reminderChecks, ...toiletOnly]
+    .filter((item) => item.checkedAt || item.key)
+    .sort((a, b) => String(a.checkedAt || a.key).localeCompare(String(b.checkedAt || b.key)));
+  target.innerHTML = entries.length ? `
+    <div class="terminal-check-list">
+      ${entries.map((item) => `
+        <article class="terminal-check-entry">
+          <div>
+            <strong>${escapeHtml(item.type)}</strong>
+            <span>${escapeHtml(item.text)}</span>
+          </div>
+          <time>${escapeHtml(item.checkedAt ? formatDateTime(item.checkedAt) : checkTimeFromKey(item.key))}</time>
+        </article>
+      `).join("")}
+    </div>
+  ` : `<p class="hint">Heute wurde noch keine Kontrolle quittiert.</p>`;
+}
+
+function checkLogType(item = {}) {
+  const text = String(item.text || "").toLowerCase();
+  const key = String(item.checkKey || "").toLowerCase();
+  if (text.includes("toilet") || text.includes("toilette") || key.includes("toilet")) return "Toilette";
+  if (key.includes("task-popup")) return "Aufgaben-Popup";
+  return "Popup";
+}
+
+function checkTimeFromKey(key = "") {
+  const match = String(key).match(/(\d{2}:\d{2})$/);
+  return match ? match[1] : "-";
+}
+
 function checkTerminalReminders(report, reportClosed) {
   const modal = $("#toiletReminder");
   if (!modal || reportClosed || !state.terminalToken) {
@@ -3325,6 +3431,7 @@ async function refreshTerminalReminderState() {
       terminalMessageChecks: report.terminalMessageChecks || state.terminalReport?.terminalMessageChecks || []
     };
     renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
+    renderTerminalChecks(state.terminalReport);
     checkTerminalReminders(state.terminalReport, Boolean(state.terminalReport?.closed));
   } catch (error) {
     checkTerminalReminders(state.terminalReport || {}, Boolean(state.terminalReport?.closed));
@@ -4641,6 +4748,7 @@ async function confirmToiletCheck() {
   window.localStorage?.setItem(`toilet-check-${checkKey}`, "1");
   $("#toiletReminder")?.classList.add("hidden");
   renderToiletStatus(state.terminalReport);
+  renderTerminalChecks(state.terminalReport);
   try {
     await terminalAction({
       action: "save-report",
@@ -6505,7 +6613,7 @@ function bindEvents() {
       popupTime: config.popupEnabled ? config.popupTime : ""
     };
     try {
-      state.taskTemplates = [withTaskDefaults(task), ...(state.taskTemplates || [])];
+      state.taskTemplates = sortTaskTemplates([...(state.taskTemplates || []), withTaskDefaults(task)]);
       await saveAllTaskTemplates();
       if (titleInput) titleInput.value = "";
       if (noteInput) noteInput.value = "";
@@ -6573,6 +6681,7 @@ function bindEvents() {
   }
 
   async function saveAllTaskTemplates() {
+    state.taskTemplates = sortTaskTemplates(state.taskTemplates || []);
     await api("/api/settings", {
       method: "POST",
       headers: { "x-admin-token": state.adminToken },
