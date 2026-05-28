@@ -1027,6 +1027,12 @@ button.employee-badge-stat {
   gap: 10px;
 }
 
+.dashboard-messages:empty,
+.dashboard-message:empty,
+.home-swaps:empty {
+  display: none !important;
+}
+
 .dashboard-message {
   border: 1px solid rgba(225, 23, 47, 0.2);
   border-left: 3px solid var(--brand);

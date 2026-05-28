@@ -724,11 +724,14 @@ function renderHome() {
     ${state.activeEmployee ? renderHomeSwaps() : ""}
     ${state.adminUnlocked ? renderMissingAvailability() : ""}
   `;
+  removeEmptyHomeBlocks(container);
   ensureWeatherVisible();
 }
 
 function renderDashboardMessages() {
-  const messages = dashboardMessagesForActiveEmployee();
+  const messages = dashboardMessagesForActiveEmployee()
+    .map((message) => ({ ...message, text: String(message.text || "").trim() }))
+    .filter((message) => message.text);
   if (!messages.length) return "";
   return `
     <section class="dashboard-messages">
@@ -749,6 +752,18 @@ function dashboardMessagesForActiveEmployee() {
     if (!String(message.text || "").trim()) return false;
     if (message.readBy?.[state.activeEmployee]) return false;
     return messageRecipientsClient(message).includes(state.activeEmployee);
+  });
+}
+
+function removeEmptyHomeBlocks(container) {
+  container.querySelectorAll(".dashboard-message, .dashboard-messages, .home-swaps").forEach((element) => {
+    if (!element.textContent.trim()) element.remove();
+  });
+  [...container.children].forEach((element) => {
+    if (element.matches(".dashboard-today")) return;
+    if (!element.textContent.trim() && !element.querySelector("input, button, select, textarea, [data-weather-widget]")) {
+      element.remove();
+    }
   });
 }
 
