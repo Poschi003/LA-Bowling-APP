@@ -995,8 +995,8 @@ function dayReportA4Html(dateKey, report = {}) {
         <section class="a4-report-block a4-report-block-wide a4-report-chef-total">
           ${a4ReportLine("Abgabe an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
         </section>
-        ${reportFieldEnabled("invoiceCustomers") ? a4InvoiceBlock(printableInvoices) : ""}
-        ${reportFieldEnabled("expenses") ? a4ExpenseBlock(report.expenses) : ""}
+        ${reportFieldEnabled("invoiceCustomers") && printableInvoices.length ? a4InvoiceBlock(printableInvoices) : ""}
+        ${reportFieldEnabled("expenses") && (report.expenses || []).length ? a4ExpenseBlock(report.expenses) : ""}
         <section class="a4-report-block a4-report-block-wide a4-report-staff">
           <h4>Personalzeiten</h4>
           ${dayReportEmployeeRowsHtml(dateKey, report) || `<p class="hint">Keine Arbeitszeiten erfasst.</p>`}
