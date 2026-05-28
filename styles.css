@@ -4409,6 +4409,11 @@ button:disabled {
     font-size: 10px;
   }
 
+  body.print-chef-day-report .panel:not(#chef),
+  body.terminal-mode .panel:not(#terminal) {
+    display: none !important;
+  }
+
   body.print-chef-day-report .topbar,
   body.print-chef-day-report .tabs,
   body.print-chef-day-report #home,
@@ -4417,6 +4422,8 @@ button:disabled {
   body.print-chef-day-report #timesheet,
   body.print-chef-day-report #swaps,
   body.print-chef-day-report #admin,
+  body.print-chef-day-report #terminal,
+  body.print-chef-day-report #customerInvoice,
   body.print-chef-day-report #chef > .section-head,
   body.print-chef-day-report .chef-tabs,
   body.print-chef-day-report .chef-section-head,
@@ -4528,6 +4535,10 @@ button:disabled {
 }
 
 @media print {
+  body.terminal-mode .panel:not(#terminal) {
+    display: none !important;
+  }
+
   body.terminal-mode .topbar,
   body.terminal-mode .tabs,
   body.terminal-mode #home,
@@ -4536,6 +4547,8 @@ button:disabled {
   body.terminal-mode #timesheet,
   body.terminal-mode #swaps,
   body.terminal-mode #admin,
+  body.terminal-mode #chef,
+  body.terminal-mode #customerInvoice,
   body.terminal-mode #terminalLogin,
   body.terminal-mode .terminal-add,
   body.terminal-mode .terminal-tabs,
