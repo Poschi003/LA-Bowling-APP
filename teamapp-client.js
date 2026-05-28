@@ -678,15 +678,25 @@ function renderEmployeeBadge() {
   const adminButton = state.adminToken ? `<button class="employee-badge-stat compact employee-badge-admin" type="button" data-open-backoffice><small>Admin</small>Backoffice</button>` : "";
   if (currentUserIsChef()) {
     return `
-      <span class="employee-badge-name">Willkommen in der Teamapp ${escapeHtml(state.activeEmployee)}</span>
-      <span class="employee-badge-role">(${escapeHtml(role)})</span>
+      <div class="employee-welcome-block">
+        <span class="employee-welcome-title">Willkommen in der Teamapp</span>
+        <div class="employee-welcome-name-row">
+          <span class="employee-badge-name">${escapeHtml(state.activeEmployee)}</span>
+          <span class="employee-badge-role">${escapeHtml(role)}</span>
+        </div>
+      </div>
       ${adminButton}
     `;
   }
   const totals = timesheetTotals();
   return `
-    <span class="employee-badge-name">Willkommen in der Teamapp ${escapeHtml(state.activeEmployee)}</span>
-    <span class="employee-badge-role">(${escapeHtml(role)})</span>
+    <div class="employee-welcome-block">
+      <span class="employee-welcome-title">Willkommen in der Teamapp</span>
+      <div class="employee-welcome-name-row">
+        <span class="employee-badge-name">${escapeHtml(state.activeEmployee)}</span>
+        <span class="employee-badge-role">${escapeHtml(role)}</span>
+      </div>
+    </div>
     <button class="employee-badge-stat compact" type="button" data-open-timesheet><small>Gesamtstunden in diesem Monat</small>${formatHours(totals.hours)}</button>
     <span class="employee-badge-stat compact"><small>Gesammeltes Trinkgeld in diesem Monat</small>${formatMoney(totals.tip)}</span>
     ${adminButton}
@@ -2053,10 +2063,9 @@ function renderScheduleDay(date, options = {}) {
   }
   const content = `
       <div class="day-header ${holiday.className}">
-          <span>${formatDate(key)}</span>
+          <span class="day-date-with-badge">${formatDate(key)}${holiday.label ? `<span class="day-badge holiday-inline">${escapeHtml(holiday.label)}</span>` : ""}</span>
           <span class="day-header-meta">
             ${options.today ? `<span class="opening-hours-inline">Geöffnet: ${openingHoursFor(key)}</span>` : ""}
-            ${holiday.label ? `<span class="day-badge">${escapeHtml(holiday.label)}</span>` : ""}
           </span>
         </div>
       <div class="position-grid">
@@ -2069,11 +2078,9 @@ function renderScheduleDay(date, options = {}) {
     return `
       <details class="schedule-day ${options.today ? "today-summary" : ""}">
         <summary class="day-header ${holiday.className} ${ownShiftCount ? "has-own-assignment" : ""}">
-          <span>${formatDate(key)}</span>
+          <span class="day-date-with-badge">${formatDate(key)}${holiday.label ? `<span class="day-badge holiday-inline">${escapeHtml(holiday.label)}</span>` : ""}</span>
           <span class="day-header-meta">
             ${ownShiftCount ? `<span class="own-assignment-indicator"><i></i>Eingeteilt</span>` : ""}
-            ${filled.length ? `<span class="day-badge">${filled.length} Dienste</span>` : ""}
-            ${holiday.label ? `<span class="day-badge">${escapeHtml(holiday.label)}</span>` : ""}
           </span>
         </summary>
         <div class="position-grid">
@@ -2180,18 +2187,17 @@ function renderOpenSwaps() {
 
 function renderHomeSwaps() {
   const swaps = (state.swaps.open || []).filter((swap) => swap.status === "open");
+  if (!swaps.length) return "";
   return `
     <section class="missing-section home-swaps">
       <h2>Offene Ersatzanfragen</h2>
-      ${swaps.length
-        ? `<div class="swap-list">${swaps.slice(0, 6).map((swap) => `
+      <div class="swap-list">${swaps.slice(0, 6).map((swap) => `
             <article class="swap-card compact-swap-card clickable-card" data-open-swaps>
               <strong>${formatDate(swap.date)} | ${escapeHtml(swap.position)}</strong>
               <span>${escapeHtml(swap.employee)} sucht Ersatz${swap.responses.length ? `, ${swap.responses.length} gemeldet` : ""}</span>
               <button class="primary" type="button">Öffnen</button>
             </article>
-          `).join("")}</div>`
-        : `<p>Keine offenen Ersatzanfragen.</p>`}
+          `).join("")}</div>
     </section>
   `;
 }

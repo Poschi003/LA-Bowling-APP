@@ -399,22 +399,22 @@ label {
 .own-assignment-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   border: 1px solid rgba(22, 163, 74, 0.25);
   border-radius: 999px;
   background: #ecfdf3;
   color: #166534;
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: 2px 7px;
+  font-size: 11px;
   font-weight: 850;
 }
 
 .own-assignment-indicator i {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
   background: #22c55e;
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.14);
 }
 
 .day-header.has-own-assignment {
@@ -604,6 +604,13 @@ label {
   border-bottom: 1px solid var(--line);
 }
 
+.day-date-with-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .day-header-meta {
   display: flex;
   align-items: center;
@@ -626,6 +633,12 @@ label {
 .day-header.preholiday {
   background: #fff7ed;
   color: #8a3f13;
+}
+
+.holiday-inline {
+  border-color: rgba(225, 23, 47, 0.18);
+  background: #fff;
+  font-size: 11px;
 }
 
 .day-badges {
@@ -935,18 +948,39 @@ label {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
+}
+
+.employee-welcome-block {
+  display: grid;
+  gap: 2px;
+  min-width: min(360px, 100%);
+  margin-right: auto;
+}
+
+.employee-welcome-title {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.employee-welcome-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .employee-badge-name {
   color: var(--ink);
-  font-size: clamp(20px, 2.2vw, 28px);
+  font-size: clamp(24px, 2.4vw, 31px);
   font-weight: 800;
 }
 
 .employee-badge-role {
   color: var(--muted);
+  font-size: 15px;
   font-weight: 800;
 }
 
@@ -983,6 +1017,9 @@ button.employee-badge-stat {
 
 .employee-badge-admin {
   margin-left: auto;
+  border-color: rgba(225, 23, 47, 0.22);
+  background: #fff1f2;
+  color: var(--brand-strong);
 }
 
 .dashboard-messages {
@@ -1100,6 +1137,18 @@ button.employee-badge-stat {
   border-radius: var(--radius);
   background: #fff;
   overflow: hidden;
+}
+
+.dashboard-today .schedule-day {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.dashboard-today .today-summary {
+  border-left-color: transparent;
+  box-shadow: none;
 }
 
 .dashboard-today-open {
