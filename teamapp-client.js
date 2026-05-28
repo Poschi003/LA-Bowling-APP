@@ -210,6 +210,10 @@ function formatDate(dateString) {
   return `${weekdays[date.getDay()]}, ${date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}`;
 }
 
+function formatNumericDate(dateString) {
+  return new Date(`${dateString}T12:00:00`).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 function formatLongDate(dateString) {
   return new Date(`${dateString}T12:00:00`).toLocaleDateString("de-DE", {
     weekday: "long",
@@ -670,21 +674,22 @@ function currentUserIsChef() {
 }
 
 function renderEmployeeBadge() {
-  const role = state.settings.employeeRoles?.[state.activeEmployee] || "Team";
+  const role = roleLabel(state.settings.employeeRoles?.[state.activeEmployee] || "Team");
+  const adminButton = state.adminToken ? `<button class="employee-badge-stat compact employee-badge-admin" type="button" data-open-backoffice><small>Admin</small>Backoffice</button>` : "";
   if (currentUserIsChef()) {
     return `
-      <span class="employee-badge-name">${escapeHtml(state.activeEmployee)}</span>
-      <span class="employee-badge-role">${escapeHtml(role)}</span>
-      ${state.adminToken ? `<button class="employee-badge-stat compact" type="button" data-open-backoffice><small>Admin</small>Backoffice</button>` : ""}
+      <span class="employee-badge-name">Willkommen in der Teamapp ${escapeHtml(state.activeEmployee)}</span>
+      <span class="employee-badge-role">(${escapeHtml(role)})</span>
+      ${adminButton}
     `;
   }
   const totals = timesheetTotals();
   return `
-    <span class="employee-badge-name">${escapeHtml(state.activeEmployee)}</span>
-    <span class="employee-badge-role">${escapeHtml(role)}</span>
-    <button class="employee-badge-stat compact" type="button" data-open-timesheet><small>Std</small>${formatHours(totals.hours)}</button>
-    <span class="employee-badge-stat compact"><small>TG</small>${formatMoney(totals.tip)}</span>
-    ${state.adminToken ? `<button class="employee-badge-stat compact" type="button" data-open-backoffice><small>Admin</small>Backoffice</button>` : ""}
+    <span class="employee-badge-name">Willkommen in der Teamapp ${escapeHtml(state.activeEmployee)}</span>
+    <span class="employee-badge-role">(${escapeHtml(role)})</span>
+    <button class="employee-badge-stat compact" type="button" data-open-timesheet><small>Gesamtstunden in diesem Monat</small>${formatHours(totals.hours)}</button>
+    <span class="employee-badge-stat compact"><small>Gesammeltes Trinkgeld in diesem Monat</small>${formatMoney(totals.tip)}</span>
+    ${adminButton}
   `;
 }
 
@@ -702,10 +707,10 @@ function renderHome() {
   }
   container.innerHTML = `
     ${renderDashboardMessages()}
-    <details class="today-section dashboard-today">
-      <summary>Heutiger Tag</summary>
+    <section class="today-section dashboard-today dashboard-today-open">
+      <h2>Heutiger Tag</h2>
       ${renderScheduleDay(new Date(`${today}T12:00:00`), { today: true })}
-    </details>
+    </section>
     ${state.activeEmployee ? renderHomeSwaps() : ""}
     ${state.adminUnlocked ? renderMissingAvailability() : ""}
   `;
@@ -731,6 +736,7 @@ function renderDashboardMessages() {
 function dashboardMessagesForActiveEmployee() {
   if (!state.activeEmployee) return [];
   return (state.messages || []).filter((message) => {
+    if (!String(message.text || "").trim()) return false;
     if (message.readBy?.[state.activeEmployee]) return false;
     return messageRecipientsClient(message).includes(state.activeEmployee);
   });
@@ -918,7 +924,7 @@ function dayReportSummaryLine(report = {}) {
     `EC ${formatReportMoney(reportEcTotal(report))}`,
     ...(reportPersonalConsumptionTotal(report) ? [`Personalverzehr ${formatReportMoney(reportPersonalConsumptionTotal(report))}`] : []),
     `Ausgaben Kasse ${formatReportMoney(reportCashExpensesTotal(report))}`,
-    `Abgabe Chef ${formatReportMoney(reportChefHandoverTotal(report))}`
+    `Abzugeben an Chef ${formatReportMoney(reportChefHandoverTotal(report))}`
   ].join(" · ");
 }
 
@@ -936,7 +942,7 @@ function dayReportValuesHtml(report = {}) {
       <span><small>EC</small><strong>${formatReportMoney(reportEcTotal(report))}</strong></span>
       <span><small>Personalverzehr</small><strong>${formatReportMoney(reportPersonalConsumptionTotal(report))}</strong></span>
       ${reportFieldEnabled("expenses") ? `<span><small>Ausgaben Kasse</small><strong>${formatReportMoney(reportCashExpensesTotal(report))}</strong></span>` : ""}
-      <span><small>Abgabe an Chef</small><strong>${formatReportMoney(reportChefHandoverTotal(report))}</strong></span>
+      <span><small>Abzugeben an Chef</small><strong>${formatReportMoney(reportChefHandoverTotal(report))}</strong></span>
     </div>
   `;
 }
@@ -959,13 +965,10 @@ function dayReportA4Html(dateKey, report = {}) {
       <div class="a4-report-head official-report-head">
         <div class="a4-report-brand">
           <img class="a4-report-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
-          <h2>Offizieller Tagesbericht</h2>
-          <p>Abschlussdokument für Kasse, Umsatz und Schichtleitung</p>
+          <h2>Tagesbericht vom ${escapeHtml(formatNumericDate(dateKey))}</h2>
         </div>
         <dl>
-          <div><dt>Berichtsdatum</dt><dd>${escapeHtml(formatDate(dateKey))}</dd></div>
           <div><dt>Schichtleitung</dt><dd>${escapeHtml(report.shiftLeader || "-")}</dd></div>
-          <div><dt>Status</dt><dd>${report.closed ? "Abgeschlossen" : "Offen"}</dd></div>
         </dl>
       </div>
 
@@ -993,7 +996,7 @@ function dayReportA4Html(dateKey, report = {}) {
           ])}
         </section>
         <section class="a4-report-block a4-report-block-wide a4-report-chef-total">
-          ${a4ReportLine("Abgabe an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
+          ${a4ReportLine("Abzugeben an Chef", formatReportMoney(chefHandoverValue), "a4-report-handover-highlight")}
         </section>
         ${reportFieldEnabled("invoiceCustomers") && printableInvoices.length ? a4InvoiceBlock(printableInvoices) : ""}
         ${reportFieldEnabled("expenses") && (report.expenses || []).length ? a4ExpenseBlock(report.expenses) : ""}
@@ -1002,11 +1005,11 @@ function dayReportA4Html(dateKey, report = {}) {
           ${dayReportEmployeeRowsHtml(dateKey, report) || `<p class="hint">Keine Arbeitszeiten erfasst.</p>`}
         </section>
         ${reportFieldEnabled("handovers") ? a4HandoversBlock(report.handovers) : ""}
-        ${reportFieldEnabled("notes") ? a4NotesBlock(report.notes) : ""}
+        ${reportFieldEnabled("notes") && String(report.notes || "").trim() ? a4NotesBlock(report.notes) : ""}
         <section class="a4-report-signature">
           <div>
-            <span>Datum</span>
-            <strong>${escapeHtml(formatDate(todayKey()))}</strong>
+            <span>Ort / Datum</span>
+            <strong>Landshut, ${escapeHtml(formatNumericDate(dateKey))}</strong>
           </div>
           <div>
             <span>Unterschrift Schichtleitung</span>
@@ -1091,7 +1094,7 @@ function dayReportEmployeeRowsHtml(dateKey, report = {}) {
     return `
       <div class="a4-staff-row">
         <strong>${escapeHtml(employee)}</strong>
-        <span>${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")}</span>
+        <span>${escapeHtml(dayReportShiftText(entry))}</span>
         <b>${formatHours(hours)}</b>
       </div>
     `;
@@ -1102,6 +1105,10 @@ function dayReportEmployeeRowsHtml(dateKey, report = {}) {
       ${rows}
     </div>
   `;
+}
+
+function dayReportShiftText(entry = {}) {
+  return `${entry.from || "offen"} bis ${entry.to || "offen"}`;
 }
 
 function reportEmployeesForDate(dateKey, report = {}) {
@@ -1240,7 +1247,10 @@ function openInvoiceCardHtml({ dateKey, invoice, index }) {
     <article class="open-invoice-card">
       <div class="open-invoice-head">
         <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
-        <button class="primary" type="button" data-complete-invoice="${escapeHtml(token)}">Erledigt</button>
+        <div class="open-invoice-actions">
+          <button class="primary" type="button" data-complete-invoice="${escapeHtml(token)}">Erledigt</button>
+          <button class="secondary danger-lite" type="button" data-delete-invoice="${escapeHtml(token)}">Löschen</button>
+        </div>
       </div>
       <div class="invoice-copy-grid">
         ${invoiceCopyField("Rechnungsdatum", formatDate(dateKey))}
@@ -1711,7 +1721,7 @@ function exportDayReport(dateKey) {
     `EC: ${formatReportMoney(ecTotalValue)}`,
     `Personalverzehr: ${formatReportMoney(personalConsumptionValue)}`,
     `Ausgaben: ${formatReportMoney(expenseTotalValue)}`,
-    `Abgabe an Chef: ${formatReportMoney(chefHandoverValue)}`,
+    `Abzugeben an Chef: ${formatReportMoney(chefHandoverValue)}`,
     ...(reportFieldEnabled("preparation") ? [reportPreparationLine(dateKey, report)] : []),
     "",
     ...(reportFieldEnabled("handovers") ? ["Übergaben:", ...(report.handovers || []).map((item) => `- ${item.time || "--:--"} | ${item.from || "-"} an ${item.to || "-"} | ${item.note || "-"}`)] : []),
@@ -1822,6 +1832,33 @@ async function completeInvoice(value, button) {
     });
     await loadState();
     showToast("Rechnung erledigt.");
+  } catch (error) {
+    button.textContent = oldText;
+    button.disabled = false;
+    showError(error);
+  }
+}
+
+async function deleteInvoiceCustomer(value, button) {
+  const [date, invoiceId] = String(value || "").split("|");
+  if (!date || !invoiceId) return;
+  if (!window.confirm("Rechnungskunden wirklich vollständig löschen? Der Eintrag verschwindet dann aus Chefansicht, Tagesbericht und Druckansicht.")) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Löscht...";
+  try {
+    await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "delete-invoice-customer",
+        date,
+        invoiceId,
+        employeeToken: state.employeeToken,
+        adminToken: state.adminToken
+      })
+    });
+    await loadState();
+    showToast("Rechnungskunde gelöscht.");
   } catch (error) {
     button.textContent = oldText;
     button.disabled = false;
@@ -1996,6 +2033,9 @@ function renderScheduleDay(date, options = {}) {
   const holiday = holidayInfo(key);
   const filled = state.settings.positions.filter((position) => assignments[position]);
   const visiblePositions = state.settings.positions.filter((position) => assignments[position]);
+  const ownShiftCount = state.activeEmployee
+    ? filled.filter((position) => assignments[position] === state.activeEmployee).length
+    : 0;
   const cells = visiblePositions.map((position) => {
     const assignedEmployee = assignments[position] || "";
     const ownShift = Boolean(state.activeEmployee && assignedEmployee === state.activeEmployee && !state.adminUnlocked);
@@ -2028,9 +2068,10 @@ function renderScheduleDay(date, options = {}) {
   if (options.collapsible) {
     return `
       <details class="schedule-day ${options.today ? "today-summary" : ""}">
-        <summary class="day-header ${holiday.className}">
+        <summary class="day-header ${holiday.className} ${ownShiftCount ? "has-own-assignment" : ""}">
           <span>${formatDate(key)}</span>
           <span class="day-header-meta">
+            ${ownShiftCount ? `<span class="own-assignment-indicator"><i></i>Eingeteilt</span>` : ""}
             ${filled.length ? `<span class="day-badge">${filled.length} Dienste</span>` : ""}
             ${holiday.label ? `<span class="day-badge">${escapeHtml(holiday.label)}</span>` : ""}
           </span>
@@ -3643,6 +3684,7 @@ function renderCustomerInvoiceDocuments(report = {}) {
 }
 
 function invoiceRowHtml(item = {}) {
+  const isSaved = Boolean(item.id);
   const id = item.id || cryptoId();
   const singleReceipt = invoiceReceipt(item);
   const legacyReceipts = invoiceLegacyReceipts(item);
@@ -3653,7 +3695,7 @@ function invoiceRowHtml(item = {}) {
     ? `<span class="hint">Bisherige getrennte Belege: ${legacyReceipts.map(({ label, receipt }) => `${escapeHtml(label)} ${escapeHtml(receipt.receiptName || "")}`).join(" | ")}</span>`
     : "";
   return `
-    <details class="report-entry invoice-entry ${statusClass}" data-report-entry="invoice" data-id="${escapeHtml(id)}" ${isReady ? "" : "open"}>
+    <details class="report-entry invoice-entry ${statusClass}" data-report-entry="invoice" data-id="${escapeHtml(id)}" data-saved="${isSaved ? "true" : "false"}" ${isReady ? "" : "open"}>
       <summary class="invoice-entry-summary">
         <div>
           <strong>${escapeHtml(item.name || "Neuer Rechnungskunde")}</strong>
@@ -3699,7 +3741,7 @@ function invoiceRowHtml(item = {}) {
       <div class="invoice-entry-actions">
         <button class="secondary" data-save-invoice-draft type="button">Zwischenspeichern</button>
         <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut an Chef senden" : "Fertig für Chef"}</button>
-        <button class="secondary" data-remove-report-entry type="button">Entfernen</button>
+        <button class="secondary danger-lite" data-remove-report-entry type="button">Vollständig löschen</button>
       </div>
       </div>
     </details>
@@ -4005,6 +4047,15 @@ async function saveCustomerInvoiceDeskRow(button, markReady = false) {
   await saveCustomerInvoiceDeskReport(button, markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.");
 }
 
+async function removeCustomerInvoiceDeskEntry(button) {
+  const row = button.closest(".report-entry");
+  if (!row) return;
+  const isInvoice = row.dataset.reportEntry === "invoice";
+  if (isInvoice && row.dataset.saved === "true" && !window.confirm("Rechnungskunden wirklich vollständig löschen? Der Eintrag verschwindet dann aus allen Ansichten.")) return;
+  row.remove();
+  await saveCustomerInvoiceDeskReport(button, isInvoice ? "Rechnungskunde gelöscht." : "Eintrag gelöscht.");
+}
+
 function reportFieldValue(row, name) {
   return row.querySelector(`[data-report-field="${name}"]`)?.value || "";
 }
@@ -4060,6 +4111,28 @@ async function saveInvoiceRow(button, markReady = false) {
     showToast(markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.");
   } catch (error) {
     if (markReady) setReportFieldValue(row, "invoiceReady", "false");
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
+}
+
+async function removeTerminalFinanceEntry(button) {
+  const row = button.closest(".report-entry");
+  if (!row || state.terminalReport?.closed) return;
+  const isInvoice = row.dataset.reportEntry === "invoice";
+  if (isInvoice && row.dataset.saved === "true" && !window.confirm("Rechnungskunden wirklich vollständig löschen? Der Eintrag verschwindet dann aus allen Ansichten.")) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Löscht...";
+  row.remove();
+  syncCashExpensesFromExpenseRows(true);
+  updateReportBarTotal();
+  try {
+    await terminalAction(await collectDayReportPayload());
+    showToast(isInvoice ? "Rechnungskunde gelöscht." : "Eintrag gelöscht.");
+  } catch (error) {
     showError(error);
   } finally {
     button.textContent = oldText;
@@ -4215,7 +4288,7 @@ function renderDailyTipDistribution() {
       <small>Aufgeteilt: ${formatMoney(distributed)}</small>
     </article>
     <article class="tip-summary-handover">
-      <span>Abgabe an Chef</span>
+      <span>Abzugeben an Chef</span>
       <strong>${formatMoney(chefHandover)}</strong>
       <small>Umsatz minus EC, Rechnung und Ausgaben</small>
     </article>
@@ -5979,6 +6052,11 @@ function bindEvents() {
       completeInvoice(completeInvoiceButton.dataset.completeInvoice, completeInvoiceButton);
       return;
     }
+    const deleteInvoiceButton = event.target.closest("[data-delete-invoice]");
+    if (deleteInvoiceButton) {
+      deleteInvoiceCustomer(deleteInvoiceButton.dataset.deleteInvoice, deleteInvoiceButton);
+      return;
+    }
     const printReportButton = event.target.closest("[data-print-day-report]");
     if (printReportButton) {
       printDayReportFromChef(printReportButton.dataset.printDayReport, printReportButton);
@@ -6149,8 +6227,7 @@ function bindEvents() {
     }
     const removeButton = event.target.closest("[data-remove-report-entry]");
     if (!removeButton) return;
-    removeButton.closest(".report-entry")?.remove();
-    showToast("Eintrag entfernt. Bitte speichern.");
+    removeCustomerInvoiceDeskEntry(removeButton);
   });
 
   $("#timesheetGrid").addEventListener("click", async (event) => {
@@ -7165,11 +7242,7 @@ function bindEvents() {
     }
     const removeButton = event.target.closest("[data-remove-report-entry]");
     if (!removeButton) return;
-    if (state.terminalReport?.closed) return;
-    removeButton.closest(".report-entry")?.remove();
-    syncCashExpensesFromExpenseRows(true);
-    updateReportBarTotal();
-    showToast("Eintrag entfernt. Bitte Tagesbericht speichern.");
+    removeTerminalFinanceEntry(removeButton);
   });
 
   $("#saveDayReport")?.addEventListener("click", async () => {

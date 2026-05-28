@@ -396,6 +396,31 @@ label {
   font-size: 11px;
 }
 
+.own-assignment-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  border-radius: 999px;
+  background: #ecfdf3;
+  color: #166534;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.own-assignment-indicator i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+
+.day-header.has-own-assignment {
+  background: linear-gradient(90deg, #f0fdf4, #fff);
+}
+
 .week-actions {
   display: flex;
   flex-wrap: wrap;
@@ -916,7 +941,7 @@ label {
 
 .employee-badge-name {
   color: var(--ink);
-  font-size: clamp(22px, 2.4vw, 30px);
+  font-size: clamp(20px, 2.2vw, 28px);
   font-weight: 800;
 }
 
@@ -944,7 +969,8 @@ button.employee-badge-stat {
 }
 
 .employee-badge-stat.compact {
-  padding: 4px 6px;
+  min-width: 92px;
+  padding: 5px 7px;
   font-size: 12px;
 }
 
@@ -953,6 +979,10 @@ button.employee-badge-stat {
   font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.employee-badge-admin {
+  margin-left: auto;
 }
 
 .dashboard-messages {
@@ -1070,6 +1100,17 @@ button.employee-badge-stat {
   border-radius: var(--radius);
   background: #fff;
   overflow: hidden;
+}
+
+.dashboard-today-open {
+  padding: 0;
+}
+
+.dashboard-today-open > h2 {
+  margin: 0;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 17px;
 }
 
 .dashboard-today > summary {
@@ -2888,17 +2929,16 @@ button:disabled {
 .a4-report {
   display: grid;
   gap: 12px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius);
   background: #fff;
   padding: 14px;
 }
 
 .official-day-report {
-  border: 2px solid #111;
-  border-top: 8px solid var(--brand);
-  border-radius: 0;
-  box-shadow: 0 10px 32px rgba(17, 17, 17, 0.08);
+  border: 0;
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(17, 24, 39, 0.06);
 }
 
 .a4-report-brand {
@@ -2919,12 +2959,12 @@ button:disabled {
   grid-template-columns: minmax(220px, 1fr) minmax(320px, 0.9fr);
   gap: 14px;
   align-items: start;
-  border-bottom: 2px solid var(--ink);
+  border-bottom: 1px solid #d9dde5;
   padding-bottom: 10px;
 }
 
 .official-report-head {
-  border-bottom: 3px solid #111;
+  border-bottom: 1px solid #d9dde5;
 }
 
 .a4-report-head span,
@@ -3003,7 +3043,7 @@ button:disabled {
   grid-template-columns: minmax(160px, 1fr) auto;
   gap: 12px;
   align-items: center;
-  border-top: 1px solid var(--line);
+  border-top: 0;
   padding: 7px 0;
 }
 
@@ -3036,8 +3076,13 @@ button:disabled {
   display: grid;
   align-items: baseline;
   gap: 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid #eef1f5;
   padding: 8px 0;
+}
+
+.a4-money-row:last-child,
+.a4-staff-row:last-child {
+  border-bottom: 0;
 }
 
 .a4-money-row {
@@ -3047,6 +3092,11 @@ button:disabled {
 .a4-staff-row,
 .a4-staff-head {
   grid-template-columns: minmax(0, 1.4fr) minmax(95px, 0.8fr) auto;
+}
+
+.a4-staff-row span:nth-child(2),
+.a4-staff-head span:nth-child(2) {
+  text-align: left;
 }
 
 .a4-money-row span,
@@ -3091,9 +3141,9 @@ button:disabled {
 
 .a4-report-handover-highlight {
   margin-top: 4px;
-  border: 2px solid var(--brand);
+  border: 0;
   border-radius: var(--radius-sm);
-  background: var(--brand-soft);
+  background: transparent;
   padding: 10px;
 }
 
@@ -3105,8 +3155,8 @@ button:disabled {
 }
 
 .a4-report-chef-total {
-  border-color: var(--brand);
-  background: var(--brand-soft);
+  border: 0;
+  background: #fff0f2;
 }
 
 .a4-report-chef-total .a4-report-line {
@@ -3138,7 +3188,7 @@ button:disabled {
 }
 
 .a4-report-block {
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius-sm);
   background: #fff;
   padding: 10px;
@@ -3787,6 +3837,18 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
+}
+
+.open-invoice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.danger-lite {
+  border-color: rgba(185, 28, 28, 0.28);
+  color: #991b1b;
 }
 
 .invoice-copy-grid {
@@ -4892,7 +4954,7 @@ button:disabled {
   body.print-chef-day-report .official-day-report,
   body.terminal-mode .official-day-report {
     border: 0 !important;
-    border-top: 1.2mm solid #e1172f !important;
+    border-top: 0 !important;
     padding: 5mm 4mm 4mm;
   }
 
@@ -4936,6 +4998,13 @@ button:disabled {
   body.terminal-mode .a4-compact-row {
     border-bottom: 0.2mm solid #e2e2e2;
     padding: 1.25mm 0;
+  }
+
+  body.print-chef-day-report .a4-money-row:last-child,
+  body.print-chef-day-report .a4-staff-row:last-child,
+  body.terminal-mode .a4-money-row:last-child,
+  body.terminal-mode .a4-staff-row:last-child {
+    border-bottom: 0;
   }
 
   body.print-chef-day-report .a4-money-strong,
