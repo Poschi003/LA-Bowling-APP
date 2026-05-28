@@ -54,6 +54,8 @@ const defaultData = {
     },
     employeeRoles: {},
     availabilityExemptEmployees: [],
+    availabilityTargetMonth: defaultAvailabilityTargetMonth(),
+    availabilitySubmissionOpen: true,
     adminEmployees: [],
     positions: ["Counter 1", "Counter 2", "Service 1", "Service 2", "Service 3", "Service 4", "Service 5", "Kueche 1", "Kueche 2", "Spueler", "Reinigung", "Mechanik"],
     chefViewSections: {
@@ -136,6 +138,7 @@ const defaultData = {
       createdAt: "2026-05-09T00:00:00.000Z"
     }
   ],
+  deletedTaskTemplateIds: [],
   reminderTemplates: [
     {
       id: "default-toilet-reminder",
@@ -148,6 +151,7 @@ const defaultData = {
   ],
   messages: [],
   terminalMessages: [],
+  customerDirectory: [],
   swaps: [],
   availabilityChangeRequests: []
 };
@@ -158,6 +162,7 @@ function cloneData(value) {
 
 function mergeData(value) {
   const base = cloneData(defaultData);
+  const deletedTaskTemplateIds = normalizeDeletedIds(value?.deletedTaskTemplateIds);
   const merged = {
     ...base,
     ...(value || {}),
@@ -182,6 +187,8 @@ function mergeData(value) {
         ...(value?.settings?.employeeRoles || {})
       },
       availabilityExemptEmployees: value?.settings?.availabilityExemptEmployees || base.settings.availabilityExemptEmployees,
+      availabilityTargetMonth: normalizeMonth(value?.settings?.availabilityTargetMonth) || base.settings.availabilityTargetMonth,
+      availabilitySubmissionOpen: value?.settings?.availabilitySubmissionOpen !== false,
       adminEmployees: value?.settings?.adminEmployees || base.settings.adminEmployees,
       positions: ensureRequiredPositions(value?.settings?.positions || base.settings.positions),
       chefViewSections: {
@@ -205,10 +212,12 @@ function mergeData(value) {
     schedules: normalizeSchedules(value?.schedules || base.schedules),
     timesheets: value?.timesheets || base.timesheets,
     cleaningTemplates: Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates,
-    taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates),
+    taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates, deletedTaskTemplateIds),
+    deletedTaskTemplateIds,
     reminderTemplates: Array.isArray(value?.reminderTemplates) ? value.reminderTemplates : base.reminderTemplates,
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
+    customerDirectory: Array.isArray(value?.customerDirectory) ? value.customerDirectory : base.customerDirectory,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };
@@ -255,12 +264,17 @@ function weekStartKey(dateKey) {
   return `${year}-${month}-${dayOfMonth}`;
 }
 
-function mergeTaskTemplates(value, defaults) {
+function normalizeDeletedIds(value) {
+  return Array.isArray(value) ? [...new Set(value.map(String).filter(Boolean))] : [];
+}
+
+function mergeTaskTemplates(value, defaults, deletedIds = []) {
   const incoming = Array.isArray(value) ? value : [];
   const ids = new Set(incoming.map((task) => task?.id).filter(Boolean));
+  const deleted = new Set(deletedIds);
   return [
     ...incoming,
-    ...defaults.filter((task) => !ids.has(task.id))
+    ...defaults.filter((task) => !ids.has(task.id) && !deleted.has(task.id))
   ];
 }
 
@@ -271,6 +285,8 @@ function publicSettings(settings) {
     employeeDepartments: settings.employeeDepartments || {},
     employeeRoles: settings.employeeRoles || {},
     availabilityExemptEmployees: settings.availabilityExemptEmployees || [],
+    availabilityTargetMonth: normalizeMonth(settings.availabilityTargetMonth) || defaultAvailabilityTargetMonth(),
+    availabilitySubmissionOpen: settings.availabilitySubmissionOpen !== false,
     adminEmployees: settings.adminEmployees || [],
     positions: ensureRequiredPositions(settings.positions || []),
     chefViewSections: settings.chefViewSections || defaultData.settings.chefViewSections,
@@ -319,6 +335,19 @@ function normalizeHourlyRate(value, fallback = 25) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return Math.max(0, Math.min(200, Math.round(normalizedFallback * 100) / 100));
   return Math.max(0, Math.min(200, Math.round(parsed * 100) / 100));
+}
+
+function normalizeMonth(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : "";
+}
+
+function defaultAvailabilityTargetMonth() {
+  const date = new Date();
+  date.setMonth(date.getMonth() + 1, 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
 }
 
 function sanitizeSchedules(schedules) {
