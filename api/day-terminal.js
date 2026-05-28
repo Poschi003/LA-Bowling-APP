@@ -110,7 +110,7 @@ async function saveTaskTemplate(body, res) {
     const task = cleanTaskTemplate(body.task || {});
     if (!task.title) return sendJson(res, 400, { error: "Aufgabe fehlt." });
     appData.taskTemplates ||= [];
-    appData.taskTemplates.unshift(task);
+    appData.taskTemplates.push(task);
     await writeAppData(appData);
     return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
   }
@@ -565,7 +565,7 @@ function tasksForDate(appData, dateKey) {
   const date = new Date(`${dateKey}T12:00:00`);
   const weekday = date.getDay();
   const dayOfMonth = date.getDate();
-  return (appData.taskTemplates || []).filter((task) => {
+  return sortTaskTemplates(appData.taskTemplates || []).filter((task) => {
     if (task.frequency === "daily") return true;
     if (task.frequency === "weekly") return (task.weekdays || []).map(Number).includes(weekday);
     if (task.frequency === "monthly") return Number(task.dayOfMonth || 1) === dayOfMonth;
@@ -573,6 +573,18 @@ function tasksForDate(appData, dateKey) {
     if (task.frequency === "once" || task.frequency === "next-day") return task.date === dateKey;
     return false;
   });
+}
+
+function sortTaskTemplates(tasks = []) {
+  return tasks
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.task.createdAt || "") || 0;
+      const bTime = Date.parse(b.task.createdAt || "") || 0;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.index - b.index;
+    })
+    .map(({ task }) => task);
 }
 
 function intervalAppliesToDate(task, dateKey) {
@@ -630,6 +642,7 @@ function cleanToiletChecks(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 40).map((item) => ({
     checkKey: String(item.checkKey || "").slice(0, 40),
+    text: cleanText(item.text, 240),
     checkedAt: String(item.checkedAt || new Date().toISOString()).slice(0, 40)
   })).filter((item) => item.checkKey);
 }

@@ -74,7 +74,7 @@ module.exports = async function handler(req, res) {
       const task = cleanTaskTemplate(body.task || {});
       if (!task.title) return sendJson(res, 400, { error: "Aufgabe fehlt." });
       appData.taskTemplates ||= [];
-      appData.taskTemplates.unshift(task);
+      appData.taskTemplates.push(task);
       await writeAppData(appData);
       return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
     }
@@ -183,7 +183,7 @@ module.exports = async function handler(req, res) {
       appData.settings.dayReportFields = cleanVisibility(body.dayReportFields, ["ecTotal", "barBowling", "barGastro", "barTotal", "invoiceCustomers", "expenses", "documents", "notes", "preparation", "handovers", "extraEmployees"]);
     }
     if (Array.isArray(body.taskTemplates)) {
-      appData.taskTemplates = body.taskTemplates.map(cleanTaskTemplate).filter((task) => task.title);
+      appData.taskTemplates = sortTaskTemplates(body.taskTemplates.map(cleanTaskTemplate).filter((task) => task.title));
       rememberDeletedDefaultTasks(appData);
     }
     if (Array.isArray(body.cleaningTemplates)) {
@@ -227,6 +227,18 @@ function rememberDeletedDefaultTasks(appData) {
     if (!currentIds.has(task.id)) deleted.add(task.id);
   }
   appData.deletedTaskTemplateIds = [...deleted];
+}
+
+function sortTaskTemplates(tasks = []) {
+  return tasks
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.task.createdAt || "") || 0;
+      const bTime = Date.parse(b.task.createdAt || "") || 0;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.index - b.index;
+    })
+    .map(({ task }) => task);
 }
 
 function cleanVisibility(value, keys) {
@@ -287,7 +299,7 @@ function cleanTaskTemplate(task) {
     dayOfMonth: Math.min(31, Math.max(1, Number(task.dayOfMonth || 1))),
     popupEnabled: task.popupEnabled === true || task.popupEnabled === "true",
     popupTime: cleanTime(task.popupTime),
-    createdAt: new Date().toISOString()
+    createdAt: String(task.createdAt || new Date().toISOString()).slice(0, 40)
   };
 }
 

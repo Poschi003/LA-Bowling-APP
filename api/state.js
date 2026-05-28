@@ -225,7 +225,7 @@ async function saveTaskTemplate(body, res) {
     const task = cleanTaskTemplate(body.task || {});
     if (!task.title) return sendJson(res, 400, { error: "Aufgabe fehlt." });
     appData.taskTemplates ||= [];
-    appData.taskTemplates.unshift(task);
+    appData.taskTemplates.push(task);
     await writeAppData(appData);
     return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
   }
@@ -358,7 +358,7 @@ function cleanTaskTemplate(task) {
     dayOfMonth: Math.min(31, Math.max(1, Number(task.dayOfMonth || 1))),
     popupEnabled: task.popupEnabled === true || task.popupEnabled === "true",
     popupTime: cleanTime(task.popupTime),
-    createdAt: new Date().toISOString()
+    createdAt: String(task.createdAt || new Date().toISOString()).slice(0, 40)
   };
 }
 
