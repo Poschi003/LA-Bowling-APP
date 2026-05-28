@@ -1020,16 +1020,14 @@ function dayReportA4Html(dateKey, report = {}) {
 
 function a4MoneyTable(rows = []) {
   return `
-    <table class="a4-report-table a4-money-table">
-      <tbody>
-        ${rows.map(([label, value, mode]) => `
-          <tr class="${mode === "strong" ? "a4-money-strong" : ""}">
-            <th>${escapeHtml(label)}</th>
-            <td>${formatReportMoney(value)}</td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
+    <div class="a4-money-list">
+      ${rows.map(([label, value, mode]) => `
+        <div class="a4-money-row ${mode === "strong" ? "a4-money-strong" : ""}">
+          <span>${escapeHtml(label)}</span>
+          <strong>${formatReportMoney(value)}</strong>
+        </div>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -1091,19 +1089,18 @@ function dayReportEmployeeRowsHtml(dateKey, report = {}) {
     const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
     const hours = paidHours(entry);
     return `
-      <tr>
-        <th>${escapeHtml(employee)}</th>
-        <td>${escapeHtml(entry.from || "--:--")}</td>
-        <td>${escapeHtml(entry.to || "--:--")}</td>
-        <td>${formatHours(hours)}</td>
-      </tr>
+      <div class="a4-staff-row">
+        <strong>${escapeHtml(employee)}</strong>
+        <span>${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")}</span>
+        <b>${formatHours(hours)}</b>
+      </div>
     `;
   }).join("");
   return `
-    <table class="a4-report-table">
-      <thead><tr><th>Name</th><th>Von</th><th>Bis</th><th>Arbeitszeit</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div class="a4-staff-list">
+      <div class="a4-staff-head"><span>Name</span><span>Dienstzeit</span><span>Arbeitszeit</span></div>
+      ${rows}
+    </div>
   `;
 }
 
@@ -1143,17 +1140,14 @@ function a4ExpenseBlock(items = []) {
   return `
     <section class="a4-report-block">
       <h4>Ausgaben</h4>
-      ${items.length ? `<table class="a4-report-table">
-        <thead><tr><th>Ausgabe</th><th>Kategorie</th><th>Betrag</th><th>Beleg</th></tr></thead>
-        <tbody>${items.map((item, index) => `
-          <tr>
-            <th>${escapeHtml(item.name || `Ausgabe ${index + 1}`)}</th>
-            <td>${escapeHtml(item.category || "-")}</td>
-            <td>${formatReportMoney(item.amount)}</td>
-            <td>${receiptLinkHtml(item) || "-"}</td>
-          </tr>
-        `).join("")}</tbody>
-      </table>` : `<p class="hint">Keine Ausgaben.</p>`}
+      ${items.length ? `<div class="a4-compact-list">
+        ${items.map((item, index) => `
+          <div class="a4-compact-row">
+            <span>${escapeHtml(item.name || `Ausgabe ${index + 1}`)}${item.category ? ` · ${escapeHtml(item.category)}` : ""}</span>
+            <strong>${formatReportMoney(item.amount)}</strong>
+          </div>
+        `).join("")}
+      </div>` : `<p class="hint">Keine Ausgaben.</p>`}
     </section>
   `;
 }

@@ -3024,24 +3024,57 @@ button:disabled {
   text-align: right;
 }
 
-.a4-money-table th {
-  width: 62%;
+.a4-money-list,
+.a4-staff-list {
+  display: grid;
+  gap: 0;
 }
 
-.a4-money-table td {
+.a4-money-row,
+.a4-staff-row,
+.a4-staff-head {
+  display: grid;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 0;
+}
+
+.a4-money-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.a4-staff-row,
+.a4-staff-head {
+  grid-template-columns: minmax(0, 1.4fr) minmax(95px, 0.8fr) auto;
+}
+
+.a4-money-row span,
+.a4-staff-row span,
+.a4-staff-head span {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.a4-money-row strong,
+.a4-staff-row b {
+  color: var(--ink);
+  font-weight: 900;
   text-align: right;
-  font-weight: 850;
 }
 
-.a4-money-table th,
-.a4-money-table td {
-  padding-top: 8px;
-  padding-bottom: 8px;
+.a4-staff-row strong {
+  color: var(--ink);
 }
 
-.a4-money-strong th,
-.a4-money-strong td {
-  border-top: 2px solid var(--line-strong);
+.a4-money-strong {
+  margin-top: 4px;
+  border-bottom: 0;
+  padding-top: 10px;
+}
+
+.a4-money-strong span,
+.a4-money-strong strong {
   color: var(--ink);
   font-size: 14px;
   font-weight: 950;
@@ -4854,5 +4887,69 @@ button:disabled {
   body.terminal-mode .a4-report-signature strong {
     margin-top: 8mm;
     font-size: 11pt;
+  }
+
+  body.print-chef-day-report .official-day-report,
+  body.terminal-mode .official-day-report {
+    border: 0 !important;
+    border-top: 1.2mm solid #e1172f !important;
+    padding: 5mm 4mm 4mm;
+  }
+
+  body.print-chef-day-report .official-report-head,
+  body.terminal-mode .official-report-head {
+    border-bottom: 0.25mm solid #d6d6d6 !important;
+    padding-bottom: 3mm;
+  }
+
+  body.print-chef-day-report .a4-report-block,
+  body.terminal-mode .a4-report-block {
+    border: 0 !important;
+    border-radius: 0;
+    background: transparent;
+    padding: 2mm 0;
+  }
+
+  body.print-chef-day-report .a4-report-chef-total,
+  body.terminal-mode .a4-report-chef-total {
+    border: 0 !important;
+    border-radius: 0;
+    background: #fff6f7;
+    padding: 2.4mm 3mm;
+  }
+
+  body.print-chef-day-report .a4-report-handover-highlight,
+  body.terminal-mode .a4-report-handover-highlight {
+    margin: 0;
+    border: 0 !important;
+    background: transparent;
+    padding: 0;
+  }
+
+  body.print-chef-day-report .a4-money-row,
+  body.print-chef-day-report .a4-staff-row,
+  body.print-chef-day-report .a4-staff-head,
+  body.print-chef-day-report .a4-compact-row,
+  body.terminal-mode .a4-money-row,
+  body.terminal-mode .a4-staff-row,
+  body.terminal-mode .a4-staff-head,
+  body.terminal-mode .a4-compact-row {
+    border-bottom: 0.2mm solid #e2e2e2;
+    padding: 1.25mm 0;
+  }
+
+  body.print-chef-day-report .a4-money-strong,
+  body.terminal-mode .a4-money-strong {
+    border-bottom: 0;
+    border-top: 0.35mm solid #cfcfcf;
+    margin-top: 1mm;
+    padding-top: 1.6mm;
+  }
+
+  body.print-chef-day-report .a4-report-signature div,
+  body.terminal-mode .a4-report-signature div {
+    border: 0 !important;
+    border-top: 0.25mm solid #b8b8b8 !important;
+    padding: 2.5mm 0 0;
   }
 }
