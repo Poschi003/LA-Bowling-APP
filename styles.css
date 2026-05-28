@@ -4952,4 +4952,44 @@ button:disabled {
     border-top: 0.25mm solid #b8b8b8 !important;
     padding: 2.5mm 0 0;
   }
+
+  body.print-chef-day-report .a4-report,
+  body.print-chef-day-report .a4-report *,
+  body.terminal-mode .a4-report,
+  body.terminal-mode .a4-report * {
+    font-family: Arial, Helvetica, sans-serif !important;
+    font-weight: 400;
+  }
+
+  body.print-chef-day-report .a4-report-head h2,
+  body.print-chef-day-report .a4-report-block h4,
+  body.print-chef-day-report .a4-money-strong span,
+  body.print-chef-day-report .a4-money-strong strong,
+  body.print-chef-day-report .a4-report-handover-highlight span,
+  body.print-chef-day-report .a4-report-handover-highlight strong,
+  body.print-chef-day-report .a4-staff-head span,
+  body.print-chef-day-report .a4-staff-row strong,
+  body.print-chef-day-report .a4-staff-row b,
+  body.print-chef-day-report .a4-report-signature span,
+  body.print-chef-day-report .a4-report-signature strong,
+  body.terminal-mode .a4-report-head h2,
+  body.terminal-mode .a4-report-block h4,
+  body.terminal-mode .a4-money-strong span,
+  body.terminal-mode .a4-money-strong strong,
+  body.terminal-mode .a4-report-handover-highlight span,
+  body.terminal-mode .a4-report-handover-highlight strong,
+  body.terminal-mode .a4-staff-head span,
+  body.terminal-mode .a4-staff-row strong,
+  body.terminal-mode .a4-staff-row b,
+  body.terminal-mode .a4-report-signature span,
+  body.terminal-mode .a4-report-signature strong {
+    font-weight: 700;
+  }
+
+  body.print-chef-day-report .a4-money-row strong,
+  body.print-chef-day-report .a4-compact-row strong,
+  body.terminal-mode .a4-money-row strong,
+  body.terminal-mode .a4-compact-row strong {
+    font-weight: 500;
+  }
 }
