@@ -19,6 +19,7 @@ module.exports = async function handler(req, res) {
     if (action === "punch") return punch(body, res);
     if (action === "adjust-time") return adjustTime(body, res);
     if (action === "add-employee") return addEmployee(body, res);
+    if (action === "remove-employee") return removeEmployee(body, res);
     if (action === "complete-task") return completeTask(body, res);
     if (action === "complete-cleaning") return completeCleaning(body, res);
     if (action === "confirm-toilet" || action === "toilet-check") return confirmToilet(body, res);
@@ -155,10 +156,33 @@ async function addEmployee(body, res) {
   if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
   if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   appData.dayReports ||= {}; const report = appData.dayReports[date] || {}, role = String(body.role || "Zusatz").trim().slice(0, 80);
+  const scheduleDay = appData.schedules?.[date.slice(0, 7)]?.days?.[date] || {};
+  const isPlanned = Object.entries(scheduleDay).some(([key, value]) => !key.includes("__") && value === employee);
   const extraEmployees = (report.extraEmployees || []).map((item) => typeof item === "string" ? { employee: item, role: "Zusatz" } : item).filter((item) => item?.employee !== employee);
-  appData.dayReports[date] = { ...report, extraEmployees: [...extraEmployees, { employee, role }], updatedAt: new Date().toISOString() };
+  const removedEmployees = cleanEmployeeList(report.removedEmployees).filter((name) => name !== employee);
+  appData.dayReports[date] = {
+    ...report,
+    extraEmployees: isPlanned ? extraEmployees : [...extraEmployees, { employee, role }],
+    removedEmployees,
+    updatedAt: new Date().toISOString()
+  };
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: `${employee} wurde hinzugefuegt.`, ...terminalPayload(appData, date) });
+  sendJson(res, 200, { ok: true, message: `${employee} wurde hinzugefügt.`, ...terminalPayload(appData, date) });
+}
+
+async function removeEmployee(body, res) {
+  const appData = await readAppData(), employee = String(body.employee || "").trim(), date = cleanDate(body.date);
+  if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
+  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  appData.dayReports ||= {};
+  const report = appData.dayReports[date] || {};
+  const extraEmployees = (report.extraEmployees || [])
+    .map((item) => typeof item === "string" ? { employee: item, role: "Zusatz" } : item)
+    .filter((item) => item?.employee !== employee);
+  const removedEmployees = [...new Set([...cleanEmployeeList(report.removedEmployees), employee])];
+  appData.dayReports[date] = { ...report, extraEmployees, removedEmployees, updatedAt: new Date().toISOString() };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: `${employee} wurde aus der Terminal-Ansicht entfernt.`, ...terminalPayload(appData, date) });
 }
 
 async function saveReport(body, res) {
@@ -178,7 +202,7 @@ async function saveReport(body, res) {
   const expenses = await cleanReportItems(body.expenses, "expense", date);
   const documents = await cleanReportDocuments(body.documents || existing.documents, date);
   upsertCustomerDirectory(appData, invoiceCustomers);
-  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
+  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), extraEmployees: cleanExtraEmployees(body.extraEmployees || existing.extraEmployees), removedEmployees: cleanEmployeeList(body.removedEmployees || existing.removedEmployees), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
   applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
@@ -313,7 +337,7 @@ async function completeCleaning(body, res) {
   const cleaningCompletions = { ...(report.cleaningCompletions || {}) };
   if (body.done) {
     const employee = cleanText(body.employee, 160);
-    if (!employee) return sendJson(res, 400, { error: "Bitte ausfuehrende Person auswaehlen." });
+    if (!employee) return sendJson(res, 400, { error: "Bitte ausführende Person auswählen." });
     cleaningCompletions[id] = { done: true, employee, doneAt: new Date().toISOString() };
   } else {
     delete cleaningCompletions[id];
@@ -394,11 +418,11 @@ async function addHandover(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   const item = cleanHandover(body.handover || body);
-  if (!item.from || !item.to || !item.note) return sendJson(res, 400, { error: "Bitte Von, An und Ãœbergabe-Notiz ausfÃ¼llen." });
+  if (!item.from || !item.to || !item.note) return sendJson(res, 400, { error: "Bitte Von, An und Übergabe-Notiz ausfüllen." });
   appData.dayReports ||= {};
   appData.dayReports[date] = { ...existing, handovers: [...cleanHandovers(existing.handovers), item], shiftLeader: item.to, updatedAt: new Date().toISOString() };
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Ãœbergabe gespeichert.", ...terminalPayload(appData, date) });
+  sendJson(res, 200, { ok: true, message: "Übergabe gespeichert.", ...terminalPayload(appData, date) });
 }
 
 async function closeReport(body, res) {
@@ -460,7 +484,7 @@ function reportHasActivity(report = {}) {
 }
 
 function defaultReport(report = {}) {
-  return { cashTotal: "", cashExpenses: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+  return { cashTotal: "", cashExpenses: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], removedEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
 }
 
 function tipPayoutOverview(appData) {
@@ -759,9 +783,28 @@ async function cleanReportDocumentUpload(raw, date, key) {
 async function cleanReportDocuments(value = {}, date) {
   return {
     penta: await cleanReportDocumentUpload(value.penta || {}, date, "penta"),
-    handwriting: await cleanReportDocumentUpload(value.handwriting || {}, date, "handschrift")
+    handwriting: await cleanReportDocumentUpload(value.handwriting || {}, date, "handschrift"),
+    ecCut: await cleanReportDocumentUpload(value.ecCut || {}, date, "ec-schnitt")
   };
 }
+
+function cleanEmployeeList(value = []) {
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map((name) => cleanText(name, 160))
+    .filter(Boolean))];
+}
+
+function cleanExtraEmployees(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => typeof item === "string" ? { employee: item, role: "Zusatz" } : item)
+    .map((item) => ({
+      employee: cleanText(item?.employee, 160),
+      role: cleanText(item?.role || "Zusatz", 80) || "Zusatz"
+    }))
+    .filter((item) => item.employee)
+    .filter((item, index, list) => list.findIndex((other) => other.employee === item.employee) === index);
+}
+
 function totalInvoiceAmount(item) { const b = Number(cleanMoney(item.bowlingAmount ?? (item.area === "bowling" ? item.amount : "")) || 0), g = Number(cleanMoney(item.gastroAmount ?? (item.area === "gastro" ? item.amount : "")) || 0); return b + g || item.amount || ""; }
 async function cleanReportItems(items, type, date) {
   if (!Array.isArray(items)) return [];
