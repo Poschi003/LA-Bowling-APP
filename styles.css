@@ -350,6 +350,131 @@ label {
   padding: 0 10px;
 }
 
+body.login-mode {
+  min-height: 100vh;
+  background: #f7f7f7;
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+body.login-mode .topbar,
+body.login-mode .tabs,
+body.login-mode #homeGreeting,
+body.login-mode #homeContent {
+  display: none !important;
+}
+
+body.login-mode main {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  padding: 24px;
+  background: #f7f7f7;
+}
+
+body.login-mode #home {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body.login-mode .home-access {
+  display: grid !important;
+  width: min(100%, 310px);
+  margin: 0 auto;
+  padding: 0;
+  gap: 14px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-items: center;
+}
+
+body.login-mode .login-card-brand {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: center;
+}
+
+body.login-mode .login-card-logo {
+  width: min(230px, 78vw);
+  max-height: 82px;
+  object-fit: contain;
+}
+
+body.login-mode .login-card-brand p {
+  margin: 0 0 2px;
+  color: #5d6670;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+body.login-mode .home-login {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr;
+  gap: 9px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #e0e4ea;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(21, 23, 26, 0.12);
+}
+
+body.login-mode .home-login label {
+  display: grid;
+  gap: 0;
+  width: 100%;
+  color: transparent;
+  font-size: 0;
+  font-weight: 400;
+}
+
+body.login-mode .home-login input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #b9cdea;
+  border-radius: 5px;
+  background: #eaf2ff;
+  color: #1f2933;
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+}
+
+body.login-mode .home-login input::placeholder {
+  color: #6b7785;
+  opacity: 1;
+}
+
+body.login-mode .home-login button {
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: 5px;
+  background: #238bd4;
+  color: #fff;
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+body.login-mode .home-login button:hover {
+  background: #1878bd;
+  transform: none;
+}
+
 .admin-entry {
   justify-self: end;
   min-width: min(280px, 100%);

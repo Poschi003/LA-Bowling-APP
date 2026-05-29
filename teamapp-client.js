@@ -629,17 +629,20 @@ function renderAll() {
 
 function renderAccess() {
   if (isTerminalMode() || isTodoMode()) {
+    document.body.classList.remove("login-mode");
     $("#mainTabs")?.classList.add("hidden");
     $("#topLogout")?.classList.add("hidden");
     return;
   }
   if (isCustomerInvoiceMode()) {
+    document.body.classList.remove("login-mode");
     $("#mainTabs")?.classList.add("hidden");
     $("#topLogout")?.classList.add("hidden");
     return;
   }
   const loggedIn = Boolean(state.activeEmployee);
   const chef = currentUserIsChef();
+  document.body.classList.toggle("login-mode", !loggedIn && !state.adminToken);
   $("#mainTabs")?.classList.toggle("hidden", !loggedIn);
   $$(".employee-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || chef));
   $('[data-tab="swaps"]')?.classList.add("hidden");
@@ -1950,14 +1953,7 @@ function downloadText(filename, text) {
 }
 
 function renderLoginReminder(dateKey) {
-  return `
-    <section class="login-reminder">
-      <div class="dashboard-main">
-        <span class="dashboard-label">Daily Reminder</span>
-        <blockquote>${dailyQuote(dateKey)}</blockquote>
-      </div>
-    </section>
-  `;
+  return "";
 }
 
 function renderEmployeeSelect() {

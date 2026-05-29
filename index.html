@@ -4,7 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <link rel="stylesheet" href="styles.css?v=20260528-chef-mini-total-v3">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20260529-pentacode-login-v2">
   </head>
   <body>
     <header class="topbar">
@@ -30,12 +33,16 @@
           <strong id="homeEmployeeName"></strong>
         </div>
         <div class="home-access">
+          <div class="login-card-brand">
+            <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
+            <p>Willkommen bei der LA-Bowling TeamApp! Bitte melden Sie sich an.</p>
+          </div>
           <div id="homeLogin" class="home-login form-grid">
             <label>
               Mitarbeiter-PIN
               <input id="homePin" type="password" inputmode="numeric" placeholder="PIN">
             </label>
-            <button id="unlockHome" class="primary">Anmelden</button>
+            <button id="unlockHome" class="primary">Login</button>
           </div>
         </div>
         <div id="homeContent" class="schedule-list"></div>
@@ -781,7 +788,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260528-chef-mini-total-v3"></script>
+    <script src="teamapp-client.js?v=20260529-pentacode-login-v2"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>
