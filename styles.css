@@ -31,7 +31,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 15px;
   line-height: 1.45;
 }
@@ -471,6 +471,121 @@ body.login-mode .home-login button {
 }
 
 body.login-mode .home-login button:hover {
+  background: #1878bd;
+  transform: none;
+}
+
+body.terminal-login-mode {
+  min-height: 100vh;
+  background: #f7f7f7;
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+body.terminal-login-mode .topbar,
+body.terminal-login-mode .tabs,
+body.terminal-login-mode #terminal > .section-head,
+body.terminal-login-mode #terminalContent {
+  display: none !important;
+}
+
+body.terminal-login-mode main {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  padding: 24px;
+  background: #f7f7f7;
+}
+
+body.terminal-login-mode #terminal {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body.terminal-login-mode .terminal-login-brand {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(100%, 310px);
+  margin: 0 auto 14px;
+  text-align: center;
+}
+
+body.terminal-login-mode .terminal-login-brand .login-card-logo {
+  width: min(230px, 78vw);
+  max-height: 82px;
+  object-fit: contain;
+}
+
+body.terminal-login-mode .terminal-login-brand p {
+  margin: 0 0 2px;
+  color: #5d6670;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+body.terminal-login-mode #terminalLogin {
+  display: grid !important;
+  width: min(100%, 310px);
+  grid-template-columns: 1fr;
+  gap: 9px;
+  margin: 0 auto;
+  padding: 14px;
+  border: 1px solid #e0e4ea;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(21, 23, 26, 0.12);
+}
+
+body.terminal-login-mode #terminalLogin label {
+  display: grid;
+  gap: 0;
+  width: 100%;
+  color: transparent;
+  font-size: 0;
+  font-weight: 400;
+}
+
+body.terminal-login-mode #terminalLogin input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #b9cdea;
+  border-radius: 5px;
+  background: #eaf2ff;
+  color: #1f2933;
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+}
+
+body.terminal-login-mode #terminalLogin input::placeholder {
+  color: #6b7785;
+  opacity: 1;
+}
+
+body.terminal-login-mode #terminalLogin button {
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: 5px;
+  background: #238bd4;
+  color: #fff;
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+body.terminal-login-mode #terminalLogin button:hover {
   background: #1878bd;
   transform: none;
 }
@@ -5097,7 +5212,7 @@ button:disabled {
     box-sizing: border-box;
     gap: 2mm;
     min-height: 276mm;
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
     font-size: 8.8pt;
     page-break-inside: avoid;
   }
@@ -5267,7 +5382,7 @@ button:disabled {
   body.print-chef-day-report .a4-report *,
   body.terminal-mode .a4-report,
   body.terminal-mode .a4-report * {
-    font-family: Arial, Helvetica, sans-serif !important;
+    font-family: Roboto, "Helvetica Neue", Arial, sans-serif !important;
     font-weight: 400;
   }
 

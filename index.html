@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260529-pentacode-login-v2">
+    <link rel="stylesheet" href="styles.css?v=20260529-pentacode-login-v3">
   </head>
   <body>
     <header class="topbar">
@@ -114,12 +114,16 @@
             <p id="terminalDate">Heute</p>
           </div>
         </div>
+        <div id="terminalLoginBrand" class="login-card-brand terminal-login-brand hidden">
+          <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
+          <p id="terminalLoginHint">Willkommen bei der LA-Bowling TerminalApp! Bitte melden Sie sich an.</p>
+        </div>
         <div id="terminalLogin" class="form-grid">
           <label>
             <span id="terminalCodeLabel">Terminal-Code</span>
             <input id="terminalCode" type="password" inputmode="numeric" placeholder="Code">
           </label>
-          <button id="unlockTerminal" class="primary">Terminal öffnen</button>
+          <button id="unlockTerminal" class="primary">Login</button>
         </div>
         <div id="terminalContent" class="terminal-content hidden">
           <div id="terminalDayHeadForm" class="terminal-day-head">
@@ -788,7 +792,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260529-pentacode-login-v2"></script>
+    <script src="teamapp-client.js?v=20260529-pentacode-login-v3"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

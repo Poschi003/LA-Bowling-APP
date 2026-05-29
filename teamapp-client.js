@@ -636,12 +636,14 @@ function renderAccess() {
   }
   if (isCustomerInvoiceMode()) {
     document.body.classList.remove("login-mode");
+    document.body.classList.remove("terminal-login-mode");
     $("#mainTabs")?.classList.add("hidden");
     $("#topLogout")?.classList.add("hidden");
     return;
   }
   const loggedIn = Boolean(state.activeEmployee);
   const chef = currentUserIsChef();
+  document.body.classList.remove("terminal-login-mode");
   document.body.classList.toggle("login-mode", !loggedIn && !state.adminToken);
   $("#mainTabs")?.classList.toggle("hidden", !loggedIn);
   $$(".employee-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || chef));
@@ -2955,8 +2957,13 @@ function renderTerminal() {
   if (todoMode && !["tasks", "checks"].includes(state.terminalTab)) state.terminalTab = "tasks";
   if ($("#terminalTitle")) $("#terminalTitle").textContent = "Tages-Terminal";
   if ($("#terminalCodeLabel")) $("#terminalCodeLabel").textContent = todoMode ? "TO-DO-Code" : "Terminal-Code";
-  if ($("#unlockTerminal")) $("#unlockTerminal").textContent = "Terminal öffnen";
+  if ($("#terminalLoginHint")) $("#terminalLoginHint").textContent = todoMode
+    ? "Willkommen bei der LA-Bowling To-do-App! Bitte melden Sie sich an."
+    : "Willkommen bei der LA-Bowling TerminalApp! Bitte melden Sie sich an.";
+  if ($("#unlockTerminal")) $("#unlockTerminal").textContent = "Login";
   $(".terminal-tabs")?.classList.remove("hidden");
+  document.body.classList.toggle("terminal-login-mode", (isTerminalMode() || todoMode) && !state.terminalToken);
+  $("#terminalLoginBrand")?.classList.toggle("hidden", Boolean(state.terminalToken));
   $("#terminalLogin")?.classList.toggle("hidden", Boolean(state.terminalToken));
   $("#terminalContent")?.classList.toggle("hidden", !state.terminalToken);
   const dateKey = state.terminalDate || todayKey();
