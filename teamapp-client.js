@@ -4157,6 +4157,7 @@ async function saveCustomerInvoiceDeskReportWithOptions(button, successText = "T
     const payload = await collectCustomerInvoiceDeskPayload();
     if (options.mergeExpenses) {
       payload.expenses = mergeReportItemsById(state.invoiceReport?.expenses || [], payload.expenses || []);
+      payload.mergeExpenses = true;
     }
     const result = await api("/api/day-terminal", {
       method: "POST",
@@ -4307,6 +4308,7 @@ async function saveExpenseRow(button) {
     const payload = await collectDayReportPayload();
     payload.expenses = mergeReportItemsById(state.terminalReport?.expenses || [], payload.expenses || []);
     payload.cashExpenses = payload.expenses.reduce((sum, item) => sum + parseMoneyInput(item.amount), 0).toFixed(2);
+    payload.mergeExpenses = true;
     await terminalAction(payload);
     showToast("Ausgabe gespeichert.");
   } catch (error) {
