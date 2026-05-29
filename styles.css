@@ -9,9 +9,9 @@
   --muted: #6f7682;
   --line: #edf1f5;
   --line-strong: #dde5ee;
-  --brand: #238bd4;
-  --brand-strong: #1878bd;
-  --brand-soft: #eef7ff;
+  --brand: #e1172f;
+  --brand-strong: #b90018;
+  --brand-soft: #fff5f7;
   --accent: #15171a;
   --accent-soft: #f1f3f5;
   --blue-soft: #eef5f8;
@@ -51,10 +51,17 @@ textarea {
   justify-content: space-between;
   gap: 16px;
   padding: 14px clamp(16px, 4vw, 42px);
-  background: #0f1115;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: white;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.09);
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.04);
+}
+
+.topbar > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
 }
 
 .eyebrow {
@@ -67,9 +74,12 @@ textarea {
 
 .brand-logo {
   display: block;
-  width: min(230px, 62vw);
+  width: min(210px, 52vw);
+  max-height: 58px;
   height: auto;
-  margin-bottom: 4px;
+  margin-bottom: 0;
+  object-fit: contain;
+  object-position: left center;
 }
 
 h1,
@@ -104,14 +114,14 @@ p {
 }
 
 .top-logout {
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.08);
-  color: white;
+  border-color: var(--line-strong);
+  background: #fff;
+  color: var(--ink);
   box-shadow: none;
 }
 
 .top-logout:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--surface-soft);
 }
 
 .icon-button,
@@ -178,8 +188,8 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  outline: 3px solid rgba(37, 99, 235, 0.1);
-  border-color: #93b4dd;
+  outline: 3px solid rgba(225, 23, 47, 0.08);
+  border-color: rgba(225, 23, 47, 0.34);
 }
 
 textarea {
@@ -509,9 +519,9 @@ body.login-mode .home-login label {
 body.login-mode .home-login input {
   width: 100%;
   min-height: 36px;
-  border: 1px solid #b9cdea;
+  border: 1px solid #e1e5ea;
   border-radius: 5px;
-  background: #eaf2ff;
+  background: #f6f7f9;
   color: #1f2933;
   font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
@@ -529,7 +539,7 @@ body.login-mode .home-login button {
   min-height: 36px;
   border: 0;
   border-radius: 5px;
-  background: #238bd4;
+  background: var(--brand);
   color: #fff;
   font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
@@ -538,7 +548,7 @@ body.login-mode .home-login button {
 }
 
 body.login-mode .home-login button:hover {
-  background: #1878bd;
+  background: var(--brand-strong);
   transform: none;
 }
 
@@ -624,9 +634,9 @@ body.terminal-login-mode #terminalLogin label {
 body.terminal-login-mode #terminalLogin input {
   width: 100%;
   min-height: 36px;
-  border: 1px solid #b9cdea;
+  border: 1px solid #e1e5ea;
   border-radius: 5px;
-  background: #eaf2ff;
+  background: #f6f7f9;
   color: #1f2933;
   font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
@@ -644,7 +654,7 @@ body.terminal-login-mode #terminalLogin button {
   min-height: 36px;
   border: 0;
   border-radius: 5px;
-  background: #238bd4;
+  background: var(--brand);
   color: #fff;
   font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
@@ -653,7 +663,7 @@ body.terminal-login-mode #terminalLogin button {
 }
 
 body.terminal-login-mode #terminalLogin button:hover {
-  background: #1878bd;
+  background: var(--brand-strong);
   transform: none;
 }
 
@@ -777,8 +787,8 @@ body.terminal-login-mode #terminalLogin button:hover {
 
 .week-days {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
+  gap: 8px;
 }
 
 .schedule-list .week-days,
@@ -793,10 +803,10 @@ body.terminal-login-mode #terminalLogin button:hover {
   border: 1px solid var(--line);
   border-left: 3px solid #d6d0ca;
   border-radius: var(--radius);
-  padding: 9px;
+  padding: 10px;
   background: #ffffff;
   min-width: 0;
-  min-height: 116px;
+  min-height: 136px;
   box-shadow: none;
   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
 }
@@ -823,9 +833,34 @@ body.terminal-login-mode #terminalLogin button:hover {
 .day-title {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 8px;
   font-weight: 700;
   font-size: 13px;
+  min-width: 0;
+}
+
+.availability-day-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.availability-date,
+.availability-special {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.availability-special {
+  justify-self: start;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  padding: 2px 6px;
+  font-size: 11px;
 }
 
 .weekday {
@@ -844,12 +879,15 @@ body.terminal-login-mode #terminalLogin button:hover {
 }
 
 .status-row button {
-  min-height: 24px;
-  padding: 0 4px;
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 8px;
   color: var(--muted);
   font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
+  line-height: 1.1;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .status-row button.active {
@@ -859,9 +897,10 @@ body.terminal-login-mode #terminalLogin button:hover {
 }
 
 .day-card input {
+  width: 100%;
   min-width: 0;
-  min-height: 30px;
-  padding: 4px 6px;
+  min-height: 34px;
+  padding: 6px 8px;
   font-size: 12px;
 }
 
@@ -3157,6 +3196,50 @@ button:disabled {
   padding: 12px;
 }
 
+.terminal-add-compact {
+  display: inline-grid;
+  justify-self: start;
+  padding: 0;
+  background: transparent;
+}
+
+.terminal-add-compact > summary {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--brand);
+  cursor: pointer;
+  font-size: 0;
+  font-weight: 900;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+}
+
+.terminal-add-compact > summary::-webkit-details-marker {
+  display: none;
+}
+
+.terminal-add-compact > summary span {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.terminal-add-compact[open] {
+  display: grid;
+  width: min(100%, 460px);
+  padding: 12px;
+  border-color: var(--line);
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+.terminal-add-compact[open] > summary {
+  margin-bottom: 10px;
+}
+
 .terminal-employees {
   display: grid;
   grid-template-columns: 1fr;
@@ -3212,7 +3295,7 @@ button:disabled {
 
 .terminal-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr auto;
   gap: 10px;
 }
 
@@ -3226,6 +3309,10 @@ button:disabled {
 .terminal-actions button {
   min-height: 42px;
   font-size: 13px;
+}
+
+.terminal-remove-button {
+  min-width: 96px;
 }
 
 .day-report {
@@ -3258,6 +3345,22 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.day-report-actions {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.finance-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.finance-save-row .primary {
+  width: min(100%, 260px);
 }
 
 .day-report-toggle-label {
@@ -3790,10 +3893,12 @@ button:disabled {
   padding: 12px;
 }
 
-.invoice-entry-actions {
+.invoice-entry-actions,
+.report-entry-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  margin-top: 4px;
 }
 
 .invoice-pill {
@@ -5663,37 +5768,37 @@ textarea {
 .terminal-tab.active,
 .month-pill.active,
 .chef-tab.active {
-  border-color: #cfe0f2 !important;
-  background: #f4f9ff !important;
-  color: #174a75 !important;
+  border-color: #f1ccd2 !important;
+  background: #fff8f9 !important;
+  color: #8a1020 !important;
 }
 
 .employee-badge-admin,
 .dashboard-message,
 .invoice-write-alert,
 .chef-tab.needs-attention {
-  border-color: #dbe8f5 !important;
-  background: #f7fbff !important;
-  color: #174a75 !important;
+  border-color: #f0d6db !important;
+  background: #fff9fa !important;
+  color: #8a1020 !important;
 }
 
 .dashboard-message strong,
 .employee-badge-admin,
 .chef-tab.needs-attention,
 .invoice-write-alert strong {
-  color: #174a75 !important;
+  color: #8a1020 !important;
 }
 
 .position-cell.own-shift {
-  outline: 2px solid rgba(35, 139, 212, 0.14) !important;
+  outline: 2px solid rgba(225, 23, 47, 0.10) !important;
 }
 
 .position-cell.own-shift:hover,
 .day-card:hover,
 .admin-calendar-day:hover,
 .admin-calendar-day.selected {
-  border-color: #cfe0f2 !important;
-  box-shadow: 0 0 0 3px rgba(35, 139, 212, 0.08) !important;
+  border-color: #f1ccd2 !important;
+  box-shadow: 0 0 0 3px rgba(225, 23, 47, 0.07) !important;
 }
 
 .danger-button {
@@ -5704,13 +5809,13 @@ textarea {
 
 @keyframes invoiceAttentionBlink {
   0%, 100% {
-    background: #f7fbff;
-    box-shadow: 0 0 0 0 rgba(35, 139, 212, 0);
+    background: #fff9fa;
+    box-shadow: 0 0 0 0 rgba(225, 23, 47, 0);
     transform: translateY(0);
   }
   50% {
     background: #ffffff;
-    box-shadow: 0 0 0 4px rgba(35, 139, 212, 0.14);
+    box-shadow: 0 0 0 4px rgba(225, 23, 47, 0.12);
     transform: translateY(-1px);
   }
 }

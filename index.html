@@ -7,12 +7,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260529-pentacode-global-v1">
+    <link rel="stylesheet" href="styles.css?v=20260529-ui-politur-v2">
   </head>
   <body>
     <header class="topbar">
       <div>
-        <img class="brand-logo" src="la-bowling-logo.png" alt="LA Bowling">
+        <img class="brand-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
         <h1 id="appTitle">Teamapp</h1>
       </div>
       <button id="topLogout" class="top-logout hidden" type="button">Abmelden</button>
@@ -25,6 +25,7 @@
         <button class="tab employee-only hidden" type="button" data-tab="published">Dienstplan</button>
         <button class="tab employee-only hidden" type="button" data-tab="timesheet">Stundenübersicht</button>
         <button class="tab employee-only hidden" type="button" data-tab="swaps">Ersatz Suchen</button>
+        <button class="tab backoffice-only hidden" type="button" data-tab="admin">Backoffice</button>
         <button class="tab chef-only hidden" type="button" data-tab="chef">Chef</button>
       </nav>
 
@@ -188,13 +189,16 @@
                 </div>
               </section>
             </div>
-            <div class="terminal-add form-grid">
-              <label>
-                Ungeplanten Mitarbeiter hinzufügen
-                <select id="terminalAddEmployee"></select>
-              </label>
-              <button id="addTerminalEmployee" class="secondary">Hinzufügen</button>
-            </div>
+            <details class="terminal-add terminal-add-compact">
+              <summary aria-label="Ungeplanten Mitarbeiter hinzufügen"><span>+</span></summary>
+              <div class="form-grid">
+                <label>
+                  Schicht hinzufügen
+                  <select id="terminalAddEmployee"></select>
+                </label>
+                <button id="addTerminalEmployee" class="secondary">Hinzufügen</button>
+              </div>
+            </details>
             <div id="terminalCostSummary" class="terminal-cost-summary"></div>
             <div id="terminalEmployees" class="terminal-employees"></div>
           </section>
@@ -205,13 +209,26 @@
                 <p class="hint">Kassenabrechnung, Trinkgeld, Rechnungskunden, Ausgaben und Abschlussdokumente.</p>
               </div>
             </div>
+            <section class="report-subsection report-documents-inline" data-report-field-box="documents">
+              <div class="terminal-section-head">
+                <div>
+                  <h3>Abschlussdokumente</h3>
+                  <p class="hint">Penta, Handschrift und EC-Schnitt direkt zum Tagesbericht scannen.</p>
+                </div>
+              </div>
+              <div class="report-entry-grid">
+                <label>Penta scannen/fotografieren<input id="reportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
+                <label>Handschrift scannen/fotografieren<input id="reportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
+                <label>EC-Schnitt scannen/fotografieren<input id="reportDocumentEcCut" type="file" accept="image/*,application/pdf" capture="environment"></label>
+              </div>
+              <div id="reportDocumentStatus" class="report-entry-list"></div>
+            </section>
             <section class="report-subsection tip-finance-block">
               <div class="terminal-section-head">
                 <div>
                   <h3>Trinkgeld</h3>
-                  <p class="hint">Bar, EC und Umsatz erfassen. Trinkgeld wird nach Arbeitszeit verteilt, auf Scheine gerundet und der Rest gesammelt.</p>
+                  <p class="hint">Bar, EC und Umsatz erfassen. Trinkgeld wird nach Arbeitszeit verteilt und auf Scheine gerundet.</p>
                 </div>
-                <button id="saveTipDistribution" class="primary" type="button">Umsatzdetails speichern</button>
               </div>
               <div class="tip-input-grid">
                 <label>Bar gesamt<input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
@@ -228,6 +245,9 @@
               </div>
               <div id="financeTipDaySummary" class="tip-summary tip-day-summary"></div>
               <div id="financeTipDayDistributionList" class="tip-distribution-list"></div>
+              <div class="finance-save-row">
+                <button id="saveTipDistribution" class="primary" type="button">Umsatzdetails speichern</button>
+              </div>
             </section>
             <details class="report-subsection" data-report-field-box="invoiceCustomers">
               <summary>Kunden auf Rechnung</summary>
@@ -238,14 +258,6 @@
               <summary>Ausgaben aus der Kasse</summary>
               <div id="expensesList" class="report-entry-list"></div>
               <button id="addExpense" class="secondary" type="button">Ausgabe hinzufügen</button>
-            </details>
-            <details class="report-subsection" data-report-field-box="documents">
-              <summary>Abschlussdokumente</summary>
-              <div class="report-entry-grid">
-                <label>Penta scannen/fotografieren<input id="reportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>Handschrift scannen/fotografieren<input id="reportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
-              </div>
-              <div id="reportDocumentStatus" class="report-entry-list"></div>
             </details>
           </section>
           <section id="terminalTipsSection" class="terminal-section hidden">
@@ -353,10 +365,11 @@
               </div>
             </details>
             <details class="report-subsection">
-              <summary>Penta und Handschrift</summary>
+              <summary>Abschlussdokumente</summary>
               <div class="report-entry-grid">
                 <label>Penta scannen/fotografieren<input id="customerReportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
                 <label>Handschrift scannen/fotografieren<input id="customerReportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
+                <label>EC-Schnitt scannen/fotografieren<input id="customerReportDocumentEcCut" type="file" accept="image/*,application/pdf" capture="environment"></label>
               </div>
               <div id="customerReportDocumentStatus" class="report-entry-list"></div>
               <div class="day-report-actions">
@@ -792,7 +805,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260529-pentacode-global-v1"></script>
+    <script src="teamapp-client.js?v=20260529-ui-politur-v2"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

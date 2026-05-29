@@ -163,6 +163,18 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const TIP_BILL_STEP = 5;
 const TIP_ELIGIBLE_AREAS = ["Counter", "Service", "Kueche", "Spueler"];
+const GERMAN_DISPLAY_REPLACEMENTS = [
+  [/Ã„/g, "Ä"], [/Ã–/g, "Ö"], [/Ãœ/g, "Ü"], [/Ã¤/g, "ä"], [/Ã¶/g, "ö"], [/Ã¼/g, "ü"], [/ÃŸ/g, "ß"],
+  [/Kueche/g, "Küche"], [/kueche/g, "küche"], [/Kuechen/g, "Küchen"], [/kuechen/g, "küchen"],
+  [/Spueler/g, "Spüler"], [/spueler/g, "spüler"], [/fuer/g, "für"], [/Fuer/g, "Für"],
+  [/Umsaetze/g, "Umsätze"], [/umsaetze/g, "umsätze"], [/gehoeren/g, "gehören"],
+  [/Verfuegbarkeit/g, "Verfügbarkeit"], [/verfuegbarkeit/g, "verfügbarkeit"],
+  [/Aenderung/g, "Änderung"], [/aenderung/g, "änderung"], [/geaendert/g, "geändert"],
+  [/veroeffentlicht/g, "veröffentlicht"], [/Veroeffentlicht/g, "Veröffentlicht"],
+  [/geoeffnet/g, "geöffnet"], [/Geoeffnet/g, "Geöffnet"], [/oeffnen/g, "öffnen"], [/Oeffnen/g, "Öffnen"],
+  [/hinzugefuegt/g, "hinzugefügt"], [/ausfuehrende/g, "ausführende"], [/auswaehlen/g, "auswählen"],
+  [/pruefen/g, "prüfen"], [/loeschen/g, "löschen"], [/geloescht/g, "gelöscht"]
+];
 
 function currentMonthValue() {
   return monthValue(new Date());
@@ -449,6 +461,44 @@ function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function germanDisplayText(value) {
+  return GERMAN_DISPLAY_REPLACEMENTS.reduce(
+    (text, [pattern, replacement]) => text.replace(pattern, replacement),
+    String(value == null ? "" : value)
+  );
+}
+
+function hasGermanDisplayReplacement(value) {
+  const text = String(value || "");
+  return GERMAN_DISPLAY_REPLACEMENTS.some(([pattern]) => {
+    pattern.lastIndex = 0;
+    return pattern.test(text);
+  });
+}
+
+function normalizeGermanDisplay(root = document.body) {
+  if (!root || typeof document.createTreeWalker !== "function") return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!node.nodeValue || parent?.matches("script, style, textarea")) return NodeFilter.FILTER_REJECT;
+      return hasGermanDisplayReplacement(node.nodeValue)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    }
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach((node) => {
+    node.nodeValue = germanDisplayText(node.nodeValue);
+  });
+  root.querySelectorAll("input[placeholder], textarea[placeholder], [title], [aria-label]").forEach((element) => {
+    ["placeholder", "title", "aria-label"].forEach((attribute) => {
+      if (element.hasAttribute(attribute)) element.setAttribute(attribute, germanDisplayText(element.getAttribute(attribute)));
+    });
+  });
+}
+
 function mergeData(value) {
   const base = cloneData(defaultData);
   const incomingSettings = value && value.settings ? value.settings : {};
@@ -625,6 +675,7 @@ function renderAll() {
   renderWeather();
   renderTerminal();
   renderCustomerInvoiceDesk();
+  normalizeGermanDisplay();
 }
 
 function renderAccess() {
@@ -648,6 +699,7 @@ function renderAccess() {
   $("#mainTabs")?.classList.toggle("hidden", !loggedIn);
   $$(".employee-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || chef));
   $('[data-tab="swaps"]')?.classList.add("hidden");
+  $$(".backoffice-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || !state.hasBackofficeAccess));
   $$(".chef-only").forEach((element) => element.classList.toggle("hidden", !chef));
   $("#homeLogin")?.classList.toggle("hidden", loggedIn);
   $(".home-access")?.classList.toggle("hidden", loggedIn);
@@ -681,7 +733,6 @@ function currentUserIsChef() {
 
 function renderEmployeeBadge() {
   const role = roleLabel(state.settings.employeeRoles?.[state.activeEmployee] || "Team");
-  const adminButton = state.adminToken ? `<button class="employee-badge-stat compact employee-badge-admin" type="button" data-open-backoffice><small>Admin</small>Backoffice</button>` : "";
   if (currentUserIsChef()) {
     return `
       <div class="employee-welcome-block">
@@ -691,7 +742,6 @@ function renderEmployeeBadge() {
           <span class="employee-badge-role">${escapeHtml(role)}</span>
         </div>
       </div>
-      ${adminButton}
     `;
   }
   const totals = timesheetTotals();
@@ -705,7 +755,6 @@ function renderEmployeeBadge() {
     </div>
     <button class="employee-badge-stat compact" type="button" data-open-timesheet><small>Gesamtstunden in diesem Monat</small>${formatHours(totals.hours)}</button>
     <span class="employee-badge-stat compact"><small>Gesammeltes Trinkgeld in diesem Monat</small>${formatMoney(totals.tip)}</span>
-    ${adminButton}
   `;
 }
 
@@ -1104,7 +1153,6 @@ function a4TipDistributionBlock(report = {}) {
         </tbody>
         <tfoot>
           <tr><th>Verteilt</th><td>${formatReportMoney(distributed)}</td></tr>
-          <tr><th>Rest gesammelt</th><td>${formatReportMoney(remainder)}</td></tr>
           <tr><th>Trinkgeld gesamt</th><td>${formatReportMoney(tipTotal)}</td></tr>
         </tfoot>
       </table>
@@ -1147,6 +1195,7 @@ function dayReportShiftText(entry = {}) {
 
 function reportEmployeesForDate(dateKey, report = {}) {
   const names = new Set();
+  const removed = new Set(report.removedEmployees || state.terminalReport?.removedEmployees || []);
   Object.entries(state.timesheets || {}).forEach(([employee, entries]) => {
     const entry = entries?.[dateKey] || {};
     if (entry.from || entry.to) names.add(employee);
@@ -1158,7 +1207,12 @@ function reportEmployeesForDate(dateKey, report = {}) {
     const employee = typeof item === "string" ? item : item.employee;
     if (employee) names.add(employee);
   });
-  return [...names].filter(Boolean).sort((a, b) => a.localeCompare(b, "de"));
+  return [...names].filter((employee) => {
+    if (!employee) return false;
+    if (!removed.has(employee)) return true;
+    const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
+    return Boolean(entry.from || entry.to);
+  }).sort((a, b) => a.localeCompare(b, "de"));
 }
 
 function a4InvoiceBlock(items = []) {
@@ -1196,7 +1250,8 @@ function a4ExpenseBlock(items = []) {
 function a4DocumentsBlock(documents = {}) {
   const entries = [
     ["Penta", documents.penta],
-    ["Handschrift", documents.handwriting]
+    ["Handschrift", documents.handwriting],
+    ["EC-Schnitt", documents.ecCut]
   ];
   return `
     <section class="a4-report-block">
@@ -1328,7 +1383,8 @@ function dayReportFoldersByMonthHtml() {
     ["expenses", "Ausgaben"],
     ["invoices", "Bezahlung auf Rechnung"],
     ["penta", "Penta"],
-    ["handwriting", "Handschrift"]
+    ["handwriting", "Handschrift"],
+    ["ecCut", "EC-Schnitt"]
   ];
   return `
     <section class="report-folders">
@@ -1431,6 +1487,9 @@ function reportFolderItems(month, key) {
     }
     if (key === "handwriting" && hasDocument(report.documents?.handwriting)) {
       items.push(documentFolderItem(dateKey, report.documents.handwriting, "Handschrift"));
+    }
+    if (key === "ecCut" && hasDocument(report.documents?.ecCut)) {
+      items.push(documentFolderItem(dateKey, report.documents.ecCut, "EC-Schnitt"));
     }
   }
   return items;
@@ -1607,7 +1666,8 @@ function reportExpensesHtml(items = []) {
 function reportDocumentsHtml(documents = {}) {
   const entries = [
     ["Penta", documents.penta],
-    ["Handschrift", documents.handwriting]
+    ["Handschrift", documents.handwriting],
+    ["EC-Schnitt", documents.ecCut]
   ].filter(([, document]) => document?.path || document?.url || document?.data);
   if (!entries.length) return "";
   return `
@@ -1764,7 +1824,7 @@ function exportDayReport(dateKey) {
     "",
     ...(reportFieldEnabled("expenses") ? ["Ausgaben:", ...(report.expenses || []).map((item) => `- ${item.name || "Ausgabe"} | ${item.category || "-"} | ${formatReportMoney(item.amount)} | Beleg: ${item.receiptName || "-"}`)] : []),
     "",
-    ...(reportFieldEnabled("documents") ? ["Abschlussdokumente:", `- Penta: ${report.documents?.penta?.name || "-"}`, `- Handschrift: ${report.documents?.handwriting?.name || "-"}`] : []),
+    ...(reportFieldEnabled("documents") ? ["Abschlussdokumente:", `- Penta: ${report.documents?.penta?.name || "-"}`, `- Handschrift: ${report.documents?.handwriting?.name || "-"}`, `- EC-Schnitt: ${report.documents?.ecCut?.name || "-"}`] : []),
     "",
     ...lineIf("notes", `Notizen: ${report.notes || "-"}`)
   ];
@@ -1969,7 +2029,7 @@ function renderEmployeeSelect() {
   const monthLabel = formatMonth(availabilityMonthValue());
   const isOpen = state.settings.availabilitySubmissionOpen !== false;
   $("#employeeViewHint").textContent = loggedIn
-    ? (!isOpen ? `Die Verfuegbarkeit fuer ${monthLabel} ist aktuell geschlossen.` : (locked ? `Verfuegbarkeit fuer ${monthLabel} wurde bereits abgegeben. Aenderungen bitte anfragen.` : (fixed ? `Markiere fuer ${monthLabel} nur die Tage, an denen du nicht kannst, bitte mit Grund.` : `Markiere fuer ${monthLabel} die Tage, an denen du kannst.`)))
+    ? (!isOpen ? `Die Verfügbarkeit für ${monthLabel} ist aktuell geschlossen.` : (locked ? `Verfügbarkeit für ${monthLabel} wurde bereits abgegeben. Änderungen bitte anfragen.` : (fixed ? `Markiere für ${monthLabel} nur die Tage, an denen du nicht kannst, bitte mit Grund.` : `Markiere für ${monthLabel} die Tage, an denen du kannst.`)))
     : "Mitarbeiter-PIN eingeben, um die eigene Verfügbarkeit zu bearbeiten.";
   $("#saveAvailability").disabled = !isOpen;
   $("#saveAvailability").textContent = locked ? "Änderung anfragen" : (fixed ? "Ausnahmen absenden" : "Verfügbarkeit absenden");
@@ -1992,14 +2052,14 @@ function renderAvailability() {
     const active = fixed ? day.status === "no" : day.status === "yes";
     return `
       <article class="day-card ${active ? (fixed ? "cannot-work" : "can-work") : ""} ${fixed ? "fixed-availability-card" : ""}" data-date="${key}" data-availability-mode="${fixed ? "fixed" : "standard"}">
-        <div class="day-title">
-          <span>${availabilityDayLabel(date)}${holiday.label ? " *" : ""}</span>
-          ${holiday.label ? `<span class="weekday">${escapeHtml(holiday.label)}</span>` : ""}
+        <div class="day-title availability-day-title">
+          <span class="availability-date">${availabilityDayLabel(date)}${holiday.label ? " *" : ""}</span>
+          ${holiday.label ? `<span class="weekday availability-special">${escapeHtml(holiday.label)}</span>` : ""}
         </div>
         <div class="status-row single">
           <button data-status="${fixed ? "no" : "yes"}" class="${active ? "active" : ""}" ${locked ? "disabled" : ""}>${fixed ? "Kann nicht" : "Kann"}</button>
         </div>
-        <input type="text" data-field="note" value="${escapeHtml(day.note)}" placeholder="${fixed ? "Grund, z.B. Urlaub oder Termin" : "Notiz, z.B. nur frueh"}" ${locked ? "disabled" : ""}>
+        <input type="text" data-field="note" value="${escapeHtml(day.note)}" placeholder="${fixed ? "Grund, z.B. Urlaub oder Termin" : "Notiz, z.B. nur früh"}" ${locked ? "disabled" : ""}>
       </article>
     `;
   }) + (locked ? `
@@ -2969,7 +3029,10 @@ function renderTerminal() {
   const dateKey = state.terminalDate || todayKey();
   state.terminalDate = dateKey;
   $("#terminalDate").textContent = formatLongDate(dateKey);
-  if (!state.terminalToken) return;
+  if (!state.terminalToken) {
+    normalizeGermanDisplay();
+    return;
+  }
 
   const employees = terminalEmployeesForDay(dateKey);
   const entries = state.terminalEntries || {};
@@ -3010,6 +3073,7 @@ function renderTerminal() {
         <div class="terminal-actions">
           <button class="primary" data-terminal-punch="start" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstbeginn</button>
           <button class="secondary" data-terminal-punch="end" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstende</button>
+          <button class="secondary danger-lite terminal-remove-button" data-terminal-remove="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Entfernen</button>
         </div>
       </article>
     `;
@@ -3039,6 +3103,7 @@ function renderTerminal() {
     const options = (state.settings.employees || []).filter((employee) => !planned.has(employee));
     select.innerHTML = `<option value="">Ungeplanten Mitarbeiter auswählen</option>${options.map((employee) => `<option value="${escapeHtml(employee)}">${escapeHtml(employee)}</option>`).join("")}`;
   }
+  normalizeGermanDisplay();
 }
 
 function renderDayReportA4Summary(dateKey, report = {}) {
@@ -3513,7 +3578,7 @@ function setDayReportLocked(isLocked, report = {}) {
   $$("#dayReportPrintArea input, #dayReportPrintArea textarea, #dayReportPrintArea select, #terminalFinanceSection input, #terminalFinanceSection textarea, #terminalFinanceSection select").forEach((field) => {
     field.disabled = isLocked;
   });
-  $$("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-remove-report-entry], #saveDayReport, #saveTipDistribution").forEach((button) => {
+  $$("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-save-expense-entry], [data-remove-report-entry], #saveDayReport, #saveTipDistribution").forEach((button) => {
     button.disabled = isLocked;
   });
   const closeButton = $("#closeDayReport");
@@ -3563,17 +3628,23 @@ function renderReportDocuments(report = {}) {
   const documents = report.documents || {};
   const rows = [
     ["Penta", documents.penta],
-    ["Handschrift", documents.handwriting]
+    ["Handschrift", documents.handwriting],
+    ["EC-Schnitt", documents.ecCut]
   ];
+  const documentKey = (label) => {
+    if (label === "Penta") return "penta";
+    if (label === "Handschrift") return "handwriting";
+    return "ecCut";
+  };
   target.innerHTML = rows.map(([label, document]) => `
     <article class="report-entry compact-report-entry">
       <strong>${escapeHtml(label)}</strong>
       ${document?.name ? `<span class="hint">${escapeHtml(document.name)}</span>` : `<span class="hint">Noch nicht hochgeladen.</span>`}
       ${document?.path || document?.url || document?.data ? reportDocumentLinkHtml(document, label) : ""}
-      <input type="hidden" data-report-document="${label === "Penta" ? "penta" : "handwriting"}" data-document-field="name" value="${escapeHtml(document?.name || "")}">
-      <input type="hidden" data-report-document="${label === "Penta" ? "penta" : "handwriting"}" data-document-field="path" value="${escapeHtml(document?.path || "")}">
-      <input type="hidden" data-report-document="${label === "Penta" ? "penta" : "handwriting"}" data-document-field="url" value="${escapeHtml(document?.url || "")}">
-      <input type="hidden" data-report-document="${label === "Penta" ? "penta" : "handwriting"}" data-document-field="data" value="${escapeHtml(document?.data || "")}">
+      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="name" value="${escapeHtml(document?.name || "")}">
+      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="path" value="${escapeHtml(document?.path || "")}">
+      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="url" value="${escapeHtml(document?.url || "")}">
+      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="data" value="${escapeHtml(document?.data || "")}">
     </article>
   `).join("");
 }
@@ -3620,6 +3691,7 @@ function renderCustomerInvoiceDesk() {
   renderCustomerInvoiceDocuments(report);
   const status = $("#customerInvoiceStaffStatus");
   if (status && !status.textContent) status.textContent = "Tagesübersicht geöffnet.";
+  normalizeGermanDisplay();
 }
 
 function renderCustomerMaster() {
@@ -3696,7 +3768,8 @@ function renderCustomerInvoiceDocuments(report = {}) {
   const documents = report.documents || {};
   const rows = [
     ["Penta", "penta", documents.penta],
-    ["Handschrift", "handwriting", documents.handwriting]
+    ["Handschrift", "handwriting", documents.handwriting],
+    ["EC-Schnitt", "ecCut", documents.ecCut]
   ];
   target.innerHTML = rows.map(([label, key, document]) => `
     <article class="report-entry compact-report-entry">
@@ -3792,7 +3865,10 @@ function expenseRowHtml(item = {}) {
       <input type="hidden" data-report-field="receiptData" value="${escapeHtml(item.receiptData || "")}">
       <input type="hidden" data-report-field="receiptPath" value="${escapeHtml(item.receiptPath || "")}">
       <input type="hidden" data-report-field="receiptUrl" value="${escapeHtml(item.receiptUrl || "")}">
-      <button class="secondary" data-remove-report-entry type="button">Entfernen</button>
+      <div class="report-entry-actions">
+        <button class="primary" data-save-expense-entry type="button">Ausgabe speichern</button>
+        <button class="secondary danger-lite" data-remove-report-entry type="button">Ausgabe löschen</button>
+      </div>
     </article>
   `;
 }
@@ -3850,7 +3926,7 @@ async function collectReportEntriesFrom(root, type) {
 }
 
 async function collectReportDocuments() {
-  const documents = { penta: {}, handwriting: {} };
+  const documents = { penta: {}, handwriting: {}, ecCut: {} };
   $$("[data-report-document]").forEach((field) => {
     const key = field.dataset.reportDocument;
     const name = field.dataset.documentField;
@@ -3866,6 +3942,11 @@ async function collectReportDocuments() {
   if (handwritingFile) {
     documents.handwriting.name = handwritingFile.name;
     documents.handwriting.data = await fileToDataUrl(handwritingFile);
+  }
+  const ecCutFile = $("#reportDocumentEcCut")?.files?.[0];
+  if (ecCutFile) {
+    documents.ecCut.name = ecCutFile.name;
+    documents.ecCut.data = await fileToDataUrl(ecCutFile);
   }
   return documents;
 }
@@ -3897,6 +3978,8 @@ async function collectDayReportPayload() {
     expenses: await collectReportEntries("expense"),
     documents: await collectReportDocuments(),
     notes: $("#reportNotes").value,
+    extraEmployees: state.terminalReport.extraEmployees || [],
+    removedEmployees: state.terminalReport.removedEmployees || [],
     taskCompletions: state.terminalReport.taskCompletions || {},
     cleaningCompletions: state.terminalReport.cleaningCompletions || {},
     toiletChecks: state.terminalReport.toiletChecks || [],
@@ -3905,7 +3988,7 @@ async function collectDayReportPayload() {
 }
 
 async function collectCustomerInvoiceDocuments() {
-  const documents = cloneData(state.invoiceReport?.documents || { penta: {}, handwriting: {} });
+  const documents = cloneData(state.invoiceReport?.documents || { penta: {}, handwriting: {}, ecCut: {} });
   $$("[data-customer-report-document]").forEach((field) => {
     const key = field.dataset.customerReportDocument;
     const name = field.dataset.documentField;
@@ -3923,6 +4006,12 @@ async function collectCustomerInvoiceDocuments() {
     documents.handwriting ||= {};
     documents.handwriting.name = handwritingFile.name;
     documents.handwriting.data = await fileToDataUrl(handwritingFile);
+  }
+  const ecCutFile = $("#customerReportDocumentEcCut")?.files?.[0];
+  if (ecCutFile) {
+    documents.ecCut ||= {};
+    documents.ecCut.name = ecCutFile.name;
+    documents.ecCut.data = await fileToDataUrl(ecCutFile);
   }
   return documents;
 }
@@ -4168,6 +4257,25 @@ async function removeTerminalFinanceEntry(button) {
   }
 }
 
+async function saveExpenseRow(button) {
+  const row = button.closest('[data-report-entry="expense"]');
+  if (!row || state.terminalReport?.closed) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  syncCashExpensesFromExpenseRows(true);
+  updateReportBarTotal();
+  try {
+    await terminalAction(await collectDayReportPayload());
+    showToast("Ausgabe gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
+}
+
 async function fileToDataUrl(file) {
   if (file.type?.startsWith("image/")) {
     return compressImageFile(file);
@@ -4218,6 +4326,7 @@ function compressImageFile(file) {
 
 function terminalEmployeesForDay(dateKey) {
   const names = new Set();
+  const removed = new Set(state.terminalReport?.removedEmployees || []);
   const schedule = state.terminalSchedule || {};
   Object.entries(schedule).forEach(([key, value]) => {
     if (!key.includes("__") && value) names.add(String(value));
@@ -4225,7 +4334,7 @@ function terminalEmployeesForDay(dateKey) {
   (state.terminalReport?.extraEmployees || []).forEach((item) => {
     names.add(typeof item === "string" ? item : item.employee);
   });
-  return [...names].filter((employee) => (state.settings.employees || []).includes(employee));
+  return [...names].filter((employee) => (state.settings.employees || []).includes(employee) && !removed.has(employee));
 }
 
 function terminalIsPlanned(employee) {
@@ -4309,11 +4418,6 @@ function renderDailyTipDistribution() {
       <span>Trinkgeld gesamt</span>
       <strong>${formatMoney(result.tipTotal)}</strong>
       <small>Bar + EC - Umsatz nach Personalverzehr</small>
-    </article>
-    <article>
-      <span>Rest gesammelt</span>
-      <strong>${formatMoney(result.tipRemainder)}</strong>
-      <small>Aufgeteilt: ${formatMoney(distributed)}</small>
     </article>
     <article class="tip-summary-handover">
       <span>Abzugeben an Chef</span>
@@ -5791,7 +5895,7 @@ function openingHoursFor(dateKey) {
 
 function showToast(message) {
   const toast = $("#toast");
-  toast.textContent = message;
+  toast.textContent = germanDisplayText(message);
   toast.classList.add("show");
   window.setTimeout(() => toast.classList.remove("show"), 2600);
 }
@@ -6251,6 +6355,11 @@ function bindEvents() {
     const readyButton = event.target.closest("[data-mark-invoice-ready]");
     if (readyButton) {
       saveCustomerInvoiceDeskRow(readyButton, true);
+      return;
+    }
+    const expenseSaveButton = event.target.closest("[data-save-expense-entry]");
+    if (expenseSaveButton) {
+      saveCustomerInvoiceDeskReport(expenseSaveButton, "Ausgabe gespeichert.");
       return;
     }
     const removeButton = event.target.closest("[data-remove-report-entry]");
@@ -7178,6 +7287,26 @@ function bindEvents() {
   });
 
   $("#terminalEmployees")?.addEventListener("click", async (event) => {
+    const removeButton = event.target.closest("[data-terminal-remove]");
+    if (removeButton) {
+      if (!window.confirm(`${removeButton.dataset.terminalRemove} aus der heutigen Arbeitszeit-Ansicht entfernen?`)) return;
+      const oldText = removeButton.textContent;
+      removeButton.disabled = true;
+      removeButton.textContent = "Entfernt...";
+      try {
+        const result = await terminalAction({
+          action: "remove-employee",
+          employee: removeButton.dataset.terminalRemove
+        });
+        showToast(result.message || "Mitarbeiter entfernt.");
+      } catch (error) {
+        showError(error);
+      } finally {
+        removeButton.textContent = oldText;
+        removeButton.disabled = false;
+      }
+      return;
+    }
     const adjustButton = event.target.closest("[data-terminal-adjust]");
     if (adjustButton) {
       const card = adjustButton.closest(".terminal-employee");
@@ -7232,6 +7361,8 @@ function bindEvents() {
     button.textContent = "Fügt hinzu...";
     try {
       const result = await terminalAction({ action: "add-employee", employee: select.value });
+      select.value = "";
+      select.closest("details")?.removeAttribute("open");
       showToast(result.message || "Mitarbeiter hinzugefügt.");
     } catch (error) {
       showError(error);
@@ -7266,6 +7397,11 @@ function bindEvents() {
     const readyButton = event.target.closest("[data-mark-invoice-ready]");
     if (readyButton) {
       saveInvoiceRow(readyButton, true);
+      return;
+    }
+    const expenseSaveButton = event.target.closest("[data-save-expense-entry]");
+    if (expenseSaveButton) {
+      saveExpenseRow(expenseSaveButton);
       return;
     }
     const removeButton = event.target.closest("[data-remove-report-entry]");
