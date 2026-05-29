@@ -823,6 +823,7 @@ async function cleanReportItems(items, type, date) {
       receiptData: String(raw.receiptData || ""),
       receiptPath: cleanReceiptPath(raw.receiptPath),
       receiptUrl: cleanReceiptUrl(raw.receiptUrl),
+      receipts: [],
       bowlingReceiptName: String(raw.bowlingReceiptName || "").trim().slice(0, 180),
       bowlingReceiptData: String(raw.bowlingReceiptData || ""),
       bowlingReceiptPath: cleanReceiptPath(raw.bowlingReceiptPath),
@@ -844,12 +845,51 @@ async function cleanReportItems(items, type, date) {
       invoiceDoneAt: cleanText(raw.invoiceDoneAt, 80),
       area: type === "invoice" ? "rechnung" : raw.area
     };
-    await applyReceiptUpload(item, "receipt", date, `${type}-${item.id}`);
+    if (type === "expense") {
+      item.receipts = await cleanExpenseReceipts(raw, date, item.id);
+      const firstReceipt = item.receipts[0] || {};
+      item.receiptName = firstReceipt.receiptName || "";
+      item.receiptData = firstReceipt.receiptData || "";
+      item.receiptPath = firstReceipt.receiptPath || "";
+      item.receiptUrl = firstReceipt.receiptUrl || "";
+    } else {
+      await applyReceiptUpload(item, "receipt", date, `${type}-${item.id}`);
+    }
     await applyReceiptUpload(item, "bowlingReceipt", date, `bowling-${item.id}`);
     await applyReceiptUpload(item, "gastroReceipt", date, `gastro-${item.id}`);
     return item;
   }));
-  return cleaned.filter((i) => i.name || i.amount || i.note || i.receiptData || i.receiptPath || i.bowlingReceiptData || i.bowlingReceiptPath || i.gastroReceiptData || i.gastroReceiptPath || i.address || i.contact || i.phone || i.tip || i.email);
+  return cleaned.filter((i) => i.name || i.amount || i.note || i.receiptData || i.receiptPath || (i.receipts || []).length || i.bowlingReceiptData || i.bowlingReceiptPath || i.gastroReceiptData || i.gastroReceiptPath || i.address || i.contact || i.phone || i.tip || i.email);
+}
+async function cleanExpenseReceipts(raw, date, id) {
+  const entries = [];
+  const seen = new Set();
+  const addReceipt = (receipt = {}) => {
+    const item = {
+      receiptName: String(receipt.receiptName || receipt.name || "").trim().slice(0, 180),
+      receiptData: String(receipt.receiptData || receipt.data || ""),
+      receiptPath: cleanReceiptPath(receipt.receiptPath || receipt.path),
+      receiptUrl: cleanReceiptUrl(receipt.receiptUrl || receipt.url)
+    };
+    if (!item.receiptName && !item.receiptData && !item.receiptPath && !item.receiptUrl) return;
+    const key = item.receiptPath || item.receiptUrl || item.receiptData || item.receiptName;
+    if (seen.has(key)) return;
+    seen.add(key);
+    entries.push(item);
+  };
+  (Array.isArray(raw.receipts) ? raw.receipts : []).forEach(addReceipt);
+  addReceipt({
+    receiptName: raw.receiptName,
+    receiptData: raw.receiptData,
+    receiptPath: raw.receiptPath,
+    receiptUrl: raw.receiptUrl
+  });
+  const cleaned = [];
+  for (const [index, entry] of entries.slice(0, 10).entries()) {
+    await applyReceiptUpload(entry, "receipt", date, `expense-${id}-${index + 1}`);
+    if (entry.receiptName || entry.receiptData || entry.receiptPath || entry.receiptUrl) cleaned.push(entry);
+  }
+  return cleaned;
 }
 function mergeReportItemsById(existing = [], current = []) {
   const merged = new Map();
@@ -861,7 +901,16 @@ function mergeReportItemsById(existing = [], current = []) {
   (Array.isArray(current) ? current : []).forEach((item) => {
     if (!item || typeof item !== "object") return;
     const id = cleanText(item.id || crypto.randomUUID(), 120);
-    merged.set(id, { ...(merged.get(id) || {}), ...item, id });
+    const previous = merged.get(id) || {};
+    const next = { ...previous, ...item, id };
+    if (!(item.receipts || []).length && (previous.receipts || []).length) {
+      next.receipts = previous.receipts;
+      next.receiptName = previous.receiptName;
+      next.receiptData = previous.receiptData;
+      next.receiptPath = previous.receiptPath;
+      next.receiptUrl = previous.receiptUrl;
+    }
+    merged.set(id, next);
   });
   return [...merged.values()].slice(0, 20);
 }
