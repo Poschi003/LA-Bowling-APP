@@ -199,7 +199,10 @@ async function saveReport(body, res) {
   const personalConsumption = cleanMoney(body.personalConsumption ?? existing.personalConsumption);
   const cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
   const invoiceCustomers = await cleanReportItems(body.invoiceCustomers, "invoice", date);
-  const expenses = await cleanReportItems(body.expenses, "expense", date);
+  const cleanedExpenses = await cleanReportItems(body.expenses, "expense", date);
+  const expenses = body.mergeExpenses === true || body.mergeExpenses === "true"
+    ? mergeReportItemsById(existing.expenses || [], cleanedExpenses)
+    : cleanedExpenses;
   const documents = await cleanReportDocuments(body.documents || existing.documents, date);
   upsertCustomerDirectory(appData, invoiceCustomers);
   appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), extraEmployees: cleanExtraEmployees(body.extraEmployees || existing.extraEmployees), removedEmployees: cleanEmployeeList(body.removedEmployees || existing.removedEmployees), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
@@ -847,6 +850,20 @@ async function cleanReportItems(items, type, date) {
     return item;
   }));
   return cleaned.filter((i) => i.name || i.amount || i.note || i.receiptData || i.receiptPath || i.bowlingReceiptData || i.bowlingReceiptPath || i.gastroReceiptData || i.gastroReceiptPath || i.address || i.contact || i.phone || i.tip || i.email);
+}
+function mergeReportItemsById(existing = [], current = []) {
+  const merged = new Map();
+  (Array.isArray(existing) ? existing : []).forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const id = cleanText(item.id || crypto.randomUUID(), 120);
+    merged.set(id, { ...item, id });
+  });
+  (Array.isArray(current) ? current : []).forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const id = cleanText(item.id || crypto.randomUUID(), 120);
+    merged.set(id, { ...(merged.get(id) || {}), ...item, id });
+  });
+  return [...merged.values()].slice(0, 20);
 }
 function upsertCustomerDirectory(appData, customers) {
   const byKey = new Map();
