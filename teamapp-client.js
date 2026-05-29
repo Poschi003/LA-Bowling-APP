@@ -355,7 +355,8 @@ function renderWeekSections(month, renderer) {
 }
 
 function renderPublishedWeekSections(month) {
-  const scheduleDays = state.schedule?.days || {};
+  const schedule = arguments.length > 1 ? arguments[1] : state.schedule;
+  const scheduleDays = schedule?.days || {};
   const weeks = groupedMonthWeeks(month).filter((week) => (
     week.dates.some((date) => scheduleDays[isoDate(date)])
   ));
@@ -366,10 +367,41 @@ function renderPublishedWeekSections(month) {
         <span class="week-state">veröffentlicht</span>
       </summary>
       <div class="week-days">
-        ${week.dates.map((date) => renderScheduleDay(date, { compact: true, collapsible: true })).join("")}
+        ${week.dates.map((date) => renderScheduleDay(date, { compact: true, collapsible: true, schedule })).join("")}
       </div>
     </details>
   `).join("");
+}
+
+function publishedScheduleDays(schedule = {}) {
+  const days = schedule.days || {};
+  if (!schedule.publishedWeeks || !Object.keys(schedule.publishedWeeks).length) return days;
+  return Object.fromEntries(Object.entries(days).filter(([dateKey]) => schedule.publishedWeeks?.[weekStartKey(dateKey)]));
+}
+
+function scheduleHasPublishedDays(schedule = {}) {
+  return Object.keys(publishedScheduleDays(schedule)).length > 0;
+}
+
+function chefPublishedSchedulesHtml() {
+  const schedules = Object.entries(state.allSchedules || {})
+    .filter(([, schedule]) => schedule && schedule.published && scheduleHasPublishedDays(schedule))
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (!schedules.length) {
+    return `<p class="hint">Es ist noch kein Dienstplan veröffentlicht.</p>`;
+  }
+  return schedules.map(([month, schedule]) => {
+    const publishedSchedule = { ...schedule, days: publishedScheduleDays(schedule) };
+    return `
+      <details class="chef-schedule-month" ${month === state.selectedMonth ? "open" : ""}>
+        <summary>
+          <strong>${formatMonth(month)}</strong>
+          <span>${Object.keys(publishedSchedule.days || {}).length} Tage veröffentlicht</span>
+        </summary>
+        ${renderPublishedWeekSections(month, publishedSchedule)}
+      </details>
+    `;
+  }).join("");
 }
 
 async function api(path, options = {}) {
@@ -938,10 +970,8 @@ function chefDashboardHtml() {
     </section>
     ${chefSectionEnabled("schedule") ? `<section class="chef-section ${state.chefTab === "schedule" ? "active" : "hidden"}">
       <div class="chef-current-plan">
-        <h3>Aktueller Dienstplan</h3>
-        ${schedule.published
-          ? renderPublishedWeekSections(state.selectedMonth)
-          : `<p class="hint">Für ${formatMonth(state.selectedMonth)} ist noch kein Dienstplan veröffentlicht.</p>`}
+        <h3>Veröffentlichte Dienstpläne</h3>
+        ${chefPublishedSchedulesHtml()}
       </div>
     </section>` : ""}
   `;
@@ -2165,7 +2195,8 @@ function employeeIsFixed(employee) {
 }
 function renderScheduleDay(date, options = {}) {
   const key = isoDate(date);
-  const assignments = state.schedule && state.schedule.days && state.schedule.days[key] ? state.schedule.days[key] : {};
+  const sourceSchedule = options.schedule || state.schedule;
+  const assignments = sourceSchedule && sourceSchedule.days && sourceSchedule.days[key] ? sourceSchedule.days[key] : {};
   const holiday = holidayInfo(key);
   const filled = state.settings.positions.filter((position) => assignments[position]);
   const visiblePositions = state.settings.positions.filter((position) => assignments[position]);
@@ -2226,6 +2257,13 @@ function renderScheduleDay(date, options = {}) {
 
 function isOptionalServiceSlot(position) {
   return /^Service\s+[2-5]$/i.test(String(position || "").trim());
+}
+
+function weekStartKey(dateKey) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  return isoDate(date);
 }
 
 function renderPublished() {

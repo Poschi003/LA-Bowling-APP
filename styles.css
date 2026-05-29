@@ -4406,6 +4406,38 @@ button:disabled {
   padding: 10px;
 }
 
+.chef-schedule-month {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  overflow: hidden;
+}
+
+.chef-schedule-month + .chef-schedule-month {
+  margin-top: 12px;
+}
+
+.chef-schedule-month > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.chef-schedule-month > summary span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.chef-schedule-month > .published-week {
+  margin: 12px;
+}
+
 .day-report-list {
   display: grid;
   gap: 10px;
