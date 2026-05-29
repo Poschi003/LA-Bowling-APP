@@ -9,6 +9,7 @@
   employeeToken: "",
   adminToken: "",
   hasBackofficeAccess: false,
+  pinChangeRequired: false,
   isChef: false,
   chefTab: "reports",
   timesheets: {},
@@ -675,6 +676,7 @@ function renderAll() {
   renderWeather();
   renderTerminal();
   renderCustomerInvoiceDesk();
+  renderPinChangeOverlay();
   normalizeGermanDisplay();
 }
 
@@ -696,7 +698,7 @@ function renderAccess() {
   const chef = currentUserIsChef();
   document.body.classList.remove("terminal-login-mode");
   document.body.classList.toggle("login-mode", !loggedIn && !state.adminToken);
-  $("#mainTabs")?.classList.toggle("hidden", !loggedIn);
+  $("#mainTabs")?.classList.toggle("hidden", !loggedIn || state.pinChangeRequired);
   $$(".employee-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || chef));
   $('[data-tab="swaps"]')?.classList.add("hidden");
   $$(".backoffice-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || !state.hasBackofficeAccess));
@@ -707,6 +709,19 @@ function renderAccess() {
   $("#topLogout")?.classList.toggle("hidden", !loggedIn && !state.adminToken);
   if ($("#homeEmployeeName")) {
     $("#homeEmployeeName").innerHTML = loggedIn ? renderEmployeeBadge() : "";
+  }
+}
+
+function renderPinChangeOverlay() {
+  const overlay = $("#pinChangeOverlay");
+  if (!overlay) return;
+  const show = Boolean(state.activeEmployee && state.employeeToken && state.pinChangeRequired);
+  overlay.classList.toggle("hidden", !show);
+  document.body.classList.toggle("pin-change-required", show);
+  if ($("#pinChangeText")) {
+    $("#pinChangeText").textContent = show
+      ? `${state.activeEmployee}, bitte lege jetzt deinen persönlichen PIN fest. Danach kommst du direkt in die App.`
+      : "Bitte lege deinen persönlichen PIN fest.";
   }
 }
 
@@ -5914,11 +5929,17 @@ async function employeeLogin(pin) {
   state.adminToken = login.adminToken || "";
   state.hasBackofficeAccess = Boolean(login.isAdmin);
   state.adminUnlocked = Boolean(login.isAdmin);
+  state.pinChangeRequired = Boolean(login.mustChangePin);
   await loadState();
   if (!login.employee && login.isAdmin) {
     state.adminUnlocked = true;
     activateTab("admin");
     showToast("Admin-Bereich geöffnet.");
+  } else if (state.pinChangeRequired) {
+    activateTab("home");
+    renderPinChangeOverlay();
+    $("#newEmployeePin")?.focus();
+    showToast("Bitte neuen PIN festlegen.");
   } else if (currentUserIsChef()) {
     activateTab("chef");
     showToast(`Hallo ${login.employee}. Chef-Übersicht geöffnet.`);
@@ -5933,6 +5954,7 @@ function employeeLogout() {
   state.employeeToken = "";
   state.adminToken = "";
   state.hasBackofficeAccess = false;
+  state.pinChangeRequired = false;
   state.adminUnlocked = false;
   state.isChef = false;
   activateTab("home");
@@ -5965,6 +5987,48 @@ async function adminLogin(pin) {
   await loadState();
   activateTab("admin");
   showToast("Admin entsperrt.");
+}
+
+async function saveNewEmployeePin(button) {
+  const newPin = $("#newEmployeePin")?.value.trim() || "";
+  const confirmPin = $("#confirmEmployeePin")?.value.trim() || "";
+  if (!/^\d{4,10}$/.test(newPin)) {
+    showToast("Der neue PIN muss aus 4 bis 10 Ziffern bestehen.");
+    return;
+  }
+  if (newPin !== confirmPin) {
+    showToast("Die PIN-Wiederholung stimmt nicht überein.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await api("/api/employee-login", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "change-pin",
+        employeeToken: state.employeeToken,
+        newPin,
+        confirmPin
+      })
+    });
+    state.employeeToken = result.token || state.employeeToken;
+    state.adminToken = result.adminToken || state.adminToken;
+    state.hasBackofficeAccess = Boolean(result.isAdmin);
+    state.adminUnlocked = Boolean(result.isAdmin);
+    state.pinChangeRequired = false;
+    $("#newEmployeePin").value = "";
+    $("#confirmEmployeePin").value = "";
+    await loadState();
+    activateTab(currentUserIsChef() ? "chef" : "home");
+    showToast("PIN gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
 }
 
 function escapeHtml(value) {
@@ -6053,6 +6117,13 @@ function bindEvents() {
 
   $("#homeLogout")?.addEventListener("click", employeeLogout);
   $("#topLogout").addEventListener("click", employeeLogout);
+  $("#cancelPinChange")?.addEventListener("click", employeeLogout);
+  $("#saveNewEmployeePin")?.addEventListener("click", () => saveNewEmployeePin($("#saveNewEmployeePin")));
+  ["#newEmployeePin", "#confirmEmployeePin"].forEach((selector) => {
+    $(selector)?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") saveNewEmployeePin($("#saveNewEmployeePin"));
+    });
+  });
 
   $("#adminLogout").addEventListener("click", employeeLogout);
 

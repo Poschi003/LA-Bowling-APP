@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260529-caretfix-v1">
+    <link rel="stylesheet" href="styles.css?v=20260529-pinwechsel-v1">
   </head>
   <body>
     <header class="topbar">
@@ -779,6 +779,22 @@
       </section>
     </main>
 
+    <div id="pinChangeOverlay" class="pin-change-overlay hidden" role="dialog" aria-modal="true">
+      <section class="pin-change-card">
+        <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
+        <h2>Neuen PIN vergeben</h2>
+        <p id="pinChangeText">Bitte lege deinen persönlichen PIN fest.</p>
+        <label>Neuer PIN
+          <input id="newEmployeePin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="4 bis 10 Ziffern">
+        </label>
+        <label>PIN wiederholen
+          <input id="confirmEmployeePin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="PIN wiederholen">
+        </label>
+        <button id="saveNewEmployeePin" class="primary" type="button">PIN speichern</button>
+        <button id="cancelPinChange" class="secondary" type="button">Abmelden</button>
+      </section>
+    </div>
+
     <div id="toast" class="toast" role="status"></div>
     <script>
       const tabs = document.querySelector(".tabs");
@@ -805,7 +821,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260529-ui-politur-v2"></script>
+    <script src="teamapp-client.js?v=20260529-pinwechsel-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>
