@@ -1481,7 +1481,9 @@ function reportFolderItems(month, key) {
   for (const [dateKey, report] of reports) {
     if (key === "expenses") {
       (report.expenses || []).forEach((expense, index) => {
-        if (hasReceipt(expense)) items.push(receiptFolderItem(dateKey, expense, `Ausgabe ${index + 1}`, expense.name || "Ausgabe"));
+        expenseReceiptEntries(expense).forEach((receipt, receiptIndex) => {
+          items.push(receiptFolderItem(dateKey, receipt, `${expense.name || `Ausgabe ${index + 1}`} - Beleg ${receiptIndex + 1}`, receipt.receiptName || `Beleg ${receiptIndex + 1}`));
+        });
       });
     }
     if (key === "invoices") {
@@ -1511,7 +1513,7 @@ function reportFolderItems(month, key) {
 }
 
 function hasReceipt(item = {}) {
-  return Boolean(item.receiptPath || item.receiptUrl || item.receiptData);
+  return Boolean(item.receiptPath || item.receiptUrl || item.receiptData || expenseReceiptEntries(item).length);
 }
 
 function hasDocument(item = {}) {
@@ -1560,6 +1562,38 @@ function invoiceReceiptNameText(item = {}) {
   if (singleReceipt) return singleReceipt.receiptName || "Rechnungsbeleg";
   const legacy = invoiceLegacyReceipts(item).map(({ label, receipt }) => `${label}: ${receipt.receiptName || "Beleg"}`);
   return legacy.join(" | ") || "-";
+}
+
+function expenseReceiptEntries(item = {}) {
+  const receipts = [];
+  const seen = new Set();
+  const addReceipt = (receipt = {}) => {
+    const clean = {
+      receiptName: receipt.receiptName || receipt.name || "",
+      receiptPath: receipt.receiptPath || receipt.path || "",
+      receiptUrl: receipt.receiptUrl || receipt.url || "",
+      receiptData: receipt.receiptData || receipt.data || ""
+    };
+    if (!clean.receiptName && !clean.receiptPath && !clean.receiptUrl && !clean.receiptData) return;
+    const key = clean.receiptPath || clean.receiptUrl || clean.receiptData || clean.receiptName;
+    if (seen.has(key)) return;
+    seen.add(key);
+    receipts.push(clean);
+  };
+  (Array.isArray(item.receipts) ? item.receipts : []).forEach(addReceipt);
+  addReceipt({
+    receiptName: item.receiptName,
+    receiptPath: item.receiptPath,
+    receiptUrl: item.receiptUrl,
+    receiptData: item.receiptData
+  });
+  return receipts;
+}
+
+function expenseReceiptLinksHtml(item = {}) {
+  const receipts = expenseReceiptEntries(item);
+  if (!receipts.length) return `<span class="hint">Beleg: nicht hochgeladen.</span>`;
+  return `<div class="expense-receipt-links">${receipts.map((receipt, index) => receiptLinkHtml(receipt, receipt.receiptName || `Beleg ${index + 1}`)).join("")}</div>`;
 }
 
 function invoiceIsReady(item = {}) {
@@ -1671,7 +1705,7 @@ function reportExpensesHtml(items = []) {
           <strong>${escapeHtml(item.name || `Ausgabe ${index + 1}`)}</strong>
           <span>${escapeHtml(item.category || "Ausgabe")} · ${formatReportMoney(item.amount)}</span>
           ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
-          ${receiptLinkHtml(item)}
+          ${expenseReceiptLinksHtml(item)}
         </article>
       `).join("")}
     </div>
@@ -3866,6 +3900,7 @@ function invoiceRowHtml(item = {}) {
 
 function expenseRowHtml(item = {}) {
   const id = item.id || cryptoId();
+  const receipts = expenseReceiptEntries(item);
   return `
     <article class="report-entry" data-report-entry="expense" data-id="${escapeHtml(id)}">
       <div class="report-entry-grid">
@@ -3874,8 +3909,24 @@ function expenseRowHtml(item = {}) {
         <label>Betrag<input data-report-field="amount" type="number" min="0" step="0.01" value="${escapeHtml(item.amount || "")}" placeholder="0,00"></label>
       </div>
       <label>Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
-      <label>Beleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
-      ${item.receiptName ? `<span class="hint">Aktueller Beleg: ${escapeHtml(item.receiptName)}</span>` : ""}
+      <div class="expense-receipts">
+        <div class="expense-receipt-list">
+          ${receipts.length ? receipts.map((receipt, index) => `
+            <div class="expense-receipt-saved" data-expense-receipt="${index}">
+              <span>${escapeHtml(receipt.receiptName || `Beleg ${index + 1}`)}</span>
+              ${receiptLinkHtml(receipt, "öffnen")}
+              <input type="hidden" data-expense-receipt-field="receiptName" value="${escapeHtml(receipt.receiptName || "")}">
+              <input type="hidden" data-expense-receipt-field="receiptData" value="${escapeHtml(receipt.receiptData || "")}">
+              <input type="hidden" data-expense-receipt-field="receiptPath" value="${escapeHtml(receipt.receiptPath || "")}">
+              <input type="hidden" data-expense-receipt-field="receiptUrl" value="${escapeHtml(receipt.receiptUrl || "")}">
+            </div>
+          `).join("") : `<p class="hint">Noch kein Beleg hochgeladen.</p>`}
+        </div>
+        <div class="expense-receipt-upload-list">
+          ${expenseReceiptUploadHtml()}
+        </div>
+        <button class="secondary expense-add-receipt" data-add-expense-receipt type="button">+ Beleg hinzufügen</button>
+      </div>
       <input type="hidden" data-report-field="receiptName" value="${escapeHtml(item.receiptName || "")}">
       <input type="hidden" data-report-field="receiptData" value="${escapeHtml(item.receiptData || "")}">
       <input type="hidden" data-report-field="receiptPath" value="${escapeHtml(item.receiptPath || "")}">
@@ -3886,6 +3937,10 @@ function expenseRowHtml(item = {}) {
       </div>
     </article>
   `;
+}
+
+function expenseReceiptUploadHtml() {
+  return `<label class="expense-receipt-upload">Beleg scannen/fotografieren<input data-expense-receipt-file type="file" accept="image/*,application/pdf" capture="environment"></label>`;
 }
 
 function cryptoId() {
@@ -3906,9 +3961,40 @@ function mergeReportItemsById(existing = [], current = []) {
   (Array.isArray(current) ? current : []).forEach((item) => {
     if (!item || typeof item !== "object") return;
     const id = item.id || cryptoId();
-    merged.set(id, { ...(merged.get(id) || {}), ...item, id });
+    const previous = merged.get(id) || {};
+    const next = { ...previous, ...item, id };
+    if (!expenseReceiptEntries(item).length && expenseReceiptEntries(previous).length) {
+      next.receipts = previous.receipts;
+      next.receiptName = previous.receiptName;
+      next.receiptData = previous.receiptData;
+      next.receiptPath = previous.receiptPath;
+      next.receiptUrl = previous.receiptUrl;
+    }
+    merged.set(id, next);
   });
   return [...merged.values()];
+}
+
+async function collectExpenseReceipts(row) {
+  const receipts = [];
+  row.querySelectorAll("[data-expense-receipt]").forEach((receiptRow) => {
+    const receipt = {};
+    receiptRow.querySelectorAll("[data-expense-receipt-field]").forEach((field) => {
+      receipt[field.dataset.expenseReceiptField] = field.value;
+    });
+    if (receipt.receiptName || receipt.receiptPath || receipt.receiptUrl || receipt.receiptData) receipts.push(receipt);
+  });
+  for (const field of [...row.querySelectorAll("[data-expense-receipt-file]")]) {
+    const file = field.files?.[0];
+    if (!file) continue;
+    receipts.push({
+      receiptName: file.name,
+      receiptData: await fileToDataUrl(file),
+      receiptPath: "",
+      receiptUrl: ""
+    });
+  }
+  return receipts;
 }
 
 async function collectReportEntriesFrom(root, type) {
@@ -3919,10 +4005,14 @@ async function collectReportEntriesFrom(root, type) {
     row.querySelectorAll("[data-report-field]").forEach((field) => {
       item[field.dataset.reportField] = field.value;
     });
-    const genericFile = row.querySelector("[data-report-file]:not([data-report-file='bowling']):not([data-report-file='gastro'])")?.files?.[0];
-    if (genericFile) {
-      item.receiptName = genericFile.name;
-      item.receiptData = await fileToDataUrl(genericFile);
+    if (type === "expense") {
+      item.receipts = await collectExpenseReceipts(row);
+    } else {
+      const genericFile = row.querySelector("[data-report-file]:not([data-report-file='bowling']):not([data-report-file='gastro'])")?.files?.[0];
+      if (genericFile) {
+        item.receiptName = genericFile.name;
+        item.receiptData = await fileToDataUrl(genericFile);
+      }
     }
     const bowlingFile = row.querySelector("[data-report-file='bowling']")?.files?.[0];
     if (bowlingFile) {
@@ -3948,6 +4038,7 @@ async function collectReportEntriesFrom(root, type) {
     item.category ||
     item.receiptData ||
     item.receiptPath ||
+    expenseReceiptEntries(item).length ||
     item.bowlingReceiptData ||
     item.bowlingReceiptPath ||
     item.gastroReceiptData ||
@@ -6465,6 +6556,12 @@ function bindEvents() {
       saveCustomerInvoiceDeskReportWithOptions(expenseSaveButton, "Ausgabe gespeichert.", { mergeExpenses: true });
       return;
     }
+    const addExpenseReceiptButton = event.target.closest("[data-add-expense-receipt]");
+    if (addExpenseReceiptButton) {
+      const row = addExpenseReceiptButton.closest('[data-report-entry="expense"]');
+      row?.querySelector(".expense-receipt-upload-list")?.insertAdjacentHTML("beforeend", expenseReceiptUploadHtml());
+      return;
+    }
     const removeButton = event.target.closest("[data-remove-report-entry]");
     if (!removeButton) return;
     removeCustomerInvoiceDeskEntry(removeButton);
@@ -7505,6 +7602,12 @@ function bindEvents() {
     const expenseSaveButton = event.target.closest("[data-save-expense-entry]");
     if (expenseSaveButton) {
       saveExpenseRow(expenseSaveButton);
+      return;
+    }
+    const addExpenseReceiptButton = event.target.closest("[data-add-expense-receipt]");
+    if (addExpenseReceiptButton) {
+      const row = addExpenseReceiptButton.closest('[data-report-entry="expense"]');
+      row?.querySelector(".expense-receipt-upload-list")?.insertAdjacentHTML("beforeend", expenseReceiptUploadHtml());
       return;
     }
     const removeButton = event.target.closest("[data-remove-report-entry]");

@@ -3980,6 +3980,50 @@ button:disabled {
   margin-top: 4px;
 }
 
+.expense-receipts {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 10px;
+}
+
+.expense-receipt-list,
+.expense-receipt-upload-list,
+.expense-receipt-links {
+  display: grid;
+  gap: 8px;
+}
+
+.expense-receipt-saved {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 8px;
+}
+
+.expense-receipt-saved span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 750;
+}
+
+.expense-receipt-upload {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 8px;
+}
+
+.expense-add-receipt {
+  justify-self: start;
+}
+
 .invoice-pill {
   display: inline-flex;
   align-items: center;
