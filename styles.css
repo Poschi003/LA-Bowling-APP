@@ -33,6 +33,7 @@ body {
   margin: 0;
   background: linear-gradient(180deg, #fbfcfd 0%, var(--bg) 100%);
   color: var(--text);
+  caret-color: transparent;
   font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 15px;
   line-height: 1.45;
@@ -43,6 +44,21 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  caret-color: var(--ink);
+}
+
+button,
+summary,
+.tab,
+.terminal-tab,
+.month-pill,
+.employee-badge-stat {
+  user-select: none;
 }
 
 .topbar {
@@ -3210,12 +3226,18 @@ button:disabled {
   height: 42px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: #fff;
-  color: var(--brand);
+  background: #f8fafc;
+  color: #2d333a;
   cursor: pointer;
   font-size: 0;
-  font-weight: 900;
+  font-weight: 600;
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+}
+
+.terminal-add-compact > summary:hover {
+  border-color: #cbd6e2;
+  background: #ffffff;
+  color: var(--ink);
 }
 
 .terminal-add-compact > summary::-webkit-details-marker {
@@ -3223,7 +3245,7 @@ button:disabled {
 }
 
 .terminal-add-compact > summary span {
-  font-size: 26px;
+  font-size: 24px;
   line-height: 1;
 }
 
