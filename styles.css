@@ -1676,7 +1676,9 @@ button.employee-badge-stat {
 
 .availability-preview {
   display: grid;
-  gap: 10px;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
 }
 
 .availability-control-card {
@@ -1706,6 +1708,7 @@ button.employee-badge-stat {
   gap: 10px;
   color: var(--muted);
   font-weight: 800;
+  flex-wrap: wrap;
 }
 
 .availability-preview-head strong {
@@ -1714,21 +1717,24 @@ button.employee-badge-stat {
 
 .availability-preview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
-  gap: 8px;
-  max-height: 430px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  max-height: min(72vh, 760px);
   overflow: auto;
-  padding-right: 4px;
+  padding: 2px 6px 6px 2px;
 }
 
 .availability-preview-card {
   display: grid;
-  gap: 3px;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  min-height: 156px;
   border: 1px solid var(--line);
   border-left: 3px solid #d6d0ca;
   border-radius: var(--radius);
   background: var(--surface-soft);
-  padding: 9px;
+  padding: 12px;
 }
 
 .availability-preview-card.has-availability {
@@ -1743,19 +1749,21 @@ button.employee-badge-stat {
 
 .availability-preview-card strong {
   color: var(--ink);
+  font-size: 16px;
 }
 
 .availability-preview-card span,
 .availability-preview-card p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .availability-preview-card p {
   margin: 0;
-  max-height: 42px;
-  overflow: hidden;
 }
 
 .availability-preview-card .availability-cannot-line {
@@ -6177,6 +6185,17 @@ textarea {
 
   .terminal-content {
     gap: 14px;
+  }
+
+  .availability-preview-grid {
+    grid-template-columns: 1fr;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .availability-preview-card {
+    min-height: 0;
   }
 
   .terminal-employee,
