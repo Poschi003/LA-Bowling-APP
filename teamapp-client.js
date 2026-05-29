@@ -3896,6 +3896,21 @@ async function collectReportEntries(type) {
   return collectReportEntriesFrom(document, type);
 }
 
+function mergeReportItemsById(existing = [], current = []) {
+  const merged = new Map();
+  (Array.isArray(existing) ? existing : []).forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const id = item.id || cryptoId();
+    merged.set(id, { ...item, id });
+  });
+  (Array.isArray(current) ? current : []).forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const id = item.id || cryptoId();
+    merged.set(id, { ...(merged.get(id) || {}), ...item, id });
+  });
+  return [...merged.values()];
+}
+
 async function collectReportEntriesFrom(root, type) {
   const selector = type === "invoice" ? '[data-report-entry="invoice"]' : '[data-report-entry="expense"]';
   const entries = [];
@@ -4125,6 +4140,10 @@ async function loadCustomerInvoiceDesk() {
 }
 
 async function saveCustomerInvoiceDeskReport(button, successText = "Tagesübersicht gespeichert.") {
+  return saveCustomerInvoiceDeskReportWithOptions(button, successText);
+}
+
+async function saveCustomerInvoiceDeskReportWithOptions(button, successText = "Tagesübersicht gespeichert.", options = {}) {
   if (!state.invoiceTerminalToken) {
     showToast("Bitte Mitarbeiter-Code eingeben.");
     return;
@@ -4135,10 +4154,14 @@ async function saveCustomerInvoiceDeskReport(button, successText = "Tagesübersi
     button.textContent = "Speichert...";
   }
   try {
+    const payload = await collectCustomerInvoiceDeskPayload();
+    if (options.mergeExpenses) {
+      payload.expenses = mergeReportItemsById(state.invoiceReport?.expenses || [], payload.expenses || []);
+    }
     const result = await api("/api/day-terminal", {
       method: "POST",
       body: JSON.stringify({
-        ...(await collectCustomerInvoiceDeskPayload()),
+        ...payload,
         terminalToken: state.invoiceTerminalToken
       })
     });
@@ -4281,7 +4304,10 @@ async function saveExpenseRow(button) {
   syncCashExpensesFromExpenseRows(true);
   updateReportBarTotal();
   try {
-    await terminalAction(await collectDayReportPayload());
+    const payload = await collectDayReportPayload();
+    payload.expenses = mergeReportItemsById(state.terminalReport?.expenses || [], payload.expenses || []);
+    payload.cashExpenses = payload.expenses.reduce((sum, item) => sum + parseMoneyInput(item.amount), 0).toFixed(2);
+    await terminalAction(payload);
     showToast("Ausgabe gespeichert.");
   } catch (error) {
     showError(error);
@@ -6434,7 +6460,7 @@ function bindEvents() {
     }
     const expenseSaveButton = event.target.closest("[data-save-expense-entry]");
     if (expenseSaveButton) {
-      saveCustomerInvoiceDeskReport(expenseSaveButton, "Ausgabe gespeichert.");
+      saveCustomerInvoiceDeskReportWithOptions(expenseSaveButton, "Ausgabe gespeichert.", { mergeExpenses: true });
       return;
     }
     const removeButton = event.target.closest("[data-remove-report-entry]");
