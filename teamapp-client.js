@@ -5913,7 +5913,7 @@ async function employeeLogin(pin) {
   state.employeeToken = login.token || "";
   state.adminToken = login.adminToken || "";
   state.hasBackofficeAccess = Boolean(login.isAdmin);
-  state.adminUnlocked = false;
+  state.adminUnlocked = Boolean(login.isAdmin);
   await loadState();
   if (!login.employee && login.isAdmin) {
     state.adminUnlocked = true;
@@ -5940,6 +5940,10 @@ function employeeLogout() {
 }
 
 function activateTab(name) {
+  if (name === "admin" && state.hasBackofficeAccess && state.adminToken && !state.adminUnlocked) {
+    state.adminUnlocked = true;
+    renderAll();
+  }
   $$(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
   $$(".panel").forEach((panel) => panel.classList.toggle("active", panel.id === name));
   if (name === "timesheet" && state.employeeToken && !state.timesheetRefreshInFlight) {
