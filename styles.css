@@ -3380,9 +3380,45 @@ button:disabled {
 
 .terminal-time-edit {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 10px;
+}
+
+.terminal-time-segments {
+  display: grid;
+  gap: 8px;
+}
+
+.terminal-time-segment {
+  display: grid;
+  grid-template-columns: 24px minmax(90px, 1fr) minmax(90px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.terminal-time-segment > span {
+  align-self: center;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.terminal-time-segment button {
+  min-height: 40px;
+}
+
+.terminal-time-tools {
+  display: grid;
+  grid-template-columns: 42px minmax(120px, 1fr);
+  gap: 8px;
+}
+
+.terminal-add-segment-button {
+  min-width: 42px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 900;
 }
 
 .terminal-actions button {
@@ -6376,6 +6412,8 @@ textarea {
   .terminal-actions,
   .terminal-cleaning-row,
   .terminal-cleaning-todo,
+  .terminal-time-segment,
+  .terminal-time-tools,
   .tip-summary,
   .tip-row,
   .tip-payout-row,

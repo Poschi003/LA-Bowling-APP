@@ -1237,7 +1237,9 @@ function dayReportEmployeeRowsHtml(dateKey, report = {}) {
 }
 
 function dayReportShiftText(entry = {}) {
-  return `${entry.from || "offen"} bis ${entry.to || "offen"}`;
+  const segments = timeSegments(entry);
+  if (!segments.length) return "offen bis offen";
+  return segments.map((segment) => `${segment.from || "offen"} bis ${segment.to || "offen"}`).join(" | ");
 }
 
 function reportEmployeesForDate(dateKey, report = {}) {
@@ -1245,7 +1247,7 @@ function reportEmployeesForDate(dateKey, report = {}) {
   const removed = new Set(report.removedEmployees || state.terminalReport?.removedEmployees || []);
   Object.entries(state.timesheets || {}).forEach(([employee, entries]) => {
     const entry = entries?.[dateKey] || {};
-    if (entry.from || entry.to) names.add(employee);
+    if (entryHasAnyTime(entry)) names.add(employee);
   });
   if (dateKey === state.terminalDate) {
     terminalEmployeesForDay(dateKey).forEach((employee) => names.add(employee));
@@ -1258,7 +1260,7 @@ function reportEmployeesForDate(dateKey, report = {}) {
     if (!employee) return false;
     if (!removed.has(employee)) return true;
     const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
-    return Boolean(entry.from || entry.to);
+    return entryHasAnyTime(entry);
   }).sort((a, b) => a.localeCompare(b, "de"));
 }
 
@@ -1921,7 +1923,7 @@ function gastroRevenueTotal(report = {}) {
 
 function reportTipTotal(report = {}) {
   if (report.tipTotal !== "" && report.tipTotal != null) return reportMoneyNumber(report.tipTotal);
-  return Math.max(0, barTotal(report) + reportEcTotal(report) - reportRevenueTotal(report));
+  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) - reportRevenueTotal(report));
 }
 
 function reportChefHandoverTotal(report = {}) {
@@ -1966,7 +1968,7 @@ function exportDayReport(dateKey) {
     "Personalzeiten:",
     ...(employees.length ? employees.map((employee) => {
       const entry = state.timesheets?.[employee]?.[dateKey] || {};
-      return `- ${employee} | ${entry.from || "--:--"} bis ${entry.to || "--:--"} | ${formatHours(paidHours(entry))}`;
+      return `- ${employee} | ${dayReportShiftText(entry)} | ${formatHours(paidHours(entry))}`;
     }) : ["- Keine Arbeitszeiten erfasst."]),
     "",
     `Umsatz Bowling: ${formatReportMoney(report.revenueBowling || report.barBowling)}`,
@@ -3000,7 +3002,7 @@ function renderTimesheet() {
       <article class="timesheet-row" data-date="${dateKey}">
         <div>
           <strong>${formatDate(dateKey)}</strong>
-          <span>${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")} · ${formatHours(hours)}</span>
+          <span>${escapeHtml(dayReportShiftText(entry))} · ${formatHours(hours)}</span>
         </div>
         <div class="timesheet-tip-display">
           <span>Trinkgeld</span>
@@ -3020,7 +3022,7 @@ function renderTimesheet() {
 function completedTimesheetDates(employee, month) {
   const entries = state.timesheets?.[employee] || {};
   return Object.entries(entries)
-    .filter(([dateKey, entry]) => dateKey.startsWith(month) && entry.from && entry.to)
+    .filter(([dateKey, entry]) => dateKey.startsWith(month) && entryHasCompletedTime(entry))
     .map(([dateKey]) => dateKey)
     .sort();
 }
@@ -3064,7 +3066,32 @@ function minutesBetween(from, to) {
 }
 
 function paidHours(entry = {}) {
-  return hoursBetween(entry.from, entry.to);
+  const segments = timeSegments(entry);
+  if (!segments.length) return hoursBetween(entry.from, entry.to);
+  return segments.reduce((sum, segment) => sum + hoursBetween(segment.from, segment.to), 0);
+}
+
+function timeSegments(entry = {}) {
+  const segments = Array.isArray(entry.segments) ? entry.segments : [];
+  const normalized = segments.map((segment) => ({
+    from: String(segment?.from || "").trim(),
+    to: String(segment?.to || "").trim()
+  })).filter((segment) => segment.from || segment.to);
+  if (normalized.length) return normalized;
+  return entry.from || entry.to ? [{ from: entry.from || "", to: entry.to || "" }] : [];
+}
+
+function timeSegmentsForEdit(entry = {}) {
+  const segments = timeSegments(entry);
+  return segments.length ? segments : [{ from: "", to: "" }];
+}
+
+function entryHasAnyTime(entry = {}) {
+  return timeSegments(entry).some((segment) => segment.from || segment.to);
+}
+
+function entryHasCompletedTime(entry = {}) {
+  return timeSegments(entry).some((segment) => segment.from && segment.to);
 }
 
 function formatHours(value) {
@@ -3227,6 +3254,7 @@ function renderTerminal() {
     const hours = paidHours(entry);
     const planned = terminalIsPlanned(employee);
     const plannedShift = terminalPlannedShiftFor(employee);
+    const shiftText = dayReportShiftText(entry);
     return `
       <article class="terminal-employee ${reportClosed ? "is-locked" : ""}">
         <div class="terminal-employee-head">
@@ -3234,13 +3262,17 @@ function renderTerminal() {
           <strong>${escapeHtml(employee)}</strong>
             <span>${planned ? "Geplant" : "Zusätzlich"}${plannedShift.label ? ` · Plan ${escapeHtml(plannedShift.label)}` : ""}</span>
           </div>
-          <strong class="terminal-shift-time">${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")}</strong>
+          <strong class="terminal-shift-time">${escapeHtml(shiftText)}</strong>
           ${hours ? `<span class="terminal-hours">${formatHours(hours)}</span>` : ""}
         </div>
         <div class="terminal-time-edit">
-          <label>Beginn<input type="time" data-terminal-time="from" value="${escapeHtml(entry.from || "")}" ${reportClosed ? "disabled" : ""}></label>
-          <label>Ende<input type="time" data-terminal-time="to" value="${escapeHtml(entry.to || "")}" ${reportClosed ? "disabled" : ""}></label>
-          <button class="secondary" data-terminal-adjust="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Korrigieren</button>
+          <div class="terminal-time-segments">
+            ${timeSegmentsForEdit(entry).map((segment, index) => terminalTimeSegmentRowHtml(segment, index, reportClosed)).join("")}
+          </div>
+          <div class="terminal-time-tools">
+            <button class="secondary terminal-add-segment-button" type="button" data-add-time-segment="${escapeHtml(employee)}" title="Arbeitszeit hinzufügen" aria-label="Arbeitszeit hinzufügen" ${reportClosed ? "disabled" : ""}>+</button>
+            <button class="secondary" data-terminal-adjust="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Zeiten speichern</button>
+          </div>
         </div>
         <div class="terminal-actions">
           <button class="primary" data-terminal-punch="start" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstbeginn</button>
@@ -3276,6 +3308,33 @@ function renderTerminal() {
     select.innerHTML = `<option value="">Ungeplanten Mitarbeiter auswählen</option>${options.map((employee) => `<option value="${escapeHtml(employee)}">${escapeHtml(employee)}</option>`).join("")}`;
   }
   normalizeGermanDisplay();
+}
+
+function terminalTimeSegmentRowHtml(segment = {}, index = 0, disabled = false) {
+  return `
+    <div class="terminal-time-segment" data-terminal-segment-row>
+      <span>${index + 1}.</span>
+      <label>Beginn<input type="time" data-terminal-time="from" value="${escapeHtml(segment.from || "")}" ${disabled ? "disabled" : ""}></label>
+      <label>Ende<input type="time" data-terminal-time="to" value="${escapeHtml(segment.to || "")}" ${disabled ? "disabled" : ""}></label>
+      <button class="secondary" type="button" data-remove-time-segment ${disabled || index === 0 ? "disabled" : ""}>Entfernen</button>
+    </div>
+  `;
+}
+
+function collectTerminalTimeSegments(card) {
+  return [...card.querySelectorAll("[data-terminal-segment-row]")].map((row) => ({
+    from: row.querySelector('[data-terminal-time="from"]')?.value || "",
+    to: row.querySelector('[data-terminal-time="to"]')?.value || ""
+  })).filter((segment) => segment.from || segment.to);
+}
+
+function refreshTerminalSegmentNumbers(card) {
+  card.querySelectorAll("[data-terminal-segment-row]").forEach((row, index) => {
+    const number = row.querySelector("span");
+    if (number) number.textContent = `${index + 1}.`;
+    const removeButton = row.querySelector("[data-remove-time-segment]");
+    if (removeButton) removeButton.disabled = index === 0;
+  });
 }
 
 function renderDayReportA4Summary(dateKey, report = {}) {
@@ -4725,7 +4784,7 @@ function renderDailyTipDistribution() {
     <article>
       <span>Trinkgeld gesamt</span>
       <strong>${formatMoney(result.tipTotal)}</strong>
-      <small>Bar + EC - Umsatz nach Personalverzehr</small>
+      <small>Bar + Ausgaben + EC - Umsatz nach Personalverzehr</small>
     </article>
     <article class="tip-summary-handover">
       <span>Abzugeben an Chef</span>
@@ -4881,10 +4940,10 @@ function calculateTipDistribution(dateKey) {
   const revenueBowling = parseMoneyInput($("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "");
   const revenueGastro = gastroRevenueFromFormOrReport();
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
-  const tipTotal = Math.max(0, cashTotal + ecTotal - totalRevenue);
+  const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal - totalRevenue);
   const openingTime = tipOpeningTime(dateKey);
-  const employees = terminalEmployeesForDay(dateKey);
   const entries = state.terminalEntries || {};
+  const employees = terminalTipEmployeesForDay(dateKey);
   let baseRows = employees.map((employee) => {
     const entry = entries[employee]?.[dateKey] || {};
     const area = tipAreaForEmployee(employee);
@@ -4935,6 +4994,15 @@ function calculateTipDistribution(dateKey) {
   };
 }
 
+function terminalTipEmployeesForDay(dateKey) {
+  const names = new Set(terminalEmployeesForDay(dateKey));
+  Object.entries(state.terminalEntries || {}).forEach(([employee, entries]) => {
+    const entry = entries?.[dateKey] || {};
+    if (entryHasAnyTime(entry)) names.add(employee);
+  });
+  return [...names].filter(Boolean);
+}
+
 function roundTipToBills(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount < TIP_BILL_STEP) return 0;
@@ -4948,9 +5016,15 @@ function tipOpeningTime(dateKey) {
 }
 
 function paidHoursAfterOpening(entry = {}, openingTime = "00:00") {
-  if (!entry.from || !entry.to) return 0;
-  const from = laterTime(entry.from, openingTime);
-  return paidHours({ ...entry, from });
+  const opening = timeToMinutes(openingTime);
+  return timeSegments(entry).reduce((sum, segment) => {
+    if (!segment.from || !segment.to) return sum;
+    const start = timeToMinutes(segment.from);
+    let end = timeToMinutes(segment.to);
+    if (end < start) end += 24 * 60;
+    const effectiveStart = Math.max(start, opening);
+    return sum + Math.max(0, end - effectiveStart) / 60;
+  }, 0);
 }
 
 function laterTime(left, right) {
@@ -5362,7 +5436,7 @@ function employeeOverviewHtml({ allowCorrection = false } = {}) {
               ${shifts.map((shift) => `
                 <div class="employee-workday">
                   <strong>${formatDate(shift.date)}</strong>
-                  <span>${escapeHtml(shift.from || "?")} - ${escapeHtml(shift.to || "?")}</span>
+                  <span>${escapeHtml(shift.timeText || "?")}</span>
                   <span>${formatHours(shift.hours)}</span>
                   ${shift.adminOnly ? `<small>Nur Admin${shift.adminNote ? ` | ${escapeHtml(shift.adminNote)}` : ""}</small>` : ""}
                 </div>
@@ -5402,11 +5476,12 @@ function totalsForEmployee(employee) {
 function timesheetDetailsForEmployee(employee) {
   const entries = state.timesheets?.[employee] || {};
   return Object.entries(entries)
-    .filter(([dateKey, entry]) => dateKey.startsWith(state.selectedMonth) && entry.from && entry.to)
+    .filter(([dateKey, entry]) => dateKey.startsWith(state.selectedMonth) && entryHasCompletedTime(entry))
     .map(([date, entry]) => ({
       date,
       from: entry.from || "",
       to: entry.to || "",
+      timeText: dayReportShiftText(entry),
       hours: paidHours(entry),
       adminOnly: Boolean(entry.adminOnly || entry.source === "admin-manual"),
       adminNote: entry.adminNote || ""
@@ -7661,6 +7736,24 @@ function bindEvents() {
   });
 
   $("#terminalEmployees")?.addEventListener("click", async (event) => {
+    const addSegmentButton = event.target.closest("[data-add-time-segment]");
+    if (addSegmentButton) {
+      const card = addSegmentButton.closest(".terminal-employee");
+      const list = card?.querySelector(".terminal-time-segments");
+      if (!card || !list) return;
+      const index = list.querySelectorAll("[data-terminal-segment-row]").length;
+      list.insertAdjacentHTML("beforeend", terminalTimeSegmentRowHtml({}, index, false));
+      refreshTerminalSegmentNumbers(card);
+      list.querySelectorAll("[data-terminal-segment-row]").item(index)?.querySelector("input")?.focus();
+      return;
+    }
+    const removeSegmentButton = event.target.closest("[data-remove-time-segment]");
+    if (removeSegmentButton) {
+      const card = removeSegmentButton.closest(".terminal-employee");
+      removeSegmentButton.closest("[data-terminal-segment-row]")?.remove();
+      if (card) refreshTerminalSegmentNumbers(card);
+      return;
+    }
     const removeButton = event.target.closest("[data-terminal-remove]");
     if (removeButton) {
       if (!window.confirm(`${removeButton.dataset.terminalRemove} aus der heutigen Arbeitszeit-Ansicht entfernen?`)) return;
@@ -7691,8 +7784,7 @@ function bindEvents() {
         const result = await terminalAction({
           action: "adjust-time",
           employee: adjustButton.dataset.terminalAdjust,
-          from: card.querySelector('[data-terminal-time="from"]')?.value || "",
-          to: card.querySelector('[data-terminal-time="to"]')?.value || ""
+          segments: collectTerminalTimeSegments(card)
         });
         showToast(result.message || "Zeiten korrigiert.");
       } catch (error) {
