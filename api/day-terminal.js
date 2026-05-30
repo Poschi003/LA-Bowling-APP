@@ -135,7 +135,20 @@ async function punch(body, res) {
   const month = date.slice(0, 7), time = roundToQuarter(new Date());
   appData.timesheets ||= {}; appData.timesheets[month] ||= {}; appData.timesheets[month][employee] ||= {};
   const existing = appData.timesheets[month][employee][date] || {};
-  const nextEntry = { ...existing, [punchType === "start" ? "from" : "to"]: time, updatedAt: new Date().toISOString(), source: "terminal" };
+  const segments = cleanTimeSegments(existing.segments, existing);
+  if (punchType === "start") {
+    if (!segments.length || (segments.at(-1).from && segments.at(-1).to)) {
+      segments.push({ from: time, to: "" });
+    } else {
+      segments[segments.length - 1].from = time;
+    }
+  } else if (!segments.length) {
+    segments.push({ from: "", to: time });
+  } else {
+    segments[segments.length - 1].to = time;
+  }
+  const bounds = timeBoundsFromSegments(segments);
+  const nextEntry = { ...existing, ...bounds, segments, updatedAt: new Date().toISOString(), source: "terminal" };
   appData.timesheets[month][employee][date] = nextEntry;
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, message: `${employee}: ${punchType === "start" ? "Beginn" : "Ende"} ${time}`, ...terminalPayload(appData, date) });
@@ -146,7 +159,9 @@ async function adjustTime(body, res) {
   if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
   if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   appData.timesheets ||= {}; appData.timesheets[month] ||= {}; appData.timesheets[month][employee] ||= {};
-  appData.timesheets[month][employee][date] = { ...(appData.timesheets[month][employee][date] || {}), from: cleanTime(body.from), to: cleanTime(body.to), updatedAt: new Date().toISOString(), source: "terminal-correction" };
+  const segments = cleanTimeSegments(body.segments, { from: body.from, to: body.to });
+  const bounds = timeBoundsFromSegments(segments);
+  appData.timesheets[month][employee][date] = { ...(appData.timesheets[month][employee][date] || {}), ...bounds, segments, updatedAt: new Date().toISOString(), source: "terminal-correction" };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, message: `${employee}: Zeiten korrigiert.`, ...terminalPayload(appData, date) });
 }
@@ -658,7 +673,7 @@ function applyTipsToTimesheets(appData, date, tipsByEmployee = {}) {
     if (!(appData.settings.employees || []).includes(employee)) continue;
     appData.timesheets[month][employee] ||= {};
     const existing = appData.timesheets[month][employee][date] || {};
-    if (!existing.from && !existing.to) continue;
+    if (!cleanTimeSegments(existing.segments, existing).some((segment) => segment.from || segment.to)) continue;
     appData.timesheets[month][employee][date] = {
       ...existing,
       tip,
@@ -743,6 +758,27 @@ function cleanGastroTotal(value, drinks = "", food = "", other = "") {
   return cleanMoney(value);
 }
 function cleanTime(value) { const text = String(value || "").trim(); return /^\d{2}:\d{2}$/.test(text) ? text : ""; }
+function cleanTimeSegments(value, fallback = {}) {
+  const source = Array.isArray(value) ? value : [];
+  const segments = source.map((segment) => ({
+    from: cleanTime(segment?.from),
+    to: cleanTime(segment?.to)
+  })).filter((segment) => segment.from || segment.to);
+  if (segments.length) return segments.slice(0, 8);
+  const from = cleanTime(fallback.from);
+  const to = cleanTime(fallback.to);
+  return from || to ? [{ from, to }] : [];
+}
+function timeBoundsFromSegments(segments = []) {
+  const clean = cleanTimeSegments(segments);
+  const first = clean.find((segment) => segment.from || segment.to) || {};
+  const lastWithTo = [...clean].reverse().find((segment) => segment.to);
+  const last = lastWithTo || clean.at(-1) || {};
+  return {
+    from: first.from || "",
+    to: last.to || ""
+  };
+}
 function cleanReceiptData(value) { const text = String(value || ""); return text.startsWith("data:") && text.length <= 700000 ? text : ""; }
 function cleanReceiptPath(value) { return String(value || "").trim().replace(/^\/+/, "").slice(0, 300); }
 function cleanReceiptUrl(value) { const text = String(value || "").trim(); return text.startsWith("/api/receipt?") ? text.slice(0, 500) : ""; }

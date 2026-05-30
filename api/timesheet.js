@@ -64,6 +64,7 @@ async function adminSaveTime(body, req, res) {
     ...existing,
     from,
     to,
+    segments: [{ from, to }],
     adminNote: String(body.note || "").trim().slice(0, 600),
     adminOnly: true,
     source: "admin-manual",

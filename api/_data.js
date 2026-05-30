@@ -666,7 +666,7 @@ function syncReportTipsToTimesheets(appData) {
     for (const [employee, tip] of Object.entries(tips)) {
       const entries = appData.timesheets[month][employee];
       const existing = entries?.[date];
-      if (!existing || (!existing.from && !existing.to)) continue;
+      if (!existing || !timeSegmentsForSync(existing).some((segment) => segment.from || segment.to)) continue;
       if (String(existing.tip || "") === tip && existing.tipSource === "terminal-distribution") continue;
       appData.timesheets[month][employee][date] = {
         ...existing,
@@ -788,13 +788,25 @@ function tipOpeningTimeForSync(report = {}) {
 }
 
 function paidHoursAfterOpeningForSync(entry = {}, openingTime = "00:00") {
-  if (!entry.from || !entry.to) return 0;
-  const start = tipTimeToMinutes(entry.from);
-  let end = tipTimeToMinutes(entry.to);
   const opening = tipTimeToMinutes(openingTime);
-  if (end < start) end += 24 * 60;
-  const effectiveStart = Math.max(start, opening);
-  return Math.max(0, end - effectiveStart) / 60;
+  return timeSegmentsForSync(entry).reduce((sum, segment) => {
+    if (!segment.from || !segment.to) return sum;
+    const start = tipTimeToMinutes(segment.from);
+    let end = tipTimeToMinutes(segment.to);
+    if (end < start) end += 24 * 60;
+    const effectiveStart = Math.max(start, opening);
+    return sum + Math.max(0, end - effectiveStart) / 60;
+  }, 0);
+}
+
+function timeSegmentsForSync(entry = {}) {
+  const segments = Array.isArray(entry.segments) ? entry.segments : [];
+  const normalized = segments.map((segment) => ({
+    from: String(segment?.from || "").trim(),
+    to: String(segment?.to || "").trim()
+  })).filter((segment) => segment.from || segment.to);
+  if (normalized.length) return normalized;
+  return entry.from || entry.to ? [{ from: entry.from || "", to: entry.to || "" }] : [];
 }
 
 function tipMinutesBetween(from, to) {
