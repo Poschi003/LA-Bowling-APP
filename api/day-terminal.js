@@ -1,5 +1,6 @@
 ﻿const { handleError, publicSettings, readAppData, readJson, sendJson, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
 const crypto = require("crypto");
+const { addBonusEvent } = require("./_data");
 const { defaultData } = require("./_data");
 
 module.exports = async function handler(req, res) {
@@ -371,11 +372,22 @@ async function confirmToilet(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), checkKey = String(body.checkKey || "");
   if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   if (!checkKey) return sendJson(res, 400, { error: "Kontrolle fehlt." });
+  const employee = cleanText(body.employee || body.checkEmployee, 160);
+  if (!employee) return sendJson(res, 400, { error: "Bitte Mitarbeiter auswählen." });
+  if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
   appData.dayReports ||= {};
   const report = appData.dayReports[date] || {};
   const toiletChecks = Array.isArray(report.toiletChecks) ? report.toiletChecks : [];
   if (!toiletChecks.some((item) => item.checkKey === checkKey)) {
-    toiletChecks.push({ checkKey, checkedAt: new Date().toISOString() });
+    toiletChecks.push({ checkKey, employee, checkedAt: new Date().toISOString() });
+    addBonusEvent(appData, {
+      employee,
+      type: "toilet-check",
+      label: "Toilettenkontrolle",
+      points: 5,
+      sourceKey: `toilet-check:${date}:${checkKey}`,
+      date
+    });
   }
   appData.dayReports[date] = { ...report, toiletChecks, updatedAt: new Date().toISOString() };
   await writeAppData(appData);
@@ -688,6 +700,7 @@ function cleanToiletChecks(value) {
   return value.slice(0, 40).map((item) => ({
     checkKey: String(item.checkKey || "").slice(0, 40),
     text: cleanText(item.text, 240),
+    employee: cleanText(item.employee, 160),
     checkedAt: String(item.checkedAt || new Date().toISOString()).slice(0, 40)
   })).filter((item) => item.checkKey);
 }

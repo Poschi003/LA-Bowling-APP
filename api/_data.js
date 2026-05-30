@@ -156,7 +156,8 @@ const defaultData = {
   terminalMessages: [],
   customerDirectory: [],
   swaps: [],
-  availabilityChangeRequests: []
+  availabilityChangeRequests: [],
+  bonusEvents: []
 };
 
 function cloneData(value) {
@@ -224,7 +225,8 @@ function mergeData(value) {
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     customerDirectory: Array.isArray(value?.customerDirectory) ? value.customerDirectory : base.customerDirectory,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
-    availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
+    availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests,
+    bonusEvents: normalizeBonusEvents(value?.bonusEvents || base.bonusEvents)
   };
   if (!merged.settings.businessName || merged.settings.businessName === "Dienstplan") {
     merged.settings.businessName = "Teamapp";
@@ -827,6 +829,171 @@ function roundTipToBillsForSync(value) {
   return Math.floor(amount / 5) * 5;
 }
 
+const BONUS_CATEGORIES = {
+  "daily-check": { label: "TeamApp täglich geöffnet", points: 5 },
+  "message-read": { label: "Nachricht gelesen", points: 5 },
+  "toilet-check": { label: "Toilettenkontrolle", points: 5 },
+  "employee-praise": { label: "Mitarbeiterlob", points: 20 },
+  "swap-cover": { label: "Für jemanden eingesprungen", points: 50 },
+  "weekend-availability-worked": { label: "Fr/Sa Verfügbarkeit und gearbeitet", points: 10 }
+};
+
+function normalizeBonusEvents(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((event) => ({
+      id: String(event?.id || ""),
+      employee: String(event?.employee || "").trim(),
+      type: String(event?.type || "").trim(),
+      label: String(event?.label || BONUS_CATEGORIES[event?.type]?.label || "Punkte").trim(),
+      points: Math.max(0, Math.round(Number(event?.points || BONUS_CATEGORIES[event?.type]?.points || 0))),
+      sourceKey: String(event?.sourceKey || "").trim(),
+      date: bonusDateKey(event?.date || event?.createdAt || new Date()),
+      createdAt: String(event?.createdAt || new Date().toISOString())
+    }))
+    .filter((event) => event.employee && event.type && event.points > 0);
+}
+
+function addBonusEvent(appData, event = {}) {
+  const employee = matchEmployeeName(appData?.settings, event.employee);
+  if (!employee) return false;
+  const type = String(event.type || "").trim();
+  const config = BONUS_CATEGORIES[type] || {};
+  const points = Math.max(0, Math.round(Number(event.points || config.points || 0)));
+  if (!type || points <= 0) return false;
+  appData.bonusEvents = normalizeBonusEvents(appData.bonusEvents);
+  const sourceKey = String(event.sourceKey || "").trim();
+  if (sourceKey && appData.bonusEvents.some((item) => item.sourceKey === sourceKey)) return false;
+  const createdAt = String(event.createdAt || new Date().toISOString());
+  appData.bonusEvents.push({
+    id: String(event.id || `bonus-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`),
+    employee,
+    type,
+    label: String(event.label || config.label || "Punkte"),
+    points,
+    sourceKey,
+    date: bonusDateKey(event.date || createdAt),
+    createdAt
+  });
+  appData.bonusEvents = appData.bonusEvents
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(0, 5000);
+  return true;
+}
+
+function bonusSummaryForEmployee(appData, employee) {
+  const employeeName = matchEmployeeName(appData?.settings, employee);
+  if (!employeeName) {
+    return { employee: "", totalPoints: 0, categories: bonusEmptyCategories(), events: [], demo: false };
+  }
+  const persisted = normalizeBonusEvents(appData.bonusEvents)
+    .filter((event) => sameEmployeeName(event.employee, employeeName));
+  const sourceKeys = new Set(persisted.map((event) => event.sourceKey).filter(Boolean));
+  const derived = weekendAvailabilityBonusEvents(appData, employeeName, sourceKeys);
+  const events = [...persisted, ...derived]
+    .sort((a, b) => String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date)))
+    .slice(0, 80);
+  const categoryMap = new Map(Object.entries(BONUS_CATEGORIES).map(([type, config]) => [
+    type,
+    { type, label: config.label, points: config.points, count: 0, total: 0 }
+  ]));
+  for (const event of [...persisted, ...derived]) {
+    if (!categoryMap.has(event.type)) {
+      categoryMap.set(event.type, { type: event.type, label: event.label || "Punkte", points: event.points, count: 0, total: 0 });
+    }
+    const row = categoryMap.get(event.type);
+    row.count += 1;
+    row.total += Number(event.points || 0);
+  }
+  return {
+    employee: employeeName,
+    totalPoints: [...categoryMap.values()].reduce((sum, row) => sum + row.total, 0),
+    categories: [...categoryMap.values()],
+    events,
+    demo: sameEmployeeName(employeeName, "Kevin Leicht")
+  };
+}
+
+function bonusEmptyCategories() {
+  return Object.entries(BONUS_CATEGORIES).map(([type, config]) => ({
+    type,
+    label: config.label,
+    points: config.points,
+    count: 0,
+    total: 0
+  }));
+}
+
+function weekendAvailabilityBonusEvents(appData, employee, sourceKeys = new Set()) {
+  const settings = appData.settings || {};
+  if (bonusEmployeeIsFixed(settings, employee) || !bonusEmployeeIsService(settings, employee)) return [];
+  const events = [];
+  for (const [month, byEmployee] of Object.entries(appData.availability || {})) {
+    const days = byEmployee?.[employee] || {};
+    for (const [date, day] of Object.entries(days || {})) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || day?.status !== "yes") continue;
+      const weekday = new Date(`${date}T12:00:00`).getDay();
+      if (![5, 6].includes(weekday)) continue;
+      const sourceKey = `weekend-availability-worked:${employee}:${date}`;
+      if (sourceKeys.has(sourceKey)) continue;
+      const entry = appData.timesheets?.[month]?.[employee]?.[date] || {};
+      if (!bonusEntryHasCompletedTime(entry)) continue;
+      events.push({
+        id: sourceKey,
+        employee,
+        type: "weekend-availability-worked",
+        label: BONUS_CATEGORIES["weekend-availability-worked"].label,
+        points: BONUS_CATEGORIES["weekend-availability-worked"].points,
+        sourceKey,
+        date,
+        createdAt: `${date}T23:59:00.000Z`,
+        derived: true
+      });
+    }
+  }
+  return events;
+}
+
+function bonusEntryHasCompletedTime(entry = {}) {
+  return timeSegmentsForSync(entry).some((segment) => segment.from && segment.to);
+}
+
+function bonusEmployeeIsFixed(settings = {}, employee = "") {
+  return (settings.fixedEmployees || []).some((name) => sameEmployeeName(name, employee));
+}
+
+function bonusEmployeeIsService(settings = {}, employee = "") {
+  const role = String(settings.employeeRoles?.[employee] || "");
+  const departments = settings.employeeDepartments?.[employee] || [];
+  const values = [role, ...(Array.isArray(departments) ? departments : String(departments || "").split(","))];
+  return values.some((value) => String(value || "").toLowerCase().includes("service"));
+}
+
+function matchEmployeeName(settings = {}, employee = "") {
+  const clean = String(employee || "").trim();
+  if (!clean) return "";
+  return (settings.employees || []).find((name) => sameEmployeeName(name, clean)) || "";
+}
+
+function sameEmployeeName(left, right) {
+  return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
+}
+
+function bonusDateKey(value) {
+  const text = String(value || "");
+  const match = text.match(/^\d{4}-\d{2}-\d{2}/);
+  if (match) return match[0];
+  try {
+    return new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(new Date(value || Date.now()));
+  } catch (error) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 function tipMoneyNumber(value) {
   const parsed = Number(String(value ?? "0").replace(",", "."));
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
@@ -837,6 +1004,8 @@ function tipMoneyString(value) {
 }
 
 module.exports = {
+  addBonusEvent,
+  bonusSummaryForEmployee,
   createPinHash,
   defaultData,
   employeeByPin,

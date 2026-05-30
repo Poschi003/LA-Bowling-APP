@@ -1,4 +1,5 @@
 const {
+  addBonusEvent,
   createPinHash,
   employeeByPin,
   employeeIsAdmin,
@@ -22,6 +23,21 @@ module.exports = async function handler(req, res) {
     const employee = employeeByPin(appData.settings, body.pin);
     if (employee) {
       const isAdmin = employeeIsAdmin(appData.settings, employee);
+      const today = new Intl.DateTimeFormat("sv-SE", {
+        timeZone: "Europe/Berlin",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(new Date());
+      const bonusChanged = addBonusEvent(appData, {
+        employee,
+        type: "daily-check",
+        label: "TeamApp täglich geöffnet",
+        points: 5,
+        sourceKey: `daily-check:${employee}:${today}`,
+        date: today
+      });
+      if (bonusChanged) await writeAppData(appData);
       return sendJson(res, 200, {
         employee,
         token: signToken({ type: "employee", employee }),

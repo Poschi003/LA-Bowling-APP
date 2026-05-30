@@ -9,6 +9,7 @@
   verifyToken,
   writeAppData
 } = require("./_data");
+const { addBonusEvent, bonusSummaryForEmployee } = require("./_data");
 
 module.exports = async function handler(req, res) {
   try {
@@ -46,6 +47,27 @@ module.exports = async function handler(req, res) {
       appData.messages = (appData.messages || []).filter((message) => message.id !== id);
       await writeAppData(appData);
       return sendJson(res, 200, { ok: true, messages: appData.messages });
+    }
+
+    if (body.action === "add-bonus-praise") {
+      const employee = String(body.employee || "").trim();
+      if (!(appData.settings.employees || []).includes(employee)) {
+        return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
+      }
+      const note = String(body.note || "").trim().slice(0, 180);
+      addBonusEvent(appData, {
+        employee,
+        type: "employee-praise",
+        label: note ? `Mitarbeiterlob: ${note}` : "Mitarbeiterlob",
+        points: 20,
+        sourceKey: `employee-praise:${employee}:${Date.now()}:${Math.random().toString(16).slice(2)}`,
+        date: new Date().toISOString().slice(0, 10)
+      });
+      await writeAppData(appData);
+      return sendJson(res, 200, {
+        ok: true,
+        bonusSummary: bonusSummaryForEmployee(appData, employee)
+      });
     }
 
     if (body.action === "add-terminal-message") {

@@ -1,6 +1,8 @@
 ﻿const fs = require("fs");
 const path = require("path");
 const {
+  addBonusEvent,
+  bonusSummaryForEmployee,
   defaultData,
   handleError,
   publicSettings,
@@ -66,6 +68,7 @@ module.exports = async function handler(req, res) {
           : { [employeeSession.employee]: appData.timesheets?.[month]?.[employeeSession.employee] || {} },
         dayReports: isChef ? (appData.dayReports || {}) : {},
         messages: messagesForEmployee(appData.messages || [], appData.settings, employeeSession.employee),
+        bonusSummary: bonusSummaryForEmployee(appData, employeeSession.employee),
         isChef,
         weather,
         missingAvailability,
@@ -130,10 +133,19 @@ async function acknowledgeMessage(body, res) {
     const readBy = message.readBy || {};
     return !recipients.every((employee) => readBy[employee]);
   });
-  if (changed) await writeAppData(appData);
+  const bonusChanged = changed && addBonusEvent(appData, {
+    employee: session.employee,
+    type: "message-read",
+    label: "Nachricht gelesen",
+    points: 5,
+    sourceKey: `message-read:${session.employee}:${messageId}`,
+    date: new Date().toISOString().slice(0, 10)
+  });
+  if (changed || bonusChanged) await writeAppData(appData);
   return sendJson(res, 200, {
     ok: true,
-    messages: messagesForEmployee(appData.messages || [], appData.settings, session.employee)
+    messages: messagesForEmployee(appData.messages || [], appData.settings, session.employee),
+    bonusSummary: bonusSummaryForEmployee(appData, session.employee)
   });
 }
 
