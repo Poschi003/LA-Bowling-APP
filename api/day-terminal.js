@@ -224,6 +224,7 @@ async function saveTips(body, res) {
   const revenueGastro = cleanGastroTotal(body.revenueGastro, revenueDrinks, revenueFood, revenueOther);
   const personalConsumption = cleanMoney(body.personalConsumption ?? existing.personalConsumption);
   const cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
+  const documents = await cleanReportDocuments(body.documents || existing.documents, date);
   appData.dayReports[date] = {
     ...existing,
     cashTotal: cleanMoney(body.cashTotal),
@@ -245,6 +246,7 @@ async function saveTips(body, res) {
     tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount,
     tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder,
     tipsByEmployee,
+    documents,
     updatedAt: new Date().toISOString()
   };
   applyTipsToTimesheets(appData, date, tipsByEmployee);
@@ -477,6 +479,7 @@ function reportHasActivity(report = {}) {
     report.cashExpenses ||
     (report.invoiceCustomers || []).length ||
     (report.expenses || []).length ||
+    Object.values(report.documents || {}).some((document) => document?.name || document?.path || document?.url || document?.data) ||
     (report.handovers || []).length ||
     Object.keys(report.taskCompletions || {}).length ||
     Object.keys(report.cleaningCompletions || {}).length ||
