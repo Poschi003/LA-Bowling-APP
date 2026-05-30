@@ -3980,6 +3980,13 @@ button:disabled {
   margin-top: 4px;
 }
 
+.report-document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .expense-receipts {
   display: grid;
   gap: 10px;

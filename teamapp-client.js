@@ -3665,7 +3665,7 @@ function setDayReportLocked(isLocked, report = {}) {
   $$("#dayReportPrintArea input, #dayReportPrintArea textarea, #dayReportPrintArea select, #terminalFinanceSection input, #terminalFinanceSection textarea, #terminalFinanceSection select").forEach((field) => {
     field.disabled = isLocked;
   });
-  $$("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-save-expense-entry], [data-remove-report-entry], #saveDayReport, #saveTipDistribution").forEach((button) => {
+  $$("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-save-expense-entry], [data-remove-report-entry], [data-remove-report-document], #saveDayReport, #saveTipDistribution").forEach((button) => {
     button.disabled = isLocked;
   });
   const closeButton = $("#closeDayReport");
@@ -3727,13 +3727,64 @@ function renderReportDocuments(report = {}) {
     <article class="report-entry compact-report-entry">
       <strong>${escapeHtml(label)}</strong>
       ${document?.name ? `<span class="hint">${escapeHtml(document.name)}</span>` : `<span class="hint">Noch nicht hochgeladen.</span>`}
-      ${document?.path || document?.url || document?.data ? reportDocumentLinkHtml(document, label) : ""}
+      ${document?.path || document?.url || document?.data ? `
+        <div class="report-document-actions">
+          ${reportDocumentLinkHtml(document, label)}
+          <button class="secondary danger-lite" data-remove-report-document="${documentKey(label)}" type="button">Entfernen</button>
+        </div>
+      ` : ""}
       <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="name" value="${escapeHtml(document?.name || "")}">
       <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="path" value="${escapeHtml(document?.path || "")}">
       <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="url" value="${escapeHtml(document?.url || "")}">
       <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="data" value="${escapeHtml(document?.data || "")}">
     </article>
   `).join("");
+}
+
+function reportDocumentInputForKey(key) {
+  return {
+    penta: "#reportDocumentPenta",
+    handwriting: "#reportDocumentHandwriting",
+    ecCut: "#reportDocumentEcCut"
+  }[key] || "";
+}
+
+function reportDocumentLabelForInput(input) {
+  if (input?.id === "reportDocumentPenta") return "Penta";
+  if (input?.id === "reportDocumentHandwriting") return "Handschrift";
+  if (input?.id === "reportDocumentEcCut") return "EC-Schnitt";
+  return "Dokument";
+}
+
+function clearReportDocumentFields(key) {
+  $$(`[data-report-document="${key}"]`).forEach((field) => {
+    field.value = "";
+  });
+  const selector = reportDocumentInputForKey(key);
+  if (selector && $(selector)) $(selector).value = "";
+  if (state.terminalReport?.documents) {
+    state.terminalReport.documents[key] = {};
+  }
+}
+
+async function saveReportDocumentsNow(source, successText = "Abschlussdokumente gespeichert.") {
+  if (state.terminalReport?.closed) return;
+  const oldText = source?.tagName === "BUTTON" ? source.textContent : "";
+  if (source?.tagName === "BUTTON") {
+    source.disabled = true;
+    source.textContent = "Speichert...";
+  }
+  try {
+    await terminalAction(await collectDayReportPayload());
+    showToast(successText);
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (source?.tagName === "BUTTON") {
+      source.textContent = oldText;
+      source.disabled = false;
+    }
+  }
 }
 
 function renderCustomerInvoiceDesk() {
@@ -7648,9 +7699,23 @@ function bindEvents() {
       row?.querySelector(".expense-receipt-upload-list")?.insertAdjacentHTML("beforeend", expenseReceiptUploadHtml());
       return;
     }
+    const removeDocumentButton = event.target.closest("[data-remove-report-document]");
+    if (removeDocumentButton) {
+      const key = removeDocumentButton.dataset.removeReportDocument;
+      if (!key) return;
+      clearReportDocumentFields(key);
+      saveReportDocumentsNow(removeDocumentButton, "Dokument entfernt.");
+      return;
+    }
     const removeButton = event.target.closest("[data-remove-report-entry]");
     if (!removeButton) return;
     removeTerminalFinanceEntry(removeButton);
+  });
+
+  $("#terminalFinanceSection")?.addEventListener("change", (event) => {
+    const input = event.target.closest("#reportDocumentPenta, #reportDocumentHandwriting, #reportDocumentEcCut");
+    if (!input || !input.files?.length) return;
+    saveReportDocumentsNow(input, `${reportDocumentLabelForInput(input)} gespeichert.`);
   });
 
   $("#saveDayReport")?.addEventListener("click", async () => {
@@ -7707,7 +7772,8 @@ function bindEvents() {
         resetTipPayout: true,
         tipTotal: result.tipTotal.toFixed(2),
         tipRemainder: result.tipRemainder.toFixed(2),
-        tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)]))
+        tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
+        documents: await collectReportDocuments()
       });
       button.textContent = "Gespeichert";
       showToast("Umsatzdetails gespeichert.");
