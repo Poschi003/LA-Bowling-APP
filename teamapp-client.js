@@ -3266,12 +3266,15 @@ function renderTerminal() {
           ${hours ? `<span class="terminal-hours">${formatHours(hours)}</span>` : ""}
         </div>
         <div class="terminal-time-edit">
+          <div class="terminal-time-toolbar">
+            <strong>Arbeitszeiten</strong>
+            <div class="terminal-time-toolbar-actions">
+              <button class="secondary terminal-add-segment-button" type="button" data-add-time-segment="${escapeHtml(employee)}" title="Arbeitszeit hinzufügen" aria-label="Arbeitszeit hinzufügen" ${reportClosed ? "disabled" : ""}>+</button>
+              <button class="secondary terminal-save-times-button" data-terminal-adjust="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Speichern</button>
+            </div>
+          </div>
           <div class="terminal-time-segments">
             ${timeSegmentsForEdit(entry).map((segment, index) => terminalTimeSegmentRowHtml(segment, index, reportClosed)).join("")}
-          </div>
-          <div class="terminal-time-tools">
-            <button class="secondary terminal-add-segment-button" type="button" data-add-time-segment="${escapeHtml(employee)}" title="Arbeitszeit hinzufügen" aria-label="Arbeitszeit hinzufügen" ${reportClosed ? "disabled" : ""}>+</button>
-            <button class="secondary" data-terminal-adjust="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Zeiten speichern</button>
           </div>
         </div>
         <div class="terminal-actions">
@@ -3316,7 +3319,7 @@ function terminalTimeSegmentRowHtml(segment = {}, index = 0, disabled = false) {
       <span>${index + 1}.</span>
       <label>Beginn<input type="time" data-terminal-time="from" value="${escapeHtml(segment.from || "")}" ${disabled ? "disabled" : ""}></label>
       <label>Ende<input type="time" data-terminal-time="to" value="${escapeHtml(segment.to || "")}" ${disabled ? "disabled" : ""}></label>
-      <button class="secondary" type="button" data-remove-time-segment ${disabled || index === 0 ? "disabled" : ""}>Entfernen</button>
+      <button class="secondary terminal-remove-segment-button" type="button" data-remove-time-segment title="Arbeitszeit entfernen" aria-label="Arbeitszeit entfernen" ${disabled || index === 0 ? "disabled" : ""}>×</button>
     </div>
   `;
 }
