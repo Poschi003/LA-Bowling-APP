@@ -645,6 +645,17 @@ function syncReportTipsToTimesheets(appData) {
     appData.timesheets[month] ||= {};
     const tips = reportTipsForSync(appData, date, report);
     if (!Object.keys(tips).length) continue;
+    const syncedTipTotal = reportTipTotalForSync(report);
+    const syncedTipRemainder = Math.max(0, syncedTipTotal - Object.values(tips).reduce((sum, amount) => sum + tipMoneyNumber(amount), 0));
+
+    if (syncedTipTotal > 0 && tipMoneyNumber(report.tipTotal) <= 0) {
+      report.tipTotal = tipMoneyString(syncedTipTotal);
+      changed = true;
+    }
+    if (syncedTipTotal > 0 && tipMoneyString(report.tipRemainder) !== tipMoneyString(syncedTipRemainder)) {
+      report.tipRemainder = tipMoneyString(syncedTipRemainder);
+      changed = true;
+    }
 
     const existingTips = cleanTipMapForSync(report.tipsByEmployee || {});
     if (JSON.stringify(existingTips) !== JSON.stringify(tips)) {
@@ -729,11 +740,12 @@ function reportTipTotalForSync(report = {}) {
   const cashTotal = tipMoneyNumber(report.cashTotal);
   const ecTotal = tipMoneyNumber(report.ecTotal) || tipMoneyNumber(report.ecTerminal1) + tipMoneyNumber(report.ecTerminal2);
   const personalConsumption = tipMoneyNumber(report.personalConsumption);
+  const cashExpenses = tipMoneyNumber(report.cashExpenses);
   const revenueBowling = tipMoneyNumber(report.revenueBowling ?? report.barBowling);
   const revenueGastro = tipMoneyNumber(report.revenueGastro ?? report.barGastro)
     || tipMoneyNumber(report.revenueDrinks) + tipMoneyNumber(report.revenueFood) + tipMoneyNumber(report.revenueOther);
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
-  return Math.max(0, cashTotal + ecTotal - totalRevenue);
+  return Math.max(0, cashTotal + cashExpenses + ecTotal - totalRevenue);
 }
 
 function tipAreaForSync(settings, scheduleDay, report, employee) {
@@ -777,8 +789,12 @@ function tipOpeningTimeForSync(report = {}) {
 
 function paidHoursAfterOpeningForSync(entry = {}, openingTime = "00:00") {
   if (!entry.from || !entry.to) return 0;
-  const from = tipTimeToMinutes(entry.from) >= tipTimeToMinutes(openingTime) ? entry.from : openingTime;
-  return tipMinutesBetween(from, entry.to) / 60;
+  const start = tipTimeToMinutes(entry.from);
+  let end = tipTimeToMinutes(entry.to);
+  const opening = tipTimeToMinutes(openingTime);
+  if (end < start) end += 24 * 60;
+  const effectiveStart = Math.max(start, opening);
+  return Math.max(0, end - effectiveStart) / 60;
 }
 
 function tipMinutesBetween(from, to) {
