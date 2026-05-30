@@ -15,6 +15,7 @@
   timesheets: {},
   messages: [],
   terminalMessages: [],
+  bonusSummary: null,
   dayReports: {},
   missingAvailability: [],
   swaps: { open: [], mine: [], myShifts: [], admin: [] },
@@ -443,6 +444,7 @@ async function loadState() {
   state.timesheets = data.timesheets || {};
   state.messages = data.messages || [];
   state.terminalMessages = data.terminalMessages || [];
+  state.bonusSummary = data.bonusSummary || null;
   state.taskTemplates = data.taskTemplates || [];
   state.cleaningTemplates = normalizeCleaningTemplates(data.cleaningTemplates);
   state.reminderTemplates = normalizeReminderTemplates(data.reminderTemplates);
@@ -687,6 +689,7 @@ function renderAll() {
   renderHome();
   renderPublished();
   renderSwaps();
+  renderHallOfFame();
   renderChef();
   renderTimesheet();
   renderSettings();
@@ -698,6 +701,7 @@ function renderAll() {
   renderAdminSwaps();
   renderAdminAvailabilityRequests();
   renderMessageEmployeePicker();
+  renderBonusPraisePicker();
   renderAdminMessages();
   renderAdminTerminalMessages();
   renderAdminTasks();
@@ -733,6 +737,7 @@ function renderAccess() {
   $("#mainTabs")?.classList.toggle("hidden", !loggedIn || state.pinChangeRequired);
   $$(".employee-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || chef));
   $('[data-tab="swaps"]')?.classList.add("hidden");
+  $$(".hall-demo-only").forEach((element) => element.classList.toggle("hidden", !isHallOfFameDemoEmployee(state.activeEmployee) || state.pinChangeRequired));
   $$(".backoffice-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || !state.hasBackofficeAccess));
   $$(".chef-only").forEach((element) => element.classList.toggle("hidden", !chef));
   $("#homeLogin")?.classList.toggle("hidden", loggedIn);
@@ -846,6 +851,62 @@ function renderDashboardMessages() {
       `).join("")}
     </section>
   `;
+}
+
+function isHallOfFameDemoEmployee(employee) {
+  return String(employee || "").trim().toLowerCase() === "kevin leicht";
+}
+
+function renderHallOfFame() {
+  const target = $("#hallOfFameContent");
+  if (!target) return;
+  if (!isHallOfFameDemoEmployee(state.activeEmployee)) {
+    target.innerHTML = `<p class="hint">Hall of Fame ist aktuell nur als Demo für Kevin freigeschaltet.</p>`;
+    return;
+  }
+  const summary = state.bonusSummary || {};
+  const categories = Array.isArray(summary.categories) ? summary.categories : [];
+  const events = Array.isArray(summary.events) ? summary.events : [];
+  target.innerHTML = `
+    <section class="hall-hero">
+      <div>
+        <span>Demo Hall of Fame</span>
+        <h3>${escapeHtml(summary.employee || state.activeEmployee)}</h3>
+        <p>Punkte werden automatisch gesammelt. Wenn das für Kevin passt, rollen wir es für alle Mitarbeiter aus.</p>
+      </div>
+      <strong>${Number(summary.totalPoints || 0).toLocaleString("de-DE")} Punkte</strong>
+    </section>
+    <div class="hall-category-grid">
+      ${categories.map((category) => `
+        <article class="hall-category-card ${category.total > 0 ? "active" : ""}">
+          <span>+${Number(category.points || 0)} je Aktion</span>
+          <strong>${escapeHtml(category.label || "Punkte")}</strong>
+          <small>${Number(category.count || 0)}x gesammelt · ${Number(category.total || 0)} Punkte</small>
+        </article>
+      `).join("")}
+    </div>
+    <section class="hall-event-panel">
+      <h3>Letzte Punkte</h3>
+      ${events.length ? `
+        <div class="hall-event-list">
+          ${events.slice(0, 20).map((event) => `
+            <article>
+              <div>
+                <strong>${escapeHtml(event.label || "Punkte")}</strong>
+                <span>${escapeHtml(formatBonusDate(event.date || event.createdAt))}${event.derived ? " · automatisch berechnet" : ""}</span>
+              </div>
+              <b>+${Number(event.points || 0)}</b>
+            </article>
+          `).join("")}
+        </div>
+      ` : `<p class="hint">Noch keine Punkte gesammelt.</p>`}
+    </section>
+  `;
+}
+
+function formatBonusDate(value) {
+  const dateKey = String(value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? formatDate(dateKey) : "Heute";
 }
 
 function dashboardMessagesForActiveEmployee() {
@@ -2549,6 +2610,16 @@ function selectedMessageEmployees() {
   return $$("[data-message-employee]:checked").map((input) => input.value).filter(Boolean);
 }
 
+function renderBonusPraisePicker() {
+  const select = $("#bonusPraiseEmployee");
+  if (!select) return;
+  const current = select.value || "Kevin Leicht";
+  const employees = state.settings?.employees || [];
+  select.innerHTML = `<option value="">Mitarbeiter auswählen</option>${employees.map((employee) => (
+    `<option value="${escapeHtml(employee)}" ${current === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`
+  )).join("")}`;
+}
+
 function messageReadStatusText(message = {}) {
   const recipients = messageRecipientsClient(message);
   const total = recipients.length;
@@ -3654,6 +3725,7 @@ function renderTerminalChecks(report = {}) {
   const reminderChecks = (report.reminderChecks || []).map((item) => ({
     key: item.checkKey || "",
     text: item.text || "Toiletten-Kontrolle durchführen",
+    employee: item.employee || "",
     checkedAt: item.checkedAt || "",
     type: checkLogType(item)
   }));
@@ -3663,6 +3735,7 @@ function renderTerminalChecks(report = {}) {
     .map((item) => ({
       key: item.checkKey || "",
       text: "Toiletten-Kontrolle durchführen",
+      employee: item.employee || "",
       checkedAt: item.checkedAt || "",
       type: "Toilette"
     }));
@@ -3676,6 +3749,7 @@ function renderTerminalChecks(report = {}) {
           <div>
             <strong>${escapeHtml(item.type)}</strong>
             <span>${escapeHtml(item.text)}</span>
+            ${item.employee ? `<small>${escapeHtml(item.employee)}</small>` : ""}
           </div>
           <time>${escapeHtml(item.checkedAt ? formatDateTime(item.checkedAt) : checkTimeFromKey(item.key))}</time>
         </article>
@@ -3690,6 +3764,13 @@ function checkLogType(item = {}) {
   if (text.includes("toilet") || text.includes("toilette") || key.includes("toilet")) return "Toilette";
   if (key.includes("task-popup")) return "Aufgaben-Popup";
   return "Popup";
+}
+
+function pendingReminderIsToilet(reminder = state.pendingReminder) {
+  if (!reminder) return false;
+  const key = String(reminder.checkKey || "").toLowerCase();
+  const id = String(reminder.reminderId || "").toLowerCase();
+  return !key.includes("task-popup") && (key.includes("toilet") || id.includes("toilet"));
 }
 
 function checkTimeFromKey(key = "") {
@@ -3708,6 +3789,16 @@ function checkTerminalReminders(report, reportClosed) {
   state.pendingToiletCheck = due?.checkKey || "";
   $("#terminalReminderTitle").textContent = due?.title || (isTodoMode() ? "TO DO Erinnerung" : "Terminal Erinnerung");
   $("#terminalReminderText").textContent = due?.text || "Bitte quittieren.";
+  const employeeWrap = $("#toiletCheckEmployeeWrap");
+  const employeeSelect = $("#toiletCheckEmployee");
+  const toiletDue = pendingReminderIsToilet(due);
+  employeeWrap?.classList.toggle("hidden", !toiletDue);
+  if (employeeSelect && toiletDue) {
+    const current = employeeSelect.value || report.shiftLeader || "";
+    employeeSelect.innerHTML = `<option value="">Mitarbeiter auswählen</option>${(state.settings?.employees || []).map((employee) => (
+      `<option value="${escapeHtml(employee)}" ${current === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`
+    )).join("")}`;
+  }
   modal.classList.toggle("hidden", !due);
 }
 
@@ -4413,7 +4504,7 @@ async function acknowledgeDashboardMessage(messageId, button) {
     button.textContent = "Speichert...";
   }
   try {
-    await api("/api/state", {
+    const result = await api("/api/state", {
       method: "POST",
       body: JSON.stringify({
         action: "ack-message",
@@ -4421,6 +4512,7 @@ async function acknowledgeDashboardMessage(messageId, button) {
         messageId
       })
     });
+    state.bonusSummary = result.bonusSummary || state.bonusSummary;
     state.messages = (state.messages || []).map((message) => {
       if (message.id !== messageId) return message;
       return {
@@ -4436,6 +4528,7 @@ async function acknowledgeDashboardMessage(messageId, button) {
       return !recipients.length || !recipients.every((employee) => message.readBy?.[employee]);
     });
     renderHome();
+    renderHallOfFame();
     renderChef();
     renderAdminMessages();
     showToast("Nachricht als gelesen bestätigt.");
@@ -5318,52 +5411,24 @@ async function confirmToiletCheck() {
   if (!state.pendingReminder?.checkKey && !state.pendingToiletCheck) return { ok: true, message: "Keine offene Erinnerung." };
   const checkKey = state.pendingReminder?.checkKey || state.pendingToiletCheck;
   const text = state.pendingReminder?.text || "Toiletten-Kontrolle durchführen";
-  const checks = [...(state.terminalReport?.toiletChecks || [])];
-  const reminderChecks = [...(state.terminalReport?.reminderChecks || [])];
-  if (!checks.some((item) => item.checkKey === checkKey)) {
-    checks.push({ checkKey, checkedAt: new Date().toISOString() });
+  const isToilet = pendingReminderIsToilet();
+  const employee = $("#toiletCheckEmployee")?.value || "";
+  if (isToilet && !employee) {
+    throw new Error("Bitte Mitarbeiter auswählen.");
   }
-  if (!reminderChecks.some((item) => item.checkKey === checkKey)) {
-    reminderChecks.push({ checkKey, text, checkedAt: new Date().toISOString() });
-  }
-  state.terminalReport = { ...(state.terminalReport || {}), toiletChecks: checks, reminderChecks };
+  const result = await terminalAction({
+    action: isToilet ? "confirm-toilet" : "confirm-reminder",
+    checkKey,
+    text,
+    employee
+  });
   state.pendingToiletCheck = "";
   state.pendingReminder = null;
   window.localStorage?.setItem(`toilet-check-${checkKey}`, "1");
   $("#toiletReminder")?.classList.add("hidden");
   renderToiletStatus(state.terminalReport);
   renderTerminalChecks(state.terminalReport);
-  try {
-    await terminalAction({
-      action: "save-report",
-      cashTotal: $("#reportCashTotal")?.value || state.terminalReport.cashTotal || "",
-      cashExpenses: cashExpensesFromFormOrReport().toFixed(2),
-      ecTerminal1: $("#reportEcTerminal1")?.value || state.terminalReport.ecTerminal1 || "",
-      ecTerminal2: $("#reportEcTerminal2")?.value || state.terminalReport.ecTerminal2 || "",
-      ecTotal: ecTotalFromFormOrReport().toFixed(2),
-      personalConsumption: $("#reportPersonalConsumption")?.value || state.terminalReport.personalConsumption || "",
-      revenueBowling: $("#reportRevenueBowling")?.value || state.terminalReport.revenueBowling || state.terminalReport.barBowling || "",
-      revenueDrinks: $("#reportRevenueDrinks")?.value || state.terminalReport.revenueDrinks || "",
-      revenueFood: $("#reportRevenueFood")?.value || state.terminalReport.revenueFood || "",
-      revenueOther: $("#reportRevenueOther")?.value || state.terminalReport.revenueOther || "",
-      revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
-      barBowling: $("#reportRevenueBowling")?.value || state.terminalReport.barBowling || "",
-      barGastro: gastroRevenueFromFormOrReport().toFixed(2),
-      openingHours: $("#terminalOpeningHours")?.value || state.terminalReport.openingHours || "",
-      shiftLeader: $("#terminalShiftLeader")?.value || state.terminalReport.shiftLeader || "",
-      handovers: state.terminalReport.handovers || [],
-      invoiceCustomers: await collectReportEntries("invoice"),
-      expenses: await collectReportEntries("expense"),
-      notes: $("#reportNotes")?.value || state.terminalReport.notes || "",
-      taskCompletions: state.terminalReport.taskCompletions || {},
-      cleaningCompletions: state.terminalReport.cleaningCompletions || {},
-      toiletChecks: checks,
-      reminderChecks
-    });
-  } catch (error) {
-    console.warn("Toiletten-Kontrolle lokal quittiert, Server-Speicherung fehlgeschlagen:", error);
-  }
-  return { ok: true, message: "Kontrolle quittiert." };
+  return result || { ok: true, message: "Kontrolle quittiert." };
 }
 
 function renderAdminPublishedList() {
@@ -7088,6 +7153,32 @@ function bindEvents() {
       $$("[data-message-employee]").forEach((input) => { input.checked = false; });
       renderAdminMessages();
       showToast("Nachricht veröffentlicht.");
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  $("#sendBonusPraise")?.addEventListener("click", async () => {
+    const employee = $("#bonusPraiseEmployee")?.value || "";
+    const note = $("#bonusPraiseNote")?.value.trim() || "";
+    if (!employee) {
+      showToast("Bitte Mitarbeiter auswählen.");
+      return;
+    }
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({
+          action: "add-bonus-praise",
+          employee,
+          note
+        })
+      });
+      if (state.activeEmployee === employee) state.bonusSummary = result.bonusSummary || state.bonusSummary;
+      $("#bonusPraiseNote").value = "";
+      renderHallOfFame();
+      showToast(`${employee}: +20 Punkte für Lob.`);
     } catch (error) {
       showError(error);
     }

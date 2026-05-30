@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260530-terminal-start-red-v1">
+    <link rel="stylesheet" href="styles.css?v=20260530-hall-of-fame-demo-v1">
   </head>
   <body>
     <header class="topbar">
@@ -24,6 +24,7 @@
         <button class="tab employee-only hidden" type="button" data-tab="availability">Verfügbarkeit</button>
         <button class="tab employee-only hidden" type="button" data-tab="published">Dienstplan</button>
         <button class="tab employee-only hidden" type="button" data-tab="timesheet">Stundenübersicht</button>
+        <button class="tab hall-demo-only hidden" type="button" data-tab="hallOfFame">Hall of Fame</button>
         <button class="tab employee-only hidden" type="button" data-tab="swaps">Ersatz Suchen</button>
         <button class="tab backoffice-only hidden" type="button" data-tab="admin">Backoffice</button>
         <button class="tab chef-only hidden" type="button" data-tab="chef">Chef</button>
@@ -96,6 +97,16 @@
         </div>
         <div id="timesheetSummary" class="timesheet-summary"></div>
         <div id="timesheetGrid" class="timesheet-list"></div>
+      </section>
+
+      <section id="hallOfFame" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Hall of Fame</h2>
+            <p>Demo für Kevin: Punkte sammeln durch TeamApp, Kontrollen, Nachrichten und Einspringen.</p>
+          </div>
+        </div>
+        <div id="hallOfFameContent" class="hall-of-fame-content"></div>
       </section>
 
       <section id="chef" class="panel">
@@ -291,6 +302,10 @@
             <div>
               <h3 id="terminalReminderTitle">Erinnerung</h3>
               <p id="terminalReminderText">Bitte quittieren.</p>
+              <label id="toiletCheckEmployeeWrap" class="toilet-check-employee hidden">
+                Kontrolle gemacht von
+                <select id="toiletCheckEmployee"></select>
+              </label>
               <button id="confirmToiletCheck" class="primary" type="button">Quittieren</button>
             </div>
           </div>
@@ -492,6 +507,21 @@
             <button id="sendMessage" class="primary" type="button">Nachricht veröffentlichen</button>
           </div>
           <div id="adminMessagesList" class="swap-list"></div>
+        </details>
+
+        <details class="settings-box admin-priority">
+          <summary>Hall of Fame Lob</summary>
+          <div class="message-editor form-grid">
+            <label>
+              Mitarbeiter
+              <select id="bonusPraiseEmployee"></select>
+            </label>
+            <label>
+              Lob
+              <input id="bonusPraiseNote" placeholder="z.B. besonders starker Service">
+            </label>
+            <button id="sendBonusPraise" class="primary" type="button">+20 Punkte vergeben</button>
+          </div>
         </details>
 
         <details class="settings-box admin-priority">
@@ -821,7 +851,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260530-terminal-start-red-v1"></script>
+    <script src="teamapp-client.js?v=20260530-hall-of-fame-demo-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>
