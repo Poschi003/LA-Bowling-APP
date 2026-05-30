@@ -4474,6 +4474,86 @@ button:disabled {
   text-align: right;
 }
 
+.day-report-attachments {
+  display: grid;
+  gap: 12px;
+  margin: 12px 14px 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.day-report-attachments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.day-report-attachments-head h4,
+.day-report-attachment-group h5 {
+  margin: 0;
+}
+
+.day-report-attachments-head span {
+  color: var(--muted);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.day-report-attachment-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.day-report-attachment-group {
+  display: grid;
+  gap: 8px;
+}
+
+.day-report-attachment-group h5 {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.day-report-attachment-list {
+  display: grid;
+  gap: 7px;
+}
+
+.day-report-attachment-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.day-report-attachment-item div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.day-report-attachment-item strong,
+.day-report-attachment-item span {
+  overflow-wrap: anywhere;
+}
+
+.day-report-attachment-item span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.day-report-attachment-item .receipt-link {
+  justify-self: end;
+  white-space: nowrap;
+}
+
 .open-invoices-panel {
   display: grid;
   gap: 14px;
@@ -5230,6 +5310,7 @@ button:disabled {
   body.print-chef-day-report .report-month-section > summary,
   body.print-chef-day-report .day-report-card:not([data-printing-report]),
   body.print-chef-day-report [data-print-day-report],
+  body.print-chef-day-report .day-report-attachments,
   body.print-chef-day-report .toast {
     display: none !important;
   }
@@ -6264,6 +6345,15 @@ textarea {
   .report-folder-card-head > *,
   .report-folder-file > * {
     min-width: 0;
+  }
+
+  .day-report-attachment-item {
+    grid-template-columns: 1fr;
+  }
+
+  .day-report-attachment-item .receipt-link {
+    justify-self: start;
+    white-space: normal;
   }
 
   .terminal-content {

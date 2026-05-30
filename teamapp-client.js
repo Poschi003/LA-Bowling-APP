@@ -1012,6 +1012,7 @@ function dayReportsHtml() {
           <span>${dayReportSummaryLine(report)}</span>
           </summary>
           ${dayReportA4Html(dateKey, report)}
+          ${chefDayReportAttachmentsHtml(dateKey, report)}
           <button class="secondary" data-print-day-report="${escapeHtml(dateKey)}" type="button">Bericht drucken</button>
         </details>
       `).join("")}
@@ -1035,6 +1036,7 @@ function dayReportsForMonthHtml(month) {
           <span>${dayReportSummaryLine(report)}</span>
           </summary>
           ${dayReportA4Html(dateKey, report)}
+          ${chefDayReportAttachmentsHtml(dateKey, report)}
           <button class="secondary" data-print-day-report="${escapeHtml(dateKey)}" type="button">Bericht drucken</button>
         </details>
       `).join("")}
@@ -1424,19 +1426,12 @@ function dayReportFoldersByMonthHtml() {
     .map((dateKey) => dateKey.slice(0, 7));
   const sortedMonths = [...new Set(months)].sort((a, b) => b.localeCompare(a));
   if (!sortedMonths.length) return "";
-  const folders = [
-    ["expenses", "Ausgaben"],
-    ["invoices", "Bezahlung auf Rechnung"],
-    ["penta", "Penta"],
-    ["handwriting", "Handschrift"],
-    ["ecCut", "EC-Schnitt"]
-  ];
   return `
     <section class="report-folders">
       <div class="report-folders-head">
         <div>
           <h3>Monatsordner</h3>
-          <p>Tagesberichte und Dokumente monatsweise prüfen und exportieren.</p>
+          <p>Tagesberichte monatsweise prüfen. Belege und Dokumente stehen direkt im jeweiligen Tagesbericht.</p>
         </div>
       </div>
       ${sortedMonths.map((month) => `
@@ -1446,18 +1441,12 @@ function dayReportFoldersByMonthHtml() {
               <strong>${formatMonth(month)}</strong>
               <small>${monthReportDays(month)} Tagesberichte</small>
             </span>
-            <b>${folders.reduce((sum, [key]) => sum + reportFolderItems(month, key).length, 0)} Dateien</b>
+            <b>${monthReportAttachmentCount(month)} Dateien</b>
           </summary>
           <details class="report-month-section">
             <summary>Tagesberichte</summary>
             ${dayReportsForMonthHtml(month)}
           </details>
-          ${chefSectionEnabled("reportFolders") ? `<details class="report-month-section">
-            <summary>Dokumente</summary>
-            <div class="report-folder-grid">
-              ${folders.map(([key, label]) => reportFolderHtml(month, key, label)).join("")}
-            </div>
-          </details>` : ""}
         </details>
       `).join("")}
     </section>
@@ -1501,6 +1490,102 @@ function reportFolderHtml(month, key, label) {
 
 function monthReportDays(month) {
   return Object.keys(state.dayReports || {}).filter((dateKey) => dateKey.startsWith(`${month}-`)).length;
+}
+
+function monthReportAttachmentCount(month) {
+  return Object.entries(state.dayReports || {})
+    .filter(([dateKey]) => dateKey.startsWith(`${month}-`))
+    .reduce((sum, [, report]) => sum + dayReportAttachmentCount(report), 0);
+}
+
+function dayReportAttachmentCount(report = {}) {
+  return chefDayReportAttachmentGroups(report).reduce((sum, group) => sum + group.items.length, 0);
+}
+
+function chefDayReportAttachmentsHtml(dateKey, report = {}) {
+  const groups = chefDayReportAttachmentGroups(report);
+  if (!groups.length) return "";
+  return `
+    <section class="day-report-attachments">
+      <div class="day-report-attachments-head">
+        <h4>Belege und Dokumente</h4>
+        <span>${groups.reduce((sum, group) => sum + group.items.length, 0)} Datei${groups.reduce((sum, group) => sum + group.items.length, 0) === 1 ? "" : "en"}</span>
+      </div>
+      <div class="day-report-attachment-groups">
+        ${groups.map((group) => `
+          <section class="day-report-attachment-group">
+            <h5>${escapeHtml(group.label)}</h5>
+            <div class="day-report-attachment-list">
+              ${group.items.map((item) => `
+                <article class="day-report-attachment-item">
+                  <div>
+                    <strong>${escapeHtml(item.title)}</strong>
+                    ${item.subtitle ? `<span>${escapeHtml(item.subtitle)}</span>` : ""}
+                  </div>
+                  ${item.link}
+                </article>
+              `).join("")}
+            </div>
+          </section>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function chefDayReportAttachmentGroups(report = {}) {
+  const invoiceItems = (report.invoiceCustomers || [])
+    .flatMap((customer, index) => invoiceAttachmentItems(customer, index));
+  const expenseItems = (report.expenses || [])
+    .flatMap((expense, index) => expenseAttachmentItems(expense, index));
+  const documentGroups = [
+    ["EC-Schnitt", report.documents?.ecCut],
+    ["Penta", report.documents?.penta],
+    ["Handschrift", report.documents?.handwriting]
+  ].map(([label, document]) => ({
+    label,
+    items: documentAttachmentItems(document, label)
+  }));
+  return [
+    { label: "Bezahlung auf Rechnung", items: invoiceItems },
+    { label: "Ausgaben", items: expenseItems },
+    ...documentGroups
+  ].filter((group) => group.items.length);
+}
+
+function invoiceAttachmentItems(customer = {}, index = 0) {
+  const base = customer.name || `Rechnungskunde ${index + 1}`;
+  const total = invoiceTotal(customer);
+  const singleReceipt = invoiceReceipt(customer);
+  if (singleReceipt) {
+    return [{
+      title: base,
+      subtitle: `Rechnungssumme ${formatReportMoney(total)}`,
+      link: receiptLinkHtml(singleReceipt, singleReceipt.receiptName || "Rechnungsbeleg")
+    }];
+  }
+  return invoiceLegacyReceipts(customer).map(({ receipt, title, label }) => ({
+    title: `${base} - ${title}`,
+    subtitle: `Rechnungssumme ${formatReportMoney(total)}`,
+    link: receiptLinkHtml(receipt, label)
+  }));
+}
+
+function expenseAttachmentItems(expense = {}, index = 0) {
+  return expenseReceiptEntries(expense).map((receipt, receiptIndex) => ({
+    title: expense.name || `Ausgabe ${index + 1}`,
+    subtitle: `${expense.category || "Ausgabe"} · ${formatReportMoney(expense.amount)} · Beleg ${receiptIndex + 1}`,
+    link: receiptLinkHtml(receipt, receipt.receiptName || `Beleg ${receiptIndex + 1}`)
+  }));
+}
+
+function documentAttachmentItems(document = {}, label = "Dokument") {
+  if (!hasDocument(document)) return [];
+  return [{
+    title: label,
+    subtitle: document.name || label,
+    link: reportDocumentLinkHtml(document, label)
+  }];
 }
 
 function reportFolderItems(month, key) {
