@@ -3991,6 +3991,9 @@ function reportDocumentLabelForInput(input) {
   if (input?.id === "reportDocumentPenta") return "Penta";
   if (input?.id === "reportDocumentHandwriting") return "Handschrift";
   if (input?.id === "reportDocumentEcCut") return "EC-Schnitt";
+  if (input?.id === "customerReportDocumentPenta") return "Penta";
+  if (input?.id === "customerReportDocumentHandwriting") return "Handschrift";
+  if (input?.id === "customerReportDocumentEcCut") return "EC-Schnitt";
   return "Dokument";
 }
 
@@ -4006,12 +4009,16 @@ function clearReportDocumentFields(key) {
 }
 
 async function saveReportDocumentsNow(source, successText = "Abschlussdokumente gespeichert.") {
-  if (state.terminalReport?.closed) return;
+  if (state.terminalReport?.closed) {
+    showToast("Tagesbericht ist abgeschlossen. Dokument kann nicht gespeichert werden.");
+    return;
+  }
   const oldText = source?.tagName === "BUTTON" ? source.textContent : "";
   if (source?.tagName === "BUTTON") {
     source.disabled = true;
     source.textContent = "Speichert...";
   }
+  showToast("Dokument wird verkleinert und gespeichert...");
   try {
     await terminalAction(await collectDayReportPayload());
     showToast(successText);
@@ -4573,6 +4580,9 @@ async function saveCustomerInvoiceDeskReportWithOptions(button, successText = "T
     button.disabled = true;
     button.textContent = "Speichert...";
   }
+  if (button?.type === "file") {
+    showToast("Dokument wird verkleinert und gespeichert...");
+  }
   try {
     const payload = await collectCustomerInvoiceDeskPayload();
     if (options.mergeExpenses) {
@@ -4762,21 +4772,21 @@ function compressImageFile(file) {
       const image = new Image();
       image.onerror = () => reject(new Error("Bild konnte nicht verarbeitet werden."));
       image.onload = () => {
-        const maxSide = 1600;
+        const maxSide = 1500;
         const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(image.width * scale));
         canvas.height = Math.max(1, Math.round(image.height * scale));
         const context = canvas.getContext("2d");
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        let quality = 0.72;
+        let quality = 0.68;
         let dataUrl = canvas.toDataURL("image/jpeg", quality);
-        while (dataUrl.length > 2200000 && quality > 0.42) {
-          quality -= 0.08;
+        while (dataUrl.length > 1500000 && quality > 0.36) {
+          quality -= 0.07;
           dataUrl = canvas.toDataURL("image/jpeg", quality);
         }
-        if (dataUrl.length > 2800000) {
-          reject(new Error("Beleg ist trotz Verkleinerung zu groß. Bitte Foto näher zuschneiden."));
+        if (dataUrl.length > 1900000) {
+          reject(new Error("Dokument ist trotz Verkleinerung zu groß. Bitte Foto näher zuschneiden oder etwas weniger Rand fotografieren."));
           return;
         }
         resolve(dataUrl);
@@ -6855,6 +6865,12 @@ function bindEvents() {
 
   $("#saveCustomerDocuments")?.addEventListener("click", (event) => {
     saveCustomerInvoiceDeskReport(event.currentTarget, "Dokumente gespeichert.");
+  });
+
+  $("#customerInvoiceStaffArea")?.addEventListener("change", (event) => {
+    const input = event.target.closest("#customerReportDocumentPenta, #customerReportDocumentHandwriting, #customerReportDocumentEcCut");
+    if (!input || !input.files?.length) return;
+    saveCustomerInvoiceDeskReport(input, `${reportDocumentLabelForInput(input)} gespeichert.`);
   });
 
   $("#customerInvoiceStaffArea")?.addEventListener("click", (event) => {
