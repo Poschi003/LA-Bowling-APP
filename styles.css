@@ -2004,6 +2004,30 @@ button:disabled {
   margin: 0;
 }
 
+.employee-card-tip {
+  display: grid;
+  grid-template-columns: minmax(180px, auto) minmax(160px, 240px);
+  gap: 10px 14px;
+  align-items: end;
+  grid-column: 1 / -1;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.employee-card-tip small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.employee-tip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+
 .employee-card-actions {
   display: flex;
   gap: 10px;

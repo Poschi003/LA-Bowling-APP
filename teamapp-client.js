@@ -118,6 +118,9 @@ const defaultData = {
       "Kevin Leicht": ["Counter", "Service"]
     },
     employeeRoles: {},
+    employeeTipSettings: {
+      "Renate Leicht": { eligible: true, factor: 0.675 }
+    },
     fixedEmployees: [],
     availabilityExemptEmployees: [],
     availabilityTargetMonth: nextMonthValue(),
@@ -163,7 +166,6 @@ const defaultData = {
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const TIP_BILL_STEP = 5;
 const TIP_ELIGIBLE_AREAS = ["Counter", "Service", "Kueche", "Spueler"];
 const GERMAN_DISPLAY_REPLACEMENTS = [
   [/Ã„/g, "Ä"], [/Ã–/g, "Ö"], [/Ãœ/g, "Ü"], [/Ã¤/g, "ä"], [/Ã¶/g, "ö"], [/Ã¼/g, "ü"], [/ÃŸ/g, "ß"],
@@ -550,6 +552,10 @@ function mergeData(value) {
       employeeRoles: {
         ...(incomingSettings.employeeRoles || {})
       },
+      employeeTipSettings: normalizeEmployeeTipSettings({
+        ...base.settings.employeeTipSettings,
+        ...(incomingSettings.employeeTipSettings || {})
+      }),
       fixedEmployees: incomingSettings.fixedEmployees || base.settings.fixedEmployees || [],
       availabilityExemptEmployees: incomingSettings.availabilityExemptEmployees || base.settings.availabilityExemptEmployees || []
       ,
@@ -4954,6 +4960,7 @@ function dailyTipRowsForDisplay(result = {}, report = {}) {
 }
 
 function tipAreaLabel(area) {
+  if (!area) return "Trinkgeld";
   if (area === "Kueche") return "Küche";
   if (area === "Spueler") return "Spüler";
   return area || "Bereich offen";
@@ -5044,6 +5051,7 @@ function calculateTipDistribution(dateKey) {
   const ecTotal = ecTotalFromFormOrReport();
   const personalConsumption = parseMoneyInput($("#reportPersonalConsumption")?.value || state.terminalReport?.personalConsumption || "");
   const revenueBowling = parseMoneyInput($("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "");
+  const revenueFood = parseMoneyInput($("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "");
   const revenueGastro = gastroRevenueFromFormOrReport();
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
   const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal - totalRevenue);
@@ -5055,31 +5063,32 @@ function calculateTipDistribution(dateKey) {
     const area = tipAreaForEmployee(employee);
     const hours = paidHoursAfterOpening(entry, openingTime);
     return { employee, area, hours };
-  }).filter((row) => isTipEligibleArea(row.area) && row.hours > 0);
+  }).filter((row) => employeeTipEligible(row.employee, row.area) && row.hours > 0);
   if (!baseRows.length) {
     baseRows = Object.entries(entries).map(([employee, employeeEntries]) => {
       const entry = employeeEntries?.[dateKey] || {};
       const area = tipAreaForEmployee(employee);
       const hours = paidHoursAfterOpening(entry, openingTime);
       return { employee, area, hours };
-    }).filter((row) => isTipEligibleArea(row.area) && row.hours > 0);
+    }).filter((row) => employeeTipEligible(row.employee, row.area) && row.hours > 0);
   }
-  const kitchenCount = baseRows.filter((row) => isKitchenTipArea(row.area)).length;
+  const kitchenInfo = tipKitchenInfo(baseRows, revenueFood);
   const rowsWithWeight = baseRows.map((row) => {
-    const factor = isKitchenTipArea(row.area) && kitchenCount >= 2 ? 0.75 : 1;
+    const factor = tipFactorForEmployee(row.employee, row.area, kitchenInfo);
     return { ...row, factor, weight: row.hours * factor };
   });
   const totalWeight = rowsWithWeight.reduce((sum, row) => sum + row.weight, 0);
+  const exactTips = exactTipAmounts(rowsWithWeight, tipTotal);
   const rows = rowsWithWeight.map((row) => {
     const rawTip = totalWeight > 0 ? tipTotal * row.weight / totalWeight : 0;
     return {
       ...row,
       rawTip,
-      tip: roundTipToBills(rawTip)
+      tip: exactTips[row.employee] || 0
     };
   });
   const distributedTipTotal = rows.reduce((sum, row) => sum + row.tip, 0);
-  const tipRemainder = Math.max(0, tipTotal - distributedTipTotal);
+  const tipRemainder = Math.max(0, Math.round((tipTotal - distributedTipTotal) * 100) / 100);
   return {
     cashTotal,
     cashExpenses,
@@ -5088,7 +5097,7 @@ function calculateTipDistribution(dateKey) {
     personalConsumption,
     revenueBowling,
     revenueDrinks: parseMoneyInput($("#reportRevenueDrinks")?.value || state.terminalReport?.revenueDrinks || ""),
-    revenueFood: parseMoneyInput($("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || ""),
+    revenueFood,
     revenueOther: parseMoneyInput($("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || ""),
     revenueGastro,
     totalRevenue,
@@ -5109,10 +5118,95 @@ function terminalTipEmployeesForDay(dateKey) {
   return [...names].filter(Boolean);
 }
 
-function roundTipToBills(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount) || amount < TIP_BILL_STEP) return 0;
-  return Math.floor(amount / TIP_BILL_STEP) * TIP_BILL_STEP;
+function exactTipAmounts(rows = [], tipTotal = 0) {
+  const totalCents = Math.round(Math.max(0, Number(tipTotal) || 0) * 100);
+  const totalWeight = rows.reduce((sum, row) => sum + Number(row.weight || 0), 0);
+  if (!rows.length || totalCents <= 0 || totalWeight <= 0) return {};
+  const shares = rows.map((row) => {
+    const rawCents = totalCents * Number(row.weight || 0) / totalWeight;
+    const cents = Math.floor(rawCents);
+    return { employee: row.employee, cents, rest: rawCents - cents };
+  });
+  let remaining = totalCents - shares.reduce((sum, row) => sum + row.cents, 0);
+  shares
+    .slice()
+    .sort((a, b) => b.rest - a.rest || a.employee.localeCompare(b.employee, "de"))
+    .forEach((row) => {
+      if (remaining <= 0) return;
+      row.cents += 1;
+      remaining -= 1;
+    });
+  return Object.fromEntries(shares.map((row) => [row.employee, row.cents / 100]));
+}
+
+function employeeTipEligible(employee, area) {
+  const setting = tipSettingForEmployee(employee);
+  if (setting) return setting.eligible;
+  return isTipEligibleArea(area);
+}
+
+function tipFactorForEmployee(employee, area, kitchenInfo = {}) {
+  const groupFactor = kitchenGroupTipFactor(area, kitchenInfo);
+  if (groupFactor !== null) return groupFactor;
+  const setting = tipSettingForEmployee(employee);
+  if (setting) return setting.eligible ? setting.factor : 0;
+  return automaticTipFactor(area, kitchenInfo);
+}
+
+function automaticTipFactor(area, kitchenInfo = {}) {
+  return kitchenGroupTipFactor(area, kitchenInfo) ?? 1;
+}
+
+function kitchenGroupTipFactor(area, kitchenInfo = {}) {
+  if (!isKitchenTipArea(area)) return null;
+  const cooks = Number(kitchenInfo.cooks || 0);
+  const spuelers = Number(kitchenInfo.spuelers || 0);
+  const kitchenRevenue = Number(kitchenInfo.kitchenRevenue || 0);
+  if (cooks >= 2 && spuelers >= 1 && kitchenRevenue >= 2000) return 1;
+  if (cooks >= 2 && spuelers >= 1) return 0.5;
+  if (area === "Kueche" && cooks >= 2) return 0.75;
+  return null;
+}
+
+function tipKitchenInfo(rows = [], kitchenRevenue = 0) {
+  return {
+    cooks: rows.filter((row) => row.area === "Kueche").length,
+    spuelers: rows.filter((row) => row.area === "Spueler").length,
+    kitchenRevenue: Number(kitchenRevenue || 0)
+  };
+}
+
+function tipSettingForEmployee(employee) {
+  return tipSettingFromSettings(state.settings || {}, employee);
+}
+
+function tipSettingFromSettings(settings = {}, employee = "") {
+  const tipSettings = settings.employeeTipSettings || {};
+  const exact = tipSettings[employee];
+  if (exact) return normalizeEmployeeTipSetting(exact);
+  const clean = String(employee || "").trim().toLowerCase();
+  const match = Object.entries(tipSettings).find(([name]) => String(name || "").trim().toLowerCase() === clean);
+  return match ? normalizeEmployeeTipSetting(match[1]) : null;
+}
+
+function normalizeEmployeeTipSettings(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([employee, setting]) => [String(employee || "").trim(), normalizeEmployeeTipSetting(setting)])
+    .filter(([employee]) => employee));
+}
+
+function normalizeEmployeeTipSetting(setting = {}) {
+  return {
+    eligible: setting?.eligible === true,
+    factor: normalizeTipFactor(setting?.factor, 1)
+  };
+}
+
+function normalizeTipFactor(value, fallback = 1) {
+  const parsed = Number(String(value ?? "").replace(",", "."));
+  const base = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.max(0.1, Math.min(1, Math.round(base * 1000) / 1000));
 }
 
 function tipOpeningTime(dateKey) {
@@ -5706,11 +5800,13 @@ function renderEmployeeDirectory() {
   const exempt = new Set(linesToList($("#availabilityExemptText")?.value || (state.settings.availabilityExemptEmployees || []).join("\n")));
   const fixedEmployees = new Set((state.settings.fixedEmployees || []).map(String));
   const departmentOptions = departmentOptionsForEmployeeCards(departments);
-  target.innerHTML = (state.settings.employees || []).map((name, index) => `
+  target.innerHTML = (state.settings.employees || []).map((name, index) => {
+    const tipCard = employeeTipCardState(name, roles, departments);
+    return `
     <details class="employee-card" data-employee-card="${index}" data-original-employee-name="${escapeHtml(name)}">
       <summary>
         <strong>${escapeHtml(name)}</strong>
-        <span>${escapeHtml(roles[name] || "Keine Rolle")} · ${(departments[name] || []).join(", ") || "Keine Bereiche"}${fixedEmployees.has(name) ? " · Festanstellung" : ""}</span>
+        <span>${escapeHtml(roles[name] || "Keine Rolle")} · ${(departments[name] || []).join(", ") || "Keine Bereiche"}${fixedEmployees.has(name) ? " · Festanstellung" : ""}${tipCard.eligible ? ` · Trinkgeld ${tipCard.factorLabel}` : " · Kein Trinkgeld"}</span>
       </summary>
       <div class="employee-card-grid">
         <label>Name<input data-employee-field="name" value="${escapeHtml(name)}"></label>
@@ -5728,13 +5824,35 @@ function renderEmployeeDirectory() {
           <label><input type="checkbox" data-employee-fixed ${fixedEmployees.has(name) ? "checked" : ""}> Festanstellung</label>
           <label><input type="checkbox" data-employee-exempt ${exempt.has(name) ? "checked" : ""}> Keine Verfügbarkeit nötig</label>
         </div>
+        <div class="employee-card-tip">
+          <label class="employee-tip-toggle"><input type="checkbox" data-employee-tip-eligible ${tipCard.eligible ? "checked" : ""}> Trinkgeldberechtigt</label>
+          <label>Trinkgeld-Faktor
+            <input data-employee-tip-factor type="number" min="0.1" max="1" step="0.025" value="${escapeHtml(tipCard.factorValue)}" placeholder="Auto">
+          </label>
+          <small>Leer = automatische Regel. Faktor 0,1 bis 1,0. Küche automatisch: 1 Koch = 1, zwei Köche = 0,75, zwei Köche + Spüler = 0,5. Ab 2.000 Euro Speisen-Umsatz: Küche/Spüler wieder 1.</small>
+        </div>
         <div class="employee-card-actions">
           <button class="primary" type="button" data-save-employees>Diese Karte speichern</button>
           <button class="secondary danger-button" type="button" data-remove-employee="${index}">Mitarbeiter entfernen</button>
         </div>
       </div>
     </details>
-  `).join("") || `<p class="hint">Noch keine Mitarbeiter angelegt.</p>`;
+  `;
+  }).join("") || `<p class="hint">Noch keine Mitarbeiter angelegt.</p>`;
+}
+
+function employeeTipCardState(employee, roles = {}, departments = {}) {
+  const setting = tipSettingFromSettings(state.settings || {}, employee);
+  const autoArea = tipAreaFromText(roles[employee] || "")
+    || departmentsForEmployee(departments, employee).map(tipAreaFromText).find(isTipEligibleArea)
+    || "";
+  const eligible = setting ? setting.eligible : isTipEligibleArea(autoArea);
+  const factorValue = setting && setting.eligible ? String(setting.factor) : "";
+  return {
+    eligible,
+    factorValue,
+    factorLabel: factorValue ? `x${factorValue}` : "(Auto)"
+  };
 }
 
 function roleLabel(role) {
@@ -5774,6 +5892,7 @@ function syncEmployeeDirectoryToTextareas() {
   const pins = {};
   const roles = {};
   const departments = {};
+  const tipSettings = {};
   const admins = [];
   const exempt = [];
   const fixed = [];
@@ -5791,6 +5910,16 @@ function syncEmployeeDirectoryToTextareas() {
     if (role) roles[name] = role;
     const deps = [...card.querySelectorAll("[data-employee-department]")].filter((input) => input.checked).map((input) => input.dataset.employeeDepartment);
     departments[name] = deps;
+    const tipEligible = card.querySelector("[data-employee-tip-eligible]")?.checked === true;
+    const rawTipFactor = card.querySelector("[data-employee-tip-factor]")?.value.trim() || "";
+    const autoArea = tipAreaFromText(role || "") || deps.map(tipAreaFromText).find(isTipEligibleArea) || "";
+    const autoEligible = isTipEligibleArea(autoArea);
+    if (tipEligible !== autoEligible || rawTipFactor) {
+      tipSettings[name] = {
+        eligible: tipEligible,
+        factor: rawTipFactor ? normalizeTipFactor(rawTipFactor, 1) : 1
+      };
+    }
     if (card.querySelector("[data-employee-admin]")?.checked) admins.push(name);
     if (card.querySelector("[data-employee-fixed]")?.checked) fixed.push(name);
     if (card.querySelector("[data-employee-exempt]")?.checked) exempt.push(name);
@@ -5802,6 +5931,7 @@ function syncEmployeeDirectoryToTextareas() {
   $("#adminEmployeesText").value = admins.join("\n");
   $("#availabilityExemptText").value = exempt.join("\n");
   state.settings.fixedEmployees = fixed;
+  state.settings.employeeTipSettings = tipSettings;
 }
 
 function renderPositionDirectory() {
@@ -6512,6 +6642,7 @@ async function saveSettings(button) {
         adminEmployees: linesToList($("#adminEmployeesText").value),
         employeeDepartments: textToDepartments($("#employeeDepartmentsText").value),
         employeeRoles: textToRoles($("#employeeRolesText").value),
+        employeeTipSettings: state.settings.employeeTipSettings || {},
         fixedEmployees: state.settings.fixedEmployees || [],
         availabilityExemptEmployees: linesToList($("#availabilityExemptText").value),
         positions: $("#positionsText").value.split("\n"),
