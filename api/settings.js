@@ -179,6 +179,9 @@ module.exports = async function handler(req, res) {
     if (body.employeeRoles && typeof body.employeeRoles === "object") {
       appData.settings.employeeRoles = body.employeeRoles;
     }
+    if (body.employeeTipSettings && typeof body.employeeTipSettings === "object") {
+      appData.settings.employeeTipSettings = cleanEmployeeTipSettings(body.employeeTipSettings, appData.settings);
+    }
     if (Array.isArray(body.fixedEmployees)) {
       const currentEmployees = new Set(appData.settings.employees || []);
       appData.settings.fixedEmployees = [...new Set(body.fixedEmployees.map(String).map((name) => name.trim()).filter((name) => name && currentEmployees.has(name)))];
@@ -278,6 +281,21 @@ function cleanEmployeeList(value, settings = {}) {
     .map(String)
     .map((name) => name.trim())
     .filter((name) => name && valid.has(name)))];
+}
+
+function cleanEmployeeTipSettings(value = {}, settings = {}) {
+  const currentEmployees = new Set((settings.employees || []).map(String));
+  const result = {};
+  for (const [name, setting] of Object.entries(value || {})) {
+    const employee = String(name || "").trim();
+    if (!employee || !currentEmployees.has(employee)) continue;
+    const factor = Number(String(setting?.factor ?? "").replace(",", "."));
+    result[employee] = {
+      eligible: setting?.eligible === true,
+      factor: Number.isFinite(factor) ? Math.max(0.1, Math.min(1, Math.round(factor * 1000) / 1000)) : 1
+    };
+  }
+  return result;
 }
 
 function messageRecipients(settings = {}, message = {}) {

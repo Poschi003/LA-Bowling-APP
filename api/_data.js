@@ -54,6 +54,9 @@ const defaultData = {
       "Kevin Leicht": ["Counter", "Service"]
     },
     employeeRoles: {},
+    employeeTipSettings: {
+      "Renate Leicht": { eligible: true, factor: 0.675 }
+    },
     fixedEmployees: [],
     availabilityExemptEmployees: [],
     availabilityTargetMonth: defaultAvailabilityTargetMonth(),
@@ -190,6 +193,10 @@ function mergeData(value) {
       employeeRoles: {
         ...(value?.settings?.employeeRoles || {})
       },
+      employeeTipSettings: normalizeEmployeeTipSettings({
+        ...base.settings.employeeTipSettings,
+        ...(value?.settings?.employeeTipSettings || {})
+      }),
       fixedEmployees: value?.settings?.fixedEmployees || base.settings.fixedEmployees,
       availabilityExemptEmployees: value?.settings?.availabilityExemptEmployees || base.settings.availabilityExemptEmployees,
       availabilityTargetMonth: normalizeMonth(value?.settings?.availabilityTargetMonth) || base.settings.availabilityTargetMonth,
@@ -285,12 +292,33 @@ function mergeTaskTemplates(value, defaults, deletedIds = []) {
   ];
 }
 
+function normalizeEmployeeTipSettings(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([employee, setting]) => [String(employee || "").trim(), normalizeEmployeeTipSetting(setting)])
+    .filter(([employee]) => employee));
+}
+
+function normalizeEmployeeTipSetting(setting = {}) {
+  return {
+    eligible: setting?.eligible === true,
+    factor: normalizeTipFactor(setting?.factor, 1)
+  };
+}
+
+function normalizeTipFactor(value, fallback = 1) {
+  const parsed = Number(String(value ?? "").replace(",", "."));
+  const base = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.max(0.1, Math.min(1, Math.round(base * 1000) / 1000));
+}
+
 function publicSettings(settings) {
   return {
     businessName: settings.businessName,
     employees: settings.employees,
     employeeDepartments: settings.employeeDepartments || {},
     employeeRoles: settings.employeeRoles || {},
+    employeeTipSettings: normalizeEmployeeTipSettings(settings.employeeTipSettings || {}),
     fixedEmployees: settings.fixedEmployees || [],
     availabilityExemptEmployees: settings.availabilityExemptEmployees || [],
     availabilityTargetMonth: normalizeMonth(settings.availabilityTargetMonth) || defaultAvailabilityTargetMonth(),
@@ -701,29 +729,26 @@ function deriveTipsForReport(appData, date, report) {
     const area = tipAreaForSync(appData.settings || {}, scheduleDay, report, employee);
     const hours = paidHoursAfterOpeningForSync(entry, openingTime);
     return { employee, area, hours };
-  }).filter((row) => isTipEligibleAreaForSync(row.area) && row.hours > 0);
+  }).filter((row) => employeeTipEligibleForSync(appData.settings || {}, row.employee, row.area) && row.hours > 0);
   if (!rows.length) {
     rows = Object.entries(entriesByEmployee).map(([employee, entries]) => {
       const entry = entries?.[date] || {};
       const area = tipAreaForSync(appData.settings || {}, scheduleDay, report, employee);
       const hours = paidHoursAfterOpeningForSync(entry, openingTime);
       return { employee, area, hours };
-    }).filter((row) => isTipEligibleAreaForSync(row.area) && row.hours > 0);
+    }).filter((row) => employeeTipEligibleForSync(appData.settings || {}, row.employee, row.area) && row.hours > 0);
   }
-  const kitchenCount = rows.filter((row) => isKitchenTipAreaForSync(row.area)).length;
+  const kitchenInfo = tipKitchenInfoForSync(rows, tipMoneyNumber(report.revenueFood));
   const weighted = rows.map((row) => ({
     ...row,
-    factor: isKitchenTipAreaForSync(row.area) && kitchenCount >= 2 ? 0.75 : 1
+    factor: tipFactorForSync(appData.settings || {}, row.employee, row.area, kitchenInfo)
   })).map((row) => ({
     ...row,
     weight: row.hours * row.factor
   }));
   const totalWeight = weighted.reduce((sum, row) => sum + row.weight, 0);
   if (totalWeight <= 0) return {};
-  return cleanTipMapForSync(Object.fromEntries(weighted.map((row) => {
-    const rawTip = tipTotal * row.weight / totalWeight;
-    return [row.employee, roundTipToBillsForSync(rawTip)];
-  })));
+  return cleanTipMapForSync(exactTipMapForSync(weighted, tipTotal));
 }
 
 function cleanTipMapForSync(value) {
@@ -784,6 +809,76 @@ function isKitchenTipAreaForSync(area) {
   return area === "Kueche" || area === "Spueler";
 }
 
+function employeeTipEligibleForSync(settings = {}, employee, area) {
+  const setting = tipSettingForSync(settings, employee);
+  if (setting) return setting.eligible;
+  return isTipEligibleAreaForSync(area);
+}
+
+function tipFactorForSync(settings = {}, employee, area, kitchenInfo = {}) {
+  const groupFactor = kitchenGroupTipFactorForSync(area, kitchenInfo);
+  if (groupFactor !== null) return groupFactor;
+  const setting = tipSettingForSync(settings, employee);
+  if (setting) return setting.eligible ? setting.factor : 0;
+  return automaticTipFactorForSync(area, kitchenInfo);
+}
+
+function automaticTipFactorForSync(area, kitchenInfo = {}) {
+  return kitchenGroupTipFactorForSync(area, kitchenInfo) ?? 1;
+}
+
+function kitchenGroupTipFactorForSync(area, kitchenInfo = {}) {
+  if (!isKitchenTipAreaForSync(area)) return null;
+  const cooks = Number(kitchenInfo.cooks || 0);
+  const spuelers = Number(kitchenInfo.spuelers || 0);
+  const kitchenRevenue = Number(kitchenInfo.kitchenRevenue || 0);
+  if (cooks >= 2 && spuelers >= 1 && kitchenRevenue >= 2000) return 1;
+  if (cooks >= 2 && spuelers >= 1) return 0.5;
+  if (area === "Kueche" && cooks >= 2) return 0.75;
+  return null;
+}
+
+function tipKitchenInfoForSync(rows = [], kitchenRevenue = 0) {
+  return {
+    cooks: rows.filter((row) => row.area === "Kueche").length,
+    spuelers: rows.filter((row) => row.area === "Spueler").length,
+    kitchenRevenue: Number(kitchenRevenue || 0)
+  };
+}
+
+function tipSettingForSync(settings = {}, employee = "") {
+  const tipSettings = settings.employeeTipSettings || {};
+  const exact = tipSettings[employee];
+  if (exact) return normalizeEmployeeTipSetting(exact);
+  const clean = String(employee || "").trim().toLowerCase();
+  const match = Object.entries(tipSettings).find(([name]) => String(name || "").trim().toLowerCase() === clean);
+  return match ? normalizeEmployeeTipSetting(match[1]) : null;
+}
+
+function exactTipMapForSync(rows = [], tipTotal = 0) {
+  const totalCents = Math.round(tipMoneyNumber(tipTotal) * 100);
+  const totalWeight = rows.reduce((sum, row) => sum + Number(row.weight || 0), 0);
+  if (!rows.length || totalCents <= 0 || totalWeight <= 0) return {};
+  const shares = rows.map((row) => {
+    const rawCents = totalCents * Number(row.weight || 0) / totalWeight;
+    return {
+      employee: row.employee,
+      cents: Math.floor(rawCents),
+      rest: rawCents - Math.floor(rawCents)
+    };
+  });
+  let remaining = totalCents - shares.reduce((sum, row) => sum + row.cents, 0);
+  shares
+    .slice()
+    .sort((a, b) => b.rest - a.rest || a.employee.localeCompare(b.employee, "de"))
+    .forEach((row) => {
+      if (remaining <= 0) return;
+      row.cents += 1;
+      remaining -= 1;
+    });
+  return Object.fromEntries(shares.map((row) => [row.employee, tipMoneyString(row.cents / 100)]));
+}
+
 function tipOpeningTimeForSync(report = {}) {
   const match = String(report.openingHours || "").match(/(\d{1,2}):(\d{2})/);
   return match ? `${String(match[1]).padStart(2, "0")}:${match[2]}` : "00:00";
@@ -821,12 +916,6 @@ function tipMinutesBetween(from, to) {
 function tipTimeToMinutes(value) {
   const [hours, minutes] = String(value || "00:00").split(":").map(Number);
   return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
-}
-
-function roundTipToBillsForSync(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount) || amount < 5) return 0;
-  return Math.floor(amount / 5) * 5;
 }
 
 const BONUS_CATEGORIES = {
