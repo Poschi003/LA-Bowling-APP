@@ -542,9 +542,8 @@ function cleanAssignmentTimes(value = {}, validEmployees = new Set()) {
       const cleanEmployee = cleanText(employee, 160);
       if (!cleanEmployee || !validEmployees.has(cleanEmployee)) continue;
       const from = cleanTime(item?.from);
-      const to = cleanTime(item?.to);
       const note = cleanText(item?.note, 240);
-      if (from || to || note) day[cleanEmployee] = { from, to, note };
+      if (from || note) day[cleanEmployee] = { from, to: "", note };
     }
     result[date] = day;
   }

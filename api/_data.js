@@ -279,9 +279,8 @@ function normalizeAssignmentTimes(value = {}) {
       const cleanEmployee = String(employee || "").trim();
       if (!cleanEmployee) continue;
       const from = normalizeAssignmentTime(item?.from);
-      const to = normalizeAssignmentTime(item?.to);
       const note = String(item?.note || "").trim().slice(0, 240);
-      if (from || to || note) day[cleanEmployee] = { from, to, note };
+      if (from || note) day[cleanEmployee] = { from, to: "", note };
     }
     if (Object.keys(day).length) result[dateKey] = day;
   }
