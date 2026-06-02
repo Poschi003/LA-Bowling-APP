@@ -619,9 +619,8 @@ function normalizeAssignmentTimes(value = {}) {
       const cleanEmployee = String(employee || "").trim();
       if (!cleanEmployee) return;
       const from = cleanTimeValue(item?.from);
-      const to = cleanTimeValue(item?.to);
       const note = String(item?.note || "").trim().slice(0, 240);
-      if (from || to || note) day[cleanEmployee] = { from, to, note };
+      if (from || note) day[cleanEmployee] = { from, to: "", note };
     });
     if (Object.keys(day).length) result[dateKey] = day;
   });
@@ -2409,7 +2408,7 @@ function assignmentScheduleForDate(dateKey) {
 function assignmentRowsForDate(dateKey) {
   const scheduleDay = assignmentScheduleForDate(dateKey);
   return (state.settings.positions || [])
-    .filter((position) => scheduleDay[position])
+    .filter((position) => scheduleDay[position] && assignmentPositionIncluded(position))
     .map((position) => {
       const employee = scheduleDay[position];
       return {
@@ -2423,9 +2422,14 @@ function assignmentRowsForDate(dateKey) {
 
 function assignmentTimeForEmployee(dateKey, employee, scheduleDay = {}, position = "") {
   const direct = state.assignmentTimes?.[dateKey]?.[employee];
-  if (direct?.from || direct?.to || direct?.note) return direct;
+  if (direct?.from || direct?.note) return { from: direct.from || "", to: "", note: direct.note || "" };
   const planned = parsePlannedTime(scheduleDay[`${position}__note`] || "");
-  return planned.from || planned.to ? { from: planned.from, to: planned.to, note: "" } : { from: "", to: "", note: "" };
+  return planned.from ? { from: planned.from, to: "", note: "" } : { from: "", to: "", note: "" };
+}
+
+function assignmentPositionIncluded(position) {
+  const department = departmentForPosition(position);
+  return department === "Counter" || department === "Service";
 }
 
 function assignmentDayHtml(dateKey, index = 0) {
@@ -2448,7 +2452,7 @@ function assignmentDayHtml(dateKey, index = 0) {
       <details class="assignment-team-list">
         <summary>Team-Einteilung anzeigen</summary>
         <div>
-          ${rows.length ? rows.map(assignmentTeamRowHtml).join("") : `<p class="hint">Für diesen Tag ist kein veröffentlichter Dienstplan gefunden.</p>`}
+          ${rows.length ? rows.map(assignmentTeamRowHtml).join("") : `<p class="hint">Für diesen Tag ist kein Counter- oder Service-Dienst gefunden.</p>`}
         </div>
       </details>
     </article>
@@ -2476,9 +2480,7 @@ function assignmentTeamRowHtml(row) {
 }
 
 function assignmentTimeText(time = {}) {
-  if (time.from && time.to) return `${time.from} bis ${time.to}`;
   if (time.from) return `ab ${time.from}`;
-  if (time.to) return `bis ${time.to}`;
   return "Zeit noch offen";
 }
 
@@ -3596,7 +3598,7 @@ function terminalAssignmentDayHtml(dateKey, index = 0) {
         </div>
       </div>
       <div class="terminal-assignment-rows">
-        ${rows.length ? rows.map(terminalAssignmentRowHtml).join("") : `<p class="hint">Für diesen Tag ist kein veröffentlichter Dienstplan gefunden.</p>`}
+        ${rows.length ? rows.map(terminalAssignmentRowHtml).join("") : `<p class="hint">Für diesen Tag ist kein Counter- oder Service-Dienst gefunden.</p>`}
       </div>
     </article>
   `;
@@ -3625,8 +3627,7 @@ function terminalAssignmentRowHtml(row) {
         <strong>${escapeHtml(row.employee)}</strong>
         <span>${escapeHtml(row.positions.join(", "))}</span>
       </div>
-      <label>Start<input type="time" data-assignment-field="from" value="${escapeHtml(time.from || "")}"></label>
-      <label>Ende<input type="time" data-assignment-field="to" value="${escapeHtml(time.to || "")}"></label>
+      <label>Beginn ab<input type="time" data-assignment-field="from" value="${escapeHtml(time.from || "")}"></label>
       <label>Notiz<input data-assignment-field="note" value="${escapeHtml(time.note || "")}" placeholder="optional"></label>
     </div>
   `;
@@ -3640,7 +3641,7 @@ function collectTerminalAssignmentTimes() {
     result[dateKey] ||= {};
     result[dateKey][employee] = {
       from: row.querySelector('[data-assignment-field="from"]')?.value || "",
-      to: row.querySelector('[data-assignment-field="to"]')?.value || "",
+      to: "",
       note: row.querySelector('[data-assignment-field="note"]')?.value || ""
     };
   });
