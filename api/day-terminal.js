@@ -455,9 +455,9 @@ async function saveAssignmentTimes(body, res) {
   const employeesForTomorrow = Object.entries(nextTimes[tomorrow] || {})
     .filter(([, item]) => item?.from || item?.note)
     .map(([employee]) => employee);
-  if (employeesForTomorrow.length) {
+  if (employeesForTomorrow.length && appData.settings?.pushSettings?.assignmentsTomorrow !== false) {
     await sendPushToEmployees(appData, employeesForTomorrow, {
-      title: "Einteilung für morgen ist online",
+      title: "LA-Bowling - Einteilung für morgen ist Online",
       body: "Bitte prüfe deine Startzeit in der TeamApp.",
       url: "/",
       tag: `assignment-${tomorrow}`

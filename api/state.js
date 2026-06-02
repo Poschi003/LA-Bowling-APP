@@ -175,7 +175,10 @@ function serveAsset(req, res) {
     "sw.js": { file: "sw.js", type: "text/javascript; charset=utf-8" },
     "manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json; charset=utf-8" },
     "styles.css": { file: "styles.css", type: "text/css; charset=utf-8" },
-    "la-bowling-logo.png": { file: "la-bowling-logo.png", type: "image/png" }
+    "la-bowling-logo.png": { file: "la-bowling-logo.png", type: "image/png" },
+    "teamapp-icon-192.png": { file: "teamapp-icon-192.png", type: "image/png" },
+    "teamapp-icon-512.png": { file: "teamapp-icon-512.png", type: "image/png" },
+    "apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png" }
   };
   const asset = String(req.query.asset || "index.html");
   const entry = files[asset];
@@ -363,11 +366,14 @@ async function handleScheduleMutation(req, res, body) {
 }
 
 async function notifySchedulePublished(appData, month, weekKey = "") {
+  if (appData.settings?.pushSettings?.schedulePublished === false) {
+    return { sent: 0, skipped: true, reason: "disabled" };
+  }
   const body = weekKey
     ? `Die Woche ab ${formatDateLabel(weekKey)} ist veröffentlicht.`
     : `Der Dienstplan für ${formatMonthLabel(month)} ist veröffentlicht.`;
   return sendPushToEmployees(appData, appData.settings.employees || [], {
-    title: "Neuer Dienstplan online",
+    title: "LA-Bowling - Neuer Dienstplan online",
     body,
     url: "/",
     tag: weekKey ? `schedule-${weekKey}` : `schedule-${month}`

@@ -85,7 +85,12 @@ const defaultData = {
       extraEmployees: true
     },
     scheduleAutoDeleteDays: 14,
-    hourlyRate: 25
+    hourlyRate: 25,
+    pushSettings: {
+      schedulePublished: true,
+      assignmentsTomorrow: true,
+      messages: true
+    }
   },
   availability: {},
   schedules: {},
@@ -219,7 +224,11 @@ function mergeData(value) {
       hourlyRate: normalizeHourlyRate(
         value?.settings?.hourlyRate,
         base.settings.hourlyRate
-      )
+      ),
+      pushSettings: {
+        ...base.settings.pushSettings,
+        ...(value?.settings?.pushSettings || {})
+      }
     },
     availability: value?.availability || base.availability,
     schedules: normalizeSchedules(value?.schedules || base.schedules),
@@ -360,7 +369,11 @@ function publicSettings(settings) {
     hourlyRate: normalizeHourlyRate(
       settings.hourlyRate,
       defaultData.settings.hourlyRate
-    )
+    ),
+    pushSettings: {
+      ...defaultData.settings.pushSettings,
+      ...(settings.pushSettings || {})
+    }
   };
 }
 

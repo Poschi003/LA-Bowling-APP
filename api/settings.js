@@ -38,14 +38,40 @@ module.exports = async function handler(req, res) {
         createdAt: new Date().toISOString()
       });
       appData.messages = appData.messages.slice(0, 30);
-      await sendPushToEmployees(appData, recipients, {
-        title: "Neue Nachricht in der TeamApp",
-        body: text,
-        url: "/",
-        tag: `message-${appData.messages[0].id}`
-      });
+      if (pushSettingEnabled(appData.settings, "messages")) {
+        await sendPushToEmployees(appData, recipients, {
+          title: "LA-Bowling - Du hast eine neue Nachricht im Dashboard",
+          body: text,
+          url: "/",
+          tag: `message-${appData.messages[0].id}`
+        });
+      }
       await writeAppData(appData);
       return sendJson(res, 200, { ok: true, messages: appData.messages });
+    }
+
+    if (body.action === "send-push") {
+      const title = String(body.title || "LA-Bowling TeamApp").trim().slice(0, 120);
+      const text = String(body.text || "").trim().slice(0, 240);
+      if (!text) return sendJson(res, 400, { error: "Push-Nachricht fehlt." });
+      const target = cleanTarget(body.target);
+      const employees = cleanEmployeeList(body.employees, appData.settings);
+      const recipients = messageRecipients(appData.settings, { target, employees });
+      if (!recipients.length) return sendJson(res, 400, { error: "Bitte mindestens einen Empfänger auswählen." });
+      const result = await sendPushToEmployees(appData, recipients, {
+        title,
+        body: text,
+        url: "/",
+        tag: `manual-push-${Date.now()}`
+      });
+      if (result.removed) await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, sent: result.sent || 0, removed: result.removed || 0, skipped: Boolean(result.skipped), reason: result.reason || "" });
+    }
+
+    if (body.action === "save-push-settings") {
+      appData.settings.pushSettings = cleanPushSettings(body.pushSettings, appData.settings.pushSettings);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, settings: publicSettings(appData.settings) });
     }
 
     if (body.action === "delete-message") {
@@ -222,6 +248,9 @@ module.exports = async function handler(req, res) {
         ? Math.max(0, Math.min(200, Math.round(hourlyRate * 100) / 100))
         : appData.settings.hourlyRate;
     }
+    if (body.pushSettings && typeof body.pushSettings === "object") {
+      appData.settings.pushSettings = cleanPushSettings(body.pushSettings, appData.settings.pushSettings);
+    }
 
     await writeAppData(appData);
     sendJson(res, 200, { ok: true, settings: publicSettings(appData.settings) });
@@ -281,6 +310,22 @@ function cleanEmployeeTipSettings(value = {}, settings = {}) {
     };
   }
   return result;
+}
+
+function cleanPushSettings(value = {}, fallback = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const read = (key) => Object.prototype.hasOwnProperty.call(source, key)
+    ? source[key] !== false
+    : fallback?.[key] !== false;
+  return {
+    schedulePublished: read("schedulePublished"),
+    assignmentsTomorrow: read("assignmentsTomorrow"),
+    messages: read("messages")
+  };
+}
+
+function pushSettingEnabled(settings = {}, key) {
+  return (settings.pushSettings || {})[key] !== false;
 }
 
 function messageRecipients(settings = {}, message = {}) {
