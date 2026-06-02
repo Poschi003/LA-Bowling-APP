@@ -152,7 +152,12 @@ const defaultData = {
       extraEmployees: true
     },
     scheduleAutoDeleteDays: 14,
-    hourlyRate: 25
+    hourlyRate: 25,
+    pushSettings: {
+      schedulePublished: true,
+      assignmentsTomorrow: true,
+      messages: true
+    }
   },
   reminderTemplates: defaultReminderTemplates,
   availability: {},
@@ -586,7 +591,11 @@ function mergeData(value) {
       hourlyRate: normalizeHourlyRate(
         incomingSettings.hourlyRate,
         base.settings.hourlyRate
-      )
+      ),
+      pushSettings: {
+        ...base.settings.pushSettings,
+        ...(incomingSettings.pushSettings || {})
+      }
     },
     availability: value && value.availability ? value.availability : base.availability,
     schedules: value && value.schedules ? value.schedules : base.schedules,
@@ -740,6 +749,7 @@ function renderAll() {
   renderAdminSwaps();
   renderAdminAvailabilityRequests();
   renderMessageEmployeePicker();
+  renderAdminPushControls();
   renderAdminMessages();
   renderAdminTerminalMessages();
   renderAdminTasks();
@@ -2776,6 +2786,51 @@ function renderMessageEmployeePicker() {
 
 function selectedMessageEmployees() {
   return $$("[data-message-employee]:checked").map((input) => input.value).filter(Boolean);
+}
+
+function renderAdminPushControls() {
+  const settings = {
+    ...defaultData.settings.pushSettings,
+    ...(state.settings?.pushSettings || {})
+  };
+  if ($("#pushAutoSchedule")) $("#pushAutoSchedule").checked = settings.schedulePublished !== false;
+  if ($("#pushAutoAssignment")) $("#pushAutoAssignment").checked = settings.assignmentsTomorrow !== false;
+  if ($("#pushAutoMessages")) $("#pushAutoMessages").checked = settings.messages !== false;
+  renderPushEmployeePicker();
+}
+
+function renderPushEmployeePicker() {
+  const picker = $("#pushEmployeePicker");
+  if (!picker) return;
+  const target = $("#pushTarget")?.value || "all";
+  picker.classList.toggle("hidden", target !== "employees");
+  if (target !== "employees") {
+    picker.innerHTML = "";
+    return;
+  }
+  const employees = state.settings?.employees || [];
+  picker.innerHTML = employees.length
+    ? employees.map((employee) => `
+      <label>
+        <input type="checkbox" value="${escapeHtml(employee)}" data-push-employee>
+        ${escapeHtml(employee)}
+      </label>
+    `).join("")
+    : `<p class="hint">Keine Mitarbeiter angelegt.</p>`;
+}
+
+function selectedPushEmployees() {
+  return $$("[data-push-employee]:checked").map((input) => input.value).filter(Boolean);
+}
+
+function pushResultText(result = {}) {
+  if (result.skipped && result.reason === "missing-vapid") return "Push konnte nicht senden: VAPID-Schlüssel fehlen in Vercel.";
+  if (result.skipped && result.reason === "web-push-missing") return "Push konnte nicht senden: Server-Paket web-push ist noch nicht installiert.";
+  const sent = Number(result.sent || 0);
+  const removed = Number(result.removed || 0);
+  if (!sent && removed) return `Kein aktives Gerät erreicht. ${removed} alte Registrierung(en) wurden entfernt.`;
+  if (!sent) return "Kein aktives Handy für diese Empfänger registriert.";
+  return `Push gesendet: ${sent} Gerät(e).${removed ? ` ${removed} alte Registrierung(en) entfernt.` : ""}`;
 }
 
 function messageReadStatusText(message = {}) {
@@ -7539,6 +7594,75 @@ function bindEvents() {
   });
 
   $("#messageTarget")?.addEventListener("change", renderMessageEmployeePicker);
+  $("#pushTarget")?.addEventListener("change", renderPushEmployeePicker);
+
+  $("#savePushSettings")?.addEventListener("click", async () => {
+    const button = $("#savePushSettings");
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Speichert...";
+    try {
+      const pushSettings = {
+        schedulePublished: $("#pushAutoSchedule")?.checked !== false,
+        assignmentsTomorrow: $("#pushAutoAssignment")?.checked !== false,
+        messages: $("#pushAutoMessages")?.checked !== false
+      };
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({ action: "save-push-settings", pushSettings })
+      });
+      state.settings = normalizeSettings(result.settings || { ...state.settings, pushSettings });
+      renderAdminPushControls();
+      $("#pushAdminStatus").textContent = "Push-Einstellungen gespeichert.";
+      showToast("Push-Einstellungen gespeichert.");
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  });
+
+  $("#sendPushNotification")?.addEventListener("click", async () => {
+    const button = $("#sendPushNotification");
+    const title = $("#pushTitle")?.value.trim() || "LA-Bowling TeamApp";
+    const text = $("#pushText")?.value.trim() || "";
+    const target = $("#pushTarget")?.value || "all";
+    const employees = target === "employees" ? selectedPushEmployees() : [];
+    if (!text) {
+      showToast("Bitte Push-Nachricht eingeben.");
+      return;
+    }
+    if (target === "employees" && !employees.length) {
+      showToast("Bitte mindestens einen Mitarbeiter auswählen.");
+      return;
+    }
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Sendet...";
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({
+          action: "send-push",
+          title,
+          text,
+          target,
+          employees
+        })
+      });
+      $("#pushText").value = "";
+      $("#pushAdminStatus").textContent = pushResultText(result);
+      showToast("Push wurde gesendet.");
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  });
 
   $("#adminMessagesList")?.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-delete-message]");

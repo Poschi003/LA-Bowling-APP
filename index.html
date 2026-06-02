@@ -6,6 +6,7 @@
     <title>Teamapp</title>
     <meta name="theme-color" content="#f8fafc">
     <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -517,6 +518,39 @@
             <button id="sendMessage" class="primary" type="button">Nachricht veröffentlichen</button>
           </div>
           <div id="adminMessagesList" class="swap-list"></div>
+        </details>
+
+        <details class="settings-box admin-priority">
+          <summary>Push-Benachrichtigungen</summary>
+          <div class="message-editor form-grid">
+            <label class="calendar-popup-option"><input id="pushAutoSchedule" type="checkbox"> Automatisch bei neuem Dienstplan senden</label>
+            <label class="calendar-popup-option"><input id="pushAutoAssignment" type="checkbox"> Automatisch bei Einteilung für morgen senden</label>
+            <label class="calendar-popup-option"><input id="pushAutoMessages" type="checkbox"> Automatisch bei Dashboard-Nachrichten senden</label>
+            <button id="savePushSettings" class="secondary" type="button">Push-Einstellungen speichern</button>
+            <label>
+              Empfänger
+              <select id="pushTarget">
+                <option value="all">Alle</option>
+                <option value="Counter">Counter</option>
+                <option value="Service">Service</option>
+                <option value="Kueche">Küche</option>
+                <option value="Reinigung">Reinigung</option>
+                <option value="Mechanik">Mechanik</option>
+                <option value="employees">Einzelne Mitarbeiter</option>
+              </select>
+            </label>
+            <div id="pushEmployeePicker" class="message-employee-picker checkbox-grid hidden"></div>
+            <label>
+              Titel
+              <input id="pushTitle" placeholder="z.B. Neuer Dienstplan online">
+            </label>
+            <label>
+              Nachricht
+              <textarea id="pushText" rows="3" placeholder="Nachricht fürs Handy"></textarea>
+            </label>
+            <button id="sendPushNotification" class="primary" type="button">Push senden</button>
+          </div>
+          <p id="pushAdminStatus" class="hint"></p>
         </details>
 
         <details class="settings-box admin-priority">

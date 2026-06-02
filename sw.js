@@ -16,8 +16,8 @@ self.addEventListener("push", (event) => {
   const title = data.title || "LA-Bowling TeamApp";
   const options = {
     body: data.body || "Neue Info in der TeamApp.",
-    icon: "/la-bowling-logo.png",
-    badge: "/la-bowling-logo.png",
+    icon: "/teamapp-icon-192.png",
+    badge: "/teamapp-icon-192.png",
     tag: data.tag || "la-bowling-teamapp",
     data: {
       url: data.url || "/"
