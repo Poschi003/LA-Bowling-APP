@@ -1,6 +1,5 @@
-﻿const { handleError, publicSettings, readAppData, readJson, sendJson, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
+﻿const { handleError, publicSettings, readAppData, readJson, sendJson, sendPushToEmployees, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
 const crypto = require("crypto");
-const { addBonusEvent } = require("./_data");
 const { defaultData } = require("./_data");
 
 module.exports = async function handler(req, res) {
@@ -381,14 +380,6 @@ async function confirmToilet(body, res) {
   const toiletChecks = Array.isArray(report.toiletChecks) ? report.toiletChecks : [];
   if (!toiletChecks.some((item) => item.checkKey === checkKey)) {
     toiletChecks.push({ checkKey, employee, checkedAt: new Date().toISOString() });
-    addBonusEvent(appData, {
-      employee,
-      type: "toilet-check",
-      label: "Toilettenkontrolle",
-      points: 5,
-      sourceKey: `toilet-check:${date}:${checkKey}`,
-      date
-    });
   }
   appData.dayReports[date] = { ...report, toiletChecks, updatedAt: new Date().toISOString() };
   await writeAppData(appData);
@@ -459,6 +450,18 @@ async function saveAssignmentTimes(body, res) {
     } else {
       delete appData.assignmentTimes[dateKey];
     }
+  }
+  const tomorrow = addDaysKey(baseDate, 1);
+  const employeesForTomorrow = Object.entries(nextTimes[tomorrow] || {})
+    .filter(([, item]) => item?.from || item?.note)
+    .map(([employee]) => employee);
+  if (employeesForTomorrow.length) {
+    await sendPushToEmployees(appData, employeesForTomorrow, {
+      title: "Einteilung für morgen ist online",
+      body: "Bitte prüfe deine Startzeit in der TeamApp.",
+      url: "/",
+      tag: `assignment-${tomorrow}`
+    });
   }
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, message: "Einteilung gespeichert.", ...terminalPayload(appData, baseDate) });

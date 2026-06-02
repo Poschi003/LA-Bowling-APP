@@ -1,7 +1,5 @@
 ﻿const { handleError, readAppData, readJson, sendJson, verifyToken, writeAppData } = require("./_data");
 
-const { addBonusEvent } = require("./_data");
-
 module.exports = async function handler(req, res) {
   try {
     if (req.method === "GET") return handleGet(req, res);
@@ -113,14 +111,6 @@ async function approveSwap(req, res, appData, body) {
   swap.replacement = replacement;
   swap.approvedAt = new Date().toISOString();
   swap.updatedAt = new Date().toISOString();
-  addBonusEvent(appData, {
-    employee: replacement,
-    type: "swap-cover",
-    label: "Für jemanden eingesprungen",
-    points: 50,
-    sourceKey: `swap-cover:${swap.id}:${replacement}`,
-    date: swap.date
-  });
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, swap: publicSwap(swap), schedule });
 }

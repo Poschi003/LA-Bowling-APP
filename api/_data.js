@@ -161,7 +161,7 @@ const defaultData = {
   customerDirectory: [],
   swaps: [],
   availabilityChangeRequests: [],
-  bonusEvents: []
+  pushSubscriptions: {}
 };
 
 function cloneData(value) {
@@ -235,7 +235,7 @@ function mergeData(value) {
     customerDirectory: Array.isArray(value?.customerDirectory) ? value.customerDirectory : base.customerDirectory,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests,
-    bonusEvents: normalizeBonusEvents(value?.bonusEvents || base.bonusEvents)
+    pushSubscriptions: normalizePushSubscriptions(value?.pushSubscriptions || base.pushSubscriptions)
   };
   if (!merged.settings.businessName || merged.settings.businessName === "Dienstplan") {
     merged.settings.businessName = "Teamapp";
@@ -689,6 +689,110 @@ function handleError(res, error) {
   sendJson(res, error.statusCode || 500, { error: error.message || String(error) });
 }
 
+function pushPublicKey() {
+  return String(process.env.VAPID_PUBLIC_KEY || "").trim();
+}
+
+function normalizePushSubscriptions(value = {}) {
+  const result = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+  for (const [employee, subscriptions] of Object.entries(value)) {
+    const cleanEmployee = String(employee || "").trim();
+    const list = (Array.isArray(subscriptions) ? subscriptions : [])
+      .map(cleanPushSubscription)
+      .filter(Boolean)
+      .filter((item, index, all) => all.findIndex((other) => other.endpoint === item.endpoint) === index)
+      .slice(0, 5);
+    if (cleanEmployee && list.length) result[cleanEmployee] = list;
+  }
+  return result;
+}
+
+function cleanPushSubscription(subscription = {}) {
+  const endpoint = String(subscription.endpoint || "").trim();
+  const keys = subscription.keys || {};
+  const p256dh = String(keys.p256dh || "").trim();
+  const auth = String(keys.auth || "").trim();
+  if (!endpoint || !p256dh || !auth) return null;
+  return {
+    endpoint,
+    expirationTime: subscription.expirationTime || null,
+    keys: { p256dh, auth },
+    createdAt: String(subscription.createdAt || new Date().toISOString()).slice(0, 80),
+    updatedAt: String(subscription.updatedAt || new Date().toISOString()).slice(0, 80)
+  };
+}
+
+function upsertPushSubscription(appData, employee, subscription) {
+  const employeeName = matchEmployeeName(appData?.settings, employee);
+  const clean = cleanPushSubscription(subscription);
+  if (!employeeName || !clean) return false;
+  appData.pushSubscriptions = normalizePushSubscriptions(appData.pushSubscriptions);
+  const existing = appData.pushSubscriptions[employeeName] || [];
+  const previous = existing.find((item) => item.endpoint === clean.endpoint);
+  appData.pushSubscriptions[employeeName] = [
+    {
+      ...clean,
+      createdAt: previous?.createdAt || clean.createdAt,
+      updatedAt: new Date().toISOString()
+    },
+    ...existing.filter((item) => item.endpoint !== clean.endpoint)
+  ].slice(0, 5);
+  return true;
+}
+
+function pushSubscriptionActive(appData, employee) {
+  const employeeName = matchEmployeeName(appData?.settings, employee);
+  return Boolean(employeeName && normalizePushSubscriptions(appData?.pushSubscriptions)[employeeName]?.length);
+}
+
+async function sendPushToEmployees(appData, employees = [], payload = {}) {
+  const publicKey = pushPublicKey();
+  const privateKey = String(process.env.VAPID_PRIVATE_KEY || "").trim();
+  if (!publicKey || !privateKey) return { sent: 0, skipped: true, reason: "missing-vapid" };
+  let webpush;
+  try {
+    webpush = require("web-push");
+  } catch (error) {
+    return { sent: 0, skipped: true, reason: "web-push-missing" };
+  }
+  webpush.setVapidDetails(
+    String(process.env.VAPID_SUBJECT || "mailto:info@la-bowling.de").trim(),
+    publicKey,
+    privateKey
+  );
+  appData.pushSubscriptions = normalizePushSubscriptions(appData.pushSubscriptions);
+  const targetEmployees = [...new Set((employees || []).map((employee) => matchEmployeeName(appData.settings, employee)).filter(Boolean))];
+  let sent = 0;
+  let removed = 0;
+  const body = JSON.stringify({
+    title: String(payload.title || "LA-Bowling TeamApp").slice(0, 120),
+    body: String(payload.body || "Es gibt eine neue Info in der TeamApp.").slice(0, 240),
+    url: String(payload.url || "/").slice(0, 240),
+    tag: String(payload.tag || `teamapp-${Date.now()}`).slice(0, 120)
+  });
+  for (const employee of targetEmployees) {
+    const subscriptions = appData.pushSubscriptions[employee] || [];
+    const keep = [];
+    for (const subscription of subscriptions) {
+      try {
+        await webpush.sendNotification(subscription, body, { TTL: 86400 });
+        sent += 1;
+        keep.push(subscription);
+      } catch (error) {
+        if (error.statusCode === 404 || error.statusCode === 410) {
+          removed += 1;
+        } else {
+          keep.push(subscription);
+        }
+      }
+    }
+    if (keep.length) appData.pushSubscriptions[employee] = keep;
+    else delete appData.pushSubscriptions[employee];
+  }
+  return { sent, removed, skipped: false };
+}
+
 function syncReportTipsToTimesheets(appData) {
   if (!appData || typeof appData !== "object") return false;
   const reports = appData.dayReports && typeof appData.dayReports === "object" ? appData.dayReports : {};
@@ -944,145 +1048,6 @@ function tipTimeToMinutes(value) {
   return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
 }
 
-const BONUS_CATEGORIES = {
-  "daily-check": { label: "TeamApp täglich geöffnet", points: 5 },
-  "message-read": { label: "Nachricht gelesen", points: 5 },
-  "toilet-check": { label: "Toilettenkontrolle", points: 5 },
-  "employee-praise": { label: "Mitarbeiterlob", points: 20 },
-  "swap-cover": { label: "Für jemanden eingesprungen", points: 50 },
-  "weekend-availability-worked": { label: "Fr/Sa Verfügbarkeit und gearbeitet", points: 10 }
-};
-
-function normalizeBonusEvents(value) {
-  return (Array.isArray(value) ? value : [])
-    .map((event) => ({
-      id: String(event?.id || ""),
-      employee: String(event?.employee || "").trim(),
-      type: String(event?.type || "").trim(),
-      label: String(event?.label || BONUS_CATEGORIES[event?.type]?.label || "Punkte").trim(),
-      points: Math.max(0, Math.round(Number(event?.points || BONUS_CATEGORIES[event?.type]?.points || 0))),
-      sourceKey: String(event?.sourceKey || "").trim(),
-      date: bonusDateKey(event?.date || event?.createdAt || new Date()),
-      createdAt: String(event?.createdAt || new Date().toISOString())
-    }))
-    .filter((event) => event.employee && event.type && event.points > 0);
-}
-
-function addBonusEvent(appData, event = {}) {
-  const employee = matchEmployeeName(appData?.settings, event.employee);
-  if (!employee) return false;
-  const type = String(event.type || "").trim();
-  const config = BONUS_CATEGORIES[type] || {};
-  const points = Math.max(0, Math.round(Number(event.points || config.points || 0)));
-  if (!type || points <= 0) return false;
-  appData.bonusEvents = normalizeBonusEvents(appData.bonusEvents);
-  const sourceKey = String(event.sourceKey || "").trim();
-  if (sourceKey && appData.bonusEvents.some((item) => item.sourceKey === sourceKey)) return false;
-  const createdAt = String(event.createdAt || new Date().toISOString());
-  appData.bonusEvents.push({
-    id: String(event.id || `bonus-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`),
-    employee,
-    type,
-    label: String(event.label || config.label || "Punkte"),
-    points,
-    sourceKey,
-    date: bonusDateKey(event.date || createdAt),
-    createdAt
-  });
-  appData.bonusEvents = appData.bonusEvents
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-    .slice(0, 5000);
-  return true;
-}
-
-function bonusSummaryForEmployee(appData, employee) {
-  const employeeName = matchEmployeeName(appData?.settings, employee);
-  if (!employeeName) {
-    return { employee: "", totalPoints: 0, categories: bonusEmptyCategories(), events: [], demo: false };
-  }
-  const persisted = normalizeBonusEvents(appData.bonusEvents)
-    .filter((event) => sameEmployeeName(event.employee, employeeName));
-  const sourceKeys = new Set(persisted.map((event) => event.sourceKey).filter(Boolean));
-  const derived = weekendAvailabilityBonusEvents(appData, employeeName, sourceKeys);
-  const events = [...persisted, ...derived]
-    .sort((a, b) => String(b.createdAt || b.date).localeCompare(String(a.createdAt || a.date)))
-    .slice(0, 80);
-  const categoryMap = new Map(Object.entries(BONUS_CATEGORIES).map(([type, config]) => [
-    type,
-    { type, label: config.label, points: config.points, count: 0, total: 0 }
-  ]));
-  for (const event of [...persisted, ...derived]) {
-    if (!categoryMap.has(event.type)) {
-      categoryMap.set(event.type, { type: event.type, label: event.label || "Punkte", points: event.points, count: 0, total: 0 });
-    }
-    const row = categoryMap.get(event.type);
-    row.count += 1;
-    row.total += Number(event.points || 0);
-  }
-  return {
-    employee: employeeName,
-    totalPoints: [...categoryMap.values()].reduce((sum, row) => sum + row.total, 0),
-    categories: [...categoryMap.values()],
-    events,
-    demo: sameEmployeeName(employeeName, "Kevin Leicht")
-  };
-}
-
-function bonusEmptyCategories() {
-  return Object.entries(BONUS_CATEGORIES).map(([type, config]) => ({
-    type,
-    label: config.label,
-    points: config.points,
-    count: 0,
-    total: 0
-  }));
-}
-
-function weekendAvailabilityBonusEvents(appData, employee, sourceKeys = new Set()) {
-  const settings = appData.settings || {};
-  if (bonusEmployeeIsFixed(settings, employee) || !bonusEmployeeIsService(settings, employee)) return [];
-  const events = [];
-  for (const [month, byEmployee] of Object.entries(appData.availability || {})) {
-    const days = byEmployee?.[employee] || {};
-    for (const [date, day] of Object.entries(days || {})) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || day?.status !== "yes") continue;
-      const weekday = new Date(`${date}T12:00:00`).getDay();
-      if (![5, 6].includes(weekday)) continue;
-      const sourceKey = `weekend-availability-worked:${employee}:${date}`;
-      if (sourceKeys.has(sourceKey)) continue;
-      const entry = appData.timesheets?.[month]?.[employee]?.[date] || {};
-      if (!bonusEntryHasCompletedTime(entry)) continue;
-      events.push({
-        id: sourceKey,
-        employee,
-        type: "weekend-availability-worked",
-        label: BONUS_CATEGORIES["weekend-availability-worked"].label,
-        points: BONUS_CATEGORIES["weekend-availability-worked"].points,
-        sourceKey,
-        date,
-        createdAt: `${date}T23:59:00.000Z`,
-        derived: true
-      });
-    }
-  }
-  return events;
-}
-
-function bonusEntryHasCompletedTime(entry = {}) {
-  return timeSegmentsForSync(entry).some((segment) => segment.from && segment.to);
-}
-
-function bonusEmployeeIsFixed(settings = {}, employee = "") {
-  return (settings.fixedEmployees || []).some((name) => sameEmployeeName(name, employee));
-}
-
-function bonusEmployeeIsService(settings = {}, employee = "") {
-  const role = String(settings.employeeRoles?.[employee] || "");
-  const departments = settings.employeeDepartments?.[employee] || [];
-  const values = [role, ...(Array.isArray(departments) ? departments : String(departments || "").split(","))];
-  return values.some((value) => String(value || "").toLowerCase().includes("service"));
-}
-
 function matchEmployeeName(settings = {}, employee = "") {
   const clean = String(employee || "").trim();
   if (!clean) return "";
@@ -1091,22 +1056,6 @@ function matchEmployeeName(settings = {}, employee = "") {
 
 function sameEmployeeName(left, right) {
   return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
-}
-
-function bonusDateKey(value) {
-  const text = String(value || "");
-  const match = text.match(/^\d{4}-\d{2}-\d{2}/);
-  if (match) return match[0];
-  try {
-    return new Intl.DateTimeFormat("sv-SE", {
-      timeZone: "Europe/Berlin",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }).format(new Date(value || Date.now()));
-  } catch (error) {
-    return new Date().toISOString().slice(0, 10);
-  }
 }
 
 function tipMoneyNumber(value) {
@@ -1119,8 +1068,6 @@ function tipMoneyString(value) {
 }
 
 module.exports = {
-  addBonusEvent,
-  bonusSummaryForEmployee,
   createPinHash,
   defaultData,
   employeeByPin,
@@ -1129,12 +1076,16 @@ module.exports = {
   downloadReceipt,
   mergeData,
   publicSettings,
+  pushPublicKey,
+  pushSubscriptionActive,
   readAppData,
   readJson,
   sanitizeSchedules,
   sendJson,
+  sendPushToEmployees,
   signToken,
   syncReportTipsToTimesheets,
+  upsertPushSubscription,
   uploadReceiptDataUrl,
   verifyAdmin,
   verifyToken,

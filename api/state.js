@@ -1,16 +1,18 @@
 ﻿const fs = require("fs");
 const path = require("path");
 const {
-  addBonusEvent,
-  bonusSummaryForEmployee,
   defaultData,
   handleError,
   publicSettings,
+  pushPublicKey,
+  pushSubscriptionActive,
   readAppData,
   readJson,
   sanitizeSchedules,
   sendJson,
+  sendPushToEmployees,
   syncReportTipsToTimesheets,
+  upsertPushSubscription,
   verifyToken,
   writeAppData
 } = require("./_data");
@@ -47,6 +49,7 @@ module.exports = async function handler(req, res) {
         dayReports: appData.dayReports || {},
         messages: appData.messages || [],
         terminalMessages: appData.terminalMessages || [],
+        pushPublicKey: pushPublicKey(),
         weather,
         taskTemplates: appData.taskTemplates || [],
         cleaningTemplates: appData.cleaningTemplates || [],
@@ -73,7 +76,8 @@ module.exports = async function handler(req, res) {
           : { [employeeSession.employee]: appData.timesheets?.[month]?.[employeeSession.employee] || {} },
         dayReports: isChef ? (appData.dayReports || {}) : {},
         messages: messagesForEmployee(appData.messages || [], appData.settings, employeeSession.employee),
-        bonusSummary: bonusSummaryForEmployee(appData, employeeSession.employee),
+        pushPublicKey: pushPublicKey(),
+        pushSubscriptionActive: pushSubscriptionActive(appData, employeeSession.employee),
         isChef,
         weather,
         missingAvailability,
@@ -90,6 +94,7 @@ module.exports = async function handler(req, res) {
       assignmentTimes: assignmentTimesForDates(appData, assignmentDates),
       assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates),
       messages: [],
+      pushPublicKey: pushPublicKey(),
       weather,
       missingAvailability,
       availabilityChangeRequests: []
@@ -105,6 +110,9 @@ async function handlePost(req, res) {
 
   if (action === "ack-message") {
     return acknowledgeMessage(body, res);
+  }
+  if (action === "push-subscribe") {
+    return savePushSubscription(body, res);
   }
   if (action.startsWith("schedule-")) {
     return handleScheduleMutation(req, res, body);
@@ -140,20 +148,22 @@ async function acknowledgeMessage(body, res) {
     const readBy = message.readBy || {};
     return !recipients.every((employee) => readBy[employee]);
   });
-  const bonusChanged = changed && addBonusEvent(appData, {
-    employee: session.employee,
-    type: "message-read",
-    label: "Nachricht gelesen",
-    points: 5,
-    sourceKey: `message-read:${session.employee}:${messageId}`,
-    date: new Date().toISOString().slice(0, 10)
-  });
-  if (changed || bonusChanged) await writeAppData(appData);
+  if (changed) await writeAppData(appData);
   return sendJson(res, 200, {
     ok: true,
-    messages: messagesForEmployee(appData.messages || [], appData.settings, session.employee),
-    bonusSummary: bonusSummaryForEmployee(appData, session.employee)
+    messages: messagesForEmployee(appData.messages || [], appData.settings, session.employee)
   });
+}
+
+async function savePushSubscription(body, res) {
+  const session = verifyToken(body.employeeToken, "employee");
+  if (!session?.employee) return sendJson(res, 401, { error: "Bitte erneut mit Mitarbeiter-PIN anmelden." });
+  const appData = await readAppData();
+  if (!upsertPushSubscription(appData, session.employee, body.subscription)) {
+    return sendJson(res, 400, { error: "Push-Abo konnte nicht gespeichert werden." });
+  }
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true, pushSubscriptionActive: true });
 }
 
 function serveAsset(req, res) {
@@ -162,6 +172,8 @@ function serveAsset(req, res) {
     "todo.html": { file: "todo.html", type: "text/html; charset=utf-8" },
     "teamapp-client.js": { file: "teamapp-client.js", type: "text/javascript; charset=utf-8" },
     "terminal-roles-addon.js": { file: "terminal-roles-addon.js", type: "text/javascript; charset=utf-8" },
+    "sw.js": { file: "sw.js", type: "text/javascript; charset=utf-8" },
+    "manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json; charset=utf-8" },
     "styles.css": { file: "styles.css", type: "text/css; charset=utf-8" },
     "la-bowling-logo.png": { file: "la-bowling-logo.png", type: "image/png" }
   };
@@ -324,6 +336,7 @@ async function handleScheduleMutation(req, res, body) {
     mergeWeekDays(schedule, body.days || {});
     if (action === "schedule-publish-week" || body.published === true) {
       schedule.publishedWeeks[weekKey] = true;
+      await notifySchedulePublished(appData, month, weekKey);
     }
     schedule.published = hasPublishedWeeks(schedule);
     schedule.updatedAt = new Date().toISOString();
@@ -338,6 +351,7 @@ async function handleScheduleMutation(req, res, body) {
     if (body.published === true) {
       schedule.publishedWeeks = allWeekKeysForScheduleDays(schedule.days);
       schedule.published = true;
+      await notifySchedulePublished(appData, month);
     } else {
       schedule.published = hasPublishedWeeks(schedule);
     }
@@ -346,6 +360,18 @@ async function handleScheduleMutation(req, res, body) {
   }
 
   return sendJson(res, 400, { error: "Unbekannte Aktion." });
+}
+
+async function notifySchedulePublished(appData, month, weekKey = "") {
+  const body = weekKey
+    ? `Die Woche ab ${formatDateLabel(weekKey)} ist veröffentlicht.`
+    : `Der Dienstplan für ${formatMonthLabel(month)} ist veröffentlicht.`;
+  return sendPushToEmployees(appData, appData.settings.employees || [], {
+    title: "Neuer Dienstplan online",
+    body,
+    url: "/",
+    tag: weekKey ? `schedule-${weekKey}` : `schedule-${month}`
+  });
 }
 
 function ensureSchedule(appData, month) {
@@ -703,5 +729,16 @@ function weekStartKey(dateKey) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const dayOfMonth = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${dayOfMonth}`;
+}
+
+function formatDateLabel(dateKey) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  return date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function formatMonthLabel(month) {
+  const [year, monthIndex] = String(month || "").split("-").map(Number);
+  if (!year || !monthIndex) return "den neuen Monat";
+  return new Date(year, monthIndex - 1, 1).toLocaleDateString("de-DE", { month: "long", year: "numeric" });
 }
 
