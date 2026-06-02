@@ -27,6 +27,7 @@ module.exports = async function handler(req, res) {
     if (action === "confirm-reminder") return confirmReminder(body, res);
     if (action === "confirm-terminal-message") return confirmTerminalMessage(body, res);
     if (action === "save-day-meta") return saveDayMeta(body, res);
+    if (action === "save-assignment-times") return saveAssignmentTimes(body, res);
     if (action === "add-handover") return addHandover(body, res);
     if (action === "save-tips") return saveTips(body, res);
     if (action === "confirm-employee-tip-payout") return confirmEmployeeTipPayout(body, res);
@@ -446,6 +447,23 @@ async function saveDayMeta(body, res) {
   sendJson(res, 200, { ok: true, message: "Tageskopf gespeichert.", ...terminalPayload(appData, date) });
 }
 
+async function saveAssignmentTimes(body, res) {
+  const appData = await readAppData();
+  const baseDate = cleanDate(body.date);
+  const validEmployees = new Set(appData.settings.employees || []);
+  const nextTimes = cleanAssignmentTimes(body.assignmentTimes || {}, validEmployees);
+  appData.assignmentTimes ||= {};
+  for (const dateKey of terminalAssignmentDates(baseDate)) {
+    if (nextTimes[dateKey] && Object.keys(nextTimes[dateKey]).length) {
+      appData.assignmentTimes[dateKey] = nextTimes[dateKey];
+    } else {
+      delete appData.assignmentTimes[dateKey];
+    }
+  }
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Einteilung gespeichert.", ...terminalPayload(appData, baseDate) });
+}
+
 async function addHandover(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
@@ -476,7 +494,61 @@ async function closeReport(body, res) {
 function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory) };
+  const assignmentDates = terminalAssignmentDates(date);
+  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory) };
+}
+
+function terminalAssignmentDates(dateKey) {
+  return [dateKey, addDaysKey(dateKey, 1)];
+}
+
+function addDaysKey(dateKey, days) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return localDate(date);
+}
+
+function assignmentTimesForDates(appData, dates = []) {
+  return Object.fromEntries(dates.map((dateKey) => [
+    dateKey,
+    appData.assignmentTimes?.[dateKey] || {}
+  ]));
+}
+
+function assignmentSchedulesForDates(appData, dates = []) {
+  return Object.fromEntries(dates.map((dateKey) => {
+    const schedule = appData.schedules?.[dateKey.slice(0, 7)] || {};
+    const day = schedule.days?.[dateKey] || {};
+    const isPublished = schedule.publishedWeeks?.[weekStartKey(dateKey)] || schedule.published;
+    return [dateKey, isPublished ? day : {}];
+  }));
+}
+
+function weekStartKey(dateKey) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  return localDate(date);
+}
+
+function cleanAssignmentTimes(value = {}, validEmployees = new Set()) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  for (const [dateKey, employees] of Object.entries(value)) {
+    const date = cleanDate(dateKey);
+    if (date !== dateKey || !employees || typeof employees !== "object" || Array.isArray(employees)) continue;
+    const day = {};
+    for (const [employee, item] of Object.entries(employees)) {
+      const cleanEmployee = cleanText(employee, 160);
+      if (!cleanEmployee || !validEmployees.has(cleanEmployee)) continue;
+      const from = cleanTime(item?.from);
+      const to = cleanTime(item?.to);
+      const note = cleanText(item?.note, 240);
+      if (from || to || note) day[cleanEmployee] = { from, to, note };
+    }
+    result[date] = day;
+  }
+  return result;
 }
 
 function activeTerminalDate(appData, requestedDate) {

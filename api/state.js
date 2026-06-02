@@ -33,6 +33,7 @@ module.exports = async function handler(req, res) {
     const missingAvailability = availabilityMissing(appData, availabilityMonth);
     const availabilityChangeRequests = (appData.availabilityChangeRequests || []).filter((request) => !availabilityMonth || request.month === availabilityMonth);
     const weather = await fetchWeather();
+    const assignmentDates = todayAndTomorrowDates();
 
     if (adminSession) {
       return sendJson(res, 200, {
@@ -40,6 +41,8 @@ module.exports = async function handler(req, res) {
         availability: appData.availability[availabilityMonth] || {},
         schedule,
         schedules: appData.schedules || {},
+        assignmentTimes: assignmentTimesForDates(appData, assignmentDates),
+        assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates),
         timesheets: appData.timesheets?.[month] || {},
         dayReports: appData.dayReports || {},
         messages: appData.messages || [],
@@ -63,6 +66,8 @@ module.exports = async function handler(req, res) {
         },
         schedule: publicSchedule,
         schedules: sanitizeSchedules(appData.schedules),
+        assignmentTimes: assignmentTimesForDates(appData, assignmentDates),
+        assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates),
         timesheets: isChef
           ? (appData.timesheets?.[month] || {})
           : { [employeeSession.employee]: appData.timesheets?.[month]?.[employeeSession.employee] || {} },
@@ -82,6 +87,8 @@ module.exports = async function handler(req, res) {
       availability: {},
       schedule: publicSchedule,
       schedules: sanitizeSchedules(appData.schedules),
+      assignmentTimes: assignmentTimesForDates(appData, assignmentDates),
+      assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates),
       messages: [],
       weather,
       missingAvailability,
@@ -492,6 +499,33 @@ function localDate(date) {
   }).formatToParts(date);
   const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
+}
+
+function todayAndTomorrowDates() {
+  const today = localDate(new Date());
+  return [today, addDaysKey(today, 1)];
+}
+
+function addDaysKey(dateKey, days) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return localDate(date);
+}
+
+function assignmentTimesForDates(appData, dates = []) {
+  return Object.fromEntries(dates.map((dateKey) => [
+    dateKey,
+    appData.assignmentTimes?.[dateKey] || {}
+  ]));
+}
+
+function assignmentSchedulesForDates(appData, dates = []) {
+  return Object.fromEntries(dates.map((dateKey) => {
+    const schedule = appData.schedules?.[dateKey.slice(0, 7)] || {};
+    const day = schedule.days?.[dateKey] || {};
+    const isPublished = schedule.publishedWeeks?.[weekStartKey(dateKey)] || schedule.published;
+    return [dateKey, isPublished ? day : {}];
+  }));
 }
 
 async function fetchWeather() {

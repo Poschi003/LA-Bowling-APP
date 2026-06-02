@@ -91,6 +91,7 @@ const defaultData = {
   schedules: {},
   timesheets: {},
   tipPayouts: {},
+  assignmentTimes: {},
   cleaningTemplates: defaultCleaningTemplates,
   taskTemplates: [
     {
@@ -224,6 +225,7 @@ function mergeData(value) {
     schedules: normalizeSchedules(value?.schedules || base.schedules),
     timesheets: value?.timesheets || base.timesheets,
     tipPayouts: value?.tipPayouts && typeof value.tipPayouts === "object" ? value.tipPayouts : base.tipPayouts,
+    assignmentTimes: normalizeAssignmentTimes(value?.assignmentTimes || base.assignmentTimes),
     cleaningTemplates: Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates,
     taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates, deletedTaskTemplateIds),
     deletedTaskTemplateIds,
@@ -264,6 +266,31 @@ function normalizeSchedules(schedules) {
     };
   }
   return result;
+}
+
+function normalizeAssignmentTimes(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  for (const [dateKey, employees] of Object.entries(value)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) continue;
+    if (!employees || typeof employees !== "object" || Array.isArray(employees)) continue;
+    const day = {};
+    for (const [employee, item] of Object.entries(employees)) {
+      const cleanEmployee = String(employee || "").trim();
+      if (!cleanEmployee) continue;
+      const from = normalizeAssignmentTime(item?.from);
+      const to = normalizeAssignmentTime(item?.to);
+      const note = String(item?.note || "").trim().slice(0, 240);
+      if (from || to || note) day[cleanEmployee] = { from, to, note };
+    }
+    if (Object.keys(day).length) result[dateKey] = day;
+  }
+  return result;
+}
+
+function normalizeAssignmentTime(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
 }
 
 function weekStartKey(dateKey) {
