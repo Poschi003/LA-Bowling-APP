@@ -2381,26 +2381,14 @@ function employeeIsFixed(employee) {
 }
 
 function renderAssignments() {
-  const targets = [
-    { element: $("#dashboardAssignments"), dashboard: true },
-    { element: $("#assignmentContent"), dashboard: false }
-  ].filter((target) => target.element);
-  if (!targets.length) return;
+  const container = $("#assignmentContent");
+  if (!container) return;
   if (!state.activeEmployee) {
-    targets.forEach(({ element }) => {
-      element.classList.add("hidden");
-      element.innerHTML = "";
-    });
+    container.innerHTML = `<p class="hint">Bitte mit Mitarbeiter-PIN anmelden.</p>`;
     return;
   }
   const dates = assignmentDateKeys(todayKey());
-  const cards = dates.map((dateKey, index) => assignmentDayHtml(dateKey, index)).join("");
-  targets.forEach(({ element, dashboard }) => {
-    element.classList.remove("hidden");
-    element.innerHTML = dashboard
-      ? `<div class="assignment-dashboard-head"><h2>Heute & morgen</h2><p>Deine kurzfristige Einteilung aus dem Terminal.</p></div>${cards}`
-      : cards;
-  });
+  container.innerHTML = dates.map((dateKey, index) => assignmentDayHtml(dateKey, index)).join("");
 }
 
 function assignmentDateKeys(baseDate) {

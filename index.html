@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260602-einteilung-dashboard-v1">
+    <link rel="stylesheet" href="styles.css?v=20260602-einteilung-reiter-v1">
   </head>
   <body>
     <header class="topbar">
@@ -22,6 +22,7 @@
       <nav id="mainTabs" class="tabs hidden" aria-label="Bereiche">
         <button class="tab active" type="button" data-tab="home">Dashboard</button>
         <button class="tab employee-only hidden" type="button" data-tab="availability">Verfügbarkeit</button>
+        <button class="tab employee-only hidden" type="button" data-tab="assignments">Einteilung</button>
         <button class="tab employee-only hidden" type="button" data-tab="published">Dienstplan</button>
         <button class="tab employee-only hidden" type="button" data-tab="timesheet">Stundenübersicht</button>
         <button class="tab hall-demo-only hidden" type="button" data-tab="hallOfFame">Hall of Fame</button>
@@ -47,7 +48,6 @@
             <button id="unlockHome" class="primary">Login</button>
           </div>
         </div>
-        <div id="dashboardAssignments" class="assignment-dashboard-block hidden"></div>
         <div id="homeContent" class="schedule-list"></div>
       </section>
 
@@ -870,7 +870,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260602-einteilung-dashboard-v1"></script>
+    <script src="teamapp-client.js?v=20260602-einteilung-reiter-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>
