@@ -6,6 +6,8 @@
     { "source": "/todo.html", "destination": "/api/state?asset=todo.html" },
     { "source": "/teamapp-client.js", "destination": "/api/state?asset=teamapp-client.js" },
     { "source": "/terminal-roles-addon.js", "destination": "/api/state?asset=terminal-roles-addon.js" },
+    { "source": "/sw.js", "destination": "/api/state?asset=sw.js" },
+    { "source": "/manifest.webmanifest", "destination": "/api/state?asset=manifest.webmanifest" },
     { "source": "/styles.css", "destination": "/api/state?asset=styles.css" },
     { "source": "/la-bowling-logo.png", "destination": "/api/state?asset=la-bowling-logo.png" }
   ]

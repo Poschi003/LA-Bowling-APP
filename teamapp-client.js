@@ -15,7 +15,8 @@
   timesheets: {},
   messages: [],
   terminalMessages: [],
-  bonusSummary: null,
+  pushPublicKey: "",
+  pushSubscriptionActive: false,
   dayReports: {},
   assignmentTimes: {},
   assignmentSchedules: {},
@@ -450,7 +451,8 @@ async function loadState() {
   state.timesheets = data.timesheets || {};
   state.messages = data.messages || [];
   state.terminalMessages = data.terminalMessages || [];
-  state.bonusSummary = data.bonusSummary || null;
+  state.pushPublicKey = data.pushPublicKey || "";
+  state.pushSubscriptionActive = Boolean(data.pushSubscriptionActive);
   state.taskTemplates = data.taskTemplates || [];
   state.cleaningTemplates = normalizeCleaningTemplates(data.cleaningTemplates);
   state.reminderTemplates = normalizeReminderTemplates(data.reminderTemplates);
@@ -727,7 +729,6 @@ function renderAll() {
   renderAssignments();
   renderPublished();
   renderSwaps();
-  renderHallOfFame();
   renderChef();
   renderTimesheet();
   renderSettings();
@@ -739,7 +740,6 @@ function renderAll() {
   renderAdminSwaps();
   renderAdminAvailabilityRequests();
   renderMessageEmployeePicker();
-  renderBonusPraisePicker();
   renderAdminMessages();
   renderAdminTerminalMessages();
   renderAdminTasks();
@@ -775,7 +775,6 @@ function renderAccess() {
   $("#mainTabs")?.classList.toggle("hidden", !loggedIn || state.pinChangeRequired);
   $$(".employee-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || chef));
   $('[data-tab="swaps"]')?.classList.add("hidden");
-  $$(".hall-demo-only").forEach((element) => element.classList.toggle("hidden", !isHallOfFameDemoEmployee(state.activeEmployee) || state.pinChangeRequired));
   $$(".backoffice-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || !state.hasBackofficeAccess));
   $$(".chef-only").forEach((element) => element.classList.toggle("hidden", !chef));
   $("#homeLogin")?.classList.toggle("hidden", loggedIn);
@@ -862,6 +861,7 @@ function renderHome() {
   }
   container.innerHTML = `
     ${renderDashboardMessages()}
+    ${renderPushNotificationBox()}
     <section class="today-section dashboard-today dashboard-today-open">
       <h2>Heutiger Tag</h2>
       ${renderScheduleDay(new Date(`${today}T12:00:00`), { today: true })}
@@ -891,60 +891,86 @@ function renderDashboardMessages() {
   `;
 }
 
-function isHallOfFameDemoEmployee(employee) {
-  return String(employee || "").trim().toLowerCase() === "kevin leicht";
-}
-
-function renderHallOfFame() {
-  const target = $("#hallOfFameContent");
-  if (!target) return;
-  if (!isHallOfFameDemoEmployee(state.activeEmployee)) {
-    target.innerHTML = `<p class="hint">Hall of Fame ist aktuell nur als Demo für Kevin freigeschaltet.</p>`;
-    return;
-  }
-  const summary = state.bonusSummary || {};
-  const categories = Array.isArray(summary.categories) ? summary.categories : [];
-  const events = Array.isArray(summary.events) ? summary.events : [];
-  target.innerHTML = `
-    <section class="hall-hero">
+function renderPushNotificationBox() {
+  if (!state.activeEmployee || currentUserIsChef()) return "";
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "";
+  if (Notification.permission === "granted" && state.pushSubscriptionActive) return "";
+  const missingKey = !state.pushPublicKey;
+  const denied = Notification.permission === "denied";
+  return `
+    <section class="push-notice">
       <div>
-        <span>Demo Hall of Fame</span>
-        <h3>${escapeHtml(summary.employee || state.activeEmployee)}</h3>
-        <p>Punkte werden automatisch gesammelt. Wenn das für Kevin passt, rollen wir es für alle Mitarbeiter aus.</p>
+        <strong>Benachrichtigungen am Handy</strong>
+        <p>${pushNotificationHint(missingKey, denied)}</p>
       </div>
-      <strong>${Number(summary.totalPoints || 0).toLocaleString("de-DE")} Punkte</strong>
-    </section>
-    <div class="hall-category-grid">
-      ${categories.map((category) => `
-        <article class="hall-category-card ${category.total > 0 ? "active" : ""}">
-          <span>+${Number(category.points || 0)} je Aktion</span>
-          <strong>${escapeHtml(category.label || "Punkte")}</strong>
-          <small>${Number(category.count || 0)}x gesammelt · ${Number(category.total || 0)} Punkte</small>
-        </article>
-      `).join("")}
-    </div>
-    <section class="hall-event-panel">
-      <h3>Letzte Punkte</h3>
-      ${events.length ? `
-        <div class="hall-event-list">
-          ${events.slice(0, 20).map((event) => `
-            <article>
-              <div>
-                <strong>${escapeHtml(event.label || "Punkte")}</strong>
-                <span>${escapeHtml(formatBonusDate(event.date || event.createdAt))}${event.derived ? " · automatisch berechnet" : ""}</span>
-              </div>
-              <b>+${Number(event.points || 0)}</b>
-            </article>
-          `).join("")}
-        </div>
-      ` : `<p class="hint">Noch keine Punkte gesammelt.</p>`}
+      <button class="primary" data-enable-push type="button" ${missingKey || denied ? "disabled" : ""}>
+        Push aktivieren
+      </button>
     </section>
   `;
 }
 
-function formatBonusDate(value) {
-  const dateKey = String(value || "").slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? formatDate(dateKey) : "Heute";
+function pushNotificationHint(missingKey, denied) {
+  if (missingKey) return "Push ist im Code vorbereitet. In Vercel fehlen noch die VAPID-Schlüssel.";
+  if (denied) return "Benachrichtigungen sind im Browser blockiert. Bitte in den Handy-Einstellungen wieder erlauben.";
+  return "Erhalte eine Meldung, wenn ein neuer Dienstplan oder die Einteilung für morgen online ist.";
+}
+
+async function enablePushNotifications(button) {
+  if (!state.employeeToken) {
+    showToast("Bitte erneut mit Mitarbeiter-PIN anmelden.");
+    return;
+  }
+  if (!state.pushPublicKey) {
+    showToast("Push ist noch nicht fertig eingerichtet.");
+    return;
+  }
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    showToast("Dieses Gerät unterstützt Web-Push leider nicht.");
+    return;
+  }
+  const oldText = button?.textContent || "Push aktivieren";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Aktiviert...";
+  }
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      showToast("Benachrichtigungen wurden nicht erlaubt.");
+      return;
+    }
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(state.pushPublicKey)
+    });
+    await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "push-subscribe",
+        employeeToken: state.employeeToken,
+        subscription
+      })
+    });
+    state.pushSubscriptionActive = true;
+    renderHome();
+    showToast("Push-Benachrichtigungen sind aktiviert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = `${base64String}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
 function dashboardMessagesForActiveEmployee() {
@@ -2750,16 +2776,6 @@ function renderMessageEmployeePicker() {
 
 function selectedMessageEmployees() {
   return $$("[data-message-employee]:checked").map((input) => input.value).filter(Boolean);
-}
-
-function renderBonusPraisePicker() {
-  const select = $("#bonusPraiseEmployee");
-  if (!select) return;
-  const current = select.value || "Kevin Leicht";
-  const employees = state.settings?.employees || [];
-  select.innerHTML = `<option value="">Mitarbeiter auswählen</option>${employees.map((employee) => (
-    `<option value="${escapeHtml(employee)}" ${current === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`
-  )).join("")}`;
 }
 
 function messageReadStatusText(message = {}) {
@@ -4723,7 +4739,7 @@ async function acknowledgeDashboardMessage(messageId, button) {
     button.textContent = "Speichert...";
   }
   try {
-    const result = await api("/api/state", {
+    await api("/api/state", {
       method: "POST",
       body: JSON.stringify({
         action: "ack-message",
@@ -4731,7 +4747,6 @@ async function acknowledgeDashboardMessage(messageId, button) {
         messageId
       })
     });
-    state.bonusSummary = result.bonusSummary || state.bonusSummary;
     state.messages = (state.messages || []).map((message) => {
       if (message.id !== messageId) return message;
       return {
@@ -4747,7 +4762,6 @@ async function acknowledgeDashboardMessage(messageId, button) {
       return !recipients.length || !recipients.every((employee) => message.readBy?.[employee]);
     });
     renderHome();
-    renderHallOfFame();
     renderChef();
     renderAdminMessages();
     showToast("Nachricht als gelesen bestätigt.");
@@ -6995,6 +7009,11 @@ function bindEvents() {
       acknowledgeDashboardMessage(ackMessage.dataset.ackMessage, ackMessage);
       return;
     }
+    const pushButton = event.target.closest("[data-enable-push]");
+    if (pushButton) {
+      enablePushNotifications(pushButton);
+      return;
+    }
     if (event.target.closest("[data-open-backoffice]")) {
       state.adminUnlocked = true;
       renderAll();
@@ -7514,32 +7533,6 @@ function bindEvents() {
       $$("[data-message-employee]").forEach((input) => { input.checked = false; });
       renderAdminMessages();
       showToast("Nachricht veröffentlicht.");
-    } catch (error) {
-      showError(error);
-    }
-  });
-
-  $("#sendBonusPraise")?.addEventListener("click", async () => {
-    const employee = $("#bonusPraiseEmployee")?.value || "";
-    const note = $("#bonusPraiseNote")?.value.trim() || "";
-    if (!employee) {
-      showToast("Bitte Mitarbeiter auswählen.");
-      return;
-    }
-    try {
-      const result = await api("/api/settings", {
-        method: "POST",
-        headers: { "x-admin-token": state.adminToken },
-        body: JSON.stringify({
-          action: "add-bonus-praise",
-          employee,
-          note
-        })
-      });
-      if (state.activeEmployee === employee) state.bonusSummary = result.bonusSummary || state.bonusSummary;
-      $("#bonusPraiseNote").value = "";
-      renderHallOfFame();
-      showToast(`${employee}: +20 Punkte für Lob.`);
     } catch (error) {
       showError(error);
     }
