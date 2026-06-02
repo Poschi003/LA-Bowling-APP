@@ -17,6 +17,8 @@
   terminalMessages: [],
   bonusSummary: null,
   dayReports: {},
+  assignmentTimes: {},
+  assignmentSchedules: {},
   missingAvailability: [],
   swaps: { open: [], mine: [], myShifts: [], admin: [] },
   availabilityChangeRequests: [],
@@ -161,6 +163,8 @@ const defaultData = {
   terminalMessages: [],
   customerDirectory: [],
   dayReports: {},
+  assignmentTimes: {},
+  assignmentSchedules: {},
   availabilityChangeRequests: []
 };
 
@@ -451,6 +455,8 @@ async function loadState() {
   state.cleaningTemplates = normalizeCleaningTemplates(data.cleaningTemplates);
   state.reminderTemplates = normalizeReminderTemplates(data.reminderTemplates);
   state.dayReports = data.dayReports || {};
+  state.assignmentTimes = normalizeAssignmentTimes(data.assignmentTimes || {});
+  state.assignmentSchedules = data.assignmentSchedules || {};
   state.weather = data.weather || state.weather;
   state.isChef = Boolean(data.isChef);
   state.missingAvailability = data.missingAvailability || [];
@@ -589,6 +595,8 @@ function mergeData(value) {
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     customerDirectory: normalizeCustomerDirectory(value?.customerDirectory || base.customerDirectory),
     dayReports: value && value.dayReports ? value.dayReports : base.dayReports,
+    assignmentTimes: normalizeAssignmentTimes(value?.assignmentTimes || base.assignmentTimes),
+    assignmentSchedules: value && value.assignmentSchedules ? value.assignmentSchedules : base.assignmentSchedules,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };
   if (!merged.settings.businessName || merged.settings.businessName === "Dienstplan") {
@@ -599,6 +607,30 @@ function mergeData(value) {
 
 function normalizeSettings(settings) {
   return mergeData({ settings }).settings;
+}
+
+function normalizeAssignmentTimes(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  Object.entries(value).forEach(([dateKey, employees]) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || "")) || !employees || typeof employees !== "object" || Array.isArray(employees)) return;
+    const day = {};
+    Object.entries(employees).forEach(([employee, item]) => {
+      const cleanEmployee = String(employee || "").trim();
+      if (!cleanEmployee) return;
+      const from = cleanTimeValue(item?.from);
+      const to = cleanTimeValue(item?.to);
+      const note = String(item?.note || "").trim().slice(0, 240);
+      if (from || to || note) day[cleanEmployee] = { from, to, note };
+    });
+    if (Object.keys(day).length) result[dateKey] = day;
+  });
+  return result;
+}
+
+function cleanTimeValue(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
 }
 
 function normalizeScheduleAutoDeleteDays(value, fallback = 14) {
@@ -693,6 +725,7 @@ function renderAll() {
   renderEmployeeSelect();
   renderAvailability();
   renderHome();
+  renderAssignments();
   renderPublished();
   renderSwaps();
   renderHallOfFame();
@@ -2347,6 +2380,108 @@ function employeeIsFixed(employee) {
   const fixed = new Set((state.settings.fixedEmployees || []).map((name) => String(name).trim().toLowerCase()));
   return fixed.has(String(employee || "").trim().toLowerCase());
 }
+
+function renderAssignments() {
+  const container = $("#assignmentContent");
+  if (!container) return;
+  if (!state.activeEmployee) {
+    container.innerHTML = `<p class="hint">Bitte mit Mitarbeiter-PIN anmelden.</p>`;
+    return;
+  }
+  const dates = assignmentDateKeys(todayKey());
+  container.innerHTML = dates.map((dateKey, index) => assignmentDayHtml(dateKey, index)).join("");
+}
+
+function assignmentDateKeys(baseDate) {
+  const base = /^\d{4}-\d{2}-\d{2}$/.test(String(baseDate || "")) ? baseDate : todayKey();
+  return [base, isoDate(addDays(new Date(`${base}T12:00:00`), 1))];
+}
+
+function assignmentScheduleForDate(dateKey) {
+  const month = dateKey.slice(0, 7);
+  return state.assignmentSchedules?.[dateKey]
+    || state.schedules?.[month]?.days?.[dateKey]
+    || (dateKey === state.terminalDate ? state.terminalSchedule : null)
+    || (state.schedule?.month === month ? state.schedule?.days?.[dateKey] : null)
+    || {};
+}
+
+function assignmentRowsForDate(dateKey) {
+  const scheduleDay = assignmentScheduleForDate(dateKey);
+  return (state.settings.positions || [])
+    .filter((position) => scheduleDay[position])
+    .map((position) => {
+      const employee = scheduleDay[position];
+      return {
+        dateKey,
+        position,
+        employee,
+        time: assignmentTimeForEmployee(dateKey, employee, scheduleDay, position)
+      };
+    });
+}
+
+function assignmentTimeForEmployee(dateKey, employee, scheduleDay = {}, position = "") {
+  const direct = state.assignmentTimes?.[dateKey]?.[employee];
+  if (direct?.from || direct?.to || direct?.note) return direct;
+  const planned = parsePlannedTime(scheduleDay[`${position}__note`] || "");
+  return planned.from || planned.to ? { from: planned.from, to: planned.to, note: "" } : { from: "", to: "", note: "" };
+}
+
+function assignmentDayHtml(dateKey, index = 0) {
+  const rows = assignmentRowsForDate(dateKey);
+  const ownRows = rows.filter((row) => row.employee === state.activeEmployee);
+  const title = index === 0 ? "Heute" : "Morgen";
+  const holiday = holidayInfo(dateKey);
+  return `
+    <article class="assignment-day-card ${ownRows.length ? "has-own-assignment" : ""}">
+      <div class="assignment-day-head">
+        <div>
+          <span>${escapeHtml(title)}</span>
+          <h3>${escapeHtml(formatLongDate(dateKey))}${holiday.label ? ` · ${escapeHtml(holiday.label)}` : ""}</h3>
+        </div>
+        ${ownRows.length ? `<strong>Eingeteilt</strong>` : `<strong class="muted">Nicht eingeteilt</strong>`}
+      </div>
+      <div class="assignment-own-list">
+        ${ownRows.length ? ownRows.map(assignmentOwnRowHtml).join("") : `<p class="hint">Für dich ist an diesem Tag aktuell kein Dienst hinterlegt.</p>`}
+      </div>
+      <details class="assignment-team-list">
+        <summary>Team-Einteilung anzeigen</summary>
+        <div>
+          ${rows.length ? rows.map(assignmentTeamRowHtml).join("") : `<p class="hint">Für diesen Tag ist kein veröffentlichter Dienstplan gefunden.</p>`}
+        </div>
+      </details>
+    </article>
+  `;
+}
+
+function assignmentOwnRowHtml(row) {
+  return `
+    <div class="assignment-own-row ${positionClass(row.position)}">
+      <span>${escapeHtml(row.position)}</span>
+      <strong>${escapeHtml(assignmentTimeText(row.time))}</strong>
+      ${row.time?.note ? `<small>${escapeHtml(row.time.note)}</small>` : ""}
+    </div>
+  `;
+}
+
+function assignmentTeamRowHtml(row) {
+  return `
+    <div class="assignment-team-row">
+      <span>${escapeHtml(row.position)}</span>
+      <strong>${escapeHtml(row.employee)}</strong>
+      <em>${escapeHtml(assignmentTimeText(row.time))}</em>
+    </div>
+  `;
+}
+
+function assignmentTimeText(time = {}) {
+  if (time.from && time.to) return `${time.from} bis ${time.to}`;
+  if (time.from) return `ab ${time.from}`;
+  if (time.to) return `bis ${time.to}`;
+  return "Zeit noch offen";
+}
+
 function renderScheduleDay(date, options = {}) {
   const key = isoDate(date);
   const sourceSchedule = options.schedule || state.schedule;
@@ -3322,6 +3457,7 @@ function renderTerminal() {
   renderHandovers(report, reportClosed);
   renderToiletStatus(report);
   renderTerminalChecks(report);
+  renderTerminalAssignments(dateKey);
   checkTerminalReminders(report, reportClosed);
   renderTerminalCosts(dateKey, employees);
   renderTipDistribution();
@@ -3435,10 +3571,80 @@ function renderTerminalTabs() {
   $$(".terminal-tab").forEach((button) => button.classList.toggle("active", button.dataset.terminalTab === active));
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "tasks");
   $("#terminalChecksSection")?.classList.toggle("hidden", active !== "checks");
+  $("#terminalAssignmentsSection")?.classList.toggle("hidden", active !== "assignments");
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "service");
   $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "finance");
   $("#terminalTipsSection")?.classList.toggle("hidden", active !== "tips");
   $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "report");
+}
+
+function renderTerminalAssignments(dateKey) {
+  const target = $("#terminalAssignmentList");
+  if (!target) return;
+  target.innerHTML = assignmentDateKeys(dateKey).map((dayKey, index) => terminalAssignmentDayHtml(dayKey, index)).join("");
+}
+
+function terminalAssignmentDayHtml(dateKey, index = 0) {
+  const rows = assignmentEmployeeRowsForDate(dateKey);
+  const title = index === 0 ? "Heute" : "Morgen";
+  return `
+    <article class="terminal-assignment-day">
+      <div class="terminal-task-group-head">
+        <div>
+          <h4>${escapeHtml(title)} · ${escapeHtml(formatLongDate(dateKey))}</h4>
+          <span>${rows.length ? `${rows.length} Mitarbeiter` : "Keine Einteilung"}</span>
+        </div>
+      </div>
+      <div class="terminal-assignment-rows">
+        ${rows.length ? rows.map(terminalAssignmentRowHtml).join("") : `<p class="hint">Für diesen Tag ist kein veröffentlichter Dienstplan gefunden.</p>`}
+      </div>
+    </article>
+  `;
+}
+
+function assignmentEmployeeRowsForDate(dateKey) {
+  const byEmployee = new Map();
+  assignmentRowsForDate(dateKey).forEach((row) => {
+    const existing = byEmployee.get(row.employee) || {
+      dateKey,
+      employee: row.employee,
+      positions: [],
+      time: assignmentTimeForEmployee(dateKey, row.employee, assignmentScheduleForDate(dateKey), row.position)
+    };
+    existing.positions.push(row.position);
+    byEmployee.set(row.employee, existing);
+  });
+  return [...byEmployee.values()];
+}
+
+function terminalAssignmentRowHtml(row) {
+  const time = row.time || {};
+  return `
+    <div class="terminal-assignment-row" data-assignment-date="${escapeHtml(row.dateKey)}" data-assignment-employee="${escapeHtml(row.employee)}">
+      <div>
+        <strong>${escapeHtml(row.employee)}</strong>
+        <span>${escapeHtml(row.positions.join(", "))}</span>
+      </div>
+      <label>Start<input type="time" data-assignment-field="from" value="${escapeHtml(time.from || "")}"></label>
+      <label>Ende<input type="time" data-assignment-field="to" value="${escapeHtml(time.to || "")}"></label>
+      <label>Notiz<input data-assignment-field="note" value="${escapeHtml(time.note || "")}" placeholder="optional"></label>
+    </div>
+  `;
+}
+
+function collectTerminalAssignmentTimes() {
+  const result = {};
+  $$("#terminalAssignmentList [data-assignment-date][data-assignment-employee]").forEach((row) => {
+    const dateKey = row.dataset.assignmentDate;
+    const employee = row.dataset.assignmentEmployee;
+    result[dateKey] ||= {};
+    result[dateKey][employee] = {
+      from: row.querySelector('[data-assignment-field="from"]')?.value || "",
+      to: row.querySelector('[data-assignment-field="to"]')?.value || "",
+      note: row.querySelector('[data-assignment-field="note"]')?.value || ""
+    };
+  });
+  return result;
 }
 
 function renderTerminalDayMeta(dateKey, report, reportClosed) {
@@ -5302,6 +5508,8 @@ async function terminalAction(payload) {
   state.tipOverview = result.tipOverview || state.tipOverview;
   state.dayReports[state.terminalDate] = state.terminalReport;
   state.terminalSchedule = result.schedule || {};
+  state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
+  state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
@@ -5329,6 +5537,8 @@ async function terminalLogin(code) {
   state.tipOverview = result.tipOverview || state.tipOverview;
   state.dayReports[state.terminalDate] = state.terminalReport;
   state.terminalSchedule = result.schedule || {};
+  state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
+  state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
@@ -5379,6 +5589,8 @@ async function openCorrectionReport(button) {
     state.tipOverview = result.tipOverview || state.tipOverview;
     state.dayReports[state.terminalDate] = state.terminalReport;
     state.terminalSchedule = result.schedule || {};
+    state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
+    state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
     state.terminalTasks = result.tasks || [];
     state.terminalReminders = normalizeReminderTemplates(result.reminders);
     state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
@@ -5436,6 +5648,8 @@ async function closeCorrectionReport(button) {
     if (state.terminalDate === date) {
       state.terminalEntries = result.entries || state.terminalEntries || {};
       state.terminalSchedule = result.schedule || state.terminalSchedule || {};
+      state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
+      state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
       state.terminalTasks = result.tasks || state.terminalTasks || [];
       state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
       state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.terminalCleaningTemplates);
@@ -7792,6 +8006,31 @@ function bindEvents() {
     if (tab) {
       state.terminalTab = tab.dataset.terminalTab;
       renderTerminal();
+      return;
+    }
+    const saveAssignments = event.target.closest("#saveTerminalAssignments");
+    if (saveAssignments) {
+      const oldText = saveAssignments.textContent;
+      saveAssignments.disabled = true;
+      saveAssignments.textContent = "Speichert...";
+      try {
+        const result = await terminalAction({
+          action: "save-assignment-times",
+          assignmentTimes: collectTerminalAssignmentTimes()
+        });
+        showToast(result.message || "Einteilung gespeichert.");
+        saveAssignments.textContent = "Gespeichert";
+        window.setTimeout(() => {
+          saveAssignments.textContent = oldText;
+        }, 1400);
+      } catch (error) {
+        saveAssignments.textContent = oldText;
+        showError(error);
+      } finally {
+        window.setTimeout(() => {
+          saveAssignments.disabled = false;
+        }, 300);
+      }
       return;
     }
     const terminalMessageButton = event.target.closest("[data-confirm-terminal-message]");

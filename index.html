@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260531-tip-factors-v1">
+    <link rel="stylesheet" href="styles.css?v=20260602-einteilung-v1">
   </head>
   <body>
     <header class="topbar">
@@ -22,6 +22,7 @@
       <nav id="mainTabs" class="tabs hidden" aria-label="Bereiche">
         <button class="tab active" type="button" data-tab="home">Dashboard</button>
         <button class="tab employee-only hidden" type="button" data-tab="availability">Verfügbarkeit</button>
+        <button class="tab employee-only hidden" type="button" data-tab="assignments">Einteilung</button>
         <button class="tab employee-only hidden" type="button" data-tab="published">Dienstplan</button>
         <button class="tab employee-only hidden" type="button" data-tab="timesheet">Stundenübersicht</button>
         <button class="tab hall-demo-only hidden" type="button" data-tab="hallOfFame">Hall of Fame</button>
@@ -88,6 +89,16 @@
         <div id="publishedSchedule" class="schedule-list"></div>
       </section>
 
+      <section id="assignments" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Meine Einteilung</h2>
+            <p>Heute und morgen mit den kurzfristig festgelegten Startzeiten.</p>
+          </div>
+        </div>
+        <div id="assignmentContent" class="assignment-list"></div>
+      </section>
+
       <section id="timesheet" class="panel">
         <div class="section-head">
           <div>
@@ -150,6 +161,7 @@
           <nav class="terminal-tabs" aria-label="Terminal-Bereiche">
             <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
             <button class="terminal-tab" data-terminal-tab="checks" type="button">Kontrollen</button>
+            <button class="terminal-tab" data-terminal-tab="assignments" type="button">Einteilung</button>
             <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
             <button class="terminal-tab" data-terminal-tab="tips" type="button">Trinkgeld</button>
@@ -173,6 +185,16 @@
               </div>
             </div>
             <div id="terminalCheckLog" class="terminal-check-log"></div>
+          </section>
+          <section id="terminalAssignmentsSection" class="terminal-section hidden">
+            <div class="terminal-section-head">
+              <div>
+                <h3>Einteilung</h3>
+                <p class="hint">Startzeiten für heute und morgen festlegen. Die Mitarbeiter sehen diese Zeiten in der TeamApp.</p>
+              </div>
+              <button id="saveTerminalAssignments" class="primary" type="button">Einteilung speichern</button>
+            </div>
+            <div id="terminalAssignmentList" class="terminal-assignment-list"></div>
           </section>
           <section id="terminalServiceSection" class="terminal-section hidden">
             <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
@@ -848,7 +870,7 @@
         });
       });
     </script>
-    <script src="teamapp-client.js?v=20260531-tip-factors-v1"></script>
+    <script src="teamapp-client.js?v=20260602-einteilung-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

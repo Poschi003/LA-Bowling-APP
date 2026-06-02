@@ -1293,6 +1293,133 @@ body.terminal-login-mode #terminalLogin button:hover {
   box-shadow: 0 10px 22px rgba(225, 23, 47, 0.12);
 }
 
+.assignment-list,
+.terminal-assignment-list,
+.terminal-assignment-rows,
+.assignment-own-list {
+  display: grid;
+  gap: 12px;
+}
+
+.assignment-day-card,
+.terminal-assignment-day {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.assignment-day-card.has-own-assignment {
+  border-color: #b9e7cf;
+  background: linear-gradient(180deg, #f8fffb 0%, #ffffff 45%);
+}
+
+.assignment-day-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.assignment-day-head span,
+.assignment-team-row em {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.assignment-day-head h3 {
+  margin: 2px 0 0;
+  font-size: 18px;
+}
+
+.assignment-own-list {
+  padding: 12px 14px;
+}
+
+.assignment-own-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.7fr) minmax(160px, 1fr);
+  gap: 8px 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.assignment-own-row small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.assignment-team-list {
+  padding: 0 14px 14px;
+}
+
+.assignment-team-list summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 700;
+  padding: 8px 0;
+}
+
+.assignment-team-list > div {
+  display: grid;
+  gap: 6px;
+}
+
+.assignment-team-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(140px, 1fr) minmax(95px, auto);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.terminal-assignment-day {
+  padding: 12px;
+}
+
+.terminal-assignment-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(110px, 0.55fr) minmax(110px, 0.55fr) minmax(180px, 0.9fr);
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.terminal-assignment-row > div {
+  display: grid;
+  gap: 2px;
+}
+
+.terminal-assignment-row > div span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .assignment-day-head,
+  .assignment-own-row,
+  .assignment-team-row,
+  .terminal-assignment-row {
+    grid-template-columns: 1fr;
+  }
+
+  .assignment-day-head {
+    display: grid;
+  }
+}
+
 .weather-cell {
   background: var(--blue-soft);
   box-shadow: inset 4px 0 0 rgba(56, 121, 168, 0.35);
