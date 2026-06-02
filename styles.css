@@ -1294,11 +1294,32 @@ body.terminal-login-mode #terminalLogin button:hover {
 }
 
 .assignment-list,
+.assignment-dashboard-block,
 .terminal-assignment-list,
 .terminal-assignment-rows,
 .assignment-own-list {
   display: grid;
   gap: 12px;
+}
+
+.assignment-dashboard-block {
+  margin: 14px 0 16px;
+}
+
+.assignment-dashboard-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: end;
+}
+
+.assignment-dashboard-head h2 {
+  margin: 0;
+}
+
+.assignment-dashboard-head p {
+  margin: 0;
+  font-size: 13px;
 }
 
 .assignment-day-card,
@@ -1312,6 +1333,15 @@ body.terminal-login-mode #terminalLogin button:hover {
 .assignment-day-card.has-own-assignment {
   border-color: #b9e7cf;
   background: linear-gradient(180deg, #f8fffb 0%, #ffffff 45%);
+}
+
+.assignment-day-card.has-own-assignment .assignment-day-head > strong {
+  border: 1px solid #b9e7cf;
+  border-radius: 999px;
+  background: #eafaf1;
+  color: var(--success);
+  padding: 5px 10px;
+  white-space: nowrap;
 }
 
 .assignment-day-head {
@@ -1360,10 +1390,11 @@ body.terminal-login-mode #terminalLogin button:hover {
   padding: 0 14px 14px;
 }
 
-.assignment-team-list summary {
-  cursor: pointer;
+.assignment-team-list h4 {
   color: var(--muted);
   font-weight: 700;
+  font-size: 13px;
+  margin: 0;
   padding: 8px 0;
 }
 

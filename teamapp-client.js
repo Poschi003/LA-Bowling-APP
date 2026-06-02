@@ -2381,14 +2381,26 @@ function employeeIsFixed(employee) {
 }
 
 function renderAssignments() {
-  const container = $("#assignmentContent");
-  if (!container) return;
+  const targets = [
+    { element: $("#dashboardAssignments"), dashboard: true },
+    { element: $("#assignmentContent"), dashboard: false }
+  ].filter((target) => target.element);
+  if (!targets.length) return;
   if (!state.activeEmployee) {
-    container.innerHTML = `<p class="hint">Bitte mit Mitarbeiter-PIN anmelden.</p>`;
+    targets.forEach(({ element }) => {
+      element.classList.add("hidden");
+      element.innerHTML = "";
+    });
     return;
   }
   const dates = assignmentDateKeys(todayKey());
-  container.innerHTML = dates.map((dateKey, index) => assignmentDayHtml(dateKey, index)).join("");
+  const cards = dates.map((dateKey, index) => assignmentDayHtml(dateKey, index)).join("");
+  targets.forEach(({ element, dashboard }) => {
+    element.classList.remove("hidden");
+    element.innerHTML = dashboard
+      ? `<div class="assignment-dashboard-head"><h2>Heute & morgen</h2><p>Deine kurzfristige Einteilung aus dem Terminal.</p></div>${cards}`
+      : cards;
+  });
 }
 
 function assignmentDateKeys(baseDate) {
@@ -2423,8 +2435,7 @@ function assignmentRowsForDate(dateKey) {
 function assignmentTimeForEmployee(dateKey, employee, scheduleDay = {}, position = "") {
   const direct = state.assignmentTimes?.[dateKey]?.[employee];
   if (direct?.from || direct?.note) return { from: direct.from || "", to: "", note: direct.note || "" };
-  const planned = parsePlannedTime(scheduleDay[`${position}__note`] || "");
-  return planned.from ? { from: planned.from, to: "", note: "" } : { from: "", to: "", note: "" };
+  return { from: "", to: "", note: "" };
 }
 
 function assignmentPositionIncluded(position) {
@@ -2444,17 +2455,17 @@ function assignmentDayHtml(dateKey, index = 0) {
           <span>${escapeHtml(title)}</span>
           <h3>${escapeHtml(formatLongDate(dateKey))}${holiday.label ? ` · ${escapeHtml(holiday.label)}` : ""}</h3>
         </div>
-        ${ownRows.length ? `<strong>Eingeteilt</strong>` : `<strong class="muted">Nicht eingeteilt</strong>`}
+        ${ownRows.length ? `<strong>Du bist eingeteilt</strong>` : `<strong class="muted">Nicht eingeteilt</strong>`}
       </div>
       <div class="assignment-own-list">
         ${ownRows.length ? ownRows.map(assignmentOwnRowHtml).join("") : `<p class="hint">Für dich ist an diesem Tag aktuell kein Dienst hinterlegt.</p>`}
       </div>
-      <details class="assignment-team-list">
-        <summary>Team-Einteilung anzeigen</summary>
+      <div class="assignment-team-list fixed-view">
+        <h4>Team-Einteilung</h4>
         <div>
           ${rows.length ? rows.map(assignmentTeamRowHtml).join("") : `<p class="hint">Für diesen Tag ist kein Counter- oder Service-Dienst gefunden.</p>`}
         </div>
-      </details>
+      </div>
     </article>
   `;
 }
@@ -2481,7 +2492,7 @@ function assignmentTeamRowHtml(row) {
 
 function assignmentTimeText(time = {}) {
   if (time.from) return `ab ${time.from}`;
-  return "Zeit noch offen";
+  return "Startzeit ausstehend";
 }
 
 function renderScheduleDay(date, options = {}) {
