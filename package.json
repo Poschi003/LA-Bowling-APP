@@ -1,16 +1,13 @@
 {
-  "name": "we2",
-  "version": "0.1.0",
+  "name": "dienstplan-static",
+  "version": "1.0.0",
   "private": true,
-  "description": "Private lokale Paar-App fuer Christian und Jenny.",
-  "scripts": {
-    "start": "node lan-server.js",
-    "check": "node --check app.js && node --check lan-server.js && node --check server/we2-backend.js && node --check api/[route].js"
-  },
   "dependencies": {
     "web-push": "^3.6.7"
   },
-  "engines": {
-    "node": ">=20"
+  "scripts": {
+    "dev": "node scripts/local-dev-server.cjs",
+    "check": "node --check teamapp-client.js && node --check api/day-terminal.js && node --check api/settings.js && node --check server/data.js",
+    "zip": "powershell -ExecutionPolicy Bypass -File ./scripts/pack-update.ps1"
   }
 }

@@ -1,69 +1,42 @@
-const CACHE_NAME = "we2-pwa-v1";
-const APP_SHELL = [
-  "/",
-  "/index.html",
-  "/app.js",
-  "/styles.css",
-  "/manifest.webmanifest",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/icon-maskable-512.png",
-  "/icons/apple-touch-icon.png"
-];
-
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      await Promise.all(APP_SHELL.map(async (asset) => {
-        try {
-          await cache.add(new Request(asset, { cache: "reload" }));
-        } catch {
-          // Offline or unavailable asset. The app still works from the network.
-        }
-      }));
-    })
-  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
-      keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-    ))
-  );
-  self.clients.claim();
+  event.waitUntil(self.clients.claim());
 });
 
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
-
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request).catch(async () => {
-        const cached = await caches.match("/index.html");
-        return cached || Response.error();
-      })
-    );
-    return;
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (error) {
+    data = { title: "LA-Bowling TeamApp", body: event.data ? event.data.text() : "Neue Info in der TeamApp." };
   }
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
-        return response;
-      }).catch(() => cached);
-      return cached || network;
-    })
-  );
+  const title = data.title || "LA-Bowling TeamApp";
+  const options = {
+    body: data.body || "Neue Info in der TeamApp.",
+    icon: "/teamapp-icon-192.png",
+    badge: "/teamapp-icon-192.png",
+    tag: data.tag || "la-bowling-teamapp",
+    data: {
+      url: data.url || "/"
+    }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = event.notification?.data?.url || "/";
-  event.waitUntil(self.clients.openWindow(targetUrl));
+  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
+  event.waitUntil((async () => {
+    const clientsList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of clientsList) {
+      if ("focus" in client) {
+        client.navigate(targetUrl);
+        return client.focus();
+      }
+    }
+    return self.clients.openWindow(targetUrl);
+  })());
 });
