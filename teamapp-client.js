@@ -153,10 +153,17 @@ const defaultData = {
     },
     scheduleAutoDeleteDays: 14,
     hourlyRate: 25,
+    invoiceNotificationTo: "pvo65@outlook.de",
     pushSettings: {
       schedulePublished: true,
       assignmentsTomorrow: true,
-      messages: true
+      messages: true,
+      schedulePublishedTitle: "LA-Bowling - Neuer Dienstplan online",
+      schedulePublishedBody: "Der neue Dienstplan ist online. Bitte in der TeamApp prüfen.",
+      assignmentsTomorrowTitle: "LA-Bowling - Einteilung für morgen ist Online",
+      assignmentsTomorrowBody: "Bitte prüfe deine Startzeit in der TeamApp.",
+      messagesTitle: "LA-Bowling - Du hast eine neue Nachricht im Dashboard",
+      messagesBody: "{{text}}"
     }
   },
   reminderTemplates: defaultReminderTemplates,
@@ -468,6 +475,7 @@ async function loadState() {
   state.isChef = Boolean(data.isChef);
   state.missingAvailability = data.missingAvailability || [];
   state.availabilityChangeRequests = data.availabilityChangeRequests || [];
+  await ensurePushSubscriptionSynced();
   renderAll();
   if (!state.weather || state.weather.error) loadWeather().catch(() => {});
   loadSwaps().catch(() => {});
@@ -592,6 +600,7 @@ function mergeData(value) {
         incomingSettings.hourlyRate,
         base.settings.hourlyRate
       ),
+      invoiceNotificationTo: String(incomingSettings.invoiceNotificationTo || base.settings.invoiceNotificationTo || "pvo65@outlook.de").trim().slice(0, 180),
       pushSettings: {
         ...base.settings.pushSettings,
         ...(incomingSettings.pushSettings || {})
@@ -951,10 +960,13 @@ async function enablePushNotifications(button) {
       showToast("Benachrichtigungen wurden nicht erlaubt.");
       return;
     }
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(state.pushPublicKey)
-    });
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(state.pushPublicKey)
+      });
+    }
     await api("/api/state", {
       method: "POST",
       body: JSON.stringify({
@@ -973,6 +985,29 @@ async function enablePushNotifications(button) {
       button.disabled = false;
       button.textContent = oldText;
     }
+  }
+}
+
+async function ensurePushSubscriptionSynced() {
+  if (!state.activeEmployee || !state.employeeToken || !state.pushPublicKey) return;
+  if (state.pushSubscriptionActive) return;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    const result = await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "push-subscribe",
+        employeeToken: state.employeeToken,
+        subscription
+      })
+    });
+    state.pushSubscriptionActive = Boolean(result.pushSubscriptionActive);
+  } catch (error) {
+    console.warn("Push-Abo konnte nicht automatisch synchronisiert werden.", error);
   }
 }
 
@@ -1406,7 +1441,11 @@ function a4InvoiceBlock(items = []) {
       ${items.length ? `<div class="a4-compact-list">
         ${items.map((item, index) => `
           <div class="a4-compact-row">
-            <span>${escapeHtml(item.name || `Kunde ${index + 1}`)}</span>
+            <div>
+              <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)}</strong>
+              <small>Bowling ${formatReportMoney(item.bowlingAmount)} · ${escapeHtml(invoiceGastroSummaryText(item))}</small>
+              ${item.gastroOtherNote ? `<small>Sonstiges Notiz: ${escapeHtml(item.gastroOtherNote)}</small>` : ""}
+            </div>
             <strong>${formatReportMoney(invoiceTotal(item))}</strong>
           </div>
         `).join("")}
@@ -1511,11 +1550,18 @@ function pendingInvoiceItems() {
 }
 
 function openInvoiceCardHtml({ dateKey, invoice, index }) {
-  const bowling = Number(invoice.bowlingAmount || 0);
-  const gastro = Number(invoice.gastroAmount || 0);
-  const total = bowling + gastro || Number(invoice.amount || 0);
+  const bowling = reportMoneyNumber(invoice.bowlingAmount || 0);
+  const gastroSplit = invoiceGastroSplit(invoice);
+  const total = invoiceTotal(invoice);
   const token = `${dateKey}|${invoice.id || index}`;
   const briefhead = invoiceBriefhead(invoice);
+  const gastroFields = gastroSplit.hasSplit
+    ? `
+        ${invoiceCopyField("Gastro Getränke", formatReportMoney(gastroSplit.drinks))}
+        ${invoiceCopyField("Gastro Speisen", formatReportMoney(gastroSplit.food))}
+        ${invoiceCopyField("Gastro Sonstiges", formatReportMoney(gastroSplit.other))}
+      `
+    : invoiceCopyField("Gastro Betrag", formatReportMoney(gastroSplit.total), "invoice-copy-field-wide");
   return `
     <article class="open-invoice-card">
       <div class="open-invoice-head">
@@ -1529,10 +1575,11 @@ function openInvoiceCardHtml({ dateKey, invoice, index }) {
         ${invoiceCopyField("Rechnungsdatum", formatDate(dateKey))}
         ${invoiceCopyField("Briefkopf", briefhead, "invoice-copy-field-wide")}
         ${invoiceCopyField("Betrag Bowling", formatReportMoney(bowling))}
-        ${invoiceCopyField("Betrag Gastro", formatReportMoney(gastro))}
+        ${gastroFields}
         ${invoiceCopyField("Betrag gesamt", formatReportMoney(total))}
       </div>
       <p class="hint">Ansprechpartner: ${escapeHtml(invoice.contact || "-")} · E-Mail: ${escapeHtml(invoice.email || "-")} · Telefon: ${escapeHtml(invoice.phone || "-")}</p>
+      ${gastroSplit.note ? `<p class="hint">Sonstiges Notiz: ${escapeHtml(gastroSplit.note)}</p>` : ""}
       ${invoiceReceiptLinksHtml(invoice)}
     </article>
   `;
@@ -1816,6 +1863,26 @@ function invoiceReceiptNameText(item = {}) {
   return legacy.join(" | ") || "-";
 }
 
+function invoiceGastroSplit(item = {}) {
+  const drinksText = String(item.gastroDrinksAmount ?? "").trim();
+  const foodText = String(item.gastroFoodAmount ?? "").trim();
+  const otherText = String(item.gastroOtherAmount ?? "").trim();
+  const hasSplit = [drinksText, foodText, otherText].some(Boolean);
+  const drinks = reportMoneyNumber(item.gastroDrinksAmount);
+  const food = reportMoneyNumber(item.gastroFoodAmount);
+  const other = reportMoneyNumber(item.gastroOtherAmount);
+  const fallback = reportMoneyNumber(item.gastroAmount || (item.area === "gastro" ? item.amount : ""));
+  const total = hasSplit ? drinks + food + other : fallback;
+  return {
+    drinks,
+    food,
+    other,
+    total,
+    hasSplit,
+    note: String(item.gastroOtherNote || "").trim()
+  };
+}
+
 function expenseReceiptEntries(item = {}) {
   const receipts = [];
   const seen = new Set();
@@ -1856,6 +1923,7 @@ function invoiceIsReady(item = {}) {
 
 function invoiceStatusText(item = {}) {
   if (item.invoiceDone) return "Erledigt";
+  if (item.invoiceNotificationSentAt) return "An Chef gesendet";
   if (invoiceIsReady(item)) return "Fertig für Chef";
   return "Angelegt";
 }
@@ -1864,6 +1932,17 @@ function invoiceStatusClass(item = {}) {
   if (item.invoiceDone) return "is-done";
   if (invoiceIsReady(item)) return "is-ready";
   return "is-draft";
+}
+
+function invoiceGastroSummaryText(item = {}) {
+  const split = invoiceGastroSplit(item);
+  if (!split.hasSplit) return `Gastro ${formatReportMoney(split.total)}`;
+  const parts = [
+    `Getränke ${formatReportMoney(split.drinks)}`,
+    `Speisen ${formatReportMoney(split.food)}`,
+    `Sonstiges ${formatReportMoney(split.other)}`
+  ];
+  return `Gastro ${parts.join(" · ")}${split.note ? ` · Notiz: ${split.note}` : ""}`;
 }
 
 function receiptFolderItem(dateKey, receipt, title, label) {
@@ -1899,13 +1978,15 @@ function reportInvoiceCustomersHtml(items = []) {
         <article class="report-item">
           <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)}</strong>
           <span>Rechnungssumme ${formatReportMoney(invoiceTotal(item))}</span>
-          <span>Bowling ${formatReportMoney(item.bowlingAmount)} · Gastro ${formatReportMoney(item.gastroAmount)}</span>
+          <span>Bowling ${formatReportMoney(item.bowlingAmount)}</span>
+          <span>${escapeHtml(invoiceGastroSummaryText(item))}</span>
           <span>Briefkopf</span>
           <p class="invoice-briefhead">${escapeHtml(invoiceBriefhead(item)).replace(/\n/g, "<br>")}</p>
           <span>Ansprechpartner: ${escapeHtml(item.contact || "-")}</span>
           <span>Telefon: ${escapeHtml(item.phone || "-")}</span>
           <span>Tipp: ${escapeHtml(item.tip || "-")}</span>
           <span>${escapeHtml(item.email || "Keine E-Mail")}</span>
+          ${item.gastroOtherNote ? `<span>Sonstiges Notiz: ${escapeHtml(item.gastroOtherNote)}</span>` : ""}
           ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
           ${invoiceReceiptLinksHtml(item)}
         </article>
@@ -2058,7 +2139,10 @@ function gastroRevenueTotal(report = {}) {
 
 function reportTipTotal(report = {}) {
   if (report.tipTotal !== "" && report.tipTotal != null) return reportMoneyNumber(report.tipTotal);
-  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) - reportRevenueTotal(report));
+  const revenueBowling = reportMoneyNumber(report.revenueBowling || report.barBowling);
+  const revenueGastro = gastroRevenueTotal(report);
+  const revenueTotal = Math.max(0, revenueBowling + revenueGastro - reportPersonalConsumptionTotal(report));
+  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) - revenueTotal);
 }
 
 function reportChefHandoverTotal(report = {}) {
@@ -2077,7 +2161,7 @@ function reportMoneyNumber(value) {
 }
 
 function invoiceTotal(item = {}) {
-  const splitTotal = reportMoneyNumber(item.bowlingAmount) + reportMoneyNumber(item.gastroAmount);
+  const splitTotal = reportMoneyNumber(item.bowlingAmount) + invoiceGastroSplit(item).total;
   return splitTotal || reportMoneyNumber(item.amount);
 }
 
@@ -2796,6 +2880,12 @@ function renderAdminPushControls() {
   if ($("#pushAutoSchedule")) $("#pushAutoSchedule").checked = settings.schedulePublished !== false;
   if ($("#pushAutoAssignment")) $("#pushAutoAssignment").checked = settings.assignmentsTomorrow !== false;
   if ($("#pushAutoMessages")) $("#pushAutoMessages").checked = settings.messages !== false;
+  if ($("#pushScheduleTitle")) $("#pushScheduleTitle").value = settings.schedulePublishedTitle || "";
+  if ($("#pushScheduleBody")) $("#pushScheduleBody").value = settings.schedulePublishedBody || "";
+  if ($("#pushAssignmentTitle")) $("#pushAssignmentTitle").value = settings.assignmentsTomorrowTitle || "";
+  if ($("#pushAssignmentBody")) $("#pushAssignmentBody").value = settings.assignmentsTomorrowBody || "";
+  if ($("#pushMessagesTitle")) $("#pushMessagesTitle").value = settings.messagesTitle || "";
+  if ($("#pushMessagesBody")) $("#pushMessagesBody").value = settings.messagesBody || "";
   renderPushEmployeePicker();
 }
 
@@ -4420,6 +4510,10 @@ function customerMasterToInvoice(customer = {}) {
     amount: "",
     bowlingAmount: "",
     gastroAmount: "",
+    gastroDrinksAmount: "",
+    gastroFoodAmount: "",
+    gastroOtherAmount: "",
+    gastroOtherNote: "",
     receiptName: "",
     receiptData: "",
     receiptPath: "",
@@ -4481,13 +4575,17 @@ function invoiceRowHtml(item = {}) {
       </div>
       <div class="report-entry-grid">
         <label>Bowling Betrag<input data-report-field="bowlingAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.bowlingAmount || (item.area === "bowling" ? item.amount : ""))}" placeholder="0,00"></label>
-        <label>Gastro Betrag<input data-report-field="gastroAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroAmount || (item.area === "gastro" ? item.amount : ""))}" placeholder="0,00"></label>
+        <label>Gastro Getränke<input data-report-field="gastroDrinksAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroDrinksAmount || "")}" placeholder="0,00"></label>
+        <label>Gastro Speisen<input data-report-field="gastroFoodAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroFoodAmount || "")}" placeholder="0,00"></label>
+        <label>Gastro Sonstiges<input data-report-field="gastroOtherAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroOtherAmount || "")}" placeholder="0,00"></label>
+        <label>Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="Hinweis zu Sonstiges">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
       </div>
       <label>Rechnungsadresse<textarea data-report-field="address" rows="2" placeholder="Adresse für Rechnung">${escapeHtml(item.address || "")}</textarea></label>
       <label>Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
       <label>Rechnungsbeleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
       ${singleReceipt?.receiptName ? `<span class="hint">Aktueller Rechnungsbeleg: ${escapeHtml(singleReceipt.receiptName)}</span>` : ""}
       ${legacyHint}
+      <input type="hidden" data-report-field="gastroAmount" value="${escapeHtml(item.gastroAmount || "")}">
       <input type="hidden" data-report-field="receiptName" value="${escapeHtml(singleReceipt?.receiptName || item.receiptName || "")}">
       <input type="hidden" data-report-field="receiptData" value="${escapeHtml(singleReceipt?.receiptData || item.receiptData || "")}">
       <input type="hidden" data-report-field="receiptPath" value="${escapeHtml(singleReceipt?.receiptPath || item.receiptPath || "")}">
@@ -4504,6 +4602,7 @@ function invoiceRowHtml(item = {}) {
       <input type="hidden" data-report-field="invoiceReadyAt" value="${escapeHtml(item.invoiceReadyAt || "")}">
       <input type="hidden" data-report-field="invoiceDone" value="${item.invoiceDone ? "true" : "false"}">
       <input type="hidden" data-report-field="invoiceDoneAt" value="${escapeHtml(item.invoiceDoneAt || "")}">
+      <input type="hidden" data-report-field="invoiceNotificationSentAt" value="${escapeHtml(item.invoiceNotificationSentAt || "")}">
       <input type="hidden" data-report-field="createdAt" value="${escapeHtml(item.createdAt || "")}">
       <div class="invoice-entry-actions">
         <button class="secondary" data-save-invoice-draft type="button">Zwischenspeichern</button>
@@ -4874,6 +4973,8 @@ async function saveCustomerInvoiceDeskReportWithOptions(button, successText = "T
       method: "POST",
       body: JSON.stringify({
         ...payload,
+        sendInvoiceNotifications: Boolean(options.sendInvoiceNotifications),
+        sendInvoiceNotificationId: String(options.sendInvoiceNotificationId || "").trim(),
         terminalToken: state.invoiceTerminalToken
       })
     });
@@ -4882,8 +4983,10 @@ async function saveCustomerInvoiceDeskReportWithOptions(button, successText = "T
     state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
     state.dayReports[state.invoiceDate] = state.invoiceReport;
     renderCustomerInvoiceDesk();
-    $("#customerInvoiceStaffStatus").textContent = successText;
-    showToast(successText);
+    const displayMessage = result?.mailMessage ? `${successText} ${result.mailMessage}` : successText;
+    $("#customerInvoiceStaffStatus").textContent = displayMessage;
+    showToast(displayMessage);
+    return result;
   } catch (error) {
     showError(error);
     if (String(error.message || "").includes("Terminal-Code")) {
@@ -4911,7 +5014,10 @@ async function saveCustomerInvoiceDeskRow(button, markReady = false) {
     setReportFieldValue(row, "invoiceReady", "true");
     setReportFieldValue(row, "invoiceReadyAt", new Date().toISOString());
   }
-  await saveCustomerInvoiceDeskReport(button, markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.");
+  await saveCustomerInvoiceDeskReport(button, markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.", {
+    sendInvoiceNotifications: markReady,
+    sendInvoiceNotificationId: row.dataset.id || ""
+  });
 }
 
 async function removeCustomerInvoiceDeskEntry(button) {
@@ -4952,8 +5058,18 @@ function invoiceRowReadyProblems(row) {
   if (!reportFieldValue(row, "name")) problems.push("Firma/Name fehlt");
   if (!reportFieldValue(row, "address")) problems.push("Rechnungsadresse fehlt");
   if (!reportFieldValue(row, "email")) problems.push("E-Mail fehlt");
-  const amount = parseMoneyInput(reportFieldValue(row, "bowlingAmount")) + parseMoneyInput(reportFieldValue(row, "gastroAmount"));
+  const gastroAmount = reportFieldValue(row, "gastroAmount");
+  const gastroDrinks = reportFieldValue(row, "gastroDrinksAmount");
+  const gastroFood = reportFieldValue(row, "gastroFoodAmount");
+  const gastroOther = reportFieldValue(row, "gastroOtherAmount");
+  const amount = parseMoneyInput(reportFieldValue(row, "bowlingAmount")) + invoiceGastroSplit({
+    gastroAmount,
+    gastroDrinksAmount: gastroDrinks,
+    gastroFoodAmount: gastroFood,
+    gastroOtherAmount: gastroOther
+  }).total;
   if (amount <= 0) problems.push("Bowling- oder Gastro-Betrag fehlt");
+  if (String(gastroOther || "").trim() && !reportFieldValue(row, "gastroOtherNote")) problems.push("Notiz für Sonstiges fehlt");
   if (!invoiceRowHasReceipt(row)) problems.push("Rechnungsbeleg fehlt");
   return problems;
 }
@@ -4974,8 +5090,11 @@ async function saveInvoiceRow(button, markReady = false) {
   button.disabled = true;
   button.textContent = "Speichert...";
   try {
-    await terminalAction(await collectDayReportPayload());
-    showToast(markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.");
+    const result = await terminalAction(await collectDayReportPayload());
+    const toastMessage = markReady
+      ? ["Rechnung ist fertig für Chef.", result?.mailMessage].filter(Boolean).join(" ")
+      : "Rechnungskunde zwischengespeichert.";
+    showToast(toastMessage);
   } catch (error) {
     if (markReady) setReportFieldValue(row, "invoiceReady", "false");
     showError(error);
@@ -6056,6 +6175,7 @@ function renderSettings() {
   $("#terminalCodeSetting").value = "";
   if ($("#scheduleAutoDeleteDays")) $("#scheduleAutoDeleteDays").value = String(normalizeScheduleAutoDeleteDays(state.settings.scheduleAutoDeleteDays, 14));
   if ($("#hourlyRateSetting")) $("#hourlyRateSetting").value = String(normalizeHourlyRate(state.settings.hourlyRate, 25));
+  if ($("#invoiceNotificationTo")) $("#invoiceNotificationTo").value = state.settings.invoiceNotificationTo || "";
   if ($("#availabilityTargetMonthSetting")) $("#availabilityTargetMonthSetting").value = availabilityMonthValue();
   if ($("#availabilitySubmissionOpenSetting")) $("#availabilitySubmissionOpenSetting").checked = state.settings.availabilitySubmissionOpen !== false;
   $("#employeePinsText").placeholder = "Nur neue oder geaenderte PINs eintragen, Format: Name=PIN";
@@ -6661,6 +6781,8 @@ function employeeNameKeys(employee) {
   const names = [clean];
   if (parts.length > 1) {
     names.push(parts[0], parts[parts.length - 1], `${parts[0]} ${parts[parts.length - 1]}`);
+    names.push(`${parts[parts.length - 1]}, ${parts[0]}`);
+    names.push(`${parts[parts.length - 1]} ${parts[0]}`);
   }
   return [...new Set(names.filter(Boolean))];
 }
@@ -6918,6 +7040,7 @@ async function saveSettings(button) {
         terminalCode: $("#terminalCodeSetting").value,
         scheduleAutoDeleteDays: Number($("#scheduleAutoDeleteDays")?.value || 14),
         hourlyRate: Number($("#hourlyRateSetting")?.value || 25),
+        invoiceNotificationTo: $("#invoiceNotificationTo")?.value.trim(),
         availabilityTargetMonth,
         availabilitySubmissionOpen,
         employees: $("#employeesText").value.split("\n"),
@@ -7183,16 +7306,18 @@ function bindEvents() {
         tip: $("#customerTip").value,
         note: $("#customerNote").value
       };
-      await api("/api/state", {
+      const result = await api("/api/state", {
         method: "POST",
         body: JSON.stringify({
           action: "customer-invoice",
+          date: localDateValue(),
           customer
         })
       });
       event.target.reset();
-      status.textContent = "Danke, die Rechnungsdaten wurden für heute angelegt.";
-      showToast("Rechnungskunde angelegt.");
+      if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = formatDate(localDateValue());
+      status.textContent = result.message || "Rechnungskunde gespeichert.";
+      showToast(result.message || "Rechnungskunde angelegt.");
       if (state.invoiceTerminalToken) await loadCustomerInvoiceDesk();
     } catch (error) {
       status.textContent = error.message || String(error);
@@ -7605,7 +7730,13 @@ function bindEvents() {
       const pushSettings = {
         schedulePublished: $("#pushAutoSchedule")?.checked !== false,
         assignmentsTomorrow: $("#pushAutoAssignment")?.checked !== false,
-        messages: $("#pushAutoMessages")?.checked !== false
+        messages: $("#pushAutoMessages")?.checked !== false,
+        schedulePublishedTitle: $("#pushScheduleTitle")?.value.trim() || defaultData.settings.pushSettings.schedulePublishedTitle,
+        schedulePublishedBody: $("#pushScheduleBody")?.value.trim() || defaultData.settings.pushSettings.schedulePublishedBody,
+        assignmentsTomorrowTitle: $("#pushAssignmentTitle")?.value.trim() || defaultData.settings.pushSettings.assignmentsTomorrowTitle,
+        assignmentsTomorrowBody: $("#pushAssignmentBody")?.value.trim() || defaultData.settings.pushSettings.assignmentsTomorrowBody,
+        messagesTitle: $("#pushMessagesTitle")?.value.trim() || defaultData.settings.pushSettings.messagesTitle,
+        messagesBody: $("#pushMessagesBody")?.value.trim() || defaultData.settings.pushSettings.messagesBody
       };
       const result = await api("/api/settings", {
         method: "POST",

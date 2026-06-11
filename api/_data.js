@@ -86,10 +86,17 @@ const defaultData = {
     },
     scheduleAutoDeleteDays: 14,
     hourlyRate: 25,
+    invoiceNotificationTo: process.env.INVOICE_NOTIFICATION_TO || "pvo65@outlook.de",
     pushSettings: {
       schedulePublished: true,
       assignmentsTomorrow: true,
-      messages: true
+      messages: true,
+      schedulePublishedTitle: "LA-Bowling - Neuer Dienstplan online",
+      schedulePublishedBody: "Der neue Dienstplan ist online. Bitte in der TeamApp prüfen.",
+      assignmentsTomorrowTitle: "LA-Bowling - Einteilung für morgen ist Online",
+      assignmentsTomorrowBody: "Bitte prüfe deine Startzeit in der TeamApp.",
+      messagesTitle: "LA-Bowling - Du hast eine neue Nachricht im Dashboard",
+      messagesBody: "{{text}}"
     }
   },
   availability: {},
@@ -225,6 +232,7 @@ function mergeData(value) {
         value?.settings?.hourlyRate,
         base.settings.hourlyRate
       ),
+      invoiceNotificationTo: String(value?.settings?.invoiceNotificationTo || base.settings.invoiceNotificationTo || "pvo65@outlook.de").trim().slice(0, 180),
       pushSettings: {
         ...base.settings.pushSettings,
         ...(value?.settings?.pushSettings || {})
@@ -806,6 +814,129 @@ async function sendPushToEmployees(appData, employees = [], payload = {}) {
   return { sent, removed, skipped: false };
 }
 
+function formatMailDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const date = new Date(`${text.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return text;
+  return date.toLocaleDateString("de-DE");
+}
+
+function formatInvoiceMoney(value) {
+  const amount = tipMoneyNumber(value);
+  return `${amount.toFixed(2).replace(".", ",")} Euro`;
+}
+
+function invoiceGastroSplit(customer = {}) {
+  const drinksText = String(customer.gastroDrinksAmount ?? "").trim();
+  const foodText = String(customer.gastroFoodAmount ?? "").trim();
+  const otherText = String(customer.gastroOtherAmount ?? "").trim();
+  const hasSplit = [drinksText, foodText, otherText].some(Boolean);
+  const drinks = tipMoneyNumber(customer.gastroDrinksAmount);
+  const food = tipMoneyNumber(customer.gastroFoodAmount);
+  const other = tipMoneyNumber(customer.gastroOtherAmount);
+  const fallback = tipMoneyNumber(customer.gastroAmount);
+  const total = hasSplit ? drinks + food + other : fallback;
+  return { drinks, food, other, total, hasSplit, note: String(customer.gastroOtherNote || "").trim() };
+}
+
+function buildInvoiceNotificationText({ date, customer = {} } = {}) {
+  const formattedDate = formatMailDate(date) || String(date || "").trim() || "-";
+  const bowlingAmount = tipMoneyNumber(customer.bowlingAmount);
+  const gastroSplit = invoiceGastroSplit(customer);
+  const gastroAmount = gastroSplit.total;
+  const totalAmount = tipMoneyNumber(customer.amount) || bowlingAmount + gastroAmount;
+  const gastroLines = gastroSplit.hasSplit
+    ? [
+      `Gastro Getränke: ${formatInvoiceMoney(gastroSplit.drinks)}`,
+      `Gastro Speisen: ${formatInvoiceMoney(gastroSplit.food)}`,
+      `Gastro Sonstiges: ${formatInvoiceMoney(gastroSplit.other)}`
+    ]
+    : [`Gastro Betrag: ${formatInvoiceMoney(gastroAmount)}`];
+  return [
+    "Kunde auf Rechnung ist in der TeamApp bereit für den Chef",
+    "",
+    `Datum: ${formattedDate}`,
+    `Tagesbericht-Zuordnung: ${formattedDate}`,
+    `Firma / Name: ${String(customer.name || "").trim() || "-"}`,
+    `Ansprechpartner: ${String(customer.contact || "").trim() || "-"}`,
+    `Telefonnummer: ${String(customer.phone || "").trim() || "-"}`,
+    `E-Mail für Rechnung: ${String(customer.email || "").trim() || "-"}`,
+    `Rechnungsadresse: ${String(customer.address || "").trim() || "-"}`,
+    `Bowling Betrag: ${formatInvoiceMoney(bowlingAmount)}`,
+    ...gastroLines,
+    `Gesamtbetrag: ${formatInvoiceMoney(totalAmount)}`,
+    ...(gastroSplit.note ? [`Sonstiges Notiz: ${gastroSplit.note}`] : []),
+    `Tipp: ${String(customer.tip || "").trim() || "-"}`,
+    `Notiz: ${String(customer.note || "").trim() || "-"}`,
+    "",
+    "Hinweis: Kunde auf Rechnung wurde in der TeamApp erfasst und ist jetzt bereit für die Rechnungsschreibung"
+  ].join("\n");
+}
+
+async function sendInvoiceNotificationEmail(payload = {}) {
+  const to = String(payload.to || process.env.INVOICE_NOTIFICATION_TO || "pvo65@outlook.de").trim();
+  const smtpHost = String(process.env.SMTP_HOST || "").trim();
+  const smtpUser = String(process.env.SMTP_USER || "").trim();
+  const smtpPass = String(process.env.SMTP_PASS || "").trim();
+  const smtpPort = Number(process.env.SMTP_PORT || 587);
+  const smtpSecure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || smtpPort === 465;
+
+  if (!to) return { ok: false, skipped: true, reason: "missing-recipient" };
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    return { ok: false, skipped: true, reason: "missing-smtp-config" };
+  }
+
+  let nodemailer;
+  try {
+    nodemailer = require("nodemailer");
+  } catch (error) {
+    console.error("Rechnungskunden-Mailversand fehlgeschlagen: nodemailer fehlt im Build.", error);
+    return { ok: false, skipped: true, reason: "nodemailer-missing" };
+  }
+
+  const transport = nodemailer.createTransport({
+    host: smtpHost,
+    port: Number.isFinite(smtpPort) ? smtpPort : 587,
+    secure: smtpSecure,
+    auth: {
+      user: smtpUser,
+      pass: smtpPass
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
+  });
+
+  try {
+    const info = await transport.sendMail({
+      from: String(process.env.EMAIL_FROM || smtpUser).trim(),
+      to,
+      subject: String(process.env.INVOICE_EMAIL_SUBJECT || "LA-Bowling - Kunde auf Rechnung bereit für Chef").trim(),
+      text: buildInvoiceNotificationText(payload)
+    });
+    return {
+      ok: true,
+      messageId: info.messageId,
+      accepted: info.accepted || []
+    };
+  } catch (error) {
+    console.error("Rechnungskunden-Mailversand fehlgeschlagen.", error);
+    return {
+      ok: false,
+      error: error?.message || String(error)
+    };
+  }
+}
+
+function applyPushTemplate(template, values = {}) {
+  const source = String(template == null ? "" : template);
+  return source.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const value = values[key];
+    return value == null ? "" : String(value);
+  }).trim();
+}
+
 function syncReportTipsToTimesheets(appData) {
   if (!appData || typeof appData !== "object") return false;
   const reports = appData.dayReports && typeof appData.dayReports === "object" ? appData.dayReports : {};
@@ -919,17 +1050,18 @@ function reportTipTotalForSync(report = {}) {
 }
 
 function tipAreaForSync(settings, scheduleDay, report, employee) {
+  const canonicalEmployee = matchEmployeeName(settings, employee) || String(employee || "").trim();
   for (const [position, value] of Object.entries(scheduleDay || {})) {
     if (position.includes("__")) continue;
-    if (String(value || "").trim() === employee) return tipDepartmentForSync(position);
+    if (sameEmployeeName(value, canonicalEmployee)) return tipDepartmentForSync(position);
   }
   const extra = (Array.isArray(report.extraEmployees) ? report.extraEmployees : [])
     .map((item) => typeof item === "string" ? { employee: item, role: "" } : item)
-    .find((item) => String(item?.employee || "").trim() === employee);
+    .find((item) => sameEmployeeName(item?.employee, canonicalEmployee));
   if (extra?.role) return tipDepartmentForSync(extra.role);
-  const roleDepartment = tipDepartmentForSync(settings.employeeRoles?.[employee] || "");
+  const roleDepartment = tipDepartmentForSync(settings.employeeRoles?.[canonicalEmployee] || "");
   if (roleDepartment) return roleDepartment;
-  const departments = settings.employeeDepartments?.[employee] || [];
+  const departments = settings.employeeDepartments?.[canonicalEmployee] || [];
   const values = Array.isArray(departments) ? departments : String(departments || "").split(",");
   return values.map(tipDepartmentForSync).find(isTipEligibleAreaForSync) || "";
 }
@@ -993,8 +1125,8 @@ function tipSettingForSync(settings = {}, employee = "") {
   const tipSettings = settings.employeeTipSettings || {};
   const exact = tipSettings[employee];
   if (exact) return normalizeEmployeeTipSetting(exact);
-  const clean = String(employee || "").trim().toLowerCase();
-  const match = Object.entries(tipSettings).find(([name]) => String(name || "").trim().toLowerCase() === clean);
+  const clean = String(employee || "").trim();
+  const match = Object.entries(tipSettings).find(([name]) => sameEmployeeName(name, clean));
   return match ? normalizeEmployeeTipSetting(match[1]) : null;
 }
 
@@ -1068,7 +1200,39 @@ function matchEmployeeName(settings = {}, employee = "") {
 }
 
 function sameEmployeeName(left, right) {
-  return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
+  return normalizeEmployeeName(left) === normalizeEmployeeName(right);
+}
+
+function normalizeEmployeeName(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
+function collectEmployeeTimesheets(appData, month, employee) {
+  const targetMonth = String(month || "").trim();
+  const canonicalEmployee = matchEmployeeName(appData?.settings, employee) || String(employee || "").trim();
+  const monthEntries = appData?.timesheets?.[targetMonth];
+  if (!targetMonth || !canonicalEmployee || !monthEntries || typeof monthEntries !== "object") return {};
+  const result = {};
+  for (const [storedEmployee, entries] of Object.entries(monthEntries)) {
+    if (!sameEmployeeName(storedEmployee, canonicalEmployee)) continue;
+    for (const [date, entry] of Object.entries(entries || {})) {
+      result[date] = {
+        ...(result[date] || {}),
+        ...(entry || {})
+      };
+    }
+  }
+  return result;
 }
 
 function tipMoneyNumber(value) {
@@ -1083,7 +1247,10 @@ function tipMoneyString(value) {
 module.exports = {
   createPinHash,
   defaultData,
+  collectEmployeeTimesheets,
+  applyPushTemplate,
   employeeByPin,
+  matchEmployeeName,
   employeeIsAdmin,
   handleError,
   downloadReceipt,
@@ -1091,6 +1258,7 @@ module.exports = {
   publicSettings,
   pushPublicKey,
   pushSubscriptionActive,
+  sendInvoiceNotificationEmail,
   readAppData,
   readJson,
   sanitizeSchedules,
@@ -1098,6 +1266,7 @@ module.exports = {
   sendPushToEmployees,
   signToken,
   syncReportTipsToTimesheets,
+  sameEmployeeName,
   upsertPushSubscription,
   uploadReceiptDataUrl,
   verifyAdmin,

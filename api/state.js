@@ -1,6 +1,8 @@
 ﻿const fs = require("fs");
 const path = require("path");
 const {
+  applyPushTemplate,
+  collectEmployeeTimesheets,
   defaultData,
   handleError,
   publicSettings,
@@ -39,7 +41,10 @@ module.exports = async function handler(req, res) {
 
     if (adminSession) {
       return sendJson(res, 200, {
-        settings: publicSettings(appData.settings),
+        settings: {
+          ...publicSettings(appData.settings),
+          invoiceNotificationTo: appData.settings.invoiceNotificationTo || ""
+        },
         availability: appData.availability[availabilityMonth] || {},
         schedule,
         schedules: appData.schedules || {},
@@ -73,7 +78,7 @@ module.exports = async function handler(req, res) {
         assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates),
         timesheets: isChef
           ? (appData.timesheets?.[month] || {})
-          : { [employeeSession.employee]: appData.timesheets?.[month]?.[employeeSession.employee] || {} },
+          : { [employeeSession.employee]: collectEmployeeTimesheets(appData, month, employeeSession.employee) },
         dayReports: isChef ? (appData.dayReports || {}) : {},
         messages: messagesForEmployee(appData.messages || [], appData.settings, employeeSession.employee),
         pushPublicKey: pushPublicKey(),
@@ -210,7 +215,7 @@ async function saveCustomerInvoice(body, res) {
     return sendJson(res, 400, { error: "Bitte alle Pflichtfelder ausfuellen." });
   }
   const appData = await readAppData();
-  const date = localDate(new Date());
+  const date = cleanDate(body.date) || localDate(new Date());
   appData.dayReports ||= {};
   const report = appData.dayReports[date] || {};
   const invoiceCustomers = Array.isArray(report.invoiceCustomers) ? report.invoiceCustomers : [];
@@ -221,7 +226,11 @@ async function saveCustomerInvoice(body, res) {
   };
   upsertCustomerDirectory(appData, customer);
   await writeAppData(appData);
-  return sendJson(res, 200, { ok: true, date });
+  return sendJson(res, 200, {
+    ok: true,
+    date,
+    message: "Rechnungskunde gespeichert."
+  });
 }
 
 async function completeInvoice(body, res) {
@@ -369,11 +378,25 @@ async function notifySchedulePublished(appData, month, weekKey = "") {
   if (appData.settings?.pushSettings?.schedulePublished === false) {
     return { sent: 0, skipped: true, reason: "disabled" };
   }
-  const body = weekKey
+  const settings = appData.settings?.pushSettings || {};
+  const body = applyPushTemplate(
+    weekKey ? settings.schedulePublishedBody : settings.schedulePublishedBody,
+    {
+      month,
+      monthLabel: formatMonthLabel(month),
+      weekKey,
+      weekLabel: weekKey ? formatDateLabel(weekKey) : ""
+    }
+  ) || (weekKey
     ? `Die Woche ab ${formatDateLabel(weekKey)} ist veröffentlicht.`
-    : `Der Dienstplan für ${formatMonthLabel(month)} ist veröffentlicht.`;
+    : `Der Dienstplan für ${formatMonthLabel(month)} ist veröffentlicht.`);
   return sendPushToEmployees(appData, appData.settings.employees || [], {
-    title: "LA-Bowling - Neuer Dienstplan online",
+    title: applyPushTemplate(settings.schedulePublishedTitle, {
+      month,
+      monthLabel: formatMonthLabel(month),
+      weekKey,
+      weekLabel: weekKey ? formatDateLabel(weekKey) : ""
+    }) || "LA-Bowling - Neuer Dienstplan online",
     body,
     url: "/",
     tag: weekKey ? `schedule-${weekKey}` : `schedule-${month}`
@@ -465,6 +488,10 @@ function cleanCustomer(item) {
     amount: "",
     bowlingAmount: "",
     gastroAmount: "",
+    gastroDrinksAmount: "",
+    gastroFoodAmount: "",
+    gastroOtherAmount: "",
+    gastroOtherNote: "",
     receiptName: "",
     receiptData: "",
     bowlingReceiptName: "",

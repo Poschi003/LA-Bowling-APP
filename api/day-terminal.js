@@ -1,6 +1,7 @@
-﻿const { handleError, publicSettings, readAppData, readJson, sendJson, sendPushToEmployees, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
+﻿const { handleError, publicSettings, readAppData, readJson, sendInvoiceNotificationEmail, sendJson, sendPushToEmployees, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
 const crypto = require("crypto");
 const { defaultData } = require("./_data");
+const { sameEmployeeName } = require("./_data");
 
 module.exports = async function handler(req, res) {
   try {
@@ -224,7 +225,17 @@ async function saveReport(body, res) {
   appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), extraEmployees: cleanExtraEmployees(body.extraEmployees || existing.extraEmployees), removedEmployees: cleanEmployeeList(body.removedEmployees || existing.removedEmployees), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
   applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
+  const shouldSendInvoiceNotifications = body.sendInvoiceNotifications === true || body.sendInvoiceNotifications === "true";
+  const targetInvoiceId = shouldSendInvoiceNotifications ? String(body.sendInvoiceNotificationId || "").trim() : "";
+  const mailResult = shouldSendInvoiceNotifications
+    ? await sendReadyInvoiceNotifications(appData, date, targetInvoiceId)
+    : { sent: 0, failed: 0, changed: false, errors: [] };
+  const mailMessage = mailResult.sent || mailResult.failed
+    ? mailResult.failed
+      ? (mailResult.sent ? "E-Mail teilweise versendet." : "E-Mail konnte nicht versendet werden.")
+      : "E-Mail wurde versendet."
+    : "";
+  sendJson(res, 200, { ok: true, message: "Tagesbericht gespeichert.", mailMessage, mailSent: mailResult.sent > 0, mailFailed: mailResult.failed > 0, ...terminalPayload(appData, date) });
 }
 
 async function saveTips(body, res) {
@@ -457,8 +468,8 @@ async function saveAssignmentTimes(body, res) {
     .map(([employee]) => employee);
   if (employeesForTomorrow.length && appData.settings?.pushSettings?.assignmentsTomorrow !== false) {
     await sendPushToEmployees(appData, employeesForTomorrow, {
-      title: "LA-Bowling - Einteilung für morgen ist Online",
-      body: "Bitte prüfe deine Startzeit in der TeamApp.",
+      title: appData.settings?.pushSettings?.assignmentsTomorrowTitle || "LA-Bowling - Einteilung für morgen ist Online",
+      body: appData.settings?.pushSettings?.assignmentsTomorrowBody || "Bitte prüfe deine Startzeit in der TeamApp.",
       url: "/",
       tag: `assignment-${tomorrow}`
     });
@@ -756,11 +767,14 @@ function applyTipsToTimesheets(appData, date, tipsByEmployee = {}) {
   appData.timesheets ||= {};
   appData.timesheets[month] ||= {};
   for (const [employee, tip] of Object.entries(tipsByEmployee || {})) {
-    if (!(appData.settings.employees || []).includes(employee)) continue;
-    appData.timesheets[month][employee] ||= {};
-    const existing = appData.timesheets[month][employee][date] || {};
+    const canonicalEmployee = matchEmployeeName(appData.settings, employee)
+      || (appData.settings.employees || []).find((name) => sameEmployeeName(name, employee))
+      || String(employee || "").trim();
+    if (!canonicalEmployee) continue;
+    appData.timesheets[month][canonicalEmployee] ||= {};
+    const existing = appData.timesheets[month][canonicalEmployee][date] || {};
     if (!cleanTimeSegments(existing.segments, existing).some((segment) => segment.from || segment.to)) continue;
-    appData.timesheets[month][employee][date] = {
+    appData.timesheets[month][canonicalEmployee][date] = {
       ...existing,
       tip,
       tipSource: "terminal-distribution",
@@ -845,6 +859,11 @@ function cleanGastroTotal(value, drinks = "", food = "", other = "") {
   return cleanMoney(value);
 }
 function cleanTime(value) { const text = String(value || "").trim(); return /^\d{2}:\d{2}$/.test(text) ? text : ""; }
+function matchEmployeeName(settings = {}, employee = "") {
+  const clean = String(employee || "").trim();
+  if (!clean) return "";
+  return (settings.employees || []).find((name) => sameEmployeeName(name, clean)) || "";
+}
 function cleanTimeSegments(value, fallback = {}) {
   const source = Array.isArray(value) ? value : [];
   const segments = source.map((segment) => ({
@@ -934,16 +953,42 @@ function cleanExtraEmployees(value = []) {
     .filter((item, index, list) => list.findIndex((other) => other.employee === item.employee) === index);
 }
 
-function totalInvoiceAmount(item) { const b = Number(cleanMoney(item.bowlingAmount ?? (item.area === "bowling" ? item.amount : "")) || 0), g = Number(cleanMoney(item.gastroAmount ?? (item.area === "gastro" ? item.amount : "")) || 0); return b + g || item.amount || ""; }
+function totalInvoiceGastroAmount(item) {
+  const drinksText = String(item.gastroDrinksAmount ?? "").trim();
+  const foodText = String(item.gastroFoodAmount ?? "").trim();
+  const otherText = String(item.gastroOtherAmount ?? "").trim();
+  const hasSplit = [drinksText, foodText, otherText].some(Boolean);
+  const split = Number(cleanMoney(item.gastroDrinksAmount) || 0)
+    + Number(cleanMoney(item.gastroFoodAmount) || 0)
+    + Number(cleanMoney(item.gastroOtherAmount) || 0);
+  if (hasSplit) return split;
+  return Number(cleanMoney(item.gastroAmount ?? (item.area === "gastro" ? item.amount : "")) || 0);
+}
+function totalInvoiceAmount(item) { const b = Number(cleanMoney(item.bowlingAmount ?? (item.area === "bowling" ? item.amount : "")) || 0), g = totalInvoiceGastroAmount(item); return b + g || item.amount || ""; }
 async function cleanReportItems(items, type, date) {
   if (!Array.isArray(items)) return [];
   const cleaned = await Promise.all(items.slice(0, 20).map(async (raw) => {
+  const gastroDrinksAmount = cleanMoney(raw.gastroDrinksAmount);
+  const gastroFoodAmount = cleanMoney(raw.gastroFoodAmount);
+  const gastroOtherAmount = cleanMoney(raw.gastroOtherAmount);
+  const hasGastroSplit = [String(raw.gastroDrinksAmount ?? "").trim(), String(raw.gastroFoodAmount ?? "").trim(), String(raw.gastroOtherAmount ?? "").trim()].some(Boolean);
+  const gastroAmount = hasGastroSplit
+      ? cleanMoney(String(
+        Number(gastroDrinksAmount || 0)
+        + Number(gastroFoodAmount || 0)
+        + Number(gastroOtherAmount || 0)
+      ))
+      : cleanMoney(raw.gastroAmount ?? (raw.area === "gastro" ? raw.amount : ""));
     const item = {
       id: String(raw.id || crypto.randomUUID()),
       name: String(raw.name || "").trim().slice(0, 160),
       amount: cleanMoney(totalInvoiceAmount(raw)),
       bowlingAmount: cleanMoney(raw.bowlingAmount ?? (raw.area === "bowling" ? raw.amount : "")),
-      gastroAmount: cleanMoney(raw.gastroAmount ?? (raw.area === "gastro" ? raw.amount : "")),
+      gastroAmount,
+      gastroDrinksAmount,
+      gastroFoodAmount,
+      gastroOtherAmount,
+      gastroOtherNote: String(raw.gastroOtherNote || "").trim().slice(0, 300),
       note: String(raw.note || "").trim().slice(0, 600),
       receiptName: String(raw.receiptName || "").trim().slice(0, 180),
       receiptData: String(raw.receiptData || ""),
@@ -969,6 +1014,7 @@ async function cleanReportItems(items, type, date) {
       invoiceReadyAt: cleanText(raw.invoiceReadyAt, 80),
       invoiceDone: raw.invoiceDone === true || raw.invoiceDone === "true",
       invoiceDoneAt: cleanText(raw.invoiceDoneAt, 80),
+      invoiceNotificationSentAt: cleanText(raw.invoiceNotificationSentAt, 80),
       area: type === "invoice" ? "rechnung" : raw.area
     };
     if (type === "expense") {
@@ -1036,10 +1082,56 @@ function mergeReportItemsById(existing = [], current = []) {
       next.receiptPath = previous.receiptPath;
       next.receiptUrl = previous.receiptUrl;
     }
+    if (!String(next.invoiceNotificationSentAt || "").trim() && String(previous.invoiceNotificationSentAt || "").trim()) {
+      next.invoiceNotificationSentAt = previous.invoiceNotificationSentAt;
+    }
     merged.set(id, next);
   });
   return [...merged.values()].slice(0, 20);
 }
+
+async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = "") {
+  const report = appData.dayReports?.[date];
+  const invoices = Array.isArray(report?.invoiceCustomers) ? report.invoiceCustomers : [];
+  const now = new Date().toISOString();
+  let sent = 0;
+  let failed = 0;
+  let changed = false;
+  const errors = [];
+
+  for (const invoice of invoices) {
+    if (!invoice || typeof invoice !== "object") continue;
+    const isReady = invoice.invoiceReady === true || invoice.invoiceReady === "true";
+    const isDone = invoice.invoiceDone === true || invoice.invoiceDone === "true";
+    const alreadySent = String(invoice.invoiceNotificationSentAt || "").trim();
+    if (targetInvoiceId && String(invoice.id || "").trim() !== targetInvoiceId) continue;
+    if (!isReady || isDone || alreadySent) continue;
+    const result = await sendInvoiceNotificationEmail({
+      date,
+      customer: invoice,
+      to: appData.settings?.invoiceNotificationTo
+    });
+    if (result?.ok) {
+      invoice.invoiceNotificationSentAt = now;
+      sent += 1;
+      changed = true;
+    } else {
+      failed += 1;
+      const error = result?.error || result?.reason || "unbekannter Fehler";
+      errors.push({ id: invoice.id || "", name: invoice.name || "", error });
+      console.error("Rechnungskunden-Mailversand nicht erfolgreich.", { date, invoiceId: invoice.id || "", name: invoice.name || "", error });
+    }
+  }
+
+  if (changed && report) {
+    report.updatedAt = new Date().toISOString();
+    appData.dayReports[date] = report;
+    await writeAppData(appData);
+  }
+
+  return { sent, failed, changed, errors };
+}
+
 function upsertCustomerDirectory(appData, customers) {
   const byKey = new Map();
   normalizeCustomerDirectory(appData.customerDirectory).forEach((customer) => {

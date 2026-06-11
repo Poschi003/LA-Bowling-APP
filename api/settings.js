@@ -39,9 +39,10 @@ module.exports = async function handler(req, res) {
       });
       appData.messages = appData.messages.slice(0, 30);
       if (pushSettingEnabled(appData.settings, "messages")) {
+        const pushSettings = appData.settings.pushSettings || {};
         await sendPushToEmployees(appData, recipients, {
-          title: "LA-Bowling - Du hast eine neue Nachricht im Dashboard",
-          body: text,
+          title: cleanPushText(pushSettings.messagesTitle, "LA-Bowling - Du hast eine neue Nachricht im Dashboard"),
+          body: pushTemplate(pushSettings.messagesBody, { text }) || text,
           url: "/",
           tag: `message-${appData.messages[0].id}`
         });
@@ -71,7 +72,13 @@ module.exports = async function handler(req, res) {
     if (body.action === "save-push-settings") {
       appData.settings.pushSettings = cleanPushSettings(body.pushSettings, appData.settings.pushSettings);
       await writeAppData(appData);
-      return sendJson(res, 200, { ok: true, settings: publicSettings(appData.settings) });
+      return sendJson(res, 200, {
+        ok: true,
+        settings: {
+          ...publicSettings(appData.settings),
+          invoiceNotificationTo: appData.settings.invoiceNotificationTo || ""
+        }
+      });
     }
 
     if (body.action === "delete-message") {
@@ -248,12 +255,21 @@ module.exports = async function handler(req, res) {
         ? Math.max(0, Math.min(200, Math.round(hourlyRate * 100) / 100))
         : appData.settings.hourlyRate;
     }
+    if (typeof body.invoiceNotificationTo === "string") {
+      appData.settings.invoiceNotificationTo = body.invoiceNotificationTo.trim().slice(0, 180) || appData.settings.invoiceNotificationTo || "pvo65@outlook.de";
+    }
     if (body.pushSettings && typeof body.pushSettings === "object") {
       appData.settings.pushSettings = cleanPushSettings(body.pushSettings, appData.settings.pushSettings);
     }
 
     await writeAppData(appData);
-    sendJson(res, 200, { ok: true, settings: publicSettings(appData.settings) });
+    sendJson(res, 200, {
+      ok: true,
+      settings: {
+        ...publicSettings(appData.settings),
+        invoiceNotificationTo: appData.settings.invoiceNotificationTo || ""
+      }
+    });
   } catch (error) {
     handleError(res, error);
   }
@@ -320,8 +336,26 @@ function cleanPushSettings(value = {}, fallback = {}) {
   return {
     schedulePublished: read("schedulePublished"),
     assignmentsTomorrow: read("assignmentsTomorrow"),
-    messages: read("messages")
+    messages: read("messages"),
+    schedulePublishedTitle: cleanPushText(source.schedulePublishedTitle, fallback?.schedulePublishedTitle || "LA-Bowling - Neuer Dienstplan online"),
+    schedulePublishedBody: cleanPushText(source.schedulePublishedBody, fallback?.schedulePublishedBody || "Der neue Dienstplan ist online. Bitte in der TeamApp prüfen."),
+    assignmentsTomorrowTitle: cleanPushText(source.assignmentsTomorrowTitle, fallback?.assignmentsTomorrowTitle || "LA-Bowling - Einteilung für morgen ist Online"),
+    assignmentsTomorrowBody: cleanPushText(source.assignmentsTomorrowBody, fallback?.assignmentsTomorrowBody || "Bitte prüfe deine Startzeit in der TeamApp."),
+    messagesTitle: cleanPushText(source.messagesTitle, fallback?.messagesTitle || "LA-Bowling - Du hast eine neue Nachricht im Dashboard"),
+    messagesBody: cleanPushText(source.messagesBody, fallback?.messagesBody || "{{text}}")
   };
+}
+
+function cleanPushText(value, fallback = "") {
+  const text = String(value ?? "").trim();
+  return text ? text.slice(0, 240) : String(fallback || "").trim().slice(0, 240);
+}
+
+function pushTemplate(template, values = {}) {
+  return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const value = values[key];
+    return value == null ? "" : String(value);
+  }).trim();
 }
 
 function pushSettingEnabled(settings = {}, key) {

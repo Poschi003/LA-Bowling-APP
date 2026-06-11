@@ -462,6 +462,7 @@
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="employees">Mitarbeiter Sicht</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="numbers">Monatszahlen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="push">Push</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="correction">Korrekturmodus</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="settings">Einstellungen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="approvals">Freigaben</button>
@@ -518,39 +519,6 @@
             <button id="sendMessage" class="primary" type="button">Nachricht veröffentlichen</button>
           </div>
           <div id="adminMessagesList" class="swap-list"></div>
-        </details>
-
-        <details class="settings-box admin-priority">
-          <summary>Push-Benachrichtigungen</summary>
-          <div class="message-editor form-grid">
-            <label class="calendar-popup-option"><input id="pushAutoSchedule" type="checkbox"> Automatisch bei neuem Dienstplan senden</label>
-            <label class="calendar-popup-option"><input id="pushAutoAssignment" type="checkbox"> Automatisch bei Einteilung für morgen senden</label>
-            <label class="calendar-popup-option"><input id="pushAutoMessages" type="checkbox"> Automatisch bei Dashboard-Nachrichten senden</label>
-            <button id="savePushSettings" class="secondary" type="button">Push-Einstellungen speichern</button>
-            <label>
-              Empfänger
-              <select id="pushTarget">
-                <option value="all">Alle</option>
-                <option value="Counter">Counter</option>
-                <option value="Service">Service</option>
-                <option value="Kueche">Küche</option>
-                <option value="Reinigung">Reinigung</option>
-                <option value="Mechanik">Mechanik</option>
-                <option value="employees">Einzelne Mitarbeiter</option>
-              </select>
-            </label>
-            <div id="pushEmployeePicker" class="message-employee-picker checkbox-grid hidden"></div>
-            <label>
-              Titel
-              <input id="pushTitle" placeholder="z.B. Neuer Dienstplan online">
-            </label>
-            <label>
-              Nachricht
-              <textarea id="pushText" rows="3" placeholder="Nachricht fürs Handy"></textarea>
-            </label>
-            <button id="sendPushNotification" class="primary" type="button">Push senden</button>
-          </div>
-          <p id="pushAdminStatus" class="hint"></p>
         </details>
 
         <details class="settings-box admin-priority">
@@ -677,6 +645,70 @@
         </details>
         </section>
 
+        <section class="admin-workspace" data-admin-workspace="push">
+        <details class="settings-box admin-priority" open>
+          <summary>Push-Mitteilungen</summary>
+          <div class="settings-note">Hier steuerst du automatische Pushs für Dienstplan, Einteilung und Dashboard-Nachrichten sowie eine manuelle Testnachricht.</div>
+          <div class="message-editor form-grid">
+            <label class="calendar-popup-option"><input id="pushAutoSchedule" type="checkbox"> Automatisch bei neuem Dienstplan senden</label>
+            <label class="calendar-popup-option"><input id="pushAutoAssignment" type="checkbox"> Automatisch bei Einteilung für morgen senden</label>
+            <label class="calendar-popup-option"><input id="pushAutoMessages" type="checkbox"> Automatisch bei Dashboard-Nachrichten senden</label>
+            <button id="savePushSettings" class="secondary" type="button">Push-Einstellungen speichern</button>
+          </div>
+          <div class="push-template-grid form-grid">
+            <label>
+              Dienstplan Titel
+              <input id="pushScheduleTitle" placeholder="LA-Bowling - Neuer Dienstplan online">
+            </label>
+            <label>
+              Dienstplan Text
+              <textarea id="pushScheduleBody" rows="2" placeholder="Der neue Dienstplan ist online. Bitte in der TeamApp prüfen."></textarea>
+            </label>
+            <label>
+              Einteilung Titel
+              <input id="pushAssignmentTitle" placeholder="LA-Bowling - Einteilung für morgen ist Online">
+            </label>
+            <label>
+              Einteilung Text
+              <textarea id="pushAssignmentBody" rows="2" placeholder="Bitte prüfe deine Startzeit in der TeamApp."></textarea>
+            </label>
+            <label>
+              Nachrichten Titel
+              <input id="pushMessagesTitle" placeholder="LA-Bowling - Du hast eine neue Nachricht im Dashboard">
+            </label>
+            <label>
+              Nachrichten Text
+              <textarea id="pushMessagesBody" rows="2" placeholder="{{text}}"></textarea>
+            </label>
+          </div>
+          <div class="message-editor form-grid">
+            <label>
+              Empfänger
+              <select id="pushTarget">
+                <option value="all">Alle</option>
+                <option value="Counter">Counter</option>
+                <option value="Service">Service</option>
+                <option value="Kueche">Küche</option>
+                <option value="Reinigung">Reinigung</option>
+                <option value="Mechanik">Mechanik</option>
+                <option value="employees">Einzelne Mitarbeiter</option>
+              </select>
+            </label>
+            <div id="pushEmployeePicker" class="message-employee-picker checkbox-grid hidden"></div>
+            <label>
+              Titel
+              <input id="pushTitle" placeholder="z.B. Neuer Dienstplan online">
+            </label>
+            <label>
+              Nachricht
+              <textarea id="pushText" rows="3" placeholder="Nachricht fürs Handy"></textarea>
+            </label>
+            <button id="sendPushNotification" class="primary" type="button">Push senden</button>
+          </div>
+          <p id="pushAdminStatus" class="hint"></p>
+        </details>
+        </section>
+
         <section class="admin-workspace" data-admin-workspace="correction">
         <details class="settings-box admin-priority" open>
           <summary>Tagesbericht zur Korrektur öffnen</summary>
@@ -751,6 +783,10 @@
             <label>
               Stundensatz Prognose (Euro)
               <input id="hourlyRateSetting" type="number" min="0" max="200" step="0.01" placeholder="25.00">
+            </label>
+            <label>
+              Rechnungsmail für Chef
+              <input id="invoiceNotificationTo" type="email" placeholder="pvo65@outlook.de">
             </label>
           </div>
           </details>
