@@ -5069,7 +5069,7 @@ function invoiceRowReadyProblems(row) {
     gastroOtherAmount: gastroOther
   }).total;
   if (amount <= 0) problems.push("Bowling- oder Gastro-Betrag fehlt");
-  if (String(gastroOther || "").trim() && !reportFieldValue(row, "gastroOtherNote")) problems.push("Notiz für Sonstiges fehlt");
+  if (reportMoneyNumber(gastroOther) > 0 && !reportFieldValue(row, "gastroOtherNote")) problems.push("Notiz für Sonstiges fehlt");
   if (!invoiceRowHasReceipt(row)) problems.push("Rechnungsbeleg fehlt");
   return problems;
 }
