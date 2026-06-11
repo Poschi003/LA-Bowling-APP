@@ -3,887 +3,957 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Teamapp</title>
-    <meta name="theme-color" content="#f8fafc">
+    <title>We2</title>
+    <link rel="stylesheet" href="styles.css?v=20260611-dashboard-text-fix-2">
     <link rel="manifest" href="/manifest.webmanifest">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260602-einteilung-reiter-v1">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="theme-color" content="#efe4d2">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
   </head>
-  <body>
-    <header class="topbar">
-      <div>
-        <img class="brand-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
-        <h1 id="appTitle">Teamapp</h1>
-      </div>
-      <button id="topLogout" class="top-logout hidden" type="button">Abmelden</button>
-    </header>
-
-    <main>
-      <nav id="mainTabs" class="tabs hidden" aria-label="Bereiche">
-        <button class="tab active" type="button" data-tab="home">Dashboard</button>
-        <button class="tab employee-only hidden" type="button" data-tab="availability">Verfügbarkeit</button>
-        <button class="tab employee-only hidden" type="button" data-tab="assignments">Einteilung</button>
-        <button class="tab employee-only hidden" type="button" data-tab="published">Dienstplan</button>
-        <button class="tab employee-only hidden" type="button" data-tab="timesheet">Stundenübersicht</button>
-        <button class="tab employee-only hidden" type="button" data-tab="swaps">Ersatz Suchen</button>
-        <button class="tab backoffice-only hidden" type="button" data-tab="admin">Backoffice</button>
-        <button class="tab chef-only hidden" type="button" data-tab="chef">Chef</button>
-      </nav>
-
-      <section id="home" class="panel active">
-        <div id="homeGreeting" class="locked-box hidden">
-          <strong id="homeEmployeeName"></strong>
+  <body class="locked">
+    <div id="loginOverlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+      <section class="login-card">
+        <h1 id="loginTitle" aria-label="We2">
+          <span class="logo-mark logo-mark-small" aria-label="We2">
+            <img class="we2-brand-image" src="/we2-logo.png" alt="We2">
+          </span>
+        </h1>
+        <div class="auth-tabs" hidden aria-hidden="true">
+          <button id="authChristian" class="primary" type="button" tabindex="-1"></button>
+          <button id="authJenny" type="button" tabindex="-1"></button>
+          <button id="authControl" type="button" tabindex="-1"></button>
         </div>
-        <div class="home-access">
-          <div class="login-card-brand">
-            <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
-            <p>Willkommen bei der LA-Bowling TeamApp! Bitte melden Sie sich an.</p>
-          </div>
-          <div id="homeLogin" class="home-login form-grid">
-            <label>
-              Mitarbeiter-PIN
-              <input id="homePin" type="password" inputmode="numeric" placeholder="PIN">
-            </label>
-            <button id="unlockHome" class="primary">Login</button>
-          </div>
-        </div>
-        <div id="homeContent" class="schedule-list"></div>
-      </section>
-
-      <section id="availability" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Meine Verfügbarkeit</h2>
-            <p id="employeeViewHint">Mitarbeiter-PIN eingeben, um die eigene Verfügbarkeit zu bearbeiten.</p>
-          </div>
-          <div class="month-switcher">
-            <input id="monthInput" type="month">
-          </div>
-        </div>
-
-        <div id="employeeLogin" class="form-grid">
+        <form id="loginForm" class="login-form">
           <label>
-            PIN
-            <input id="employeePin" type="password" inputmode="numeric" placeholder="PIN">
+            Code
+            <input id="loginCode" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Code eingeben">
           </label>
-          <button id="unlockEmployee" class="primary">Anmelden</button>
-        </div>
-
-        <div id="employeeActive" class="locked-box hidden">
-          <strong id="activeEmployeeName"></strong>
-          <button id="saveAvailability" class="primary">Verfügbarkeit absenden</button>
-        </div>
-        <div id="availabilityGrid" class="calendar-grid"></div>
-      </section>
-
-      <section id="published" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Veröffentlichter Dienstplan</h2>
-            <p id="publishedState">Noch kein Dienstplan geladen.</p>
-          </div>
-          <button id="printSchedule" class="secondary">Drucken</button>
-        </div>
-        <div id="publishedMonths" class="month-list"></div>
-        <div id="publishedSchedule" class="schedule-list"></div>
-      </section>
-
-      <section id="assignments" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Meine Einteilung</h2>
-            <p>Heute und morgen mit den kurzfristig festgelegten Startzeiten.</p>
-          </div>
-        </div>
-        <div id="assignmentContent" class="assignment-list"></div>
-      </section>
-
-      <section id="timesheet" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Stundenübersicht</h2>
-            <p>Gearbeitete Dienste und automatisch verteiltes Trinkgeld.</p>
-          </div>
-        </div>
-        <div id="timesheetSummary" class="timesheet-summary"></div>
-        <div id="timesheetGrid" class="timesheet-list"></div>
-      </section>
-
-      <section id="chef" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Chef-Übersicht</h2>
-            <p id="chefState">Tagesberichte, Mitarbeiterübersicht und Dienstplan.</p>
-          </div>
-        </div>
-        <div id="chefDashboard" class="chef-dashboard"></div>
-      </section>
-
-      <section id="terminal" class="panel terminal-panel">
-        <div class="section-head">
-          <div>
-            <h2 id="terminalTitle">Tages-Terminal</h2>
-            <p id="terminalDate">Heute</p>
-          </div>
-        </div>
-        <div id="terminalLoginBrand" class="login-card-brand terminal-login-brand hidden">
-          <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
-          <p id="terminalLoginHint">Willkommen bei der LA-Bowling TerminalApp! Bitte melden Sie sich an.</p>
-        </div>
-        <div id="terminalLogin" class="form-grid">
-          <label>
-            <span id="terminalCodeLabel">Terminal-Code</span>
-            <input id="terminalCode" type="password" inputmode="numeric" placeholder="Code">
-          </label>
-          <button id="unlockTerminal" class="primary">Login</button>
-        </div>
-        <div id="terminalContent" class="terminal-content hidden">
-          <div id="terminalDayHeadForm" class="terminal-day-head">
-            <label>Datum<input id="terminalWorkDate" type="date" readonly></label>
-            <label>Öffnungszeit<input id="terminalOpeningHours" placeholder="z.B. 16:00 bis 00:00 Uhr"></label>
-            <label>Schichtleitung<select id="terminalShiftLeader"></select></label>
-            <button id="saveTerminalDayMeta" class="secondary" type="button">Tageskopf speichern</button>
-          </div>
-          <div id="terminalDayMetaDisplay" class="terminal-day-meta-display hidden"></div>
-          <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
-          <div id="terminalLeaderMessages" class="terminal-leader-messages hidden"></div>
-          <nav class="terminal-tabs" aria-label="Terminal-Bereiche">
-            <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
-            <button class="terminal-tab" data-terminal-tab="checks" type="button">Kontrollen</button>
-            <button class="terminal-tab" data-terminal-tab="assignments" type="button">Einteilung</button>
-            <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
-            <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
-            <button class="terminal-tab" data-terminal-tab="tips" type="button">Trinkgeld</button>
-            <button class="terminal-tab" data-terminal-tab="report" type="button">Tagesbericht</button>
-          </nav>
-          <section id="terminalTasksSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Tagesaufgaben Schichtleitung</h3>
-                <p id="terminalDayMetaSummary" class="hint">Vorbereitung, laufender Betrieb und Schlussdienst sauber abhaken.</p>
-              </div>
-            </div>
-            <div id="terminalTaskList" class="terminal-task-list"></div>
-            <div id="toiletCheckStatus" class="toilet-check-status"></div>
-          </section>
-          <section id="terminalChecksSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Kontrollen & Popups</h3>
-                <p class="hint">Hier steht, wann Toiletten-Kontrollen und Aufgaben-Popups quittiert wurden.</p>
-              </div>
-            </div>
-            <div id="terminalCheckLog" class="terminal-check-log"></div>
-          </section>
-          <section id="terminalAssignmentsSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Einteilung</h3>
-                <p class="hint">Startzeiten für heute und morgen festlegen. Die Mitarbeiter sehen diese Zeiten in der TeamApp.</p>
-              </div>
-              <button id="saveTerminalAssignments" class="primary" type="button">Einteilung speichern</button>
-            </div>
-            <div id="terminalAssignmentList" class="terminal-assignment-list"></div>
-          </section>
-          <section id="terminalServiceSection" class="terminal-section hidden">
-            <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
-              <div class="terminal-task-group-head">
-                <div>
-                  <h4>Übergabe</h4>
-                  <span id="handoverCount">0 Übergaben</span>
-                </div>
-                <button id="openHandover" class="secondary" type="button">Übergabe eintragen</button>
-              </div>
-              <div id="handoverList" class="terminal-handover-list"></div>
-            </section>
-            <div id="handoverModal" class="handover-modal hidden" role="dialog" aria-modal="true">
-              <section class="terminal-handover">
-                <div class="terminal-task-group-head">
-                  <h4>Übergabe Schichtleitung</h4>
-                  <button id="closeHandover" class="secondary" type="button">Schließen</button>
-                </div>
-                <div class="terminal-handover-form form-grid">
-                <label>Von<select id="handoverFrom"></select></label>
-                <label>An<select id="handoverTo"></select></label>
-                <label>Uhrzeit<input id="handoverTime" type="time"></label>
-                <label>Offene Punkte<textarea id="handoverNote" rows="3" placeholder="Was muss die nächste Schicht wissen?"></textarea></label>
-                <button id="saveHandover" class="primary" type="button">Übergabe speichern</button>
-                </div>
-              </section>
-            </div>
-            <details class="terminal-add terminal-add-compact">
-              <summary aria-label="Ungeplanten Mitarbeiter hinzufügen"><span>+</span></summary>
-              <div class="form-grid">
-                <label>
-                  Schicht hinzufügen
-                  <select id="terminalAddEmployee"></select>
-                </label>
-                <button id="addTerminalEmployee" class="secondary">Hinzufügen</button>
-              </div>
-            </details>
-            <div id="terminalCostSummary" class="terminal-cost-summary"></div>
-            <div id="terminalEmployees" class="terminal-employees"></div>
-          </section>
-          <section id="terminalFinanceSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Finanz</h3>
-                <p class="hint">Kassenabrechnung, Trinkgeld, Rechnungskunden, Ausgaben und Abschlussdokumente.</p>
-              </div>
-            </div>
-            <section class="report-subsection report-documents-inline" data-report-field-box="documents">
-              <div class="terminal-section-head">
-                <div>
-                  <h3>Abschlussdokumente</h3>
-                  <p class="hint">Penta, Handschrift und EC-Schnitt direkt zum Tagesbericht scannen.</p>
-                </div>
-              </div>
-              <div class="report-entry-grid">
-                <label>Penta scannen/fotografieren<input id="reportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>Handschrift scannen/fotografieren<input id="reportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>EC-Schnitt scannen/fotografieren<input id="reportDocumentEcCut" type="file" accept="image/*,application/pdf" capture="environment"></label>
-              </div>
-              <div id="reportDocumentStatus" class="report-entry-list"></div>
-            </section>
-            <section class="report-subsection tip-finance-block">
-              <div class="terminal-section-head">
-                <div>
-                  <h3>Trinkgeld</h3>
-                  <p class="hint">Bar, EC und Umsatz erfassen. Trinkgeld wird nach Arbeitszeit verteilt und auf Scheine gerundet.</p>
-                </div>
-              </div>
-              <div class="tip-input-grid">
-                <label>Bar gesamt<input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Ausgaben aus Kasse<input id="reportCashExpenses" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>EC Terminal 1<input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>EC Terminal 2<input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>EC gesamt<input id="reportEcTotal" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
-                <label>Personalverzehr<input id="reportPersonalConsumption" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Umsatz Bowling<input id="reportRevenueBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Getränke<input id="reportRevenueDrinks" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Speisen<input id="reportRevenueFood" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Sonstiges<input id="reportRevenueOther" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Umsatz Gastro gesamt<input id="reportRevenueGastro" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
-              </div>
-              <div id="financeTipDaySummary" class="tip-summary tip-day-summary"></div>
-              <div id="financeTipDayDistributionList" class="tip-distribution-list"></div>
-              <div class="finance-save-row">
-                <button id="saveTipDistribution" class="primary" type="button">Umsatzdetails speichern</button>
-              </div>
-            </section>
-            <details class="report-subsection" data-report-field-box="invoiceCustomers">
-              <summary>Kunden auf Rechnung</summary>
-              <div id="invoiceCustomersList" class="report-entry-list"></div>
-              <button id="addInvoiceCustomer" class="secondary" type="button">Rechnungskunde hinzufügen</button>
-            </details>
-            <details class="report-subsection" data-report-field-box="expenses">
-              <summary>Ausgaben aus der Kasse</summary>
-              <div id="expensesList" class="report-entry-list"></div>
-              <button id="addExpense" class="secondary" type="button">Ausgabe hinzufügen</button>
-            </details>
-          </section>
-          <section id="terminalTipsSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Trinkgeld Übersicht</h3>
-                <p class="hint">Offene Auszahlungen pro Mitarbeiter. Bestätigungen setzen nur diese Übersicht zurück, nicht die Mitarbeiter-App.</p>
-              </div>
-            </div>
-            <div id="tipPayoutStatus" class="action-status"></div>
-            <div id="tipSummary" class="tip-summary"></div>
-            <div id="tipDistributionList" class="tip-distribution-list"></div>
-          </section>
-          <details id="dayReportPrintArea" class="day-report">
-            <summary class="day-report-title">
-              <div>
-                <h3>Tagesbericht</h3>
-                <p id="dayReportLockStatus" class="hint"></p>
-              </div>
-              <button id="printDayReport" class="secondary" type="button">Tagesbericht drucken</button>
-            </summary>
-            <div id="dayReportTipDayDistribution" class="tip-distribution-list day-report-tip-control"></div>
-            <div id="dayReportA4Summary" class="day-report-a4-summary"></div>
-            <label data-report-field-box="notes">Notizen<textarea id="reportNotes" rows="5"></textarea></label>
-            <div class="day-report-actions">
-              <button id="saveDayReport" class="primary">Tagesbericht speichern</button>
-              <button id="closeDayReport" class="secondary danger-button" type="button">Tagesabschluss</button>
-            </div>
-          </details>
-          <div id="toiletReminder" class="toilet-reminder hidden" role="dialog" aria-modal="true">
-            <div>
-              <h3 id="terminalReminderTitle">Erinnerung</h3>
-              <p id="terminalReminderText">Bitte quittieren.</p>
-              <label id="toiletCheckEmployeeWrap" class="toilet-check-employee hidden">
-                Kontrolle gemacht von
-                <select id="toiletCheckEmployee"></select>
-              </label>
-              <button id="confirmToiletCheck" class="primary" type="button">Quittieren</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="customerInvoice" class="panel customer-invoice-panel">
-        <div class="section-head">
-          <div>
-            <h2>Neuer Rechnungskunde</h2>
-          </div>
-        </div>
-        <form id="customerInvoiceForm" class="customer-invoice-form">
-          <p class="customer-firming-hint">Bitte auf korrekte Firmierung achten.</p>
-          <label>Datum<input id="customerInvoiceDate" readonly></label>
-          <div class="form-grid">
-            <label>Firma / Name<input id="customerName" required autocomplete="organization"></label>
-            <label>Ansprechpartner<input id="customerContact" required autocomplete="name"></label>
-          </div>
-          <div class="form-grid">
-            <label>Telefonnummer<input id="customerPhone" type="tel" required autocomplete="tel"></label>
-            <label>E-Mail für Rechnung<input id="customerEmail" type="email" required autocomplete="email"></label>
-          </div>
-          <label>Rechnungsadresse<textarea id="customerAddress" rows="4" required autocomplete="street-address"></textarea></label>
-          <div class="form-grid">
-            <label>Tipp<input id="customerTip" placeholder="optional"></label>
-            <label>Notiz<textarea id="customerNote" rows="3"></textarea></label>
-          </div>
-          <button id="submitCustomerInvoice" class="primary" type="submit">Rechnungskunde speichern</button>
-          <p id="customerInvoiceStatus" class="action-status"></p>
+          <button class="primary" type="submit">Einloggen</button>
         </form>
-        <section class="customer-invoice-staff">
-          <div class="customer-invoice-staff-head">
-            <div>
-              <h3>Tagesübersicht Mitarbeiter</h3>
-              <p>Rechnungskunden, Belege und Abschlussdokumente für den heutigen Tagesbericht ergänzen.</p>
-            </div>
-            <button id="lockCustomerInvoiceStaff" class="secondary hidden" type="button">Sperren</button>
-          </div>
-          <div id="customerInvoiceStaffLogin" class="form-grid">
-            <label>Mitarbeiter-Code<input id="customerInvoiceStaffCode" type="password" inputmode="numeric" placeholder="Code"></label>
-            <button id="unlockCustomerInvoiceStaff" class="primary" type="button">Tagesübersicht öffnen</button>
-          </div>
-          <div id="customerInvoiceStaffArea" class="customer-invoice-staff-area hidden">
-            <div class="invoice-day-overview" id="customerInvoiceDaySummary"></div>
-            <details class="report-subsection customer-master-section" open>
-              <summary>Kundenstamm</summary>
-              <div class="customer-master-tools">
-                <label>Kunde suchen<input id="customerMasterSearch" placeholder="Firma, Ansprechpartner, E-Mail"></label>
-                <label>Kunde auswählen<select id="customerMasterSelect"></select></label>
-              </div>
-              <div id="customerMasterPreview" class="customer-master-preview"></div>
-              <div class="day-report-actions">
-                <button id="addCustomerFromMaster" class="primary" type="button">In Tagesbericht übernehmen</button>
-              </div>
-              <p class="hint customer-master-hint">Neue Rechnungskunden werden nach dem Speichern automatisch in diese Kartei übernommen.</p>
-            </details>
-            <details class="report-subsection" open>
-              <summary>Rechnungskunden vervollständigen</summary>
-              <div id="customerInvoiceWorkList" class="report-entry-list"></div>
-              <div class="day-report-actions">
-                <button id="addCustomerInvoiceWorkRow" class="secondary" type="button">Rechnungskunde hinzufügen</button>
-                <button id="saveCustomerInvoiceWork" class="primary" type="button">Rechnungen speichern</button>
-              </div>
-            </details>
-            <details class="report-subsection">
-              <summary>Ausgaben aus der Kasse</summary>
-              <div id="customerExpenseWorkList" class="report-entry-list"></div>
-              <div class="day-report-actions">
-                <button id="addCustomerExpenseWorkRow" class="secondary" type="button">Ausgabe hinzufügen</button>
-                <button id="saveCustomerExpenses" class="primary" type="button">Ausgaben speichern</button>
-              </div>
-            </details>
-            <details class="report-subsection">
-              <summary>Abschlussdokumente</summary>
-              <div class="report-entry-grid">
-                <label>Penta scannen/fotografieren<input id="customerReportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>Handschrift scannen/fotografieren<input id="customerReportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>EC-Schnitt scannen/fotografieren<input id="customerReportDocumentEcCut" type="file" accept="image/*,application/pdf" capture="environment"></label>
-              </div>
-              <div id="customerReportDocumentStatus" class="report-entry-list"></div>
-            </details>
-            <p id="customerInvoiceStaffStatus" class="action-status"></p>
-          </div>
-        </section>
-      </section>
-
-      <section id="swaps" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Ersatz Suchen</h2>
-            <p>Dienste anbieten und melden, wenn du einspringen kannst.</p>
-          </div>
-        </div>
-        <div id="swapLogin" class="form-grid">
-          <label>
-            PIN
-            <input id="swapPin" type="password" inputmode="numeric" placeholder="PIN">
-          </label>
-          <button id="unlockSwap" class="primary">Anmelden</button>
-        </div>
-        <div id="swapActive" class="locked-box hidden">
-          <strong id="swapEmployeeName"></strong>
-        </div>
-        <div class="swap-grid">
-          <section>
-            <h3>Meine Dienste</h3>
-            <div id="swapMyShifts" class="swap-list"></div>
-          </section>
-          <section>
-            <h3>Offene Ersatzanfragen</h3>
-            <div id="swapOpenList" class="swap-list"></div>
-          </section>
-        </div>
-      </section>
-
-      <section id="admin" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Admin</h2>
-            <p>Admin-Bereich für Planung, Rechte und Einstellungen.</p>
-          </div>
-          <div class="admin-actions">
-            <input id="adminPin" class="hidden" type="password" placeholder="PIN">
-            <button id="unlockAdmin" class="primary hidden">Entsperren</button>
-            <button id="saveDraft" class="secondary hidden">Entwurf speichern</button>
-            <button id="publishSchedule" class="primary hidden">Veröffentlichen</button>
-            <button id="adminLogout" class="secondary hidden">Abmelden</button>
-          </div>
-        </div>
-        <p id="adminStatus" class="action-status"></p>
-
-        <div id="adminLocked" class="locked-box">
-          Admin-Bereich ist gesperrt. Bitte Admin-PIN eingeben.
-        </div>
-
-        <div id="adminContent" class="admin-content hidden">
-        <nav class="admin-workspace-tabs" aria-label="Admin-Arbeitsbereiche">
-          <button class="admin-workspace-tab active" type="button" data-admin-workspace-tab="planning">Planung</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="employees">Mitarbeiter Sicht</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="numbers">Monatszahlen</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="correction">Korrekturmodus</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="settings">Einstellungen</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="approvals">Freigaben</button>
-        </nav>
-
-        <section class="admin-workspace active" data-admin-workspace="planning">
-        <details class="settings-box admin-primary-box">
-          <summary>Wochenplanung</summary>
-          <div id="planner" class="planner"></div>
-        </details>
-
-        <details class="settings-box admin-primary-box">
-          <summary>Veröffentlichte Wochen</summary>
-          <div id="adminPublishedList" class="swap-list"></div>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="employees">
-        <details class="settings-box admin-priority" open>
-          <summary>Mitarbeiter Sicht</summary>
-          <p class="settings-note">Nur Admin: Hier kannst du Arbeitstage und Stunden nachtragen, auch wenn der Tagesbericht schon abgeschlossen ist.</p>
-          <div id="adminEmployeeOverview" class="employee-overview"></div>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="numbers">
-        <details class="settings-box admin-priority" open>
-          <summary>Monatszahlen</summary>
-          <div id="adminMonthlyNumbers" class="monthly-numbers"></div>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="operations">
-        <details class="settings-box admin-priority">
-          <summary>Nachrichten fürs Dashboard</summary>
-          <div class="message-editor form-grid">
-            <label>
-              Empfänger
-              <select id="messageTarget">
-                <option value="all">Alle</option>
-                <option value="Counter">Counter</option>
-                <option value="Service">Service</option>
-                <option value="Kueche">Küche</option>
-                <option value="Reinigung">Reinigung</option>
-                <option value="Mechanik">Mechanik</option>
-                <option value="employees">Einzelne Mitarbeiter</option>
-              </select>
-            </label>
-            <div id="messageEmployeePicker" class="message-employee-picker checkbox-grid hidden"></div>
-            <label>
-              Nachricht
-              <textarea id="messageText" rows="3" placeholder="Nachricht fürs Dashboard"></textarea>
-            </label>
-            <button id="sendMessage" class="primary" type="button">Nachricht veröffentlichen</button>
-          </div>
-          <div id="adminMessagesList" class="swap-list"></div>
-        </details>
-
-        <details class="settings-box admin-priority">
-          <summary>Push-Benachrichtigungen</summary>
-          <div class="message-editor form-grid">
-            <label class="calendar-popup-option"><input id="pushAutoSchedule" type="checkbox"> Automatisch bei neuem Dienstplan senden</label>
-            <label class="calendar-popup-option"><input id="pushAutoAssignment" type="checkbox"> Automatisch bei Einteilung für morgen senden</label>
-            <label class="calendar-popup-option"><input id="pushAutoMessages" type="checkbox"> Automatisch bei Dashboard-Nachrichten senden</label>
-            <button id="savePushSettings" class="secondary" type="button">Push-Einstellungen speichern</button>
-            <label>
-              Empfänger
-              <select id="pushTarget">
-                <option value="all">Alle</option>
-                <option value="Counter">Counter</option>
-                <option value="Service">Service</option>
-                <option value="Kueche">Küche</option>
-                <option value="Reinigung">Reinigung</option>
-                <option value="Mechanik">Mechanik</option>
-                <option value="employees">Einzelne Mitarbeiter</option>
-              </select>
-            </label>
-            <div id="pushEmployeePicker" class="message-employee-picker checkbox-grid hidden"></div>
-            <label>
-              Titel
-              <input id="pushTitle" placeholder="z.B. Neuer Dienstplan online">
-            </label>
-            <label>
-              Nachricht
-              <textarea id="pushText" rows="3" placeholder="Nachricht fürs Handy"></textarea>
-            </label>
-            <button id="sendPushNotification" class="primary" type="button">Push senden</button>
-          </div>
-          <p id="pushAdminStatus" class="hint"></p>
-        </details>
-
-        <details class="settings-box admin-priority">
-          <summary>Nachricht ans Terminal</summary>
-          <div class="message-editor form-grid">
-            <label>
-              Nachricht für Schichtleitung
-              <textarea id="terminalMessageText" rows="3" placeholder="Wird im Terminal angezeigt, bis sie quittiert wird"></textarea>
-            </label>
-            <button id="sendTerminalMessage" class="primary" type="button">An Terminal senden</button>
-          </div>
-          <div id="adminTerminalMessagesList" class="swap-list"></div>
-        </details>
-
-        <details class="settings-box admin-priority">
-          <summary>Aufgabenkalender</summary>
-          <div class="admin-calendar-tools">
-            <label>Kalendermonat<input id="taskCalendarMonth" type="month"></label>
-            <div class="admin-calendar-legend">
-              <span class="legend-run">Kalender / laufender Betrieb</span>
-              <span class="legend-holiday">Feiertag</span>
-              <span class="legend-preholiday">Vorfeiertag</span>
-              <span class="legend-weekend">Wochenende</span>
-            </div>
-          </div>
-          <div id="adminTaskCalendar" class="admin-task-calendar"></div>
-          <div id="calendarTaskPopup" class="admin-calendar-popup hidden" role="dialog" aria-modal="true">
-            <section class="admin-calendar-popup-panel">
-              <div class="admin-calendar-popup-head">
-                <div>
-                  <strong>Kalendereintrag</strong>
-                  <span id="calendarTaskPopupDate">Datum wählen</span>
-                </div>
-                <button id="closeCalendarTaskPopup" class="secondary" type="button">Schließen</button>
-              </div>
-              <div class="admin-calendar-popup-form">
-                <label>Gewähltes Datum<input id="calendarTaskDate" type="date"></label>
-                <label>Kalendereintrag<input id="calendarTaskTitle" placeholder="z.B. Restmüll rausstellen"></label>
-                <label>Intervall Tage<input id="calendarTaskInterval" type="number" min="1" step="1" placeholder="leer = einmalig"></label>
-                <label>Bis Datum<input id="calendarTaskEndDate" type="date"></label>
-                <label>Notiz<input id="calendarTaskNote" placeholder="optional"></label>
-                <label class="calendar-popup-option"><input id="calendarTaskPopupEnabled" type="checkbox"> Als Popup anzeigen</label>
-                <label id="calendarTaskPopupTimeField" class="hidden">Popup-Uhrzeit<input id="calendarTaskPopupTime" type="time"></label>
-                <button id="addCalendarTask" class="primary" type="button">In Kalender eintragen</button>
-              </div>
-            </section>
-          </div>
-          <div id="adminTaskList" class="admin-task-board">
-            <details class="admin-task-section task-preparation">
-              <summary>Vorbereitung</summary>
-              <div class="admin-task-form">
-                <label>Aufgabe<input id="prepTaskTitle" placeholder="z.B. Kasse vorbereiten"></label>
-                <label>Rhythmus<select id="prepTaskFrequency"><option value="daily">Täglich</option><option value="weekly">Wöchentlich</option></select></label>
-                <label id="prepWeekdayField">Wochentag<select id="prepTaskWeekday"></select></label>
-                <label>Notiz<input id="prepTaskNote" placeholder="optional"></label>
-                <button id="addPrepTask" class="primary" type="button">Hinzufügen</button>
-              </div>
-              <div id="prepTaskTable" class="admin-task-table"></div>
-            </details>
-            <details class="admin-task-section task-running">
-              <summary>Laufender Betrieb</summary>
-              <div class="admin-task-form">
-                <label>Aufgabe<input id="runningTaskTitle" placeholder="z.B. Müll rausstellen"></label>
-                <label>
-                  Rhythmus
-                  <select id="runningTaskFrequency">
-                    <option value="daily">Täglich</option>
-                    <option value="weekly">Wöchentlich</option>
-                    <option value="monthly">Monatlich</option>
-                    <option value="interval">Intervall</option>
-                    <option value="once">Einmalig</option>
-                    <option value="next-day">Für nächsten Tag</option>
-                  </select>
-                </label>
-                <label id="runningWeekdayField">Wochentag<select id="runningTaskWeekday"></select></label>
-                <label id="runningMonthdayField">Tag im Monat<input id="runningTaskDayOfMonth" type="number" min="1" max="31" value="1"></label>
-                <label id="runningIntervalField">Intervall Tage<input id="runningTaskInterval" type="number" min="1" step="1" value="14"></label>
-                <label id="runningDateField">Datum<input id="runningTaskDate" type="date"></label>
-                <label id="runningEndDateField">Bis Datum<input id="runningTaskEndDate" type="date"></label>
-                <label>Notiz<input id="runningTaskNote" placeholder="optional"></label>
-                <button id="addRunningTask" class="primary" type="button">Hinzufügen</button>
-              </div>
-              <div id="runningTaskTable" class="admin-task-table"></div>
-            </details>
-            <details class="admin-task-section task-closing">
-              <summary>Schlussdienst</summary>
-              <div class="admin-task-form">
-                <label>Aufgabe<input id="closingTaskTitle" placeholder="z.B. Schlussrunde"></label>
-                <label>Rhythmus<select id="closingTaskFrequency"><option value="daily">Täglich</option><option value="weekly">Wöchentlich</option></select></label>
-                <label id="closingWeekdayField">Wochentag<select id="closingTaskWeekday"></select></label>
-                <label>Notiz<input id="closingTaskNote" placeholder="optional"></label>
-                <button id="addClosingTask" class="primary" type="button">Hinzufügen</button>
-              </div>
-              <div id="closingTaskTable" class="admin-task-table"></div>
-            </details>
-          </div>
-        </details>
-
-        <details class="settings-box admin-priority">
-          <summary>Popup-Erinnerungen Terminal</summary>
-          <div class="admin-task-form">
-            <label>Text<input id="reminderText" placeholder="z.B. Toiletten-Kontrolle durchführen"></label>
-            <label>Start nach Öffnung<input id="reminderStart" type="number" min="0" step="15" value="60"></label>
-            <label>Intervall Minuten<input id="reminderInterval" type="number" min="5" step="5" value="60"></label>
-            <label>Aktiv<select id="reminderActive"><option value="yes">Ja</option><option value="no">Nein</option></select></label>
-            <button id="addReminder" class="primary" type="button">Erinnerung hinzufügen</button>
-          </div>
-          <div id="adminReminderList" class="admin-task-table"></div>
-        </details>
-
-        <details class="settings-box admin-priority">
-          <summary>Wöchentliche Reinigung</summary>
-          <div class="admin-task-form">
-            <label>Aufgabe<input id="cleaningTaskTitle" placeholder="z.B. Toiletten reinigen"></label>
-            <label>Notiz<input id="cleaningTaskNote" placeholder="optional"></label>
-            <button id="addCleaningTask" class="primary" type="button">Hinzufügen</button>
-          </div>
-          <div id="adminCleaningTaskTable" class="admin-task-table"></div>
-        </details>
-
-        <details class="settings-box admin-priority">
-          <summary>Verfügbarkeiten Vorschau</summary>
-          <div id="adminAvailabilityPreview" class="availability-preview"></div>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="correction">
-        <details class="settings-box admin-priority" open>
-          <summary>Tagesbericht zur Korrektur öffnen</summary>
-          <div class="correction-admin-panel">
-            <p class="settings-note">Nur für bewusste Korrekturen nach Tagesabschluss. Nach dem Öffnen wechselst du automatisch ins Terminal und kannst Personalzeiten, Finanzdaten, Belege und Tagesbericht bearbeiten.</p>
-            <div class="form-grid">
-              <label>Datum<input id="correctionDate" type="date"></label>
-              <label>Grund der Korrektur<textarea id="correctionReason" rows="3" placeholder="z.B. Test, Personal vergessen, Beleg nachgetragen"></textarea></label>
-            </div>
-            <div class="day-report-actions">
-              <button id="openCorrectionReport" class="primary" type="button">Bericht im Korrekturmodus öffnen</button>
-              <button id="closeCorrectionReport" class="secondary danger-button" type="button">Ausgewählten Bericht wieder abschließen</button>
-            </div>
-            <p id="correctionStatus" class="action-status"></p>
-          </div>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="settings">
-        <details class="settings-box admin-priority">
-          <summary>Chefansicht und Tagesbericht definieren</summary>
-          <div class="visibility-settings">
-            <section>
-              <h4>Chefansicht</h4>
-              <div class="checkbox-grid">
-                <label><input type="checkbox" data-chef-section="messages"> Nachrichten anzeigen</label>
-                <label><input type="checkbox" data-chef-section="today"> Heutigen Tag anzeigen</label>
-                <label><input type="checkbox" data-chef-section="reports"> Tagesberichte anzeigen</label>
-                <label><input type="checkbox" data-chef-section="reportFolders"> Monatsordner anzeigen</label>
-                <label><input type="checkbox" data-chef-section="employees"> Mitarbeiterübersicht anzeigen</label>
-                <label><input type="checkbox" data-chef-section="schedule"> Dienstplan anzeigen</label>
-              </div>
-            </section>
-            <section>
-              <h4>Tagesbericht</h4>
-              <p class="settings-note">Der Tagesbericht ist das Abschlussdokument fuer den Chef: Umsaetze, Rechnungskunden, EC, Ausgaben und Abgabe an Chef gehoeren in eine klare A4-Ansicht.</p>
-              <div class="checkbox-grid report-definition-grid">
-                <label><input type="checkbox" data-day-report-field="ecTotal"> EC gesamt</label>
-                <label><input type="checkbox" data-day-report-field="invoiceCustomers"> Kunden auf Rechnung</label>
-                <label><input type="checkbox" data-day-report-field="expenses"> Ausgaben</label>
-                <label><input type="checkbox" data-day-report-field="documents"> Penta / Handschrift</label>
-                <label><input type="checkbox" data-day-report-field="notes"> Notizen</label>
-                <label><input type="checkbox" data-day-report-field="preparation"> Vorbereitung erledigt</label>
-                <label><input type="checkbox" data-day-report-field="handovers"> Übergaben</label>
-                <label><input type="checkbox" data-day-report-field="extraEmployees"> Zusätzliche Mitarbeiter</label>
-              </div>
-            </section>
-          </div>
-        </details>
-
-        <details class="settings-box">
-          <summary>Einstellungen</summary>
-          <details class="settings-sub">
-            <summary>Allgemein</summary>
-          <div class="form-grid">
-            <label>
-              Titel
-              <input id="businessName" type="text">
-            </label>
-            <label>
-              Neue Admin-PIN
-              <input id="newPin" type="password" placeholder="leer lassen = unveraendert">
-            </label>
-            <label>
-              Neuer Terminal-Code
-              <input id="terminalCodeSetting" type="password" placeholder="leer lassen = unveraendert">
-            </label>
-            <label>
-              Dienstpläne automatisch löschen (Tage)
-              <input id="scheduleAutoDeleteDays" type="number" min="0" max="365" step="1" placeholder="14">
-            </label>
-            <label>
-              Stundensatz Prognose (Euro)
-              <input id="hourlyRateSetting" type="number" min="0" max="200" step="0.01" placeholder="25.00">
-            </label>
-          </div>
-          </details>
-          <details class="settings-sub">
-            <summary>Mitarbeiter und PINs</summary>
-          <div class="employee-directory-toolbar">
-            <button id="addEmployeeCard" class="primary" type="button">+ Neuen Mitarbeiter anlegen</button>
-            <button id="saveEmployees" class="secondary" type="button">Mitarbeiter speichern</button>
-            <span class="hint">PIN leer lassen, wenn sie unverändert bleiben soll.</span>
-          </div>
-          <div id="employeeDirectory" class="employee-directory"></div>
-          <details class="settings-sub employee-raw-settings hidden">
-            <summary>Textlisten anzeigen</summary>
-            <label>
-              Mitarbeiter, eine Person pro Zeile
-              <textarea id="employeesText" rows="5"></textarea>
-            </label>
-            <label>
-              Mitarbeiter-PINs, Format: Name=PIN
-              <textarea id="employeePinsText" rows="5"></textarea>
-            </label>
-          </details>
-          </details>
-          <details class="settings-sub employee-raw-settings hidden">
-            <summary>Rechte, Rollen und Bereiche</summary>
-          <label>
-            Admin-Rechte, eine Person pro Zeile
-            <textarea id="adminEmployeesText" rows="3" placeholder="z.B. Christian Gaas"></textarea>
-          </label>
-          <label>
-            Mitarbeiter-Bereiche, Format: Name=Counter,Service,Kueche,Reinigung
-            <textarea id="employeeDepartmentsText" rows="5"></textarea>
-          </label>
-          <label>
-            Rollen im Unternehmen, Format: Name=Rolle
-            <textarea id="employeeRolesText" rows="4" placeholder="z.B. Kevin=Serviceleitung"></textarea>
-          </label>
-          </details>
-          <details class="settings-sub">
-            <summary>Verfügbarkeit und Dienstbereiche</summary>
-          <div class="availability-control-card">
-            <label>
-              Verfügbarkeit abgeben für
-              <input id="availabilityTargetMonthSetting" type="month">
-            </label>
-            <label class="checkline">
-              <input id="availabilitySubmissionOpenSetting" type="checkbox">
-              Abgabe für Mitarbeiter geöffnet
-            </label>
-            <p class="hint">Dieser Monat wird den Mitarbeitern automatisch angezeigt. Aktuell soll hier Juni stehen.</p>
-          </div>
-          <div class="position-directory-toolbar">
-            <button id="addPositionRow" class="primary" type="button">+ Dienstbereich hinzufügen</button>
-            <span class="hint">Personen ohne Verfügbarkeit stellst du direkt in der Mitarbeiter-Kartei ein.</span>
-          </div>
-          <div id="positionDirectory" class="position-directory"></div>
-          <details class="settings-sub employee-raw-settings hidden">
-            <summary>Textliste anzeigen</summary>
-            <label>
-              Keine Verfügbarkeit nötig, eine Person pro Zeile
-              <textarea id="availabilityExemptText" rows="3" placeholder="z.B. Anita&#10;Renate"></textarea>
-            </label>
-            <label>
-              Dienstbereiche, eine Position pro Zeile
-              <textarea id="positionsText" rows="4"></textarea>
-            </label>
-          </details>
-          </details>
-          <button id="saveSettings" class="secondary">Einstellungen speichern</button>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="approvals">
-        <details class="settings-box">
-          <summary>Ersatz freigeben</summary>
-          <div id="adminSwapList" class="swap-list"></div>
-        </details>
-
-        <details class="settings-box">
-          <summary>Verfügbarkeit freigeben</summary>
-          <div id="adminAvailabilityRequests" class="swap-list"></div>
-        </details>
-        </section>
-        </div>
-      </section>
-    </main>
-
-    <div id="pinChangeOverlay" class="pin-change-overlay hidden" role="dialog" aria-modal="true">
-      <section class="pin-change-card">
-        <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
-        <h2>Neuen PIN vergeben</h2>
-        <p id="pinChangeText">Bitte lege deinen persönlichen PIN fest.</p>
-        <label>Neuer PIN
-          <input id="newEmployeePin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="4 bis 10 Ziffern">
-        </label>
-        <label>PIN wiederholen
-          <input id="confirmEmployeePin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="PIN wiederholen">
-        </label>
-        <button id="saveNewEmployeePin" class="primary" type="button">PIN speichern</button>
-        <button id="cancelPinChange" class="secondary" type="button">Abmelden</button>
+        <p id="loginStatus" class="save-status">Code eingeben.</p>
       </section>
     </div>
 
-    <div id="toast" class="toast" role="status"></div>
-    <script>
-      const tabs = document.querySelector(".tabs");
-      if (tabs) tabs.addEventListener("click", (event) => {
-        const button = event.target.closest(".tab");
-        if (!button) return;
-        document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active"));
-        document.querySelectorAll(".panel").forEach((panel) => panel.classList.remove("active"));
-        button.classList.add("active");
-        const panel = document.getElementById(button.dataset.tab);
-        if (panel) panel.classList.add("active");
-      });
+    <main class="app-shell" id="appShell">
+      <div class="phone-view" aria-label="App-Ansicht">
+        <section class="hero" aria-labelledby="app-title">
+          <div class="hero-copy">
+          <p class="eyebrow" id="loggedInLabel">Christian</p>
+          <h1 id="app-title" aria-label="We2">
+            <span class="logo-mark">
+              <img class="we2-brand-image" src="/we2-logo.png" alt="We2">
+            </span>
+          </h1>
+          </div>
+          <div class="hero-actions">
+            <button id="pointsHeaderButton" class="own-points-pill" type="button" aria-label="Punkte öffnen">
+              <span>Punkte</span>
+              <strong id="activePlayerPoints">0</strong>
+            </button>
+            <button id="menuButton" class="menu-button" type="button" aria-label="Menue oeffnen" aria-expanded="false">
+              <span></span>
+              <span></span>
+              <span></span>
+            </button>
+            <button id="logoutButton" class="ghost-button" type="button">Abmelden</button>
+          </div>
+        </section>
 
-      const adminContent = document.querySelector("#adminContent");
-      if (adminContent) adminContent.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-admin-workspace-tab]");
-        if (!button) return;
-        const target = button.dataset.adminWorkspaceTab;
-        adminContent.querySelectorAll("[data-admin-workspace-tab]").forEach((tab) => {
-          tab.classList.toggle("active", tab === button);
-        });
-        adminContent.querySelectorAll("[data-admin-workspace]").forEach((section) => {
-          section.classList.toggle("active", section.dataset.adminWorkspace === target);
-        });
-      });
-    </script>
-    <script src="teamapp-client.js?v=20260602-einteilung-reiter-v1"></script>
-    <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
+        <div class="mobile-tab-menu" aria-label="App Bereich">
+          <select id="mobileTabSelect" aria-label="App Bereich waehlen">
+            <option value="play">Spielen</option>
+            <option value="tasks">Dashboard</option>
+            <option value="help">Erkl&auml;rung</option>
+            <option value="sex">Sex Tracking</option>
+            <option value="points">Belohnungen</option>
+            <option value="vault">Bibliothek</option>
+            <option value="profile">Profile</option>
+          </select>
+        </div>
+
+        <nav class="app-tabs" aria-label="App Reiter">
+          <button id="tabPlay" class="primary" type="button" data-icon="▶">Spielen</button>
+          <button id="tabTasks" type="button" data-icon="▦">Dashboard</button>
+          <button id="tabHelp" type="button" data-icon="i">Erkl&auml;rung</button>
+          <button id="tabSex" type="button" data-icon="◉">Sex Tracking</button>
+          <button id="tabPoints" type="button" data-icon="✦">Belohnungen</button>
+          <button id="tabVault" type="button" data-icon="▣">Bibliothek</button>
+          <button id="tabProfile" type="button" data-icon="◔">Profile</button>
+          <button id="menuLogoutButton" type="button" data-icon="⎋">Abmelden</button>
+        </nav>
+
+        <section id="profileAlert" class="profile-alert" hidden>
+          <span id="profileAlertText">Profil geaendert</span>
+          <button id="openProfileAlert" type="button">Ansehen</button>
+        </section>
+
+        <section id="tasksView" class="tab-panel tasks-view" hidden>
+          <div class="dashboard-head">
+            <div>
+              <span class="dashboard-logo logo-mark" aria-label="We2">
+                <img class="we2-brand-image" src="/we2-logo.png" alt="We2">
+              </span>
+              <h2>Dashboard</h2>
+            </div>
+            <div id="dashboardAvatar" class="dashboard-avatar" aria-label="Profilbild">?</div>
+          </div>
+          <div class="dashboard-action-grid" aria-label="Dashboard Aktionen">
+            <button id="dashboardPlayButton" class="primary dashboard-tile" type="button">
+              <span>Spielen</span>
+              <strong>Start</strong>
+            </button>
+            <button id="dashboardActiveMetric" class="dashboard-tile" type="button">
+              <span>Aktiv</span>
+              <strong id="dashboardActiveCount">0</strong>
+            </button>
+            <button id="dashboardArchiveMetric" class="dashboard-tile" type="button">
+              <span>Archiv</span>
+              <strong id="dashboardArchiveCount">0</strong>
+            </button>
+            <button id="dashboardChatMetric" class="dashboard-tile" type="button">
+              <span>Chat</span>
+              <strong id="dashboardChatCount">0</strong>
+            </button>
+            <button id="dashboardWishBoxMetric" class="dashboard-tile" type="button">
+              <span>Wünsche</span>
+              <strong id="dashboardWishBoxCount">0</strong>
+            </button>
+            <button id="dashboardSexMetric" class="dashboard-tile dashboard-single-label" type="button">
+              <span hidden>Tracking</span>
+              <strong>Tracking</strong>
+            </button>
+            <button id="dashboardVaultMetric" class="dashboard-tile dashboard-single-label" type="button">
+              <span hidden>Bibliothek</span>
+              <strong>Bibliothek</strong>
+            </button>
+          </div>
+          <div class="dashboard-metrics dashboard-secondary-metrics" aria-label="Dashboard Übersicht">
+            <button id="dashboardRewardsMetric" class="dashboard-single-label" type="button">
+              <span hidden>Belohnungen</span>
+              <strong>Belohnungen</strong>
+            </button>
+            <button id="dashboardProfilesMetric" class="dashboard-single-label" type="button">
+              <span hidden>Profil</span>
+              <strong>Profil</strong>
+            </button>
+          </div>
+          <div class="dashboard-home-cards" aria-label="We2 Übersicht">
+            <article id="dashboardWeekMetric" class="dashboard-home-card">
+              <span>Diese Woche</span>
+              <strong id="dashboardWeekProgress">0/0</strong>
+              <small id="dashboardWeekLeader">Noch offen</small>
+            </article>
+            <article id="dashboardRewardMetric" class="dashboard-home-card">
+              <span>Nächste Paar-Belohnung</span>
+              <strong id="dashboardRewardProgress">0/100</strong>
+              <small id="dashboardNextReward">Belohnung</small>
+            </article>
+            <article id="dashboardDuelMetric" class="dashboard-home-card dashboard-duel-card">
+              <span>Wunsch-Duell</span>
+              <strong id="dashboardDuelLeader">Noch offen</strong>
+              <small id="dashboardDuelNext">Ziehung Sonntag 19:00</small>
+            </article>
+          </div>
+          <section class="task-status" id="taskStatus" hidden>
+            <span>Aufgabe</span>
+            <strong id="taskStatusText">Bereit.</strong>
+          </section>
+        <section id="taskListPanel" class="task-list-panel" hidden>
+          <div class="task-list-head">
+            <h3>Aktive Aufgaben</h3>
+            <button id="hideTaskListPanel" type="button">Schließen</button>
+          </div>
+          <div id="taskList" class="task-list" aria-live="polite"></div>
+        </section>
+        <section id="dashboardArchivePanel" class="dashboard-subpanel" hidden>
+          <div class="task-list-head">
+            <h3>Archiv</h3>
+            <button id="hideDashboardArchive" type="button">Schließen</button>
+          </div>
+          <div id="dashboardArchiveList" class="dashboard-archive-list"></div>
+        </section>
+        <section id="dashboardChatPanel" class="dashboard-subpanel" hidden>
+          <div class="task-list-head">
+            <h3>Chat</h3>
+            <button id="hideDashboardChat" type="button">Schließen</button>
+          </div>
+          <div id="dashboardChatList" class="dashboard-chat-list" aria-live="polite"></div>
+          <div class="dashboard-chat-tools" aria-label="Chat Emojis">
+            <button type="button" data-chat-emoji="❤️">❤️</button>
+            <button type="button" data-chat-emoji="🔥">🔥</button>
+            <button type="button" data-chat-emoji="😘">😘</button>
+            <button type="button" data-chat-emoji="😈">😈</button>
+            <button type="button" data-chat-emoji="👀">👀</button>
+            <button type="button" data-chat-emoji="✨">✨</button>
+          </div>
+          <form id="dashboardChatForm" class="dashboard-chat-form">
+            <input id="dashboardChatInput" autocomplete="off" placeholder="Kurze Nachricht...">
+            <button class="primary" type="submit">Senden</button>
+          </form>
+        </section>
+        <section id="dashboardWishBoxPanel" class="dashboard-subpanel wish-box-panel" hidden>
+          <div class="task-list-head">
+            <h3>Geheime Wünsche-Box</h3>
+            <button id="hideDashboardWishBox" type="button">Schließen</button>
+          </div>
+          <form id="dashboardWishBoxForm" class="dashboard-wish-form">
+            <textarea id="dashboardWishBoxInput" rows="3" autocomplete="off" placeholder="Schreib einen Wunsch, den We2 später ziehen darf..."></textarea>
+            <div>
+              <select id="dashboardWishBoxMood" aria-label="Wunsch-Stimmung">
+                <option value="sanft">sanft</option>
+                <option value="direkt">direkt</option>
+                <option value="mutig">mutig</option>
+              </select>
+              <button class="primary" type="submit">Ablegen</button>
+            </div>
+          </form>
+          <button id="drawDashboardWish" class="primary draw-wish-button" type="button">Aus meiner Box ziehen</button>
+          <div id="dashboardWishBoxList" class="dashboard-wish-list" aria-live="polite"></div>
+        </section>
+        <section class="task-thread" id="taskThread" hidden>
+          <div class="task-thread-head">
+            <span id="taskThreadMeta">Laufende Aufgabe</span>
+            <div class="task-thread-buttons">
+              <button id="closeTaskThread" class="icon-button" type="button" aria-label="Ansicht schliessen">x</button>
+              <button id="continueTaskThread" type="button" hidden>Fortsetzen</button>
+              <button id="moreTaskThread" type="button" hidden>Verlängern</button>
+              <button id="watchTaskThread" type="button">Abbrechen</button>
+            </div>
+          </div>
+          <h3 id="taskThreadTitle">Aufgabe</h3>
+          <p id="taskThreadText"></p>
+          <div id="taskThreadSpecial" class="task-thread-special"></div>
+          <div id="taskInlineActions" class="task-inline-actions" hidden></div>
+          <div id="taskThreadSteps" class="day-build-plan task-thread-steps"></div>
+          <div id="taskCommentList" class="task-comments" aria-live="polite"></div>
+          <form id="taskCommentForm" class="task-comment-form">
+            <textarea id="taskCommentInput" rows="2" autocomplete="off" placeholder="Antwort oder Zeitpunkt planen..."></textarea>
+            <button class="primary" type="submit">Senden</button>
+          </form>
+          <button id="archiveTaskThread" class="primary task-complete-button" type="button">Erledigt</button>
+        </section>
+        </section>
+
+        <section id="helpView" class="tab-panel help-view" hidden>
+          <h2>Erkl&auml;rung</h2>
+          <div class="help-list">
+            <article>
+              <h3>Grundablauf</h3>
+              <p>Spiel ausw&auml;hlen. Danach liegt alles in Aktive Aufgabe: lesen, reagieren, senden, kommentieren, erledigen oder abbrechen.</p>
+            </article>
+            <article>
+              <h3>Short Game</h3>
+              <p>Wahrheit wird beantwortet und vom Partner best&auml;tigt. Pflicht bleibt offen, bis sie erledigt oder abgebrochen wird.</p>
+            </article>
+            <article>
+              <h3>Stellungsgenerator</h3>
+              <p>We2 zieht eine Stellung. In der Aufgabe stehen nur Name, Schwierigkeit, Fu&szlig;-Tauglichkeit und Oral-Tauglichkeit.</p>
+            </article>
+            <article>
+              <h3>Zeig mir mehr von dir</h3>
+              <p>App-Vorgabe, eigener Wunsch oder selbst Regie. Foto oder Video wird direkt oder sp&auml;ter in Aktive Aufgabe gesendet.</p>
+            </article>
+            <article>
+              <h3>Wunsch / Erz&auml;hlen / Link</h3>
+              <p>W&uuml;nsche werden von beiden best&auml;tigt. Erz&auml;hl-Aufgaben bleiben als Chat offen. Links k&ouml;nnen angesehen und bewertet werden.</p>
+            </article>
+            <article>
+              <h3>Allein, Experiment, Jennys F&uuml;&szlig;e</h3>
+              <p>Solo gibt der spielenden Person Punkte. Experimente k&ouml;nnen normal oder mutig abgeschlossen werden. Jennys F&uuml;&szlig;e kann in Aktive Aufgabe erweitert werden.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="daily-panel play-view" aria-label="Taegliche Mission">
+          <div class="daily-copy">
+            <div>
+              <h2>Spielen</h2>
+              <p id="playGreetingText" class="play-greeting" hidden></p>
+            </div>
+          </div>
+          <div class="daily-actions settings-hidden">
+            <div class="level-box">
+              <span>Gemeinsames Level <strong id="levelCount">1</strong></span>
+              <span><strong id="xpCount">0</strong> Punkte zusammen</span>
+              <span><strong id="streakCount">0</strong> Tage Streak</span>
+              <span>Rekord <strong id="recordCount">0</strong></span>
+          </div>
+          </div>
+          <div id="dailyTaskList" class="daily-task-list" aria-live="polite"></div>
+        </section>
+
+        <section id="pointsView" class="tab-panel points-view rewards-center" hidden>
+          <h2>Belohnungen</h2>
+          <p class="helper-text">Woche, Gewinner, Wochenpreis und nächste gemeinsame Belohnung auf einen Blick.</p>
+          <div class="points-hero">
+            <span>Score</span>
+            <strong id="pointsHeroTotal">0</strong>
+          </div>
+          <button id="pointsExplainToggle" class="points-explain-toggle" type="button" aria-expanded="false" aria-controls="pointsExplainPanel">
+            Punkte, Woche, Belohnung
+          </button>
+          <section id="pointsExplainPanel" class="points-explain-panel" hidden>
+            <article>
+              <strong>Punkte</strong>
+              <p>Die Zahl bei einer Aufgabe ist der Wert beim Abschließen. Gemeinsame Aufgaben geben beiden Punkte, Solo gibt nur der Person Punkte.</p>
+            </article>
+            <article>
+              <strong>Woche</strong>
+              <p>Wochenpunkte starten montags bei 0. Wer die Woche gewinnt, bekommt den Bonus; gemeinsame Gesamtpunkte laufen weiter.</p>
+            </article>
+            <article>
+              <strong>Belohnung</strong>
+              <p>Die Belohnung richtet sich nach euren gemeinsamen Punkten. Wenn sie bereit ist, kann sie hier eingeloest werden.</p>
+            </article>
+          </section>
+          <div class="scoreboard" aria-label="Punktestand">
+            <article class="score-card">
+              <span id="pointsPlayerOneName">Christian</span>
+              <strong id="pointsPlayerOne">0</strong>
+            </article>
+            <article class="score-card">
+              <span id="pointsPlayerTwoName">Jenny</span>
+              <strong id="pointsPlayerTwo">0</strong>
+            </article>
+            <article class="score-card shared">
+              <span>We2</span>
+              <strong id="pointsShared">0</strong>
+            </article>
+          </div>
+          <div class="points-reward">
+            <span id="rewardText">Belohnung</span>
+            <button id="claimReward" class="primary reward-button" type="button">Einloesen</button>
+          </div>
+          <section class="reward-command-center" aria-label="Belohnungen">
+            <article class="reward-status-overview" aria-live="polite">
+              <span>Aktueller Status</span>
+              <strong id="pointsStatusSummary">Gemeinsam unterwegs</strong>
+            </article>
+            <article>
+              <span>Führung diese Woche</span>
+              <strong id="weeklyLeaderText">Noch offen</strong>
+            </article>
+            <article>
+              <span>Wochenpreis</span>
+              <strong id="weeklyPrizeText">In Kontrolle festlegen</strong>
+            </article>
+            <article>
+              <span>Nächste Paar-Belohnung</span>
+              <strong id="nextRewardText">0/100</strong>
+            </article>
+            <article>
+              <span>Wunsch-Duell</span>
+              <strong id="weeklyWishDuelText">Sonntag 19:00</strong>
+            </article>
+            <article>
+              <span>Nächste Ziehung</span>
+              <strong id="weeklyWishDrawText">Gewinner-Wunsch</strong>
+            </article>
+          </section>
+          <div class="week-progress">
+            <div class="sex-tracker-head">
+              <span>Diese Woche</span>
+              <strong id="weekCompleteText">0/0</strong>
+            </div>
+            <div class="week-score-grid" aria-label="Wochenpunkte">
+              <article>
+                <span id="weekPlayerOneName">Christian</span>
+                <strong id="weekPlayerOnePoints">0</strong>
+              </article>
+              <article>
+                <span id="weekPlayerTwoName">Jenny</span>
+                <strong id="weekPlayerTwoPoints">0</strong>
+              </article>
+              <article>
+                <span>Bonus</span>
+                <strong id="weekBonusPoints">0</strong>
+              </article>
+            </div>
+            <p id="weekRewardText" class="week-win-copy">Vollständige Woche: Bonus für den Wochengewinner.</p>
+            <div id="weekGameList" class="week-game-list"></div>
+          </div>
+        </section>
+
+        <section id="sexView" class="tab-panel sex-view" hidden>
+          <h2>Sex-Tracker</h2>
+          <section class="sex-tracker-panel" id="sexTrackingPanel" aria-label="Sex Tracking">
+            <div class="sex-tracker-head">
+              <span>Sex-Tracking</span>
+              <strong>App-Erfolg messen</strong>
+            </div>
+            <div class="sex-tracker">
+              <span>Woche <strong id="weekSexCount">0</strong></span>
+              <span>Letzte Woche <strong id="lastWeekSexCount">0</strong></span>
+              <span>Monat <strong id="monthSexCount">0</strong></span>
+              <span>Mit We2 <strong id="appSexCount">0</strong></span>
+              <span>Leben <strong id="lifeSexCount">0</strong></span>
+            </div>
+            <p class="sex-tracker-copy">Wann hattet ihr Sex? War We2 dabei?</p>
+            <form id="sexTrackerForm" class="sex-tracker-form">
+              <label>
+                Datum
+                <input id="sexDateInput" type="date">
+              </label>
+              <label class="toggle">
+                <input id="sexAppInvolved" type="checkbox">
+                <span>We2 war beteiligt</span>
+              </label>
+              <button class="primary" type="submit">Eintragen</button>
+            </form>
+            <p id="sexTrackerStatus" class="save-status">Noch nichts eingetragen.</p>
+          </section>
+        </section>
+
+        <section id="profileView" class="tab-panel profile-self" hidden>
+          <div class="profile-view-head">
+            <div>
+              <h2 id="selfProfileTitle">Das bin ich</h2>
+              <p id="selfProfileHelper" class="helper-text">Dein Profil liest sich wie eine private Biografie. Mit Bearbeiten wechselst du in die Eingabeansicht.</p>
+            </div>
+            <button id="profileEditToggle" type="button">Bearbeiten</button>
+          </div>
+          <section class="profile-photo-box">
+            <div id="selfProfilePhotoPreview" class="profile-photo-preview" aria-label="Profilbild">?</div>
+            <label class="profile-photo-upload">
+              Bild ändern
+              <input id="selfProfilePhotoInput" type="file" accept="image/*">
+            </label>
+          </section>
+          <div class="profile-switch" id="profileSwitch">
+            <button id="profileOwnButton" class="primary" type="button">Mein Profil</button>
+            <button id="profilePartnerButton" type="button">Partnerprofil</button>
+          </div>
+          <div class="profile-legacy-fields" hidden>
+            <label>
+              Ueber mich
+              <textarea id="selfAbout" rows="3"></textarea>
+            </label>
+            <label>
+              Vorlieben
+              <textarea id="selfLikes" rows="3"></textarea>
+            </label>
+            <label>
+              Fragen an den Partner
+              <textarea id="selfQuestions" rows="3"></textarea>
+            </label>
+          </div>
+          <div id="selfProfileAnswers" class="question-grid"></div>
+          <section id="profileChangeNotice" class="profile-change-notice" hidden>
+            <p class="eyebrow">Profil-Update</p>
+            <h3 id="profileChangeTitle">Jenny hat ihr Profil geaendert</h3>
+            <ul id="profileChangeList"></ul>
+            <button id="ackProfileChanges" type="button">Gelesen</button>
+          </section>
+          <details class="try-ranking-section" id="selfTryRankingSection" hidden>
+            <summary>Ausprobieren</summary>
+            <p class="helper-text">Nein bis 3 Sterne.</p>
+            <div id="selfTryRanking" class="try-ranking-list"></div>
+          </details>
+          <button id="saveSelfProfile" class="primary" type="button">Profil speichern</button>
+          <p id="selfProfileStatus" class="save-status">Profil beeinflusst die Aufgaben.</p>
+        </section>
+
+        <section id="vaultView" class="tab-panel vault" hidden aria-label="Private Bibliothek">
+          <div>
+            <h2>Private Bibliothek</h2>
+            <p class="helper-text">Verschluesselte Bilder, Videos und Audios. Passwort rein, ansehen, wieder schliessen.</p>
+            <p class="helper-text">Beim ersten Oeffnen legt ihr das gemeinsame Passwort fest. Mindestens 10 Zeichen; We2 speichert es nicht, sondern prueft spaeter nur, ob es passt.</p>
+          </div>
+          <div class="vault-grid">
+            <label class="vault-password-field">
+              Passwort
+              <input id="vaultPassword" type="password" autocomplete="new-password" placeholder="Gemeinsames Passwort">
+            </label>
+            <button id="unlockVault" class="primary" type="button">Oeffnen</button>
+            <button id="lockVault" type="button" disabled>Schliessen</button>
+            <label class="vault-upload">
+              Medien hinzufuegen
+              <input id="mediaInput" type="file" accept="image/*,video/*,audio/*" multiple disabled>
+            </label>
+          </div>
+          <p id="vaultStatus" class="vault-status">Private Bibliothek geschlossen.</p>
+          <div id="mediaGrid" class="media-grid" aria-live="polite"></div>
+        </section>
+      </div>
+
+      <aside class="control-panel" aria-label="Kontrollebene">
+        <div class="control-head">
+          <p class="eyebrow">Kontrolle</p>
+          <h2>Kontroll-Ebene</h2>
+        </div>
+        <nav class="control-tabs" aria-label="Kontrolle Reiter">
+          <button id="controlTabRewards" class="primary" type="button">Belohnungen</button>
+          <button id="controlTabProfiles" type="button">Profilfragen</button>
+          <button id="controlTabApp" type="button">App</button>
+        </nav>
+
+        <section class="profile-editor" data-control-group="app">
+          <h3>Angemeldet als</h3>
+          <div class="login-switch" role="group" aria-label="Profil waehlen">
+            <button id="loginOne" class="primary" type="button">Christian</button>
+            <button id="loginTwo" type="button">Jenny</button>
+          </div>
+        </section>
+
+        <section class="profile-editor" data-control-group="profiles">
+          <h3>Profil-Fragen</h3>
+          <div id="profileQuestionControls" class="profile-question-controls" aria-label="Profil-Fragen steuern"></div>
+          <button id="saveProfileQuestions" class="primary" type="button">Fragen speichern</button>
+          <p id="profileStatus" class="save-status">Profile werden nur im eigenen Account bearbeitet.</p>
+        </section>
+
+        <section class="profile-editor" data-control-group="app">
+          <h3>Popups</h3>
+          <label class="toggle">
+            <input id="settingWelcomePopups" type="checkbox">
+            <span>Begrüssung anzeigen</span>
+          </label>
+          <label class="toggle">
+            <input id="settingLoginNews" type="checkbox" checked>
+            <span>Nachrichten nach Login anzeigen</span>
+          </label>
+          <div class="custom-popup-builder">
+            <h4>Eigene Popups</h4>
+            <input id="customPopupTitle" autocomplete="off" placeholder="Titel">
+            <textarea id="customPopupText" rows="3" autocomplete="off" placeholder="Text, der beim Öffnen erscheinen soll"></textarea>
+            <label>
+              Intervall: jedes
+              <input id="customPopupInterval" type="number" min="1" value="5">
+              Öffnen
+            </label>
+            <label class="toggle">
+              <input id="customPopupActive" type="checkbox" checked>
+              <span>Popup aktiv</span>
+            </label>
+            <button id="addCustomPopup" type="button">Popup hinzufügen</button>
+            <div id="customPopupList" class="custom-popup-list" aria-live="polite"></div>
+          </div>
+          <button id="savePopupSettings" type="button">Popups speichern</button>
+          <p id="popupSettingsStatus" class="save-status">Steuert Begrüssung und Nachrichten-Popups.</p>
+        </section>
+
+        <section class="profile-editor" data-control-group="app">
+          <h3>Spiel-Parameter</h3>
+          <label>
+            Fuehrung durch We2
+            <input id="settingLead" type="range" min="1" max="5" value="4">
+            <span id="settingLeadValue">4</span>
+          </label>
+          <label>
+            Direktheit
+            <input id="settingDirectness" type="range" min="1" max="5" value="4">
+            <span id="settingDirectnessValue">4</span>
+          </label>
+          <label>
+            Haerte der Sprache
+            <input id="settingLanguage" type="range" min="1" max="5" value="4">
+            <span id="settingLanguageValue">4</span>
+          </label>
+          <label>
+            Fuß-Fokus
+            <input id="settingFeet" type="range" min="0" max="5" value="4">
+            <span id="settingFeetValue">4</span>
+          </label>
+          <label>
+            Nylon-Fokus
+            <input id="settingNylons" type="range" min="0" max="5" value="3">
+            <span id="settingNylonsValue">3</span>
+          </label>
+          <label>
+            Oral-Fokus
+            <input id="settingOral" type="range" min="0" max="5" value="4">
+            <span id="settingOralValue">4</span>
+          </label>
+          <label>
+            Blowjob + Fuß im Mund
+            <input id="settingBlowjobFeet" type="range" min="0" max="5" value="3">
+            <span id="settingBlowjobFeetValue">3</span>
+          </label>
+          <label>
+            Dominanz / Gehorsam
+            <input id="settingDominance" type="range" min="0" max="5" value="3">
+            <span id="settingDominanceValue">3</span>
+          </label>
+          <label>
+            Toys / Vibrator
+            <input id="settingToys" type="range" min="0" max="5" value="3">
+            <span id="settingToysValue">3</span>
+          </label>
+          <label>
+            Alltag / Orte
+            <input id="settingPlaces" type="range" min="0" max="5" value="3">
+            <span id="settingPlacesValue">3</span>
+          </label>
+          <label>
+            Tabu / Grenzen testen
+            <input id="settingTaboo" type="range" min="0" max="5" value="2">
+            <span id="settingTabooValue">2</span>
+          </label>
+          <label>
+            Sexwissen fuer Jenny
+            <input id="settingSexExpert" type="range" min="0" max="5" value="4">
+            <span id="settingSexExpertValue">4</span>
+          </label>
+          <label>
+            Solo-Spiel
+            <input id="settingSolo" type="range" min="0" max="5" value="3">
+            <span id="settingSoloValue">3</span>
+          </label>
+          <label>
+            Bilder, Videos, Porno
+            <input id="settingMedia" type="range" min="0" max="5" value="3">
+            <span id="settingMediaValue">3</span>
+          </label>
+          <label>
+            Neues testen
+            <input id="settingNovelty" type="range" min="0" max="5" value="3">
+            <span id="settingNoveltyValue">3</span>
+          </label>
+          <label>
+            Experiment-Fokus
+            <input id="settingExperiment" type="range" min="0" max="5" value="4">
+            <span id="settingExperimentValue">4</span>
+          </label>
+          <label>
+            Kueche einbauen
+            <input id="settingKitchen" type="range" min="0" max="5" value="2">
+            <span id="settingKitchenValue">2</span>
+          </label>
+          <label class="toggle">
+            <input id="settingAnal" type="checkbox">
+            <span>Anal nur selten als Angebot erlauben</span>
+          </label>
+          <button id="saveGameSettings" class="primary" type="button">Parameter speichern</button>
+          <p id="gameSettingsStatus" class="save-status">Parameter steuern Short Game.</p>
+        </section>
+
+        <section class="profile-editor" data-control-group="app">
+          <h3>Kontext</h3>
+          <label>
+            Standorttyp
+            <select id="contextLocationType">
+              <option value="home">Zuhause</option>
+              <option value="work">Arbeit</option>
+              <option value="away">Unterwegs</option>
+              <option value="hotel">Hotel / Urlaub</option>
+              <option value="car">Auto, geparkt</option>
+            </select>
+          </label>
+          <label class="toggle">
+            <input id="contextUseTime" type="checkbox" checked>
+            <span>Tageszeit automatisch beachten</span>
+          </label>
+          <button id="saveContext" type="button">Kontext speichern</button>
+          <button id="detectLocation" type="button">Standort grob erkennen</button>
+          <button id="clearLocation" type="button">Standort loeschen</button>
+          <p id="contextStatus" class="save-status">Kontext steuert, ob We2 eher Nachricht, Vorbereitung oder direkte Aufgabe zieht.</p>
+        </section>
+
+        <section class="profile-editor" data-control-group="app">
+          <h3>Bibliothek-Passwort</h3>
+          <p class="save-status">Das gemeinsame Passwort wird nicht fest in We2 gespeichert. Ihr setzt es, indem ihr die Bibliothek öffnet oder beim ersten Bild/Video/Audio-Upload eingebt. Merkt euch exakt dasselbe Passwort; ohne dieses Passwort bleiben die privaten Dateien verschlossen.</p>
+          <button id="openVaultFromControl" type="button">Bibliothek öffnen</button>
+        </section>
+
+        <section class="profile-editor" data-control-group="rewards">
+          <h3>Belohnungen</h3>
+          <label>
+            Wochenbonus bei vollständiger Woche
+            <input id="weeklyRewardPoints" type="number" min="0" step="5" value="25">
+          </label>
+          <div id="rewardItems" class="reward-items" aria-label="Belohnungen"></div>
+          <div class="reward-add-row">
+            <input id="addRewardInput" placeholder="Neue Belohnung">
+            <button id="addReward" type="button">Hinzufuegen</button>
+          </div>
+          <textarea id="rewardList" rows="5" hidden></textarea>
+          <button id="saveRewards" type="button">Belohnungen speichern</button>
+          <p id="rewardStatus" class="save-status">Alle 100 gemeinsamen Punkte wird die naechste Belohnung frei. Der Wochenbonus geht an den Wochengewinner.</p>
+        </section>
+
+        <section class="profile-editor" data-control-group="app">
+          <h3>Zugangscodes</h3>
+          <label>
+            Christian
+            <input id="codeOne" type="password" placeholder="Neuer Code, leer lassen fuer unveraendert">
+          </label>
+          <label>
+            Jenny
+            <input id="codeTwo" type="password" placeholder="Neuer Code, leer lassen fuer unveraendert">
+          </label>
+          <label>
+            Kontrolle
+            <input id="codeControl" type="password" placeholder="Neuer Kontroll-Code">
+          </label>
+          <button id="saveCodes" type="button">Codes speichern</button>
+          <p id="codeStatus" class="save-status">Mit Backend werden Codes serverseitig gespeichert, sonst lokal in diesem Browser.</p>
+        </section>
+
+        <div class="control-profile-compat" hidden>
+          <input id="playerOne" value="Christian">
+          <input id="playerTwo" value="Jenny">
+          <textarea id="aboutOne"></textarea>
+          <textarea id="aboutTwo"></textarea>
+          <textarea id="likesOne"></textarea>
+          <textarea id="likesTwo"></textarea>
+          <textarea id="questionsOne"></textarea>
+          <textarea id="questionsTwo"></textarea>
+          <div id="profileAnswersOne"></div>
+          <div id="profileAnswersTwo"></div>
+          <div id="profileTryRankingOne"></div>
+          <div id="profileTryRankingTwo"></div>
+          <button id="saveProfiles" type="button">Profile speichern</button>
+        </div>
+      </aside>
+
+      <section class="controls settings-hidden" aria-label="Spielsteuerung">
+        <label>
+          Stimmung
+          <select id="categorySelect">
+            <option value="all">Alles mischen</option>
+            <option value="dirty">Direkter Sex</option>
+            <option value="feet">Füße</option>
+            <option value="nylons">Nylons</option>
+            <option value="porn">Porno zusammen</option>
+            <option value="position">Stellungen</option>
+            <option value="photo">Foto-Auftrag</option>
+            <option value="solo">Solo</option>
+            <option value="experiment">Experiment</option>
+            <option value="trust">Blindes Vertrauen</option>
+            <option value="talk">Dirty Talk & Wuensche</option>
+          </select>
+        </label>
+
+        <label>
+          Intensitaet
+          <input id="intensityRange" type="range" min="1" max="5" value="3">
+          <span id="intensityLabel">3 - versaut</span>
+        </label>
+
+        <label>
+          Fokus
+          <select id="tagSelect">
+            <option value="all">Alles</option>
+            <option value="feet">Fuß-Fokus</option>
+            <option value="nylons">Nylons</option>
+            <option value="oral">Oral</option>
+            <option value="sex-expert">Sexwissen</option>
+            <option value="solo">Solo</option>
+            <option value="control">Kontrolle</option>
+            <option value="voyeur">Zusehen</option>
+            <option value="position">Stellung</option>
+            <option value="photo">Foto</option>
+            <option value="new">Neues testen</option>
+            <option value="experiment">Experiment</option>
+          </select>
+        </label>
+
+        <label>
+          Modus
+          <select id="cardModeSelect">
+            <option value="">Wie bisher</option>
+            <option value="intro">Kennenlernen</option>
+            <option value="playful">Verspielt</option>
+            <option value="direct">Direkt</option>
+            <option value="intense">Intensiv</option>
+          </select>
+        </label>
+
+        <label class="toggle">
+          <input id="takeTurns" type="checkbox" checked>
+          <span>Abwechseln</span>
+        </label>
+      </section>
+
+      <section class="game-board settings-hidden" aria-label="Aktuelle Karte">
+        <article class="card-display">
+          <button id="closeCardView" class="icon-button" type="button" aria-label="Ansicht schliessen">x</button>
+          <p id="cardCategory">Bereit?</p>
+          <h2 id="cardTitle">Bereit</h2>
+          <p id="cardText">
+            Ich delegiere. Ihr entscheidet nur, ob ihr es macht.
+          </p>
+          <div class="card-actions">
+            <button id="drawCard" class="primary" type="button">Karte ziehen</button>
+            <button id="completeCard" type="button">Aufgabe annehmen</button>
+            <button id="skipCard" type="button">Zappen</button>
+          </div>
+        </article>
+
+        <aside class="side-panel">
+          <div class="score-row">
+            <span>Gemeinsame Punkte</span>
+            <strong id="scoreCount">0</strong>
+          </div>
+        </aside>
+      </section>
+
+      <section class="customizer settings-hidden" aria-label="Eigene Karten">
+        <h2>Eigene Wunschkarte</h2>
+        <div class="custom-form">
+          <input id="customTitle" placeholder="Titel">
+          <input id="customText" placeholder="Aufgabe oder Wunsch">
+          <select id="customCategory" aria-label="Kategorie fuer eigene Karte">
+            <option value="dirty">Direkter Sex</option>
+            <option value="feet">Füße</option>
+            <option value="nylons">Nylons</option>
+            <option value="porn">Porno zusammen</option>
+            <option value="position">Stellungen</option>
+            <option value="photo">Foto-Auftrag</option>
+            <option value="solo">Solo</option>
+            <option value="experiment">Experiment</option>
+            <option value="trust">Blindes Vertrauen</option>
+            <option value="talk">Dirty Talk & Wuensche</option>
+          </select>
+          <button id="addCustomCard" type="button">Hinzufuegen</button>
+        </div>
+        <ul id="customList" class="custom-list" aria-live="polite"></ul>
+      </section>
+
+    </main>
+
+    <div id="categoryModal" class="modal-backdrop" hidden>
+      <section class="category-modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <button id="closeModal" class="icon-button" type="button" aria-label="Schliessen">x</button>
+        <p class="eyebrow" id="modalEyebrow">Ziel</p>
+        <h2 id="modalTitle">Kategorie</h2>
+        <p id="modalRule" class="modal-rule"></p>
+        <article id="delegatedTask" class="delegated-task"></article>
+        <form id="wishForm" class="wish-form" hidden>
+          <label>
+            Dein Wunsch
+            <textarea id="wishText" rows="3" placeholder="Was wuenschst du dir von deinem Partner?"></textarea>
+          </label>
+          <button id="sendWish" class="primary" type="submit">Wunsch &auml;ussern</button>
+        </form>
+        <article id="wishOffer" class="wish-offer" hidden>
+          <span id="wishOfferMeta">Angebot</span>
+          <p id="wishOfferText"></p>
+          <div class="wish-confirmations">
+            <button id="confirmWishOne" type="button">Christian erfuellt</button>
+            <button id="confirmWishTwo" type="button">Jenny erfuellt</button>
+          </div>
+        </article>
+        <form id="thoughtForm" class="wish-form" hidden>
+          <label>
+            Gespräch
+            <textarea id="thoughtText" rows="3" placeholder="Schreib, was du teilen willst..."></textarea>
+          </label>
+          <button id="sendThought" class="primary" type="submit">Senden</button>
+        </form>
+        <article id="thoughtPreview" class="wish-offer" hidden>
+          <span id="thoughtPreviewMeta">Antwort</span>
+          <p id="thoughtPreviewText"></p>
+        </article>
+        <form id="mediaSendForm" class="wish-form" hidden>
+          <label>
+            <span id="taskMediaLabel">Bild, Video oder Audio aufnehmen oder ausw&auml;hlen</span>
+            <input id="taskMediaInput" type="file" accept="image/*,video/*,audio/*">
+          </label>
+          <label>
+            Nachricht dazu
+            <textarea id="taskMediaCaption" rows="2" placeholder="Optional: Was soll der andere daran sehen?"></textarea>
+          </label>
+          <label>
+            Gemeinsames Passwort
+            <input id="taskMediaPassword" type="password" autocomplete="new-password" placeholder="Nur noetig, wenn Privat geschlossen ist">
+          </label>
+          <button id="sendTaskMedia" class="primary" type="submit">Verschluesselt senden</button>
+          <p id="taskMediaStatus" class="save-status">Wird in Privat gespeichert.</p>
+        </form>
+        <form id="mediaRequestForm" class="wish-form" hidden>
+          <label>
+            Was wuenschst du dir?
+            <textarea id="mediaRequestInput" rows="3" placeholder="Welche Szene soll dein Partner dir zeigen?"></textarea>
+          </label>
+          <button id="sendMediaRequest" class="primary" type="submit">Wunsch senden</button>
+        </form>
+        <article id="mediaRequestPreview" class="wish-offer" hidden>
+          <span id="mediaRequestMeta">Wunsch</span>
+          <p id="mediaRequestPreviewText"></p>
+        </article>
+        <article id="sentMediaPreview" class="wish-offer" hidden>
+          <span id="sentMediaMeta">Gesendet</span>
+          <p id="sentMediaText"></p>
+          <button id="openSentMediaVault" type="button">In Privat ansehen</button>
+        </article>
+        <form id="pornClipForm" class="wish-form" hidden>
+          <label>
+            Link
+            <input id="pornClipUrl" type="url" placeholder="https://...">
+          </label>
+          <label>
+            Was gefaellt dir daran?
+            <textarea id="pornClipReason" rows="2" placeholder="Zeig mir, was dir gefällt und was wir vielleicht nachmachen oder gemeinsam schauen."></textarea>
+          </label>
+          <button id="sendPornClip" class="primary" type="submit">Senden</button>
+        </form>
+        <article id="pornClipPreview" class="wish-offer" hidden>
+          <span id="pornClipMeta">Clip</span>
+          <p id="pornClipText"></p>
+          <a id="pornClipLink" class="primary-link" href="#" target="_blank" rel="noopener noreferrer">Ansehen</a>
+          <div id="pornClipReactionActions" class="clip-reaction-actions" hidden>
+            <button type="button" data-clip-reaction="Nachmachen">Nachmachen</button>
+            <button type="button" data-clip-reaction="Gemeinsam schauen">Gemeinsam schauen</button>
+            <button type="button" data-clip-reaction="Gefällt mir nicht">Gefällt mir nicht</button>
+          </div>
+          <p id="pornClipReactionStatus" class="save-status"></p>
+        </article>
+        <label class="visibility-toggle">
+          <input id="shareAcceptedTask" type="checkbox" checked>
+          <span>Partner sieht die Aufgabe und kann kommentieren</span>
+        </label>
+        <div id="modalActions" class="modal-actions"></div>
+      </section>
+    </div>
+
+    <div id="onboardingModal" class="modal-backdrop" hidden>
+      <section class="category-modal onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+        <p class="eyebrow" id="onboardingEyebrow">Profil</p>
+        <h2 id="onboardingTitle">Erst kurz ehrlich werden</h2>
+        <p class="modal-rule">
+          Dein Profil muss nicht sofort fertig sein. Es darf langsam wachsen.
+          Kurz reicht. Spaeter weiter.
+          Du musst das alles nicht jetzt ausfuellen, sondern dann, wenn die Gedanken dazu richtig sind.
+        </p>
+        <form id="onboardingForm" class="onboarding-form">
+          <div id="onboardingQuestions" class="question-grid"></div>
+          <section class="try-ranking-section" id="onboardingTryRankingSection" hidden>
+            <h3>Ausprobieren</h3>
+            <p class="helper-text">Spontan reicht.</p>
+            <div id="onboardingTryRanking" class="try-ranking-list"></div>
+          </section>
+          <button class="primary" type="submit">Profil speichern und starten</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="welcomeModal" class="modal-backdrop" hidden>
+      <section class="category-modal welcome-modal" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+        <p class="eyebrow">We2</p>
+        <h2 id="welcomeTitle">Willkommen</h2>
+        <p id="welcomeText" class="modal-rule"></p>
+        <p class="helper-text">Beim ersten Oeffnen kurz. Danach frei.</p>
+        <button id="welcomeContinue" class="primary" type="button">Einsteigen</button>
+      </section>
+    </div>
+
+    <div id="loginNewsModal" class="modal-backdrop" hidden>
+      <section class="category-modal login-news-modal" role="dialog" aria-modal="true" aria-labelledby="loginNewsTitle">
+        <button id="loginNewsClose" class="icon-button" type="button" aria-label="Schliessen">x</button>
+        <p class="eyebrow" id="loginNewsEyebrow">We2 wartet</p>
+        <h2 id="loginNewsTitle">Da ist etwas fuer dich</h2>
+        <p id="loginNewsText" class="modal-rule" hidden></p>
+        <div id="loginNewsList" class="login-news-list"></div>
+        <div class="modal-actions" hidden>
+          <button id="loginNewsLater" type="button">Spaeter</button>
+          <button id="loginNewsOpen" class="primary" type="button">Ansehen</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="app.js?v=20260611-dashboard-text-fix-2"></script>
   </body>
 </html>
-
-
-
