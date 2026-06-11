@@ -549,6 +549,11 @@ function customerDirectoryKey(item = {}) {
   return name ? `name:${name}|${phone}` : "";
 }
 
+function cleanDate(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : localDate(new Date());
+}
+
 function localDate(date) {
   const parts = new Intl.DateTimeFormat("de-DE", {
     timeZone: "Europe/Berlin",
