@@ -7075,6 +7075,33 @@ async function saveSettings(button) {
   }
 }
 
+async function sendInvoiceTestMail(button) {
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Sendet...";
+  const status = $("#invoiceTestMailStatus");
+  if (status) status.textContent = "";
+  try {
+    const result = await api("/api/settings", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "send-invoice-test-mail",
+        to: $("#invoiceNotificationTo")?.value.trim()
+      })
+    });
+    const message = result.message || (result.sent ? "Test-Mail versendet." : "Test-Mail nicht versendet.");
+    if (status) status.textContent = message;
+    showToast(message);
+  } catch (error) {
+    if (status) status.textContent = error.message || String(error);
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
+}
+
 function bindEvents() {
   $$(".tab").forEach((button) => {
     button.addEventListener("click", () => {
@@ -8224,6 +8251,7 @@ function bindEvents() {
 
   $("#saveSettings").addEventListener("click", () => saveSettings($("#saveSettings")));
   $("#saveEmployees")?.addEventListener("click", () => saveSettings($("#saveEmployees")));
+  $("#sendInvoiceTestMail")?.addEventListener("click", () => sendInvoiceTestMail($("#sendInvoiceTestMail")));
 
   $("#openCorrectionReport")?.addEventListener("click", (event) => {
     openCorrectionReport(event.currentTarget);

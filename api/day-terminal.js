@@ -229,10 +229,17 @@ async function saveReport(body, res) {
   const targetInvoiceId = shouldSendInvoiceNotifications ? String(body.sendInvoiceNotificationId || "").trim() : "";
   const mailResult = shouldSendInvoiceNotifications
     ? await sendReadyInvoiceNotifications(appData, date, targetInvoiceId)
-    : { sent: 0, failed: 0, changed: false, errors: [] };
-  const mailMessage = mailResult.sent || mailResult.failed
+    : { sent: 0, failed: 0, skipped: 0, skipReasons: [], changed: false, errors: [] };
+  const mailMessage = mailResult.sent || mailResult.failed || mailResult.skipped
     ? mailResult.failed
       ? (mailResult.sent ? "E-Mail teilweise versendet." : "E-Mail konnte nicht versendet werden.")
+      : mailResult.skipped
+        ? (mailResult.skipReasons.some((item) => item.reason === "missing-smtp-config")
+          ? "E-Mail nicht versendet: SMTP in Vercel fehlt."
+          : mailResult.skipReasons.some((item) => item.reason === "nodemailer-missing")
+            ? "E-Mail nicht versendet: Mail-Modul fehlt im Build."
+            : "E-Mail nicht versendet."
+        )
       : "E-Mail wurde versendet."
     : "";
   sendJson(res, 200, { ok: true, message: "Tagesbericht gespeichert.", mailMessage, mailSent: mailResult.sent > 0, mailFailed: mailResult.failed > 0, ...terminalPayload(appData, date) });
@@ -1096,8 +1103,10 @@ async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = ""
   const now = new Date().toISOString();
   let sent = 0;
   let failed = 0;
+  let skipped = 0;
   let changed = false;
   const errors = [];
+  const skipReasons = new Map();
 
   for (const invoice of invoices) {
     if (!invoice || typeof invoice !== "object") continue;
@@ -1115,6 +1124,10 @@ async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = ""
       invoice.invoiceNotificationSentAt = now;
       sent += 1;
       changed = true;
+    } else if (result?.skipped) {
+      skipped += 1;
+      const reason = String(result.reason || "unbekannt").trim();
+      skipReasons.set(reason, (skipReasons.get(reason) || 0) + 1);
     } else {
       failed += 1;
       const error = result?.error || result?.reason || "unbekannter Fehler";
@@ -1129,7 +1142,7 @@ async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = ""
     await writeAppData(appData);
   }
 
-  return { sent, failed, changed, errors };
+  return { sent, failed, skipped, skipReasons: [...skipReasons.entries()].map(([reason, count]) => ({ reason, count })), changed, errors };
 }
 
 function upsertCustomerDirectory(appData, customers) {

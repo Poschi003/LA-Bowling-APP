@@ -5,6 +5,7 @@
   publicSettings,
   readAppData,
   readJson,
+  sendInvoiceNotificationEmail,
   sendPushToEmployees,
   sendJson,
   verifyToken,
@@ -78,6 +79,50 @@ module.exports = async function handler(req, res) {
           ...publicSettings(appData.settings),
           invoiceNotificationTo: appData.settings.invoiceNotificationTo || ""
         }
+      });
+    }
+
+    if (body.action === "send-invoice-test-mail") {
+      const to = String(body.to || appData.settings.invoiceNotificationTo || process.env.INVOICE_NOTIFICATION_TO || "").trim();
+      const date = String(body.date || new Date().toISOString().slice(0, 10)).trim();
+      const result = await sendInvoiceNotificationEmail({
+        to,
+        date,
+        customer: {
+          name: "Testkunde",
+          contact: "Testkontakt",
+          phone: "000000",
+          email: "test@example.com",
+          address: "Testadresse 1",
+          tip: "",
+          note: "Test-Mail aus dem Backoffice"
+        }
+      });
+      if (result?.ok) {
+        return sendJson(res, 200, {
+          ok: true,
+          sent: true,
+          to,
+          message: `Test-Mail an ${to} versendet.`
+        });
+      }
+      if (result?.skipped) {
+        return sendJson(res, 200, {
+          ok: true,
+          sent: false,
+          skipped: true,
+          reason: result.reason || "unbekannt",
+          message: result.reason === "missing-smtp-config"
+            ? "Test-Mail nicht versendet: SMTP in Vercel fehlt."
+            : result.reason === "nodemailer-missing"
+              ? "Test-Mail nicht versendet: Mail-Modul fehlt im Build."
+              : "Test-Mail nicht versendet."
+        });
+      }
+      return sendJson(res, 500, {
+        ok: false,
+        sent: false,
+        error: result?.error || "Test-Mail konnte nicht versendet werden."
       });
     }
 
