@@ -171,6 +171,7 @@ const defaultData = {
   messages: [],
   terminalMessages: [],
   customerDirectory: [],
+  offers: [],
   swaps: [],
   availabilityChangeRequests: [],
   pushSubscriptions: {}
@@ -250,6 +251,7 @@ function mergeData(value) {
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     customerDirectory: Array.isArray(value?.customerDirectory) ? value.customerDirectory : base.customerDirectory,
+    offers: Array.isArray(value?.offers) ? value.offers : base.offers,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests,
     pushSubscriptions: normalizePushSubscriptions(value?.pushSubscriptions || base.pushSubscriptions)

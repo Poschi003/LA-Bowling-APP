@@ -46,6 +46,10 @@
   invoiceDate: todayKey(),
   invoiceReport: {},
   customerDirectory: [],
+  offers: [],
+  offerDraft: null,
+  offerDraftId: "",
+  offerDraftDirty: false,
   taskTemplates: [],
   cleaningTemplates: [],
   reminderTemplates: [],
@@ -175,6 +179,7 @@ const defaultData = {
   messages: [],
   terminalMessages: [],
   customerDirectory: [],
+  offers: [],
   dayReports: {},
   assignmentTimes: {},
   assignmentSchedules: {},
@@ -468,6 +473,13 @@ async function loadState() {
   state.taskTemplates = data.taskTemplates || [];
   state.cleaningTemplates = normalizeCleaningTemplates(data.cleaningTemplates);
   state.reminderTemplates = normalizeReminderTemplates(data.reminderTemplates);
+  state.customerDirectory = normalizeCustomerDirectory(data.customerDirectory || state.customerDirectory || []);
+  state.offers = normalizeOffersClient(data.offers || state.offers || []);
+  if (!state.offerDraft || !state.offers.some((offer) => offer.id === state.offerDraft?.id)) {
+    state.offerDraft = state.offers[0] ? cloneData(state.offers[0]) : createBlankOfferDraft();
+    state.offerDraftId = state.offerDraft.id;
+  }
+  state.offerDraftDirty = false;
   state.dayReports = data.dayReports || {};
   state.assignmentTimes = normalizeAssignmentTimes(data.assignmentTimes || {});
   state.assignmentSchedules = data.assignmentSchedules || {};
@@ -614,6 +626,7 @@ function mergeData(value) {
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     customerDirectory: normalizeCustomerDirectory(value?.customerDirectory || base.customerDirectory),
+    offers: normalizeOffersClient(value?.offers || base.offers || []),
     dayReports: value && value.dayReports ? value.dayReports : base.dayReports,
     assignmentTimes: normalizeAssignmentTimes(value?.assignmentTimes || base.assignmentTimes),
     assignmentSchedules: value && value.assignmentSchedules ? value.assignmentSchedules : base.assignmentSchedules,
@@ -735,6 +748,363 @@ function cleanCleaningTemplateClient(task = {}) {
   };
 }
 
+const OFFER_BUFFET_TEMPLATES = {
+  tradition: {
+    name: "Tradition",
+    pricePerPerson: 35.9,
+    categories: {
+      vorspeisen: [
+        { name: "Gegrillte Antipasti von Zucchini, Paprika und Aubergine" },
+        { name: "Tomate-Mozzarella mit frischem Basilikum" },
+        { name: "Rucola mit Parmesanspänen & Balsamico" },
+        { name: "Ciabatta" }
+      ],
+      fleisch: [
+        { name: "Zürcher Geschnetzeltes von der Pute mit Champignons und Rahmsauce" }
+      ],
+      fisch: [
+        { name: "Tagliatelle mit zartem Lachs in leichter Sauce" }
+      ],
+      vegetarisch: [
+        { name: "Spinatknödel mit brauner Butter" }
+      ],
+      suppen: [
+        { name: "Suppe nach Tagesempfehlung" }
+      ],
+      dessert: [
+        { name: "Classic New York Cheesecake mit fruchtigem Himbeer-Coulis" }
+      ]
+    }
+  },
+  elegant: {
+    name: "Elegant",
+    pricePerPerson: 39.9,
+    categories: {
+      vorspeisen: [
+        { name: "Feine Antipasti-Auswahl" },
+        { name: "Räucherlachs mit Zitronencreme" },
+        { name: "Blattsalat mit Balsamico-Dressing" }
+      ],
+      fleisch: [
+        { name: "Kalbsrahmgeschnetzeltes mit feinen Champignons" },
+        { name: "Hähnchenbrust mit Kräutersauce" }
+      ],
+      fisch: [
+        { name: "Gebratener Lachs auf Gemüsebett" }
+      ],
+      vegetarisch: [
+        { name: "Gemüsegratin mit Kräuterkruste" }
+      ],
+      suppen: [
+        { name: "Cremige Gemüsesuppe" }
+      ],
+      dessert: [
+        { name: "Panna Cotta mit Beerenragout" }
+      ]
+    }
+  },
+  festlich: {
+    name: "Festlich",
+    pricePerPerson: 44.9,
+    categories: {
+      vorspeisen: [
+        { name: "Carpaccio vom Rind mit Parmesan" },
+        { name: "Antipasti und Brotvariation" }
+      ],
+      fleisch: [
+        { name: "Rinderbraten mit Portweinsauce" },
+        { name: "Putenbraten mit feiner Rahmsauce" }
+      ],
+      fisch: [
+        { name: "Lachsfilet mit Kräuterkruste" }
+      ],
+      vegetarisch: [
+        { name: "Mediterrane Gemüsevariation" }
+      ],
+      suppen: [
+        { name: "Tomaten-Basilikum-Suppe" }
+      ],
+      dessert: [
+        { name: "Schokoladenmousse mit frischer Frucht" }
+      ]
+    }
+  },
+  modern: {
+    name: "Modern",
+    pricePerPerson: 37.9,
+    categories: {
+      vorspeisen: [
+        { name: "Bunte Salatbar" },
+        { name: "Fingerfood mit Dips" }
+      ],
+      fleisch: [
+        { name: "Pulled Chicken mit BBQ-Sauce" },
+        { name: "Rinderschmorbraten mit Jus" }
+      ],
+      fisch: [
+        { name: "Lachs mit Zitronen-Kräuter-Kruste" }
+      ],
+      vegetarisch: [
+        { name: "Cremiges Risotto mit Gemüse" }
+      ],
+      suppen: [
+        { name: "Suppe des Tages" }
+      ],
+      dessert: [
+        { name: "Mousse au Chocolat" },
+        { name: "Obstsalat" }
+      ]
+    }
+  }
+};
+const OFFER_CATEGORY_ORDER = ["vorspeisen", "fleisch", "fisch", "vegetarisch", "suppen", "dessert"];
+const OFFER_CATEGORY_LABELS = {
+  vorspeisen: "Vorspeisen",
+  fleisch: "Fleisch",
+  fisch: "Fisch",
+  vegetarisch: "Vegetarisch",
+  suppen: "Suppen",
+  dessert: "Dessert"
+};
+
+function normalizeOffersClient(offers = []) {
+  return (Array.isArray(offers) ? offers : [])
+    .map((offer) => normalizeOfferClient(offer))
+    .filter((offer) => offer.customerName || offer.title || offer.eventDate || offer.createdAt)
+    .sort((a, b) => {
+      const aTime = Date.parse(a.updatedAt || a.createdAt || "") || 0;
+      const bTime = Date.parse(b.updatedAt || b.createdAt || "") || 0;
+      if (a.archived !== b.archived) return a.archived ? 1 : -1;
+      return bTime - aTime;
+    });
+}
+
+function normalizeOfferClient(offer = {}) {
+  const buffet = offer.buffet && typeof offer.buffet === "object" ? offer.buffet : {};
+  return {
+    id: String(offer.id || `offer-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    archived: offer.archived === true,
+    createdAt: String(offer.createdAt || new Date().toISOString()),
+    updatedAt: String(offer.updatedAt || offer.createdAt || new Date().toISOString()),
+    title: String(offer.title || offer.customerName || "Angebot").trim().slice(0, 120),
+    offerDate: cleanOfferDateValue(offer.offerDate),
+    eventDate: cleanOfferDateValue(offer.eventDate),
+    customerName: String(offer.customerName || "").trim().slice(0, 160),
+    customerContact: String(offer.customerContact || "").trim().slice(0, 160),
+    customerEmail: String(offer.customerEmail || "").trim().slice(0, 180),
+    customerPhone: String(offer.customerPhone || "").trim().slice(0, 80),
+    customerAddress: String(offer.customerAddress || "").trim().slice(0, 600),
+    occasion: String(offer.occasion || "").trim().slice(0, 160),
+    personsAdults: cleanOfferIntegerValue(offer.personsAdults),
+    personsChildren: cleanOfferIntegerValue(offer.personsChildren),
+    startTime: cleanOfferTimeValue(offer.startTime),
+    reservedArea: String(offer.reservedArea || "").trim().slice(0, 200),
+    additionalInfo: String(offer.additionalInfo || "").trim().slice(0, 2000),
+    internalNote: String(offer.internalNote || "").trim().slice(0, 2000),
+    buffet: {
+      templateKey: String(buffet.templateKey || "").trim().slice(0, 40),
+      name: String(buffet.name || "").trim().slice(0, 160),
+      pricePerPerson: cleanOfferMoneyValue(buffet.pricePerPerson),
+      categories: normalizeOfferBuffetCategoriesClient(buffet.categories)
+    },
+    timeline: normalizeOfferTimelineClient(offer.timeline),
+    costs: normalizeOfferCostsClient(offer.costs)
+  };
+}
+
+function normalizeOfferTimelineClient(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      id: String(item?.id || `timeline-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      time: cleanOfferTimeValue(item?.time),
+      title: String(item?.title || item?.label || "").trim().slice(0, 160),
+      note: String(item?.note || "").trim().slice(0, 600)
+    }))
+    .filter((item) => item.time || item.title || item.note);
+}
+
+function normalizeOfferCostsClient(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      id: String(item?.id || `cost-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      label: String(item?.label || "").trim().slice(0, 160),
+      quantity: cleanOfferMoneyValue(item?.quantity),
+      unitPrice: cleanOfferMoneyValue(item?.unitPrice),
+      note: String(item?.note || "").trim().slice(0, 400)
+    }))
+    .filter((item) => item.label || item.quantity || item.unitPrice || item.note);
+}
+
+function normalizeOfferBuffetCategoriesClient(categories = {}) {
+  return Object.fromEntries(OFFER_CATEGORY_ORDER.map((key) => [key, normalizeOfferBuffetItemsClient(categories?.[key] || [])]));
+}
+
+function normalizeOfferBuffetItemsClient(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      id: String(item?.id || `dish-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      name: String(item?.name || item?.title || "").trim().slice(0, 180),
+      note: String(item?.note || "").trim().slice(0, 240)
+    }))
+    .filter((item) => item.name || item.note);
+}
+
+function cleanOfferDateValue(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+}
+
+function cleanOfferIntegerValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(9999, Math.floor(parsed))) : 0;
+}
+
+function cleanOfferMoneyValue(value) {
+  const parsed = Number(String(value ?? "0").replace(",", "."));
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(999999, Math.round(parsed * 100) / 100)) : 0;
+}
+
+function cleanOfferTimeValue(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
+}
+
+function createBlankOfferDraft() {
+  return normalizeOfferClient({
+    title: "Neues Angebot",
+    offerDate: todayKey(),
+    eventDate: "",
+    customerName: "",
+    customerContact: "",
+    customerEmail: "",
+    customerPhone: "",
+    customerAddress: "",
+    occasion: "",
+    personsAdults: 0,
+    personsChildren: 0,
+    startTime: "",
+    reservedArea: "",
+    additionalInfo: "",
+    internalNote: "",
+    buffet: {
+      templateKey: "",
+      name: "",
+      pricePerPerson: 0,
+      categories: normalizeOfferBuffetCategoriesClient({})
+    },
+    timeline: [],
+    costs: []
+  });
+}
+
+function ensureOfferDraft() {
+  if (!state.offerDraft || !state.offerDraft.id) {
+    state.offerDraft = createBlankOfferDraft();
+    state.offerDraftId = state.offerDraft.id;
+  }
+  return state.offerDraft;
+}
+
+function setOfferDraftFromOffer(offer) {
+  state.offerDraft = cloneData(normalizeOfferClient(offer));
+  state.offerDraftId = state.offerDraft.id;
+  state.offerDraftDirty = false;
+}
+
+function currentOfferDraftFromDom() {
+  const root = $("#adminOffers");
+  if (!root) return normalizeOfferClient(state.offerDraft || createBlankOfferDraft());
+  const base = cloneData(state.offerDraft || createBlankOfferDraft());
+  const field = (name) => root.querySelector(`[data-offer-field="${cssEscape(name)}"]`);
+  const simpleText = (name) => String(field(name)?.value || "").trim();
+  const draft = {
+    ...base,
+    title: simpleText("title") || base.title,
+    offerDate: cleanOfferDateValue(field("offerDate")?.value || base.offerDate),
+    eventDate: cleanOfferDateValue(field("eventDate")?.value || base.eventDate),
+    customerName: simpleText("customerName"),
+    customerContact: simpleText("customerContact"),
+    customerEmail: simpleText("customerEmail"),
+    customerPhone: simpleText("customerPhone"),
+    customerAddress: String(field("customerAddress")?.value || "").trim(),
+    occasion: simpleText("occasion"),
+    personsAdults: cleanOfferIntegerValue(field("personsAdults")?.value),
+    personsChildren: cleanOfferIntegerValue(field("personsChildren")?.value),
+    startTime: cleanOfferTimeValue(field("startTime")?.value),
+    reservedArea: simpleText("reservedArea"),
+    additionalInfo: String(field("additionalInfo")?.value || "").trim(),
+    internalNote: String(field("internalNote")?.value || "").trim(),
+    buffet: {
+      ...base.buffet,
+      templateKey: String(field("buffetTemplateKey")?.value || "").trim(),
+      name: String(field("buffetName")?.value || "").trim(),
+      pricePerPerson: cleanOfferMoneyValue(field("buffetPricePerPerson")?.value),
+      categories: {}
+    },
+    timeline: [],
+    costs: []
+  };
+  OFFER_CATEGORY_ORDER.forEach((category) => {
+    draft.buffet.categories[category] = [...root.querySelectorAll(`[data-offer-dish-row="${category}"]`)].map((row) => ({
+      id: row.dataset.offerDishId || cryptoId(),
+      name: String(row.querySelector("[data-offer-dish-name]")?.value || "").trim(),
+      note: String(row.querySelector("[data-offer-dish-note]")?.value || "").trim()
+    })).filter((item) => item.name || item.note);
+  });
+  draft.timeline = [...root.querySelectorAll("[data-offer-timeline-row]")].map((row) => ({
+    id: row.dataset.offerTimelineId || cryptoId(),
+    time: cleanOfferTimeValue(row.querySelector("[data-offer-timeline-time]")?.value),
+    title: String(row.querySelector("[data-offer-timeline-title]")?.value || "").trim(),
+    note: String(row.querySelector("[data-offer-timeline-note]")?.value || "").trim()
+  })).filter((item) => item.time || item.title || item.note);
+  draft.costs = [...root.querySelectorAll("[data-offer-cost-row]")].map((row) => ({
+    id: row.dataset.offerCostId || cryptoId(),
+    label: String(row.querySelector("[data-offer-cost-label]")?.value || "").trim(),
+    quantity: cleanOfferMoneyValue(row.querySelector("[data-offer-cost-quantity]")?.value),
+    unitPrice: cleanOfferMoneyValue(row.querySelector("[data-offer-cost-unit]")?.value),
+    note: String(row.querySelector("[data-offer-cost-note]")?.value || "").trim()
+  })).filter((item) => item.label || item.quantity || item.unitPrice || item.note);
+  return normalizeOfferClient(draft);
+}
+
+function applyOfferTemplate(templateKey) {
+  const template = OFFER_BUFFET_TEMPLATES[templateKey];
+  if (!template) return;
+  const draft = cloneData(ensureOfferDraft());
+  draft.buffet = {
+    templateKey,
+    name: template.name,
+    pricePerPerson: template.pricePerPerson,
+    categories: normalizeOfferBuffetCategoriesClient(template.categories)
+  };
+  state.offerDraft = normalizeOfferClient(draft);
+  state.offerDraftDirty = false;
+  renderAdminOffers();
+  showToast(`Buffet-Vorlage ${template.name} übernommen.`);
+}
+
+function offerPersonCount(offer) {
+  return cleanOfferIntegerValue(offer?.personsAdults) + cleanOfferIntegerValue(offer?.personsChildren);
+}
+
+function offerTotals(offer) {
+  const draft = normalizeOfferClient(offer || {});
+  const personCount = offerPersonCount(draft);
+  const buffetTotal = personCount * cleanOfferMoneyValue(draft.buffet?.pricePerPerson || 0);
+  const extraRows = (draft.costs || []).reduce((sum, row) => sum + (cleanOfferMoneyValue(row.quantity) * cleanOfferMoneyValue(row.unitPrice)), 0);
+  const total = buffetTotal + extraRows;
+  return {
+    personCount,
+    buffetTotal,
+    extraRows,
+    total
+  };
+}
+
+function offerTemplateOptions(selectedKey = "") {
+  return Object.entries(OFFER_BUFFET_TEMPLATES).map(([key, template]) => `<option value="${escapeHtml(key)}" ${key === selectedKey ? "selected" : ""}>${escapeHtml(template.name)}</option>`).join("");
+}
+
 function renderAll() {
   $("#appTitle").textContent = isCustomerInvoiceMode() ? "Bezahlung auf Rechnung" : isTodoMode() ? "TO DO" : state.settings.businessName;
   if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = formatDate(localDateValue());
@@ -758,6 +1128,7 @@ function renderAll() {
   renderAdminSwaps();
   renderAdminAvailabilityRequests();
   renderMessageEmployeePicker();
+  renderAdminOffers();
   renderAdminPushControls();
   renderAdminMessages();
   renderAdminTerminalMessages();
@@ -3236,6 +3607,448 @@ function renderAdminAvailabilityPreview() {
     </div>
     <div class="availability-preview-grid">${cards}</div>
   `;
+}
+
+function renderAdminOffers() {
+  const container = $("#adminOffers");
+  if (!container) return;
+  if (state.offerDraftDirty && container.querySelector("[data-offer-field]")) {
+    state.offerDraft = currentOfferDraftFromDom();
+    state.offerDraftId = state.offerDraft.id;
+  }
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  const draft = ensureOfferDraft();
+  const totals = offerTotals(draft);
+  const offers = normalizeOffersClient(state.offers || []);
+  const activeId = state.offerDraft?.id || draft.id;
+  const listHtml = offers.length ? offers.map((offer) => renderOfferListItem(offer, activeId)).join("") : `<p class="hint">Noch keine Angebote angelegt.</p>`;
+  container.innerHTML = `
+    <div class="offer-toolbar">
+      <div class="offer-toolbar-actions">
+        <button class="primary" type="button" data-offer-new>+ Neues Angebot</button>
+        <button class="secondary" type="button" data-offer-save>Speichern</button>
+        <button class="secondary" type="button" data-offer-duplicate>Duplizieren</button>
+        <button class="secondary" type="button" data-offer-toggle-archive>${draft.archived ? "Archivierung aufheben" : "Archivieren"}</button>
+        <button class="secondary danger-lite" type="button" data-offer-delete>Löschen</button>
+        <button class="secondary" type="button" data-offer-print>PDF / Drucken</button>
+      </div>
+      <div class="offer-toolbar-stats">
+        <span class="offer-stat"><small>Personen</small><strong>${totals.personCount}</strong></span>
+        <span class="offer-stat"><small>Buffet</small><strong>${formatMoney(totals.buffetTotal)}</strong></span>
+        <span class="offer-stat"><small>Zusatz</small><strong>${formatMoney(totals.extraRows)}</strong></span>
+        <span class="offer-stat offer-stat-total"><small>Gesamt</small><strong>${formatMoney(totals.total)}</strong></span>
+      </div>
+    </div>
+    <div class="offer-workspace-grid">
+      <aside class="offer-sidebar">
+        <div class="offer-sidebar-head">
+          <strong>Angebotsliste</strong>
+          <span>${offers.length} Einträge</span>
+        </div>
+        <div class="offer-list">${listHtml}</div>
+      </aside>
+      <section class="offer-editor">
+        <div class="offer-editor-head">
+          <div>
+            <h3>${escapeHtml(draft.title || "Angebot")}</h3>
+            <p>${draft.archived ? "Archiviert" : "Aktiv"} · zuletzt ${draft.updatedAt ? escapeHtml(formatDateTime(draft.updatedAt)) : "noch nicht gespeichert"}</p>
+          </div>
+          <div class="offer-head-badges">
+            <span class="offer-badge">${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "Datum offen")}</span>
+            <span class="offer-badge">${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "Veranstaltung offen")}</span>
+          </div>
+        </div>
+
+        <div class="offer-grid">
+          <label>Bezeichnung<input data-offer-field="title" value="${escapeHtml(draft.title)}" placeholder="z.B. Angebot Stoll"></label>
+          <label>Angebotsdatum<input data-offer-field="offerDate" type="date" value="${escapeHtml(draft.offerDate)}"></label>
+          <label>Veranstaltungsdatum<input data-offer-field="eventDate" type="date" value="${escapeHtml(draft.eventDate)}"></label>
+          <label>Anlass<input data-offer-field="occasion" value="${escapeHtml(draft.occasion)}" placeholder="z.B. Hochzeitsfeier"></label>
+          <label>Erwachsene<input data-offer-field="personsAdults" type="number" min="0" step="1" value="${escapeHtml(draft.personsAdults)}"></label>
+          <label>Kinder<input data-offer-field="personsChildren" type="number" min="0" step="1" value="${escapeHtml(draft.personsChildren)}"></label>
+          <label>Uhrzeit<input data-offer-field="startTime" type="time" value="${escapeHtml(draft.startTime)}"></label>
+          <label>Reservierter Bereich<input data-offer-field="reservedArea" value="${escapeHtml(draft.reservedArea)}" placeholder="z.B. Unser großes Nebenzimmer"></label>
+        </div>
+
+        <div class="offer-grid offer-grid-two">
+          <label>Kunde / Firma<input data-offer-field="customerName" value="${escapeHtml(draft.customerName)}" placeholder="Firma oder Name"></label>
+          <label>Ansprechpartner<input data-offer-field="customerContact" value="${escapeHtml(draft.customerContact)}" placeholder="Ansprechpartner"></label>
+          <label>E-Mail<input data-offer-field="customerEmail" value="${escapeHtml(draft.customerEmail)}" placeholder="E-Mail für Rückfragen"></label>
+          <label>Telefon<input data-offer-field="customerPhone" value="${escapeHtml(draft.customerPhone)}" placeholder="Telefonnummer"></label>
+          <label class="offer-grid-wide">Rechnungsadresse<textarea data-offer-field="customerAddress" rows="3" placeholder="Adresse">${escapeHtml(draft.customerAddress)}</textarea></label>
+        </div>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Buffet</strong>
+              <span>Vorlage auswählen, danach einzelne Gerichte frei anpassen.</span>
+            </div>
+            <div class="offer-inline-tools">
+              <select data-offer-field="buffetTemplateKey">
+                <option value="">Vorlage wählen</option>
+                ${offerTemplateOptions(draft.buffet?.templateKey || "")}
+              </select>
+              <button class="secondary" type="button" data-offer-apply-template>Vorlage übernehmen</button>
+            </div>
+          </div>
+          <div class="offer-grid offer-grid-two">
+            <label>Buffetname<input data-offer-field="buffetName" value="${escapeHtml(draft.buffet?.name)}" placeholder="Buffetname"></label>
+            <label>Preis pro Person<input data-offer-field="buffetPricePerPerson" type="number" min="0" step="0.01" value="${escapeHtml(draft.buffet?.pricePerPerson)}"></label>
+          </div>
+          <div class="offer-buffet-categories">
+            ${OFFER_CATEGORY_ORDER.map((category) => renderOfferBuffetCategory(category, draft)).join("")}
+          </div>
+        </section>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Ablauf</strong>
+              <span>Timeline für Aufbau, Sektempfang, Buffet und weitere Schritte.</span>
+            </div>
+            <button class="secondary" type="button" data-offer-add-timeline>+ Zeit hinzufügen</button>
+          </div>
+          <div class="offer-row-list">
+            ${(draft.timeline || []).length ? (draft.timeline || []).map((item, index) => renderOfferTimelineRow(item, index)).join("") : `<p class="hint">Noch keine Zeiten eingetragen.</p>`}
+          </div>
+        </section>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Kostenübersicht</strong>
+              <span>Freie Positionen wie Bowling, Sektempfang, Raummiete oder Sonstiges.</span>
+            </div>
+            <button class="secondary" type="button" data-offer-add-cost>+ Position hinzufügen</button>
+          </div>
+          <div class="offer-row-list">
+            ${(draft.costs || []).length ? (draft.costs || []).map((item, index) => renderOfferCostRow(item, index)).join("") : `<p class="hint">Noch keine Positionen angelegt.</p>`}
+          </div>
+        </section>
+
+        <div class="offer-grid offer-grid-two">
+          <label class="offer-grid-wide">Zusätzliche Informationen<textarea data-offer-field="additionalInfo" rows="4" placeholder="Für das Angebot sichtbar">${escapeHtml(draft.additionalInfo)}</textarea></label>
+          <label class="offer-grid-wide">Interne Notiz<textarea data-offer-field="internalNote" rows="4" placeholder="Nur intern">${escapeHtml(draft.internalNote)}</textarea></label>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderOfferListItem(offer, activeId) {
+  const totals = offerTotals(offer);
+  const title = offer.title || offer.customerName || "Angebot";
+  const dateLine = [offer.eventDate ? formatDate(offer.eventDate) : "", offer.customerName].filter(Boolean).join(" · ");
+  return `
+    <button class="offer-list-item ${offer.id === activeId ? "active" : ""}" type="button" data-select-offer="${escapeHtml(offer.id)}">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(dateLine || "Noch keine Details")}</span>
+      <small>${formatMoney(totals.total)} · ${offer.archived ? "Archiviert" : "Aktiv"}</small>
+    </button>
+  `;
+}
+
+function renderOfferBuffetCategory(category, draft) {
+  const items = draft.buffet?.categories?.[category] || [];
+  return `
+    <section class="offer-category">
+      <div class="offer-category-head">
+        <strong>${escapeHtml(OFFER_CATEGORY_LABELS[category] || category)}</strong>
+        <button class="secondary" type="button" data-offer-add-dish="${escapeHtml(category)}">+ Gericht</button>
+      </div>
+      <div class="offer-row-list">
+        ${items.length ? items.map((item) => renderOfferDishRow(category, item)).join("") : `<p class="hint">Noch keine Gerichte hinterlegt.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderOfferDishRow(category, item) {
+  return `
+    <div class="offer-edit-row" data-offer-dish-row="${escapeHtml(category)}" data-offer-dish-id="${escapeHtml(item.id)}">
+      <input data-offer-dish-name value="${escapeHtml(item.name)}" placeholder="Gericht">
+      <input data-offer-dish-note value="${escapeHtml(item.note)}" placeholder="Notiz">
+      <div class="row-actions">
+        <button class="secondary" type="button" data-offer-move-dish="up">↑</button>
+        <button class="secondary" type="button" data-offer-move-dish="down">↓</button>
+        <button class="secondary danger-lite" type="button" data-offer-remove-dish>Entfernen</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderOfferTimelineRow(item) {
+  return `
+    <div class="offer-edit-row" data-offer-timeline-row data-offer-timeline-id="${escapeHtml(item.id)}">
+      <input data-offer-timeline-time type="time" value="${escapeHtml(item.time)}">
+      <input data-offer-timeline-title value="${escapeHtml(item.title)}" placeholder="Schritt / Ablaufpunkt">
+      <input data-offer-timeline-note value="${escapeHtml(item.note)}" placeholder="Notiz">
+      <div class="row-actions">
+        <button class="secondary" type="button" data-offer-move-timeline="up">↑</button>
+        <button class="secondary" type="button" data-offer-move-timeline="down">↓</button>
+        <button class="secondary danger-lite" type="button" data-offer-remove-timeline>Entfernen</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderOfferCostRow(item) {
+  return `
+    <div class="offer-edit-row" data-offer-cost-row data-offer-cost-id="${escapeHtml(item.id)}">
+      <input data-offer-cost-label value="${escapeHtml(item.label)}" placeholder="Bezeichnung">
+      <input data-offer-cost-quantity type="number" min="0" step="0.01" value="${escapeHtml(item.quantity)}" placeholder="Menge">
+      <input data-offer-cost-unit type="number" min="0" step="0.01" value="${escapeHtml(item.unitPrice)}" placeholder="Einzelpreis">
+      <input data-offer-cost-note value="${escapeHtml(item.note)}" placeholder="Notiz">
+      <div class="row-actions">
+        <button class="secondary" type="button" data-offer-move-cost="up">↑</button>
+        <button class="secondary" type="button" data-offer-move-cost="down">↓</button>
+        <button class="secondary danger-lite" type="button" data-offer-remove-cost>Entfernen</button>
+      </div>
+    </div>
+  `;
+}
+
+async function saveCurrentOffer(button) {
+  const draft = currentOfferDraftFromDom();
+  const oldText = button?.textContent || "Speichern";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Speichert...";
+  }
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "save-offer",
+        adminToken: state.adminToken,
+        offer: draft
+      })
+    });
+    state.offers = normalizeOffersClient(result.offers || state.offers || []);
+    state.offerDraft = cloneData(result.offer || draft);
+    state.offerDraftId = state.offerDraft.id;
+    state.offerDraftDirty = false;
+    renderAdminOffers();
+    showToast("Angebot gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function deleteCurrentOffer(button) {
+  const draft = currentOfferDraftFromDom();
+  if (!draft?.id) return;
+  if (!window.confirm("Dieses Angebot wirklich löschen?")) return;
+  const oldText = button?.textContent || "Löschen";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Löscht...";
+  }
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "delete-offer",
+        adminToken: state.adminToken,
+        offerId: draft.id
+      })
+    });
+    state.offers = normalizeOffersClient(result.offers || []);
+    state.offerDraft = state.offers[0] ? cloneData(state.offers[0]) : createBlankOfferDraft();
+    state.offerDraftId = state.offerDraft.id;
+    state.offerDraftDirty = false;
+    renderAdminOffers();
+    showToast("Angebot gelöscht.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+function duplicateCurrentOffer() {
+  const draft = currentOfferDraftFromDom();
+  const clone = cloneData(draft);
+  clone.id = cryptoId();
+  clone.createdAt = new Date().toISOString();
+  clone.updatedAt = clone.createdAt;
+  clone.title = `${clone.title || "Angebot"} Kopie`;
+  state.offerDraft = normalizeOfferClient(clone);
+  state.offerDraftId = state.offerDraft.id;
+  state.offerDraftDirty = false;
+  renderAdminOffers();
+  showToast("Angebot dupliziert.");
+}
+
+function toggleCurrentOfferArchive() {
+  const draft = currentOfferDraftFromDom();
+  state.offerDraft = normalizeOfferClient({ ...draft, archived: !draft.archived });
+  state.offerDraftId = state.offerDraft.id;
+  state.offerDraftDirty = false;
+  renderAdminOffers();
+}
+
+function newOfferDraft() {
+  state.offerDraft = createBlankOfferDraft();
+  state.offerDraftId = state.offerDraft.id;
+  state.offerDraftDirty = false;
+  renderAdminOffers();
+}
+
+function moveOfferRow(list, rowId, direction) {
+  const index = list.findIndex((item) => item.id === rowId);
+  const nextIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || nextIndex < 0 || nextIndex >= list.length) return list;
+  const copy = list.slice();
+  const [item] = copy.splice(index, 1);
+  copy.splice(nextIndex, 0, item);
+  return copy;
+}
+
+function printOfferDraft() {
+  const draft = currentOfferDraftFromDom();
+  const totals = offerTotals(draft);
+  const win = window.open("", "_blank", "width=1100,height=1400");
+  if (!win) {
+    showToast("Popup wurde blockiert. Bitte Popups erlauben.");
+    return;
+  }
+  const buffetSections = OFFER_CATEGORY_ORDER.map((category) => {
+    const items = draft.buffet?.categories?.[category] || [];
+    if (!items.length) return "";
+    return `
+      <div class="offer-print-buffet-group">
+        <h4>${escapeHtml(OFFER_CATEGORY_LABELS[category] || category)}</h4>
+        <ul>${items.map((item) => `<li>${escapeHtml(item.name)}${item.note ? `<span>${escapeHtml(item.note)}</span>` : ""}</li>`).join("")}</ul>
+      </div>
+    `;
+  }).filter(Boolean).join("");
+  const timeline = (draft.timeline || []).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.time || "—")}</td>
+      <td>${escapeHtml(item.title || "—")}</td>
+      <td>${escapeHtml(item.note || "")}</td>
+    </tr>
+  `).join("");
+  const costs = (draft.costs || []).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.label || "—")}</td>
+      <td>${escapeHtml(item.quantity || 0)}</td>
+      <td>${formatMoney(item.unitPrice || 0)}</td>
+      <td>${formatMoney((cleanOfferMoneyValue(item.quantity) * cleanOfferMoneyValue(item.unitPrice)))}</td>
+    </tr>
+  `).join("");
+  win.document.write(`
+    <!doctype html>
+    <html lang="de">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Angebot ${escapeHtml(draft.customerName || draft.title || "")}</title>
+        <style>
+          @page { size: A4; margin: 14mm; }
+          * { box-sizing: border-box; }
+          body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; }
+          .sheet { width: 100%; }
+          .sheet + .sheet { page-break-before: always; margin-top: 0; }
+          .top { display:flex; justify-content:space-between; align-items:flex-start; gap: 20px; margin-bottom: 20px; }
+          .logo { width: 220px; height:auto; object-fit: contain; }
+          .meta { text-align:right; font-size: 12px; line-height: 1.4; }
+          h1 { margin: 0 0 10px; font-size: 28px; letter-spacing: 0; }
+          h2 { margin: 0 0 8px; font-size: 18px; }
+          h3 { margin: 0 0 6px; font-size: 14px; }
+          p { margin: 0 0 8px; }
+          .muted { color: #666; }
+          .box { border-top: 1px solid #d3d7dd; padding-top: 10px; margin-top: 10px; }
+          .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+          .kv { font-size: 12px; }
+          .kv strong { display:block; margin-bottom: 2px; }
+          .timeline, .costs { width:100%; border-collapse: collapse; margin-top: 8px; }
+          .timeline th, .timeline td, .costs th, .costs td { border-bottom: 1px solid #e5e7eb; padding: 6px 4px; text-align:left; font-size: 12px; vertical-align: top; }
+          .timeline th, .costs th { font-size: 11px; text-transform: uppercase; color: #666; }
+          .totals { margin-top: 10px; padding: 10px 12px; background: #f6f7f9; border: 1px solid #d7dce3; display:flex; justify-content:space-between; font-weight:700; }
+          .signature { margin-top: 26px; display:grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+          .signature .line { border-top: 1px solid #999; padding-top: 8px; min-height: 42px; }
+          .offer-print-buffet-group + .offer-print-buffet-group { margin-top: 10px; }
+          .offer-print-buffet-group ul { margin: 4px 0 0 18px; padding: 0; }
+          .offer-print-buffet-group li { margin-bottom: 4px; }
+          .offer-print-buffet-group span { display:block; color:#666; font-size:11px; margin-left: 2px; }
+        </style>
+      </head>
+      <body>
+        <div class="sheet">
+          <div class="top">
+            <img class="logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
+            <div class="meta">
+              <div><strong>ANGEBOT</strong></div>
+              <div>${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "")}</div>
+              <div>${escapeHtml(draft.customerName || "")}</div>
+            </div>
+          </div>
+          <h1>Angebot</h1>
+          <p class="muted">${escapeHtml(draft.occasion || "")}</p>
+          <div class="grid box">
+            <div class="kv"><strong>Kunde / Firma</strong>${escapeHtml(draft.customerName || "-")}</div>
+            <div class="kv"><strong>Ansprechpartner</strong>${escapeHtml(draft.customerContact || "-")}</div>
+            <div class="kv"><strong>E-Mail</strong>${escapeHtml(draft.customerEmail || "-")}</div>
+            <div class="kv"><strong>Telefon</strong>${escapeHtml(draft.customerPhone || "-")}</div>
+            <div class="kv"><strong>Veranstaltungsdatum</strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</div>
+            <div class="kv"><strong>Personen</strong>${escapeHtml(String(totals.personCount || 0))}</div>
+            <div class="kv"><strong>Uhrzeit</strong>${escapeHtml(draft.startTime || "-")}</div>
+            <div class="kv"><strong>Reservierter Bereich</strong>${escapeHtml(draft.reservedArea || "-")}</div>
+          </div>
+          ${draft.additionalInfo ? `<div class="box"><h2>Zusätzliche Informationen</h2><p>${escapeHtml(draft.additionalInfo)}</p></div>` : ""}
+          <div class="box">
+            <h2>Buffet ${escapeHtml(draft.buffet?.name || "")}</h2>
+            <p class="muted">${formatMoney(draft.buffet?.pricePerPerson || 0)} pro Person</p>
+            ${buffetSections}
+          </div>
+          ${timeline ? `<div class="box"><h2>Ablauf</h2><table class="timeline"><thead><tr><th>Zeit</th><th>Punkt</th><th>Notiz</th></tr></thead><tbody>${timeline}</tbody></table></div>` : ""}
+        </div>
+        <div class="sheet">
+          <div class="box">
+            <h2>Kostenübersicht</h2>
+            <table class="costs">
+              <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einzelpreis</th><th>Gesamt</th></tr></thead>
+              <tbody>
+                <tr><td>Buffet</td><td>${escapeHtml(String(totals.personCount || 0))}</td><td>${formatMoney(draft.buffet?.pricePerPerson || 0)}</td><td>${formatMoney(totals.buffetTotal)}</td></tr>
+                ${costs}
+              </tbody>
+            </table>
+            <div class="totals"><span>Gesamtsumme</span><span>${formatMoney(totals.total)}</span></div>
+          </div>
+          <div class="box">
+            <h2>Hinweise & Reservierungsbestätigung</h2>
+            <p>Dieses Angebot ist ab dem Ausstellungsdatum 14 Tage gültig.</p>
+            <p>${escapeHtml(draft.internalNote || draft.additionalInfo || "Reservierung vorbehaltlich Verfügbarkeit.")}</p>
+          </div>
+          <div class="signature">
+            <div class="line"><strong>Ort, Datum</strong><br>Landshut, ${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "")}</div>
+            <div class="line"><strong>Unterschrift / Firmenstempel</strong><br>________________________</div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `);
+  win.document.close();
+  win.onload = () => {
+    win.focus();
+    win.print();
+  };
 }
 
 function renderAdminCorrection() {
@@ -8171,6 +8984,179 @@ function bindEvents() {
     const button = event.target.closest("[data-admin-save-timesheet]");
     if (!button) return;
     saveAdminTimesheet(button);
+  });
+
+  $("#adminOffers")?.addEventListener("input", () => {
+    state.offerDraftDirty = true;
+  });
+
+  $("#adminOffers")?.addEventListener("change", () => {
+    state.offerDraftDirty = true;
+  });
+
+  $("#adminOffers")?.addEventListener("click", async (event) => {
+    const selectOffer = event.target.closest("[data-select-offer]");
+    if (selectOffer) {
+      if (state.offerDraftDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+      const offer = normalizeOffersClient(state.offers || []).find((item) => item.id === selectOffer.dataset.selectOffer);
+      if (!offer) return;
+      setOfferDraftFromOffer(offer);
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const newOffer = event.target.closest("[data-offer-new]");
+    if (newOffer) {
+      if (state.offerDraftDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+      newOfferDraft();
+      return;
+    }
+    const saveOffer = event.target.closest("[data-offer-save]");
+    if (saveOffer) {
+      await saveCurrentOffer(saveOffer);
+      return;
+    }
+    const duplicateOffer = event.target.closest("[data-offer-duplicate]");
+    if (duplicateOffer) {
+      duplicateCurrentOffer();
+      return;
+    }
+    const archiveOffer = event.target.closest("[data-offer-toggle-archive]");
+    if (archiveOffer) {
+      toggleCurrentOfferArchive();
+      return;
+    }
+    const deleteOffer = event.target.closest("[data-offer-delete]");
+    if (deleteOffer) {
+      await deleteCurrentOffer(deleteOffer);
+      return;
+    }
+    const printOffer = event.target.closest("[data-offer-print]");
+    if (printOffer) {
+      printOfferDraft();
+      return;
+    }
+    const applyTemplate = event.target.closest("[data-offer-apply-template]");
+    if (applyTemplate) {
+      const templateKey = currentOfferDraftFromDom().buffet.templateKey || $("#adminOffers")?.querySelector('[data-offer-field="buffetTemplateKey"]')?.value || "";
+      if (!templateKey) {
+        showToast("Bitte eine Buffet-Vorlage wählen.");
+        return;
+      }
+      applyOfferTemplate(templateKey);
+      return;
+    }
+    const addDish = event.target.closest("[data-offer-add-dish]");
+    if (addDish) {
+      const draft = currentOfferDraftFromDom();
+      const category = addDish.dataset.offerAddDish;
+      draft.buffet.categories[category] ||= [];
+      draft.buffet.categories[category].push({ id: cryptoId(), name: "", note: "" });
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const removeDish = event.target.closest("[data-offer-remove-dish]");
+    if (removeDish) {
+      const row = removeDish.closest("[data-offer-dish-row]");
+      const category = row?.dataset.offerDishRow;
+      const id = row?.dataset.offerDishId;
+      if (!category || !id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.buffet.categories[category] = (draft.buffet.categories[category] || []).filter((item) => item.id !== id);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const moveDish = event.target.closest("[data-offer-move-dish]");
+    if (moveDish) {
+      const row = moveDish.closest("[data-offer-dish-row]");
+      const category = row?.dataset.offerDishRow;
+      const id = row?.dataset.offerDishId;
+      if (!category || !id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.buffet.categories[category] = moveOfferRow(draft.buffet.categories[category] || [], id, moveDish.dataset.offerMoveDish);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const addTimeline = event.target.closest("[data-offer-add-timeline]");
+    if (addTimeline) {
+      const draft = currentOfferDraftFromDom();
+      draft.timeline.push({ id: cryptoId(), time: "", title: "", note: "" });
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const removeTimeline = event.target.closest("[data-offer-remove-timeline]");
+    if (removeTimeline) {
+      const row = removeTimeline.closest("[data-offer-timeline-row]");
+      const id = row?.dataset.offerTimelineId;
+      if (!id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.timeline = (draft.timeline || []).filter((item) => item.id !== id);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const moveTimeline = event.target.closest("[data-offer-move-timeline]");
+    if (moveTimeline) {
+      const row = moveTimeline.closest("[data-offer-timeline-row]");
+      const id = row?.dataset.offerTimelineId;
+      if (!id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.timeline = moveOfferRow(draft.timeline || [], id, moveTimeline.dataset.offerMoveTimeline);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const addCost = event.target.closest("[data-offer-add-cost]");
+    if (addCost) {
+      const draft = currentOfferDraftFromDom();
+      draft.costs.push({ id: cryptoId(), label: "", quantity: 0, unitPrice: 0, note: "" });
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const removeCost = event.target.closest("[data-offer-remove-cost]");
+    if (removeCost) {
+      const row = removeCost.closest("[data-offer-cost-row]");
+      const id = row?.dataset.offerCostId;
+      if (!id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.costs = (draft.costs || []).filter((item) => item.id !== id);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const moveCost = event.target.closest("[data-offer-move-cost]");
+    if (moveCost) {
+      const row = moveCost.closest("[data-offer-cost-row]");
+      const id = row?.dataset.offerCostId;
+      if (!id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.costs = moveOfferRow(draft.costs || [], id, moveCost.dataset.offerMoveCost);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+    }
   });
 
   $("#adminContent")?.addEventListener("change", (event) => {

@@ -54,6 +54,7 @@ module.exports = async function handler(req, res) {
         dayReports: appData.dayReports || {},
         messages: appData.messages || [],
         terminalMessages: appData.terminalMessages || [],
+        offers: normalizeOffers(appData.offers || []),
         pushPublicKey: pushPublicKey(),
         weather,
         taskTemplates: appData.taskTemplates || [],
@@ -118,6 +119,12 @@ async function handlePost(req, res) {
   }
   if (action === "push-subscribe") {
     return savePushSubscription(body, res);
+  }
+  if (action === "save-offer") {
+    return saveOffer(body, res);
+  }
+  if (action === "delete-offer") {
+    return deleteOffer(body, res);
   }
   if (action.startsWith("schedule-")) {
     return handleScheduleMutation(req, res, body);
@@ -287,6 +294,56 @@ async function deleteInvoiceCustomer(body, res) {
   report.updatedAt = new Date().toISOString();
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true });
+}
+
+async function saveOffer(body, res) {
+  const session = verifyToken(body.adminToken || "", "admin");
+  if (!session) return sendJson(res, 401, { error: "Bitte Admin erneut entsperren." });
+  const offer = normalizeOffer(body.offer || body);
+  if (!offer.customerName && !offer.title) {
+    return sendJson(res, 400, { error: "Angebot fehlt." });
+  }
+  const appData = await readAppData();
+  appData.offers = normalizeOffers(appData.offers || []);
+  const index = appData.offers.findIndex((item) => item.id === offer.id);
+  const now = new Date().toISOString();
+  if (index >= 0) {
+    const existing = appData.offers[index] || {};
+    appData.offers[index] = {
+      ...existing,
+      ...offer,
+      createdAt: existing.createdAt || offer.createdAt || now,
+      updatedAt: now
+    };
+  } else {
+    appData.offers.unshift({
+      ...offer,
+      createdAt: offer.createdAt || now,
+      updatedAt: now
+    });
+  }
+  appData.offers = normalizeOffers(appData.offers);
+  await writeAppData(appData);
+  return sendJson(res, 200, {
+    ok: true,
+    offers: appData.offers,
+    offer: appData.offers.find((item) => item.id === offer.id) || null
+  });
+}
+
+async function deleteOffer(body, res) {
+  const session = verifyToken(body.adminToken || "", "admin");
+  if (!session) return sendJson(res, 401, { error: "Bitte Admin erneut entsperren." });
+  const offerId = String(body.offerId || body.id || "").trim();
+  if (!offerId) return sendJson(res, 400, { error: "Angebot fehlt." });
+  const appData = await readAppData();
+  const before = Array.isArray(appData.offers) ? appData.offers.length : 0;
+  appData.offers = normalizeOffers((appData.offers || []).filter((offer) => offer.id !== offerId));
+  if (appData.offers.length === before) {
+    return sendJson(res, 404, { error: "Angebot nicht gefunden." });
+  }
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true, offers: appData.offers });
 }
 
 async function saveTaskTemplate(body, res) {
@@ -547,6 +604,105 @@ function customerDirectoryKey(item = {}) {
   const name = String(item.name || "").trim().toLowerCase();
   const phone = String(item.phone || "").replace(/\s+/g, "");
   return name ? `name:${name}|${phone}` : "";
+}
+
+function normalizeOffers(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((offer) => normalizeOffer(offer))
+    .filter((offer) => offer.customerName || offer.title || offer.eventDate || offer.createdAt)
+    .sort((a, b) => {
+      const aTime = Date.parse(a.updatedAt || a.createdAt || "") || 0;
+      const bTime = Date.parse(b.updatedAt || b.createdAt || "") || 0;
+      if (a.archived !== b.archived) return a.archived ? 1 : -1;
+      return bTime - aTime;
+    });
+}
+
+function normalizeOffer(offer = {}) {
+  const buffet = offer.buffet && typeof offer.buffet === "object" ? offer.buffet : {};
+  const costs = Array.isArray(offer.costs) ? offer.costs : [];
+  const timeline = Array.isArray(offer.timeline) ? offer.timeline : [];
+  return {
+    id: String(offer.id || `offer-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    archived: offer.archived === true,
+    createdAt: String(offer.createdAt || new Date().toISOString()).slice(0, 80),
+    updatedAt: String(offer.updatedAt || new Date().toISOString()).slice(0, 80),
+    title: String(offer.title || offer.customerName || "Angebot").trim().slice(0, 120),
+    offerDate: cleanOfferDate(offer.offerDate),
+    eventDate: cleanOfferDate(offer.eventDate),
+    customerName: String(offer.customerName || "").trim().slice(0, 160),
+    customerContact: String(offer.customerContact || "").trim().slice(0, 160),
+    customerEmail: String(offer.customerEmail || "").trim().slice(0, 180),
+    customerPhone: String(offer.customerPhone || "").trim().slice(0, 80),
+    customerAddress: String(offer.customerAddress || "").trim().slice(0, 600),
+    occasion: String(offer.occasion || "").trim().slice(0, 160),
+    personsAdults: cleanOfferInteger(offer.personsAdults),
+    personsChildren: cleanOfferInteger(offer.personsChildren),
+    startTime: cleanTime(offer.startTime),
+    reservedArea: String(offer.reservedArea || "").trim().slice(0, 200),
+    additionalInfo: String(offer.additionalInfo || "").trim().slice(0, 2000),
+    internalNote: String(offer.internalNote || "").trim().slice(0, 2000),
+    buffet: {
+      templateKey: String(buffet.templateKey || "").trim().slice(0, 40),
+      name: String(buffet.name || "").trim().slice(0, 160),
+      pricePerPerson: cleanOfferMoney(buffet.pricePerPerson),
+      categories: normalizeOfferBuffetCategories(buffet.categories)
+    },
+    timeline: normalizeOfferTimeline(timeline),
+    costs: normalizeOfferCosts(costs)
+  };
+}
+
+function normalizeOfferTimeline(items = []) {
+  return items.map((item) => ({
+    id: String(item?.id || `timeline-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    time: cleanTime(item?.time),
+    title: String(item?.title || item?.label || "").trim().slice(0, 160),
+    note: String(item?.note || "").trim().slice(0, 600)
+  })).filter((item) => item.time || item.title || item.note);
+}
+
+function normalizeOfferCosts(items = []) {
+  return items.map((item) => ({
+    id: String(item?.id || `cost-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    label: String(item?.label || "").trim().slice(0, 160),
+    quantity: cleanOfferMoney(item?.quantity),
+    unitPrice: cleanOfferMoney(item?.unitPrice),
+    note: String(item?.note || "").trim().slice(0, 400)
+  })).filter((item) => item.label || item.quantity || item.unitPrice || item.note);
+}
+
+function normalizeOfferBuffetCategories(categories = {}) {
+  const keys = ["vorspeisen", "fleisch", "fisch", "vegetarisch", "suppen", "dessert"];
+  return Object.fromEntries(keys.map((key) => [key, normalizeOfferBuffetItems(categories?.[key] || [])]));
+}
+
+function normalizeOfferBuffetItems(items = []) {
+  return items.map((item) => ({
+    id: String(item?.id || `dish-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    name: String(item?.name || item?.title || "").trim().slice(0, 180),
+    note: String(item?.note || "").trim().slice(0, 240)
+  })).filter((item) => item.name || item.note);
+}
+
+function cleanOfferDate(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+}
+
+function cleanOfferInteger(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(9999, Math.floor(parsed))) : 0;
+}
+
+function cleanOfferMoney(value) {
+  const parsed = Number(String(value ?? "0").replace(",", "."));
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(999999, Math.round(parsed * 100) / 100)) : 0;
+}
+
+function cleanTime(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
 }
 
 function cleanDate(value) {
