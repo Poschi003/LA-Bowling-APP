@@ -15,6 +15,14 @@ const defaultPins = {
   "Kevin Leicht": "1010"
 };
 
+const defaultCleaningTemplates = [
+  { id: "weekly-fridges", title: "Kuehlungen und Getraenkelager reinigen/kontrollieren", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-shoe-racks", title: "Schuhregale und Leihschuhe gruendlich reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-storage", title: "Lagerflaechen ordnen und Boden reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-glass", title: "Glasflaechen, Tueren und Eingangsbereich gruendlich reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-sanitary", title: "Sanitaerbereich Grundkontrolle dokumentieren", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" }
+];
+
 const defaultData = {
   settings: {
     adminPin: process.env.DEFAULT_ADMIN_PIN || "1234",
@@ -46,6 +54,8 @@ const defaultData = {
     },
     employeeRoles: {},
     availabilityExemptEmployees: [],
+    availabilityTargetMonth: defaultAvailabilityTargetMonth(),
+    availabilitySubmissionOpen: true,
     adminEmployees: [],
     positions: ["Counter 1", "Counter 2", "Service 1", "Service 2", "Service 3", "Service 4", "Service 5", "Kueche 1", "Kueche 2", "Spueler", "Reinigung", "Mechanik"],
     chefViewSections: {
@@ -75,6 +85,7 @@ const defaultData = {
   availability: {},
   schedules: {},
   timesheets: {},
+  cleaningTemplates: defaultCleaningTemplates,
   taskTemplates: [
     {
       id: "default-prep-kasse",
@@ -127,6 +138,7 @@ const defaultData = {
       createdAt: "2026-05-09T00:00:00.000Z"
     }
   ],
+  deletedTaskTemplateIds: [],
   reminderTemplates: [
     {
       id: "default-toilet-reminder",
@@ -138,6 +150,9 @@ const defaultData = {
     }
   ],
   messages: [],
+  terminalMessages: [],
+  customerDirectory: [],
+  offers: [],
   swaps: [],
   availabilityChangeRequests: []
 };
@@ -148,6 +163,7 @@ function cloneData(value) {
 
 function mergeData(value) {
   const base = cloneData(defaultData);
+  const deletedTaskTemplateIds = normalizeDeletedIds(value?.deletedTaskTemplateIds);
   const merged = {
     ...base,
     ...(value || {}),
@@ -172,6 +188,8 @@ function mergeData(value) {
         ...(value?.settings?.employeeRoles || {})
       },
       availabilityExemptEmployees: value?.settings?.availabilityExemptEmployees || base.settings.availabilityExemptEmployees,
+      availabilityTargetMonth: normalizeMonth(value?.settings?.availabilityTargetMonth) || base.settings.availabilityTargetMonth,
+      availabilitySubmissionOpen: value?.settings?.availabilitySubmissionOpen !== false,
       adminEmployees: value?.settings?.adminEmployees || base.settings.adminEmployees,
       positions: ensureRequiredPositions(value?.settings?.positions || base.settings.positions),
       chefViewSections: {
@@ -194,9 +212,14 @@ function mergeData(value) {
     availability: value?.availability || base.availability,
     schedules: normalizeSchedules(value?.schedules || base.schedules),
     timesheets: value?.timesheets || base.timesheets,
-    taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates),
+    cleaningTemplates: Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates,
+    taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates, deletedTaskTemplateIds),
+    deletedTaskTemplateIds,
     reminderTemplates: Array.isArray(value?.reminderTemplates) ? value.reminderTemplates : base.reminderTemplates,
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
+    terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
+    customerDirectory: Array.isArray(value?.customerDirectory) ? value.customerDirectory : base.customerDirectory,
+    offers: Array.isArray(value?.offers) ? value.offers : base.offers,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };
@@ -243,12 +266,17 @@ function weekStartKey(dateKey) {
   return `${year}-${month}-${dayOfMonth}`;
 }
 
-function mergeTaskTemplates(value, defaults) {
+function normalizeDeletedIds(value) {
+  return Array.isArray(value) ? [...new Set(value.map(String).filter(Boolean))] : [];
+}
+
+function mergeTaskTemplates(value, defaults, deletedIds = []) {
   const incoming = Array.isArray(value) ? value : [];
   const ids = new Set(incoming.map((task) => task?.id).filter(Boolean));
+  const deleted = new Set(deletedIds);
   return [
     ...incoming,
-    ...defaults.filter((task) => !ids.has(task.id))
+    ...defaults.filter((task) => !ids.has(task.id) && !deleted.has(task.id))
   ];
 }
 
@@ -259,6 +287,8 @@ function publicSettings(settings) {
     employeeDepartments: settings.employeeDepartments || {},
     employeeRoles: settings.employeeRoles || {},
     availabilityExemptEmployees: settings.availabilityExemptEmployees || [],
+    availabilityTargetMonth: normalizeMonth(settings.availabilityTargetMonth) || defaultAvailabilityTargetMonth(),
+    availabilitySubmissionOpen: settings.availabilitySubmissionOpen !== false,
     adminEmployees: settings.adminEmployees || [],
     positions: ensureRequiredPositions(settings.positions || []),
     chefViewSections: settings.chefViewSections || defaultData.settings.chefViewSections,
@@ -307,6 +337,19 @@ function normalizeHourlyRate(value, fallback = 25) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return Math.max(0, Math.min(200, Math.round(normalizedFallback * 100) / 100));
   return Math.max(0, Math.min(200, Math.round(parsed * 100) / 100));
+}
+
+function normalizeMonth(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : "";
+}
+
+function defaultAvailabilityTargetMonth() {
+  const date = new Date();
+  date.setMonth(date.getMonth() + 1, 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
 }
 
 function sanitizeSchedules(schedules) {
@@ -430,12 +473,11 @@ function dataUrlToBuffer(dataUrl) {
 }
 
 function extensionForMime(mime, filename) {
-  if (mime === "application/pdf") return "pdf";
-  if (mime === "image/jpeg") return "jpg";
-  if (mime === "image/png") return "png";
-  if (mime === "image/webp") return "webp";
   const fromName = String(filename || "").match(/\.([a-zA-Z0-9]{2,6})$/)?.[1];
   if (fromName) return fromName.toLowerCase();
+  if (mime === "application/pdf") return "pdf";
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
   return "jpg";
 }
 
@@ -499,10 +541,42 @@ function verifyAdmin(settings, pin) {
   return verifyPin(pin, settings.adminPinHash || settings.adminPin);
 }
 
+function employeePinKeys(employee) {
+  const clean = String(employee || "").trim();
+  const names = [clean];
+  const parts = clean.replace(",", " ").split(/\s+/).filter(Boolean);
+  if (clean.includes(",")) {
+    const [last, rest = ""] = clean.split(",");
+    const first = rest.trim().split(/\s+/).filter(Boolean)[0] || "";
+    if (first && last.trim()) names.push(`${first} ${last.trim()}`);
+    if (first) names.push(first);
+    if (last.trim()) names.push(last.trim());
+  }
+  if (parts.length > 1) {
+    names.push(parts[0]);
+    names.push(parts[parts.length - 1]);
+    names.push(`${parts[0]} ${parts[parts.length - 1]}`);
+  }
+  return [...new Set(names.filter(Boolean))];
+}
+
+function employeePinCandidates(settings, employee) {
+  const exact = String(employee || "").trim();
+  const exactCandidates = [
+    settings.employeePinHashes?.[exact],
+    settings.employeePins?.[exact]
+  ];
+  const aliasCandidates = employeePinKeys(exact)
+    .filter((key) => key !== exact)
+    .flatMap((key) => [settings.employeePinHashes?.[key], settings.employeePins?.[key]]);
+  return [...new Set([...exactCandidates, ...aliasCandidates].filter(Boolean))];
+}
+
 function employeeByPin(settings, pin) {
   for (const employee of settings.employees || []) {
-    const stored = settings.employeePinHashes?.[employee] || settings.employeePins?.[employee];
-    if (verifyPin(pin, stored)) return employee;
+    for (const stored of employeePinCandidates(settings, employee)) {
+      if (verifyPin(pin, stored)) return employee;
+    }
   }
   return "";
 }

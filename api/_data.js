@@ -15,6 +15,15 @@ const defaultPins = {
   "Kevin Leicht": "1010"
 };
 
+const defaultCleaningTemplates = [
+  { id: "weekly-fridges", title: "Kuehlungen und Getraenkelager reinigen/kontrollieren", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-shoe-racks", title: "Schuhregale und Leihschuhe gruendlich reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-storage", title: "Lagerflaechen ordnen und Boden reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-glass", title: "Glasflaechen, Tueren und Eingangsbereich gruendlich reinigen", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-sanitary", title: "Sanitaerbereich Grundkontrolle dokumentieren", frequency: "weekly", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" }
+];
+const TIP_ELIGIBLE_AREAS = ["Counter", "Service", "Kueche", "Spueler"];
+
 const defaultData = {
   settings: {
     adminPin: process.env.DEFAULT_ADMIN_PIN || "1234",
@@ -45,7 +54,13 @@ const defaultData = {
       "Kevin Leicht": ["Counter", "Service"]
     },
     employeeRoles: {},
+    employeeTipSettings: {
+      "Renate Leicht": { eligible: true, factor: 0.675 }
+    },
+    fixedEmployees: [],
     availabilityExemptEmployees: [],
+    availabilityTargetMonth: defaultAvailabilityTargetMonth(),
+    availabilitySubmissionOpen: true,
     adminEmployees: [],
     positions: ["Counter 1", "Counter 2", "Service 1", "Service 2", "Service 3", "Service 4", "Service 5", "Kueche 1", "Kueche 2", "Spueler", "Reinigung", "Mechanik"],
     chefViewSections: {
@@ -71,11 +86,25 @@ const defaultData = {
     },
     scheduleAutoDeleteDays: 14,
     hourlyRate: 25,
-    invoiceNotificationTo: process.env.INVOICE_NOTIFICATION_TO || "pvo65@outlook.de"
+    invoiceNotificationTo: process.env.INVOICE_NOTIFICATION_TO || "pvo65@outlook.de",
+    pushSettings: {
+      schedulePublished: true,
+      assignmentsTomorrow: true,
+      messages: true,
+      schedulePublishedTitle: "LA-Bowling - Neuer Dienstplan online",
+      schedulePublishedBody: "Der neue Dienstplan ist online. Bitte in der TeamApp prüfen.",
+      assignmentsTomorrowTitle: "LA-Bowling - Einteilung für morgen ist Online",
+      assignmentsTomorrowBody: "Bitte prüfe deine Startzeit in der TeamApp.",
+      messagesTitle: "LA-Bowling - Du hast eine neue Nachricht im Dashboard",
+      messagesBody: "{{text}}"
+    }
   },
   availability: {},
   schedules: {},
   timesheets: {},
+  tipPayouts: {},
+  assignmentTimes: {},
+  cleaningTemplates: defaultCleaningTemplates,
   taskTemplates: [
     {
       id: "default-prep-kasse",
@@ -128,6 +157,7 @@ const defaultData = {
       createdAt: "2026-05-09T00:00:00.000Z"
     }
   ],
+  deletedTaskTemplateIds: [],
   reminderTemplates: [
     {
       id: "default-toilet-reminder",
@@ -139,8 +169,12 @@ const defaultData = {
     }
   ],
   messages: [],
+  terminalMessages: [],
+  customerDirectory: [],
+  offers: [],
   swaps: [],
-  availabilityChangeRequests: []
+  availabilityChangeRequests: [],
+  pushSubscriptions: {}
 };
 
 function cloneData(value) {
@@ -149,6 +183,7 @@ function cloneData(value) {
 
 function mergeData(value) {
   const base = cloneData(defaultData);
+  const deletedTaskTemplateIds = normalizeDeletedIds(value?.deletedTaskTemplateIds);
   const merged = {
     ...base,
     ...(value || {}),
@@ -172,7 +207,14 @@ function mergeData(value) {
       employeeRoles: {
         ...(value?.settings?.employeeRoles || {})
       },
+      employeeTipSettings: normalizeEmployeeTipSettings({
+        ...base.settings.employeeTipSettings,
+        ...(value?.settings?.employeeTipSettings || {})
+      }),
+      fixedEmployees: value?.settings?.fixedEmployees || base.settings.fixedEmployees,
       availabilityExemptEmployees: value?.settings?.availabilityExemptEmployees || base.settings.availabilityExemptEmployees,
+      availabilityTargetMonth: normalizeMonth(value?.settings?.availabilityTargetMonth) || base.settings.availabilityTargetMonth,
+      availabilitySubmissionOpen: value?.settings?.availabilitySubmissionOpen !== false,
       adminEmployees: value?.settings?.adminEmployees || base.settings.adminEmployees,
       positions: ensureRequiredPositions(value?.settings?.positions || base.settings.positions),
       chefViewSections: {
@@ -191,18 +233,28 @@ function mergeData(value) {
         value?.settings?.hourlyRate,
         base.settings.hourlyRate
       ),
-      invoiceNotificationTo: String(
-        value?.settings?.invoiceNotificationTo || base.settings.invoiceNotificationTo || "pvo65@outlook.de"
-      ).trim().slice(0, 180)
+      invoiceNotificationTo: String(value?.settings?.invoiceNotificationTo || base.settings.invoiceNotificationTo || "pvo65@outlook.de").trim().slice(0, 180),
+      pushSettings: {
+        ...base.settings.pushSettings,
+        ...(value?.settings?.pushSettings || {})
+      }
     },
     availability: value?.availability || base.availability,
     schedules: normalizeSchedules(value?.schedules || base.schedules),
     timesheets: value?.timesheets || base.timesheets,
-    taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates),
+    tipPayouts: value?.tipPayouts && typeof value.tipPayouts === "object" ? value.tipPayouts : base.tipPayouts,
+    assignmentTimes: normalizeAssignmentTimes(value?.assignmentTimes || base.assignmentTimes),
+    cleaningTemplates: Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates,
+    taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates, deletedTaskTemplateIds),
+    deletedTaskTemplateIds,
     reminderTemplates: Array.isArray(value?.reminderTemplates) ? value.reminderTemplates : base.reminderTemplates,
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
+    terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
+    customerDirectory: Array.isArray(value?.customerDirectory) ? value.customerDirectory : base.customerDirectory,
+    offers: Array.isArray(value?.offers) ? value.offers : base.offers,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
-    availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
+    availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests,
+    pushSubscriptions: normalizePushSubscriptions(value?.pushSubscriptions || base.pushSubscriptions)
   };
   if (!merged.settings.businessName || merged.settings.businessName === "Dienstplan") {
     merged.settings.businessName = "Teamapp";
@@ -235,6 +287,30 @@ function normalizeSchedules(schedules) {
   return result;
 }
 
+function normalizeAssignmentTimes(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  for (const [dateKey, employees] of Object.entries(value)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) continue;
+    if (!employees || typeof employees !== "object" || Array.isArray(employees)) continue;
+    const day = {};
+    for (const [employee, item] of Object.entries(employees)) {
+      const cleanEmployee = String(employee || "").trim();
+      if (!cleanEmployee) continue;
+      const from = normalizeAssignmentTime(item?.from);
+      const note = String(item?.note || "").trim().slice(0, 240);
+      if (from || note) day[cleanEmployee] = { from, to: "", note };
+    }
+    if (Object.keys(day).length) result[dateKey] = day;
+  }
+  return result;
+}
+
+function normalizeAssignmentTime(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
+}
+
 function weekStartKey(dateKey) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return "";
   const date = new Date(`${dateKey}T12:00:00`);
@@ -247,13 +323,38 @@ function weekStartKey(dateKey) {
   return `${year}-${month}-${dayOfMonth}`;
 }
 
-function mergeTaskTemplates(value, defaults) {
+function normalizeDeletedIds(value) {
+  return Array.isArray(value) ? [...new Set(value.map(String).filter(Boolean))] : [];
+}
+
+function mergeTaskTemplates(value, defaults, deletedIds = []) {
   const incoming = Array.isArray(value) ? value : [];
   const ids = new Set(incoming.map((task) => task?.id).filter(Boolean));
+  const deleted = new Set(deletedIds);
   return [
     ...incoming,
-    ...defaults.filter((task) => !ids.has(task.id))
+    ...defaults.filter((task) => !ids.has(task.id) && !deleted.has(task.id))
   ];
+}
+
+function normalizeEmployeeTipSettings(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([employee, setting]) => [String(employee || "").trim(), normalizeEmployeeTipSetting(setting)])
+    .filter(([employee]) => employee));
+}
+
+function normalizeEmployeeTipSetting(setting = {}) {
+  return {
+    eligible: setting?.eligible === true,
+    factor: normalizeTipFactor(setting?.factor, 1)
+  };
+}
+
+function normalizeTipFactor(value, fallback = 1) {
+  const parsed = Number(String(value ?? "").replace(",", "."));
+  const base = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.max(0.1, Math.min(1, Math.round(base * 1000) / 1000));
 }
 
 function publicSettings(settings) {
@@ -262,7 +363,11 @@ function publicSettings(settings) {
     employees: settings.employees,
     employeeDepartments: settings.employeeDepartments || {},
     employeeRoles: settings.employeeRoles || {},
+    employeeTipSettings: normalizeEmployeeTipSettings(settings.employeeTipSettings || {}),
+    fixedEmployees: settings.fixedEmployees || [],
     availabilityExemptEmployees: settings.availabilityExemptEmployees || [],
+    availabilityTargetMonth: normalizeMonth(settings.availabilityTargetMonth) || defaultAvailabilityTargetMonth(),
+    availabilitySubmissionOpen: settings.availabilitySubmissionOpen !== false,
     adminEmployees: settings.adminEmployees || [],
     positions: ensureRequiredPositions(settings.positions || []),
     chefViewSections: settings.chefViewSections || defaultData.settings.chefViewSections,
@@ -275,7 +380,10 @@ function publicSettings(settings) {
       settings.hourlyRate,
       defaultData.settings.hourlyRate
     ),
-    invoiceNotificationTo: String(settings.invoiceNotificationTo || defaultData.settings.invoiceNotificationTo || "").trim().slice(0, 180)
+    pushSettings: {
+      ...defaultData.settings.pushSettings,
+      ...(settings.pushSettings || {})
+    }
   };
 }
 
@@ -312,6 +420,19 @@ function normalizeHourlyRate(value, fallback = 25) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return Math.max(0, Math.min(200, Math.round(normalizedFallback * 100) / 100));
   return Math.max(0, Math.min(200, Math.round(parsed * 100) / 100));
+}
+
+function normalizeMonth(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : "";
+}
+
+function defaultAvailabilityTargetMonth() {
+  const date = new Date();
+  date.setMonth(date.getMonth() + 1, 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
 }
 
 function sanitizeSchedules(schedules) {
@@ -435,12 +556,11 @@ function dataUrlToBuffer(dataUrl) {
 }
 
 function extensionForMime(mime, filename) {
-  if (mime === "application/pdf") return "pdf";
-  if (mime === "image/jpeg") return "jpg";
-  if (mime === "image/png") return "png";
-  if (mime === "image/webp") return "webp";
   const fromName = String(filename || "").match(/\.([a-zA-Z0-9]{2,6})$/)?.[1];
   if (fromName) return fromName.toLowerCase();
+  if (mime === "application/pdf") return "pdf";
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
   return "jpg";
 }
 
@@ -483,135 +603,6 @@ async function downloadReceipt(objectPath) {
   };
 }
 
-function invoiceMoneyNumber(value) {
-  const parsed = Number(String(value || "").replace(",", ".").trim());
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatInvoiceMoney(value) {
-  return invoiceMoneyNumber(value).toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function formatMailDate(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T12:00:00`) : new Date(text);
-  if (Number.isNaN(date.getTime())) return text;
-  return date.toLocaleDateString("de-DE");
-}
-
-function invoiceGastroSplit(item = {}) {
-  const drinksText = String(item.gastroDrinkAmount || "").trim();
-  const foodText = String(item.gastroFoodAmount || "").trim();
-  const otherText = String(item.gastroOtherAmount || "").trim();
-  const note = String(item.gastroOtherNote || "").trim();
-  const hasSplit = Boolean(drinksText || foodText || otherText || note);
-  const drinks = invoiceMoneyNumber(item.gastroDrinkAmount);
-  const food = invoiceMoneyNumber(item.gastroFoodAmount);
-  const other = invoiceMoneyNumber(item.gastroOtherAmount);
-  const fallback = invoiceMoneyNumber(item.gastroAmount ?? (item.area === "gastro" ? item.amount : ""));
-  return {
-    drinks,
-    food,
-    other,
-    total: hasSplit ? drinks + food + other : fallback,
-    hasSplit,
-    note
-  };
-}
-
-function buildInvoiceNotificationText({ date, customer = {} } = {}) {
-  const formattedDate = formatMailDate(date) || String(date || "").trim() || "-";
-  const bowlingAmount = invoiceMoneyNumber(customer.bowlingAmount);
-  const gastroSplit = invoiceGastroSplit(customer);
-  const totalAmount = bowlingAmount + gastroSplit.total;
-  const gastroLines = gastroSplit.hasSplit
-    ? [
-      `Gastro Getränke: ${formatInvoiceMoney(gastroSplit.drinks)}`,
-      `Gastro Speisen: ${formatInvoiceMoney(gastroSplit.food)}`,
-      `Gastro Sonstiges: ${formatInvoiceMoney(gastroSplit.other)}`,
-      `Gastro Gesamt: ${formatInvoiceMoney(gastroSplit.total)}`
-    ]
-    : [`Gastro Betrag: ${formatInvoiceMoney(gastroSplit.total)}`];
-  return [
-    "Kunde auf Rechnung ist in der TeamApp bereit für den Chef",
-    "",
-    `Datum: ${formattedDate}`,
-    `Tagesbericht-Zuordnung: ${formattedDate}`,
-    `Firma / Name: ${String(customer.name || "").trim() || "-"}`,
-    `Ansprechpartner: ${String(customer.contact || "").trim() || "-"}`,
-    `Telefonnummer: ${String(customer.phone || "").trim() || "-"}`,
-    `E-Mail für Rechnung: ${String(customer.email || "").trim() || "-"}`,
-    `Rechnungsadresse: ${String(customer.address || "").trim() || "-"}`,
-    `Bowling Betrag: ${formatInvoiceMoney(bowlingAmount)}`,
-    ...gastroLines,
-    `Gesamtbetrag: ${formatInvoiceMoney(totalAmount)}`,
-    ...(gastroSplit.note ? [`Sonstiges Notiz: ${gastroSplit.note}`] : []),
-    `Tipp: ${String(customer.tip || "").trim() || "-"}`,
-    `Notiz: ${String(customer.note || "").trim() || "-"}`,
-    "",
-    "Hinweis: Kunde auf Rechnung wurde in der TeamApp erfasst"
-  ].join("\n");
-}
-
-async function sendInvoiceNotificationEmail(payload = {}) {
-  const to = String(payload.to || process.env.INVOICE_NOTIFICATION_TO || "pvo65@outlook.de").trim();
-  const smtpHost = String(process.env.SMTP_HOST || "").trim();
-  const smtpUser = String(process.env.SMTP_USER || "").trim();
-  const smtpPass = String(process.env.SMTP_PASS || "").trim();
-  const smtpPort = Number(process.env.SMTP_PORT || 587);
-  const smtpSecure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || smtpPort === 465;
-
-  if (!to) return { ok: false, skipped: true, reason: "missing-recipient" };
-  if (!smtpHost || !smtpUser || !smtpPass) {
-    return { ok: false, skipped: true, reason: "missing-smtp-config" };
-  }
-
-  let nodemailer;
-  try {
-    nodemailer = require("nodemailer");
-  } catch (error) {
-    console.error("Rechnungskunden-Mailversand fehlgeschlagen: nodemailer fehlt im Build.", error);
-    return { ok: false, skipped: true, reason: "nodemailer-missing" };
-  }
-
-  const transport = nodemailer.createTransport({
-    host: smtpHost,
-    port: Number.isFinite(smtpPort) ? smtpPort : 587,
-    secure: smtpSecure,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass
-    },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000
-  });
-
-  try {
-    const info = await transport.sendMail({
-      from: String(process.env.EMAIL_FROM || smtpUser).trim(),
-      to,
-      subject: String(payload.subject || process.env.INVOICE_EMAIL_SUBJECT || "LA-Bowling - Kunde auf Rechnung bereit für Chef").trim(),
-      text: buildInvoiceNotificationText(payload)
-    });
-    return {
-      ok: true,
-      messageId: info.messageId,
-      accepted: info.accepted || []
-    };
-  } catch (error) {
-    console.error("Rechnungskunden-Mailversand fehlgeschlagen.", error);
-    return {
-      ok: false,
-      error: error?.message || String(error)
-    };
-  }
-}
-
 function createPinHash(pin) {
   const salt = crypto.randomBytes(16).toString("hex");
   const iterations = 120000;
@@ -633,10 +624,42 @@ function verifyAdmin(settings, pin) {
   return verifyPin(pin, settings.adminPinHash || settings.adminPin);
 }
 
+function employeePinKeys(employee) {
+  const clean = String(employee || "").trim();
+  const names = [clean];
+  const parts = clean.replace(",", " ").split(/\s+/).filter(Boolean);
+  if (clean.includes(",")) {
+    const [last, rest = ""] = clean.split(",");
+    const first = rest.trim().split(/\s+/).filter(Boolean)[0] || "";
+    if (first && last.trim()) names.push(`${first} ${last.trim()}`);
+    if (first) names.push(first);
+    if (last.trim()) names.push(last.trim());
+  }
+  if (parts.length > 1) {
+    names.push(parts[0]);
+    names.push(parts[parts.length - 1]);
+    names.push(`${parts[0]} ${parts[parts.length - 1]}`);
+  }
+  return [...new Set(names.filter(Boolean))];
+}
+
+function employeePinCandidates(settings, employee) {
+  const exact = String(employee || "").trim();
+  const exactCandidates = [
+    settings.employeePinHashes?.[exact],
+    settings.employeePins?.[exact]
+  ];
+  const aliasCandidates = employeePinKeys(exact)
+    .filter((key) => key !== exact)
+    .flatMap((key) => [settings.employeePinHashes?.[key], settings.employeePins?.[key]]);
+  return [...new Set([...exactCandidates, ...aliasCandidates].filter(Boolean))];
+}
+
 function employeeByPin(settings, pin) {
   for (const employee of settings.employees || []) {
-    const stored = settings.employeePinHashes?.[employee] || settings.employeePins?.[employee];
-    if (verifyPin(pin, stored)) return employee;
+    for (const stored of employeePinCandidates(settings, employee)) {
+      if (verifyPin(pin, stored)) return employee;
+    }
   }
   return "";
 }
@@ -689,21 +712,564 @@ function handleError(res, error) {
   sendJson(res, error.statusCode || 500, { error: error.message || String(error) });
 }
 
+function pushPublicKey() {
+  return String(process.env.VAPID_PUBLIC_KEY || "").trim();
+}
+
+function normalizePushSubscriptions(value = {}) {
+  const result = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+  for (const [employee, subscriptions] of Object.entries(value)) {
+    const cleanEmployee = String(employee || "").trim();
+    const list = (Array.isArray(subscriptions) ? subscriptions : [])
+      .map(cleanPushSubscription)
+      .filter(Boolean)
+      .filter((item, index, all) => all.findIndex((other) => other.endpoint === item.endpoint) === index)
+      .slice(0, 5);
+    if (cleanEmployee && list.length) result[cleanEmployee] = list;
+  }
+  return result;
+}
+
+function cleanPushSubscription(subscription = {}) {
+  const endpoint = String(subscription.endpoint || "").trim();
+  const keys = subscription.keys || {};
+  const p256dh = String(keys.p256dh || "").trim();
+  const auth = String(keys.auth || "").trim();
+  if (!endpoint || !p256dh || !auth) return null;
+  return {
+    endpoint,
+    expirationTime: subscription.expirationTime || null,
+    keys: { p256dh, auth },
+    createdAt: String(subscription.createdAt || new Date().toISOString()).slice(0, 80),
+    updatedAt: String(subscription.updatedAt || new Date().toISOString()).slice(0, 80)
+  };
+}
+
+function upsertPushSubscription(appData, employee, subscription) {
+  const employeeName = matchEmployeeName(appData?.settings, employee);
+  const clean = cleanPushSubscription(subscription);
+  if (!employeeName || !clean) return false;
+  appData.pushSubscriptions = normalizePushSubscriptions(appData.pushSubscriptions);
+  const existing = appData.pushSubscriptions[employeeName] || [];
+  const previous = existing.find((item) => item.endpoint === clean.endpoint);
+  appData.pushSubscriptions[employeeName] = [
+    {
+      ...clean,
+      createdAt: previous?.createdAt || clean.createdAt,
+      updatedAt: new Date().toISOString()
+    },
+    ...existing.filter((item) => item.endpoint !== clean.endpoint)
+  ].slice(0, 5);
+  return true;
+}
+
+function pushSubscriptionActive(appData, employee) {
+  const employeeName = matchEmployeeName(appData?.settings, employee);
+  return Boolean(employeeName && normalizePushSubscriptions(appData?.pushSubscriptions)[employeeName]?.length);
+}
+
+async function sendPushToEmployees(appData, employees = [], payload = {}) {
+  const publicKey = pushPublicKey();
+  const privateKey = String(process.env.VAPID_PRIVATE_KEY || "").trim();
+  if (!publicKey || !privateKey) return { sent: 0, skipped: true, reason: "missing-vapid" };
+  let webpush;
+  try {
+    webpush = require("web-push");
+  } catch (error) {
+    return { sent: 0, skipped: true, reason: "web-push-missing" };
+  }
+  webpush.setVapidDetails(
+    String(process.env.VAPID_SUBJECT || "mailto:info@la-bowling.de").trim(),
+    publicKey,
+    privateKey
+  );
+  appData.pushSubscriptions = normalizePushSubscriptions(appData.pushSubscriptions);
+  const targetEmployees = [...new Set((employees || []).map((employee) => matchEmployeeName(appData.settings, employee)).filter(Boolean))];
+  let sent = 0;
+  let removed = 0;
+  const body = JSON.stringify({
+    title: String(payload.title || "LA-Bowling TeamApp").slice(0, 120),
+    body: String(payload.body || "Es gibt eine neue Info in der TeamApp.").slice(0, 240),
+    url: String(payload.url || "/").slice(0, 240),
+    tag: String(payload.tag || `teamapp-${Date.now()}`).slice(0, 120)
+  });
+  for (const employee of targetEmployees) {
+    const subscriptions = appData.pushSubscriptions[employee] || [];
+    const keep = [];
+    for (const subscription of subscriptions) {
+      try {
+        await webpush.sendNotification(subscription, body, { TTL: 86400 });
+        sent += 1;
+        keep.push(subscription);
+      } catch (error) {
+        if (error.statusCode === 404 || error.statusCode === 410) {
+          removed += 1;
+        } else {
+          keep.push(subscription);
+        }
+      }
+    }
+    if (keep.length) appData.pushSubscriptions[employee] = keep;
+    else delete appData.pushSubscriptions[employee];
+  }
+  return { sent, removed, skipped: false };
+}
+
+function formatMailDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const date = new Date(`${text.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return text;
+  return date.toLocaleDateString("de-DE");
+}
+
+function formatInvoiceMoney(value) {
+  const amount = tipMoneyNumber(value);
+  return `${amount.toFixed(2).replace(".", ",")} Euro`;
+}
+
+function invoiceGastroSplit(customer = {}) {
+  const drinksText = String(customer.gastroDrinksAmount ?? "").trim();
+  const foodText = String(customer.gastroFoodAmount ?? "").trim();
+  const otherText = String(customer.gastroOtherAmount ?? "").trim();
+  const hasSplit = [drinksText, foodText, otherText].some(Boolean);
+  const drinks = tipMoneyNumber(customer.gastroDrinksAmount);
+  const food = tipMoneyNumber(customer.gastroFoodAmount);
+  const other = tipMoneyNumber(customer.gastroOtherAmount);
+  const fallback = tipMoneyNumber(customer.gastroAmount);
+  const total = hasSplit ? drinks + food + other : fallback;
+  return { drinks, food, other, total, hasSplit, note: String(customer.gastroOtherNote || "").trim() };
+}
+
+function buildInvoiceNotificationText({ date, customer = {} } = {}) {
+  const formattedDate = formatMailDate(date) || String(date || "").trim() || "-";
+  const bowlingAmount = tipMoneyNumber(customer.bowlingAmount);
+  const gastroSplit = invoiceGastroSplit(customer);
+  const gastroAmount = gastroSplit.total;
+  const totalAmount = tipMoneyNumber(customer.amount) || bowlingAmount + gastroAmount;
+  const gastroLines = gastroSplit.hasSplit
+    ? [
+      `Gastro Getränke: ${formatInvoiceMoney(gastroSplit.drinks)}`,
+      `Gastro Speisen: ${formatInvoiceMoney(gastroSplit.food)}`,
+      `Gastro Sonstiges: ${formatInvoiceMoney(gastroSplit.other)}`
+    ]
+    : [`Gastro Betrag: ${formatInvoiceMoney(gastroAmount)}`];
+  return [
+    "Kunde auf Rechnung ist in der TeamApp bereit für den Chef",
+    "",
+    `Datum: ${formattedDate}`,
+    `Tagesbericht-Zuordnung: ${formattedDate}`,
+    `Firma / Name: ${String(customer.name || "").trim() || "-"}`,
+    `Ansprechpartner: ${String(customer.contact || "").trim() || "-"}`,
+    `Telefonnummer: ${String(customer.phone || "").trim() || "-"}`,
+    `E-Mail für Rechnung: ${String(customer.email || "").trim() || "-"}`,
+    `Rechnungsadresse: ${String(customer.address || "").trim() || "-"}`,
+    `Bowling Betrag: ${formatInvoiceMoney(bowlingAmount)}`,
+    ...gastroLines,
+    `Gesamtbetrag: ${formatInvoiceMoney(totalAmount)}`,
+    ...(gastroSplit.note ? [`Sonstiges Notiz: ${gastroSplit.note}`] : []),
+    `Tipp: ${String(customer.tip || "").trim() || "-"}`,
+    `Notiz: ${String(customer.note || "").trim() || "-"}`,
+    "",
+    "Hinweis: Kunde auf Rechnung wurde in der TeamApp erfasst und ist jetzt bereit für die Rechnungsschreibung"
+  ].join("\n");
+}
+
+async function sendInvoiceNotificationEmail(payload = {}) {
+  const to = String(payload.to || process.env.INVOICE_NOTIFICATION_TO || "pvo65@outlook.de").trim();
+  const smtpHost = String(process.env.SMTP_HOST || "").trim();
+  const smtpUser = String(process.env.SMTP_USER || "").trim();
+  const smtpPass = String(process.env.SMTP_PASS || "").trim();
+  const smtpPort = Number(process.env.SMTP_PORT || 587);
+  const smtpSecure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || smtpPort === 465;
+
+  if (!to) return { ok: false, skipped: true, reason: "missing-recipient" };
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    return { ok: false, skipped: true, reason: "missing-smtp-config" };
+  }
+
+  let nodemailer;
+  try {
+    nodemailer = require("nodemailer");
+  } catch (error) {
+    console.error("Rechnungskunden-Mailversand fehlgeschlagen: nodemailer fehlt im Build.", error);
+    return { ok: false, skipped: true, reason: "nodemailer-missing" };
+  }
+
+  const transport = nodemailer.createTransport({
+    host: smtpHost,
+    port: Number.isFinite(smtpPort) ? smtpPort : 587,
+    secure: smtpSecure,
+    auth: {
+      user: smtpUser,
+      pass: smtpPass
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
+  });
+
+  try {
+    const info = await transport.sendMail({
+      from: String(process.env.EMAIL_FROM || smtpUser).trim(),
+      to,
+      subject: String(process.env.INVOICE_EMAIL_SUBJECT || "LA-Bowling - Kunde auf Rechnung bereit für Chef").trim(),
+      text: buildInvoiceNotificationText(payload)
+    });
+    return {
+      ok: true,
+      messageId: info.messageId,
+      accepted: info.accepted || []
+    };
+  } catch (error) {
+    console.error("Rechnungskunden-Mailversand fehlgeschlagen.", error);
+    return {
+      ok: false,
+      error: error?.message || String(error)
+    };
+  }
+}
+
+function applyPushTemplate(template, values = {}) {
+  const source = String(template == null ? "" : template);
+  return source.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const value = values[key];
+    return value == null ? "" : String(value);
+  }).trim();
+}
+
+function syncReportTipsToTimesheets(appData) {
+  if (!appData || typeof appData !== "object") return false;
+  const reports = appData.dayReports && typeof appData.dayReports === "object" ? appData.dayReports : {};
+  appData.timesheets ||= {};
+  let changed = false;
+
+  for (const [date, report] of Object.entries(reports)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !report || typeof report !== "object") continue;
+    const month = date.slice(0, 7);
+    appData.timesheets[month] ||= {};
+    const tips = reportTipsForSync(appData, date, report);
+    if (!Object.keys(tips).length) continue;
+    const syncedTipTotal = reportTipTotalForSync(report);
+    const syncedTipRemainder = Math.max(0, syncedTipTotal - Object.values(tips).reduce((sum, amount) => sum + tipMoneyNumber(amount), 0));
+
+    if (syncedTipTotal > 0 && tipMoneyNumber(report.tipTotal) <= 0) {
+      report.tipTotal = tipMoneyString(syncedTipTotal);
+      changed = true;
+    }
+    if (syncedTipTotal > 0 && tipMoneyString(report.tipRemainder) !== tipMoneyString(syncedTipRemainder)) {
+      report.tipRemainder = tipMoneyString(syncedTipRemainder);
+      changed = true;
+    }
+
+    const existingTips = cleanTipMapForSync(report.tipsByEmployee || {});
+    if (JSON.stringify(existingTips) !== JSON.stringify(tips)) {
+      report.tipsByEmployee = tips;
+      changed = true;
+    }
+
+    for (const [employee, tip] of Object.entries(tips)) {
+      const entries = appData.timesheets[month][employee];
+      const existing = entries?.[date];
+      if (!existing || !timeSegmentsForSync(existing).some((segment) => segment.from || segment.to)) continue;
+      if (String(existing.tip || "") === tip && existing.tipSource === "terminal-distribution") continue;
+      appData.timesheets[month][employee][date] = {
+        ...existing,
+        tip,
+        tipSource: "terminal-distribution",
+        updatedAt: new Date().toISOString()
+      };
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function reportTipsForSync(appData, date, report) {
+  const explicit = cleanTipMapForSync(report.tipsByEmployee || {});
+  if (Object.values(explicit).some((amount) => tipMoneyNumber(amount) > 0)) return explicit;
+  return deriveTipsForReport(appData, date, report);
+}
+
+function deriveTipsForReport(appData, date, report) {
+  const tipTotal = reportTipTotalForSync(report);
+  if (tipTotal <= 0) return {};
+  const month = date.slice(0, 7);
+  const entriesByEmployee = appData.timesheets?.[month] || {};
+  const scheduleDay = appData.schedules?.[month]?.days?.[date] || {};
+  const openingTime = tipOpeningTimeForSync(report);
+  let rows = Object.entries(entriesByEmployee).map(([employee, entries]) => {
+    const entry = entries?.[date] || {};
+    const area = tipAreaForSync(appData.settings || {}, scheduleDay, report, employee);
+    const hours = paidHoursAfterOpeningForSync(entry, openingTime);
+    return { employee, area, hours };
+  }).filter((row) => employeeTipEligibleForSync(appData.settings || {}, row.employee, row.area) && row.hours > 0);
+  if (!rows.length) {
+    rows = Object.entries(entriesByEmployee).map(([employee, entries]) => {
+      const entry = entries?.[date] || {};
+      const area = tipAreaForSync(appData.settings || {}, scheduleDay, report, employee);
+      const hours = paidHoursAfterOpeningForSync(entry, openingTime);
+      return { employee, area, hours };
+    }).filter((row) => employeeTipEligibleForSync(appData.settings || {}, row.employee, row.area) && row.hours > 0);
+  }
+  const kitchenInfo = tipKitchenInfoForSync(rows, tipMoneyNumber(report.revenueFood));
+  const weighted = rows.map((row) => ({
+    ...row,
+    factor: tipFactorForSync(appData.settings || {}, row.employee, row.area, kitchenInfo)
+  })).map((row) => ({
+    ...row,
+    weight: row.hours * row.factor
+  }));
+  const totalWeight = weighted.reduce((sum, row) => sum + row.weight, 0);
+  if (totalWeight <= 0) return {};
+  return cleanTipMapForSync(exactTipMapForSync(weighted, tipTotal));
+}
+
+function cleanTipMapForSync(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([employee, amount]) => [String(employee || "").trim(), tipMoneyString(amount)])
+    .filter(([employee, amount]) => employee && tipMoneyNumber(amount) > 0)
+    .sort(([left], [right]) => left.localeCompare(right, "de")));
+}
+
+function reportTipTotalForSync(report = {}) {
+  const storedTipTotal = tipMoneyNumber(report.tipTotal);
+  if (storedTipTotal > 0) return storedTipTotal;
+  const payoutTotal = tipMoneyNumber(report.tipPayoutAmount) + tipMoneyNumber(report.tipPayoutRemainder);
+  if (payoutTotal > 0) return payoutTotal;
+  const cashTotal = tipMoneyNumber(report.cashTotal);
+  const ecTotal = tipMoneyNumber(report.ecTotal) || tipMoneyNumber(report.ecTerminal1) + tipMoneyNumber(report.ecTerminal2);
+  const personalConsumption = tipMoneyNumber(report.personalConsumption);
+  const cashExpenses = tipMoneyNumber(report.cashExpenses);
+  const revenueBowling = tipMoneyNumber(report.revenueBowling ?? report.barBowling);
+  const revenueGastro = tipMoneyNumber(report.revenueGastro ?? report.barGastro)
+    || tipMoneyNumber(report.revenueDrinks) + tipMoneyNumber(report.revenueFood) + tipMoneyNumber(report.revenueOther);
+  const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
+  return Math.max(0, cashTotal + cashExpenses + ecTotal - totalRevenue);
+}
+
+function tipAreaForSync(settings, scheduleDay, report, employee) {
+  const canonicalEmployee = matchEmployeeName(settings, employee) || String(employee || "").trim();
+  for (const [position, value] of Object.entries(scheduleDay || {})) {
+    if (position.includes("__")) continue;
+    if (sameEmployeeName(value, canonicalEmployee)) return tipDepartmentForSync(position);
+  }
+  const extra = (Array.isArray(report.extraEmployees) ? report.extraEmployees : [])
+    .map((item) => typeof item === "string" ? { employee: item, role: "" } : item)
+    .find((item) => sameEmployeeName(item?.employee, canonicalEmployee));
+  if (extra?.role) return tipDepartmentForSync(extra.role);
+  const roleDepartment = tipDepartmentForSync(settings.employeeRoles?.[canonicalEmployee] || "");
+  if (roleDepartment) return roleDepartment;
+  const departments = settings.employeeDepartments?.[canonicalEmployee] || [];
+  const values = Array.isArray(departments) ? departments : String(departments || "").split(",");
+  return values.map(tipDepartmentForSync).find(isTipEligibleAreaForSync) || "";
+}
+
+function tipDepartmentForSync(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+  if (text.includes("spuel") || text.includes("spül")) return "Spueler";
+  if (text.includes("counter")) return "Counter";
+  if (text.includes("service")) return "Service";
+  if (text.includes("kueche") || text.includes("kuche") || text.includes("küche") || text.includes("koch")) return "Kueche";
+  return "";
+}
+
+function isTipEligibleAreaForSync(area) {
+  return TIP_ELIGIBLE_AREAS.includes(area);
+}
+
+function isKitchenTipAreaForSync(area) {
+  return area === "Kueche" || area === "Spueler";
+}
+
+function employeeTipEligibleForSync(settings = {}, employee, area) {
+  const setting = tipSettingForSync(settings, employee);
+  if (setting) return setting.eligible;
+  return isTipEligibleAreaForSync(area);
+}
+
+function tipFactorForSync(settings = {}, employee, area, kitchenInfo = {}) {
+  const groupFactor = kitchenGroupTipFactorForSync(area, kitchenInfo);
+  if (groupFactor !== null) return groupFactor;
+  const setting = tipSettingForSync(settings, employee);
+  if (setting) return setting.eligible ? setting.factor : 0;
+  return automaticTipFactorForSync(area, kitchenInfo);
+}
+
+function automaticTipFactorForSync(area, kitchenInfo = {}) {
+  return kitchenGroupTipFactorForSync(area, kitchenInfo) ?? 1;
+}
+
+function kitchenGroupTipFactorForSync(area, kitchenInfo = {}) {
+  if (!isKitchenTipAreaForSync(area)) return null;
+  const cooks = Number(kitchenInfo.cooks || 0);
+  const spuelers = Number(kitchenInfo.spuelers || 0);
+  const kitchenRevenue = Number(kitchenInfo.kitchenRevenue || 0);
+  if (cooks >= 2 && spuelers >= 1 && kitchenRevenue >= 2000) return 1;
+  if (cooks >= 2 && spuelers >= 1) return 0.5;
+  if (area === "Kueche" && cooks >= 2) return 0.75;
+  return null;
+}
+
+function tipKitchenInfoForSync(rows = [], kitchenRevenue = 0) {
+  return {
+    cooks: rows.filter((row) => row.area === "Kueche").length,
+    spuelers: rows.filter((row) => row.area === "Spueler").length,
+    kitchenRevenue: Number(kitchenRevenue || 0)
+  };
+}
+
+function tipSettingForSync(settings = {}, employee = "") {
+  const tipSettings = settings.employeeTipSettings || {};
+  const exact = tipSettings[employee];
+  if (exact) return normalizeEmployeeTipSetting(exact);
+  const clean = String(employee || "").trim();
+  const match = Object.entries(tipSettings).find(([name]) => sameEmployeeName(name, clean));
+  return match ? normalizeEmployeeTipSetting(match[1]) : null;
+}
+
+function exactTipMapForSync(rows = [], tipTotal = 0) {
+  const totalCents = Math.round(tipMoneyNumber(tipTotal) * 100);
+  const totalWeight = rows.reduce((sum, row) => sum + Number(row.weight || 0), 0);
+  if (!rows.length || totalCents <= 0 || totalWeight <= 0) return {};
+  const shares = rows.map((row) => {
+    const rawCents = totalCents * Number(row.weight || 0) / totalWeight;
+    return {
+      employee: row.employee,
+      cents: Math.floor(rawCents),
+      rest: rawCents - Math.floor(rawCents)
+    };
+  });
+  let remaining = totalCents - shares.reduce((sum, row) => sum + row.cents, 0);
+  shares
+    .slice()
+    .sort((a, b) => b.rest - a.rest || a.employee.localeCompare(b.employee, "de"))
+    .forEach((row) => {
+      if (remaining <= 0) return;
+      row.cents += 1;
+      remaining -= 1;
+    });
+  return Object.fromEntries(shares.map((row) => [row.employee, tipMoneyString(row.cents / 100)]));
+}
+
+function tipOpeningTimeForSync(report = {}) {
+  const match = String(report.openingHours || "").match(/(\d{1,2}):(\d{2})/);
+  return match ? `${String(match[1]).padStart(2, "0")}:${match[2]}` : "00:00";
+}
+
+function paidHoursAfterOpeningForSync(entry = {}, openingTime = "00:00") {
+  const opening = tipTimeToMinutes(openingTime);
+  return timeSegmentsForSync(entry).reduce((sum, segment) => {
+    if (!segment.from || !segment.to) return sum;
+    const start = tipTimeToMinutes(segment.from);
+    let end = tipTimeToMinutes(segment.to);
+    if (end < start) end += 24 * 60;
+    const effectiveStart = Math.max(start, opening);
+    return sum + Math.max(0, end - effectiveStart) / 60;
+  }, 0);
+}
+
+function timeSegmentsForSync(entry = {}) {
+  const segments = Array.isArray(entry.segments) ? entry.segments : [];
+  const normalized = segments.map((segment) => ({
+    from: String(segment?.from || "").trim(),
+    to: String(segment?.to || "").trim()
+  })).filter((segment) => segment.from || segment.to);
+  if (normalized.length) return normalized;
+  return entry.from || entry.to ? [{ from: entry.from || "", to: entry.to || "" }] : [];
+}
+
+function tipMinutesBetween(from, to) {
+  const start = tipTimeToMinutes(from);
+  let end = tipTimeToMinutes(to);
+  if (end < start) end += 24 * 60;
+  return Math.max(0, end - start);
+}
+
+function tipTimeToMinutes(value) {
+  const [hours, minutes] = String(value || "00:00").split(":").map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function matchEmployeeName(settings = {}, employee = "") {
+  const clean = String(employee || "").trim();
+  if (!clean) return "";
+  return (settings.employees || []).find((name) => sameEmployeeName(name, clean)) || "";
+}
+
+function sameEmployeeName(left, right) {
+  return normalizeEmployeeName(left) === normalizeEmployeeName(right);
+}
+
+function normalizeEmployeeName(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
+function collectEmployeeTimesheets(appData, month, employee) {
+  const targetMonth = String(month || "").trim();
+  const canonicalEmployee = matchEmployeeName(appData?.settings, employee) || String(employee || "").trim();
+  const monthEntries = appData?.timesheets?.[targetMonth];
+  if (!targetMonth || !canonicalEmployee || !monthEntries || typeof monthEntries !== "object") return {};
+  const result = {};
+  for (const [storedEmployee, entries] of Object.entries(monthEntries)) {
+    if (!sameEmployeeName(storedEmployee, canonicalEmployee)) continue;
+    for (const [date, entry] of Object.entries(entries || {})) {
+      result[date] = {
+        ...(result[date] || {}),
+        ...(entry || {})
+      };
+    }
+  }
+  return result;
+}
+
+function tipMoneyNumber(value) {
+  const parsed = Number(String(value ?? "0").replace(",", "."));
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function tipMoneyString(value) {
+  return (Math.round(tipMoneyNumber(value) * 100) / 100).toFixed(2);
+}
+
 module.exports = {
   createPinHash,
   defaultData,
+  collectEmployeeTimesheets,
+  applyPushTemplate,
   employeeByPin,
+  matchEmployeeName,
   employeeIsAdmin,
   handleError,
   downloadReceipt,
   mergeData,
   publicSettings,
+  pushPublicKey,
+  pushSubscriptionActive,
+  sendInvoiceNotificationEmail,
   readAppData,
   readJson,
   sanitizeSchedules,
   sendJson,
-  sendInvoiceNotificationEmail,
+  sendPushToEmployees,
   signToken,
+  syncReportTipsToTimesheets,
+  sameEmployeeName,
+  upsertPushSubscription,
   uploadReceiptDataUrl,
   verifyAdmin,
   verifyToken,
