@@ -18,6 +18,35 @@
     return "Zusatz";
   }
 
+  function matchingEmployeesForRole(role) {
+    const employees = state.settings.employees || [];
+    const current = new Set(window.terminalEmployeesForDay(state.terminalDate || isoDate(new Date())));
+    const available = employees.filter((name) => !current.has(name));
+    const department = typeof departmentForPosition === "function" ? departmentForPosition(role) : String(role || "").replace(/\s+\d+$/, "");
+    const positionName = typeof canonicalDepartmentChoice === "function" ? canonicalDepartmentChoice(role) : role;
+    const departments = state.settings.employeeDepartments || {};
+    const roles = state.settings.employeeRoles || {};
+    const matching = available.filter((employee) => {
+      const employeeDepartments = typeof departmentsForEmployee === "function"
+        ? departmentsForEmployee(departments, employee).map((value) => typeof canonicalDepartmentChoice === "function" ? canonicalDepartmentChoice(value) : value)
+        : (departments[employee] || []);
+      const roleDepartment = typeof normalizeDepartment === "function" ? normalizeDepartment(roles[employee] || "") : roles[employee] || "";
+      return employeeDepartments.includes(department) || employeeDepartments.includes(positionName) || roleDepartment === department;
+    });
+    return matching;
+  }
+
+  function updateAddEmployeeOptions() {
+    const employeeSelect = document.querySelector("#terminalAddEmployee");
+    const roleSelect = document.querySelector("#terminalAddRole");
+    if (!employeeSelect) return;
+    const role = roleSelect?.value || roleOptions[0];
+    const employees = matchingEmployeesForRole(role);
+    employeeSelect.innerHTML = employees.length
+      ? `<option value="">Mitarbeiter auswaehlen</option>${employees.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}`
+      : `<option value="">Keine passenden Mitarbeiter</option>`;
+  }
+
   window.terminalEmployeesForDay = function patchedTerminalEmployeesForDay(dateKey) {
     return [...new Set([...oldTerminalEmployeesForDay(dateKey), ...extras().map((item) => item.employee)])];
   };
@@ -29,16 +58,11 @@
     const addBox = document.querySelector(".terminal-add");
     const employeeSelect = document.querySelector("#terminalAddEmployee");
     if (addBox) addBox.classList.toggle("hidden", reportClosed);
-    if (employeeSelect) {
-      const current = new Set(window.terminalEmployeesForDay(state.terminalDate || isoDate(new Date())));
-      employeeSelect.innerHTML = `<option value="">Mitarbeiter auswaehlen</option>` + (state.settings.employees || [])
-        .filter((name) => !current.has(name))
-        .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-        .join("");
-    }
     if (addBox && !document.querySelector("#terminalAddRole")) {
       employeeSelect.insertAdjacentHTML("afterend", `<select id="terminalAddRole">${roleOptions.map((role) => `<option>${role}</option>`).join("")}</select>`);
+      document.querySelector("#terminalAddRole")?.addEventListener("change", updateAddEmployeeOptions);
     }
+    updateAddEmployeeOptions();
     document.querySelectorAll(".terminal-employee").forEach((card) => {
       const name = card.querySelector("[data-terminal-employee]")?.dataset.terminalEmployee;
       const meta = card.querySelector(".terminal-employee-head span");

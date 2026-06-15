@@ -2,12 +2,13 @@
   "name": "dienstplan-static",
   "version": "1.0.0",
   "private": true,
+  "dependencies": {
+    "nodemailer": "^6.9.15",
+    "web-push": "^3.6.7"
+  },
   "scripts": {
     "dev": "node scripts/local-dev-server.cjs",
-    "check": "node --check teamapp-client.js && node --check api/_data.js && node --check api/state.js && node --check api/day-terminal.js && node --check api/settings.js && node --check server/data.js",
+    "check": "node --check teamapp-client.js && node --check api/day-terminal.js && node --check api/state.js && node --check api/_data.js && node --check api/settings.js && node --check server/data.js",
     "zip": "powershell -ExecutionPolicy Bypass -File ./scripts/pack-update.ps1"
-  },
-  "dependencies": {
-    "nodemailer": "^6.9.15"
   }
 }
