@@ -1924,6 +1924,7 @@ function openInvoiceCardHtml({ dateKey, invoice, index }) {
   const bowling = reportMoneyNumber(invoice.bowlingAmount || 0);
   const gastroSplit = invoiceGastroSplit(invoice);
   const total = invoiceTotal(invoice);
+  const tipText = String(invoice.tip || "").trim();
   const token = `${dateKey}|${invoice.id || index}`;
   const briefhead = invoiceBriefhead(invoice);
   const gastroFields = gastroSplit.hasSplit
@@ -1949,7 +1950,7 @@ function openInvoiceCardHtml({ dateKey, invoice, index }) {
         ${gastroFields}
         ${invoiceCopyField("Betrag gesamt", formatReportMoney(total))}
       </div>
-      <p class="hint">Ansprechpartner: ${escapeHtml(invoice.contact || "-")} · E-Mail: ${escapeHtml(invoice.email || "-")} · Telefon: ${escapeHtml(invoice.phone || "-")}</p>
+      <p class="hint">Ansprechpartner: ${escapeHtml(invoice.contact || "-")} · E-Mail: ${escapeHtml(invoice.email || "-")} · Telefon: ${escapeHtml(invoice.phone || "-")}${tipText ? ` · Tipp: ${escapeHtml(tipText)}` : ""}</p>
       ${gastroSplit.note ? `<p class="hint">Sonstiges Notiz: ${escapeHtml(gastroSplit.note)}</p>` : ""}
       ${invoiceReceiptLinksHtml(invoice)}
     </article>
@@ -5390,8 +5391,8 @@ function invoiceRowHtml(item = {}) {
         <label>Bowling Betrag<input data-report-field="bowlingAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.bowlingAmount || (item.area === "bowling" ? item.amount : ""))}" placeholder="0,00"></label>
         <label>Gastro Getränke<input data-report-field="gastroDrinksAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroDrinksAmount || "")}" placeholder="0,00"></label>
         <label>Gastro Speisen<input data-report-field="gastroFoodAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroFoodAmount || "")}" placeholder="0,00"></label>
-        <label>Gastro Sonstiges<input data-report-field="gastroOtherAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroOtherAmount || "")}" placeholder="0,00"></label>
-        <label>Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="Hinweis zu Sonstiges">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
+        <label>Gastro Sonstiges<input data-report-field="gastroOtherAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroOtherAmount || "")}" placeholder="z.B. Raummiete"></label>
+        <label>Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="z.B. Raummiete oder Sonderleistung">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
       </div>
       <label>Rechnungsadresse<textarea data-report-field="address" rows="2" placeholder="Adresse für Rechnung">${escapeHtml(item.address || "")}</textarea></label>
       <label>Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>

@@ -848,13 +848,15 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
   const gastroSplit = invoiceGastroSplit(customer);
   const gastroAmount = gastroSplit.total;
   const totalAmount = tipMoneyNumber(customer.amount) || bowlingAmount + gastroAmount;
+  const tipText = String(customer.tip || "").trim() || "-";
   const gastroLines = gastroSplit.hasSplit
     ? [
       `Gastro Getränke: ${formatInvoiceMoney(gastroSplit.drinks)}`,
       `Gastro Speisen: ${formatInvoiceMoney(gastroSplit.food)}`,
-      `Gastro Sonstiges: ${formatInvoiceMoney(gastroSplit.other)}`
+      `Gastro Sonstiges: ${formatInvoiceMoney(gastroSplit.other)}`,
+      `Gastro Gesamt: ${formatInvoiceMoney(gastroAmount)}`
     ]
-    : [`Gastro Betrag: ${formatInvoiceMoney(gastroAmount)}`];
+    : [`Gastro Gesamt: ${formatInvoiceMoney(gastroAmount)}`];
   return [
     "Kunde auf Rechnung ist in der TeamApp bereit für den Chef",
     "",
@@ -869,7 +871,7 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
     ...gastroLines,
     `Gesamtbetrag: ${formatInvoiceMoney(totalAmount)}`,
     ...(gastroSplit.note ? [`Sonstiges Notiz: ${gastroSplit.note}`] : []),
-    `Tipp: ${String(customer.tip || "").trim() || "-"}`,
+    `Tipp separat: ${tipText}`,
     `Notiz: ${String(customer.note || "").trim() || "-"}`,
     "",
     "Hinweis: Kunde auf Rechnung wurde in der TeamApp erfasst und ist jetzt bereit für die Rechnungsschreibung"

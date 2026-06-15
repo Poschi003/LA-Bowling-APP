@@ -94,7 +94,12 @@ module.exports = async function handler(req, res) {
           phone: "000000",
           email: "test@example.com",
           address: "Testadresse 1",
-          tip: "",
+          bowlingAmount: "120.00",
+          gastroDrinksAmount: "85.00",
+          gastroFoodAmount: "210.00",
+          gastroOtherAmount: "60.00",
+          gastroOtherNote: "Raummiete",
+          tip: "15,00",
           note: "Test-Mail aus dem Backoffice"
         }
       });
