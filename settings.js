@@ -1,4 +1,4 @@
-const {
+﻿const {
   createPinHash,
   handleError,
   publicSettings,
@@ -41,6 +41,28 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 200, { ok: true, messages: appData.messages });
     }
 
+    if (body.action === "add-terminal-message") {
+      const text = String(body.text || "").trim().slice(0, 1000);
+      if (!text) return sendJson(res, 400, { error: "Nachricht fehlt." });
+      appData.terminalMessages ||= [];
+      appData.terminalMessages.unshift({
+        id: `terminal-msg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        text,
+        active: true,
+        createdAt: new Date().toISOString()
+      });
+      appData.terminalMessages = appData.terminalMessages.slice(0, 40);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, terminalMessages: appData.terminalMessages });
+    }
+
+    if (body.action === "delete-terminal-message") {
+      const id = String(body.id || "");
+      appData.terminalMessages = (appData.terminalMessages || []).filter((message) => message.id !== id);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, terminalMessages: appData.terminalMessages });
+    }
+
     if (body.action === "add-task-template") {
       const task = cleanTaskTemplate(body.task || {});
       if (!task.title) return sendJson(res, 400, { error: "Aufgabe fehlt." });
@@ -73,6 +95,22 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 200, { ok: true, reminderTemplates: appData.reminderTemplates });
     }
 
+    if (body.action === "add-cleaning-template") {
+      const task = cleanCleaningTemplate(body.task || {});
+      if (!task.title) return sendJson(res, 400, { error: "Reinigungsaufgabe fehlt." });
+      appData.cleaningTemplates ||= [];
+      appData.cleaningTemplates.unshift(task);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, cleaningTemplates: appData.cleaningTemplates });
+    }
+
+    if (body.action === "delete-cleaning-template") {
+      const id = String(body.id || "");
+      appData.cleaningTemplates = (appData.cleaningTemplates || []).filter((task) => task.id !== id);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, cleaningTemplates: appData.cleaningTemplates });
+    }
+
     if (Array.isArray(body.employees)) {
       const employees = [...new Set(body.employees.map(String).map((name) => name.trim()).filter(Boolean))];
       if (!employees.length) {
@@ -83,9 +121,25 @@ module.exports = async function handler(req, res) {
     if (body.employeePins && typeof body.employeePins === "object") {
       appData.settings.employeePinHashes ||= {};
       for (const [name, pin] of Object.entries(body.employeePins)) {
-        if (String(pin).trim()) {
-          appData.settings.employeePinHashes[name] = createPinHash(String(pin).trim());
-          delete appData.settings.employeePins?.[name];
+        const cleanName = String(name || "").trim();
+        const cleanPin = String(pin || "").trim();
+        if (cleanName && cleanPin) {
+          appData.settings.employeePinHashes[cleanName] = createPinHash(cleanPin);
+          delete appData.settings.employeePins?.[cleanName];
+        }
+      }
+    }
+    if (appData.settings.employeePinHashes && Array.isArray(appData.settings.employees)) {
+      const currentEmployees = new Set(appData.settings.employees);
+      for (const name of Object.keys(appData.settings.employeePinHashes)) {
+        if (!currentEmployees.has(name)) delete appData.settings.employeePinHashes[name];
+      }
+    }
+    if (appData.settings.employeePins && Array.isArray(appData.settings.employees)) {
+      const currentEmployees = new Set(appData.settings.employees);
+      for (const name of Object.keys(appData.settings.employeePins)) {
+        if (!currentEmployees.has(name) || appData.settings.employeePinHashes?.[name]) {
+          delete appData.settings.employeePins[name];
         }
       }
     }
@@ -104,8 +158,17 @@ module.exports = async function handler(req, res) {
     if (Array.isArray(body.positions)) {
       appData.settings.positions = [...new Set(body.positions.map(String).map((name) => name.trim()).filter(Boolean))];
     }
+    if (body.chefViewSections && typeof body.chefViewSections === "object") {
+      appData.settings.chefViewSections = cleanVisibility(body.chefViewSections, ["messages", "today", "reports", "reportFolders", "employees", "schedule"]);
+    }
+    if (body.dayReportFields && typeof body.dayReportFields === "object") {
+      appData.settings.dayReportFields = cleanVisibility(body.dayReportFields, ["ecTotal", "barBowling", "barGastro", "barTotal", "invoiceCustomers", "expenses", "documents", "notes", "preparation", "handovers", "extraEmployees"]);
+    }
     if (Array.isArray(body.taskTemplates)) {
       appData.taskTemplates = body.taskTemplates.map(cleanTaskTemplate).filter((task) => task.title);
+    }
+    if (Array.isArray(body.cleaningTemplates)) {
+      appData.cleaningTemplates = body.cleaningTemplates.map(cleanCleaningTemplate).filter((task) => task.title);
     }
     if (typeof body.businessName === "string" && body.businessName.trim()) {
       appData.settings.businessName = body.businessName.trim();
@@ -114,6 +177,22 @@ module.exports = async function handler(req, res) {
       appData.settings.adminPinHash = createPinHash(body.adminPin.trim());
       delete appData.settings.adminPin;
     }
+    if (typeof body.terminalCode === "string" && body.terminalCode.trim()) {
+      appData.settings.terminalCodeHash = createPinHash(body.terminalCode.trim());
+      delete appData.settings.terminalCode;
+    }
+    if (body.scheduleAutoDeleteDays !== undefined && body.scheduleAutoDeleteDays !== null && body.scheduleAutoDeleteDays !== "") {
+      const days = Number(body.scheduleAutoDeleteDays);
+      appData.settings.scheduleAutoDeleteDays = Number.isFinite(days)
+        ? Math.max(0, Math.min(365, Math.floor(days)))
+        : appData.settings.scheduleAutoDeleteDays;
+    }
+    if (body.hourlyRate !== undefined && body.hourlyRate !== null && body.hourlyRate !== "") {
+      const hourlyRate = Number(body.hourlyRate);
+      appData.settings.hourlyRate = Number.isFinite(hourlyRate)
+        ? Math.max(0, Math.min(200, Math.round(hourlyRate * 100) / 100))
+        : appData.settings.hourlyRate;
+    }
 
     await writeAppData(appData);
     sendJson(res, 200, { ok: true, settings: publicSettings(appData.settings) });
@@ -121,6 +200,10 @@ module.exports = async function handler(req, res) {
     handleError(res, error);
   }
 };
+
+function cleanVisibility(value, keys) {
+  return Object.fromEntries(keys.map((key) => [key, value[key] !== false]));
+}
 
 function cleanTarget(value) {
   const text = String(value || "all").trim();
@@ -142,8 +225,15 @@ function cleanTaskTemplate(task) {
     intervalDays: Math.max(1, Math.min(365, Number(task.intervalDays || 1))),
     weekdays: Array.isArray(task.weekdays) ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6) : [],
     dayOfMonth: Math.min(31, Math.max(1, Number(task.dayOfMonth || 1))),
+    popupEnabled: task.popupEnabled === true || task.popupEnabled === "true",
+    popupTime: cleanTime(task.popupTime),
     createdAt: new Date().toISOString()
   };
+}
+
+function cleanTime(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
 }
 
 function cleanReminder(reminder) {
@@ -156,3 +246,19 @@ function cleanReminder(reminder) {
     createdAt: new Date().toISOString()
   };
 }
+
+function cleanCleaningTemplate(task) {
+  const frequency = ["daily", "weekly"].includes(task.frequency) ? task.frequency : "daily";
+  const weekdays = frequency === "weekly" && Array.isArray(task.weekdays)
+    ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6)
+    : [];
+  return {
+    id: String(task.id || `cleaning-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    title: String(task.title || "").trim().slice(0, 180),
+    note: String(task.note || "").trim().slice(0, 600),
+    frequency,
+    weekdays: frequency === "weekly" ? (weekdays.length ? weekdays : [1]) : [],
+    createdAt: String(task.createdAt || new Date().toISOString()).slice(0, 40)
+  };
+}
+

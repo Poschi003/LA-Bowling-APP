@@ -19,7 +19,15 @@ module.exports = async function handler(req, res) {
 async function requestChange(res, appData, body) {
   const session = verifyToken(body.employeeToken, "employee");
   if (!session?.employee) return sendJson(res, 401, { error: "Bitte erneut mit Mitarbeiter-PIN anmelden." });
-  const month = String(body.month || "");
+  const month = cleanMonth(body.month);
+  const targetMonth = cleanMonth(appData.settings.availabilityTargetMonth);
+  if (!month) return sendJson(res, 400, { error: "Ungueltiger Monat." });
+  if (appData.settings.availabilitySubmissionOpen === false) {
+    return sendJson(res, 403, { error: "Die Verfuegbarkeits-Abgabe ist aktuell geschlossen." });
+  }
+  if (targetMonth && month !== targetMonth) {
+    return sendJson(res, 400, { error: `Verfuegbarkeit ist aktuell nur fuer ${targetMonth} freigegeben.` });
+  }
   const existingOpen = appData.availabilityChangeRequests.find((request) => (
     request.status === "open" && request.month === month && request.employee === session.employee
   ));
@@ -66,3 +74,7 @@ function publicRequest(request) {
   };
 }
 
+function cleanMonth(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : "";
+}

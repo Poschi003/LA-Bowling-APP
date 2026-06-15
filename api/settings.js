@@ -1,9 +1,12 @@
 ﻿const {
   createPinHash,
+  defaultData,
   handleError,
   publicSettings,
   readAppData,
   readJson,
+  sendInvoiceNotificationEmail,
+  sendPushToEmployees,
   sendJson,
   verifyToken,
   writeAppData
@@ -21,17 +24,106 @@ module.exports = async function handler(req, res) {
     if (body.action === "add-message") {
       const text = String(body.text || "").trim().slice(0, 800);
       if (!text) return sendJson(res, 400, { error: "Nachricht fehlt." });
+      const target = cleanTarget(body.target);
+      const employees = cleanEmployeeList(body.employees, appData.settings);
+      const recipients = messageRecipients(appData.settings, { target, employees });
+      if (!recipients.length) return sendJson(res, 400, { error: "Bitte mindestens einen Empfänger auswählen." });
       appData.messages ||= [];
       appData.messages.unshift({
         id: `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         text,
-        target: cleanTarget(body.target),
-        employees: Array.isArray(body.employees) ? body.employees.map(String).map((name) => name.trim()).filter(Boolean) : [],
+        target,
+        employees,
+        recipients,
+        readBy: {},
         createdAt: new Date().toISOString()
       });
       appData.messages = appData.messages.slice(0, 30);
+      if (pushSettingEnabled(appData.settings, "messages")) {
+        const pushSettings = appData.settings.pushSettings || {};
+        await sendPushToEmployees(appData, recipients, {
+          title: cleanPushText(pushSettings.messagesTitle, "LA-Bowling - Du hast eine neue Nachricht im Dashboard"),
+          body: pushTemplate(pushSettings.messagesBody, { text }) || text,
+          url: "/",
+          tag: `message-${appData.messages[0].id}`
+        });
+      }
       await writeAppData(appData);
       return sendJson(res, 200, { ok: true, messages: appData.messages });
+    }
+
+    if (body.action === "send-push") {
+      const title = String(body.title || "LA-Bowling TeamApp").trim().slice(0, 120);
+      const text = String(body.text || "").trim().slice(0, 240);
+      if (!text) return sendJson(res, 400, { error: "Push-Nachricht fehlt." });
+      const target = cleanTarget(body.target);
+      const employees = cleanEmployeeList(body.employees, appData.settings);
+      const recipients = messageRecipients(appData.settings, { target, employees });
+      if (!recipients.length) return sendJson(res, 400, { error: "Bitte mindestens einen Empfänger auswählen." });
+      const result = await sendPushToEmployees(appData, recipients, {
+        title,
+        body: text,
+        url: "/",
+        tag: `manual-push-${Date.now()}`
+      });
+      if (result.removed) await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, sent: result.sent || 0, removed: result.removed || 0, skipped: Boolean(result.skipped), reason: result.reason || "" });
+    }
+
+    if (body.action === "save-push-settings") {
+      appData.settings.pushSettings = cleanPushSettings(body.pushSettings, appData.settings.pushSettings);
+      await writeAppData(appData);
+      return sendJson(res, 200, {
+        ok: true,
+        settings: {
+          ...publicSettings(appData.settings),
+          invoiceNotificationTo: appData.settings.invoiceNotificationTo || ""
+        }
+      });
+    }
+
+    if (body.action === "send-invoice-test-mail") {
+      const to = String(body.to || appData.settings.invoiceNotificationTo || process.env.INVOICE_NOTIFICATION_TO || "").trim();
+      const date = String(body.date || new Date().toISOString().slice(0, 10)).trim();
+      const result = await sendInvoiceNotificationEmail({
+        to,
+        date,
+        customer: {
+          name: "Testkunde",
+          contact: "Testkontakt",
+          phone: "000000",
+          email: "test@example.com",
+          address: "Testadresse 1",
+          tip: "",
+          note: "Test-Mail aus dem Backoffice"
+        }
+      });
+      if (result?.ok) {
+        return sendJson(res, 200, {
+          ok: true,
+          sent: true,
+          to,
+          message: `Test-Mail an ${to} versendet.`
+        });
+      }
+      if (result?.skipped) {
+        return sendJson(res, 200, {
+          ok: true,
+          sent: false,
+          skipped: true,
+          reason: result.reason || "unbekannt",
+          message: result.reason === "missing-smtp-config"
+            ? "Test-Mail nicht versendet: SMTP in Vercel fehlt."
+            : result.reason === "nodemailer-missing"
+              ? "Test-Mail nicht versendet: Mail-Modul fehlt im Build."
+              : "Test-Mail nicht versendet."
+        });
+      }
+      return sendJson(res, 500, {
+        ok: false,
+        sent: false,
+        error: result?.error || "Test-Mail konnte nicht versendet werden."
+      });
     }
 
     if (body.action === "delete-message") {
@@ -41,11 +133,33 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 200, { ok: true, messages: appData.messages });
     }
 
+    if (body.action === "add-terminal-message") {
+      const text = String(body.text || "").trim().slice(0, 1000);
+      if (!text) return sendJson(res, 400, { error: "Nachricht fehlt." });
+      appData.terminalMessages ||= [];
+      appData.terminalMessages.unshift({
+        id: `terminal-msg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        text,
+        active: true,
+        createdAt: new Date().toISOString()
+      });
+      appData.terminalMessages = appData.terminalMessages.slice(0, 40);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, terminalMessages: appData.terminalMessages });
+    }
+
+    if (body.action === "delete-terminal-message") {
+      const id = String(body.id || "");
+      appData.terminalMessages = (appData.terminalMessages || []).filter((message) => message.id !== id);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, terminalMessages: appData.terminalMessages });
+    }
+
     if (body.action === "add-task-template") {
       const task = cleanTaskTemplate(body.task || {});
       if (!task.title) return sendJson(res, 400, { error: "Aufgabe fehlt." });
       appData.taskTemplates ||= [];
-      appData.taskTemplates.unshift(task);
+      appData.taskTemplates.push(task);
       await writeAppData(appData);
       return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
     }
@@ -53,6 +167,7 @@ module.exports = async function handler(req, res) {
     if (body.action === "delete-task-template") {
       const id = String(body.id || "");
       appData.taskTemplates = (appData.taskTemplates || []).filter((task) => task.id !== id);
+      rememberDeletedDefaultTasks(appData);
       await writeAppData(appData);
       return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
     }
@@ -71,6 +186,22 @@ module.exports = async function handler(req, res) {
       appData.reminderTemplates = (appData.reminderTemplates || []).filter((reminder) => reminder.id !== id);
       await writeAppData(appData);
       return sendJson(res, 200, { ok: true, reminderTemplates: appData.reminderTemplates });
+    }
+
+    if (body.action === "add-cleaning-template") {
+      const task = cleanCleaningTemplate(body.task || {});
+      if (!task.title) return sendJson(res, 400, { error: "Reinigungsaufgabe fehlt." });
+      appData.cleaningTemplates ||= [];
+      appData.cleaningTemplates.unshift(task);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, cleaningTemplates: appData.cleaningTemplates });
+    }
+
+    if (body.action === "delete-cleaning-template") {
+      const id = String(body.id || "");
+      appData.cleaningTemplates = (appData.cleaningTemplates || []).filter((task) => task.id !== id);
+      await writeAppData(appData);
+      return sendJson(res, 200, { ok: true, cleaningTemplates: appData.cleaningTemplates });
     }
 
     if (Array.isArray(body.employees)) {
@@ -111,8 +242,21 @@ module.exports = async function handler(req, res) {
     if (body.employeeRoles && typeof body.employeeRoles === "object") {
       appData.settings.employeeRoles = body.employeeRoles;
     }
+    if (body.employeeTipSettings && typeof body.employeeTipSettings === "object") {
+      appData.settings.employeeTipSettings = cleanEmployeeTipSettings(body.employeeTipSettings, appData.settings);
+    }
+    if (Array.isArray(body.fixedEmployees)) {
+      const currentEmployees = new Set(appData.settings.employees || []);
+      appData.settings.fixedEmployees = [...new Set(body.fixedEmployees.map(String).map((name) => name.trim()).filter((name) => name && currentEmployees.has(name)))];
+    }
     if (Array.isArray(body.availabilityExemptEmployees)) {
       appData.settings.availabilityExemptEmployees = [...new Set(body.availabilityExemptEmployees.map(String).map((name) => name.trim()).filter(Boolean))];
+    }
+    if (typeof body.availabilityTargetMonth === "string" && /^\d{4}-\d{2}$/.test(body.availabilityTargetMonth.trim())) {
+      appData.settings.availabilityTargetMonth = body.availabilityTargetMonth.trim();
+    }
+    if (body.availabilitySubmissionOpen !== undefined) {
+      appData.settings.availabilitySubmissionOpen = body.availabilitySubmissionOpen !== false;
     }
     if (Array.isArray(body.adminEmployees)) {
       appData.settings.adminEmployees = [...new Set(body.adminEmployees.map(String).map((name) => name.trim()).filter(Boolean))];
@@ -127,7 +271,11 @@ module.exports = async function handler(req, res) {
       appData.settings.dayReportFields = cleanVisibility(body.dayReportFields, ["ecTotal", "barBowling", "barGastro", "barTotal", "invoiceCustomers", "expenses", "documents", "notes", "preparation", "handovers", "extraEmployees"]);
     }
     if (Array.isArray(body.taskTemplates)) {
-      appData.taskTemplates = body.taskTemplates.map(cleanTaskTemplate).filter((task) => task.title);
+      appData.taskTemplates = sortTaskTemplates(body.taskTemplates.map(cleanTaskTemplate).filter((task) => task.title));
+      rememberDeletedDefaultTasks(appData);
+    }
+    if (Array.isArray(body.cleaningTemplates)) {
+      appData.cleaningTemplates = body.cleaningTemplates.map(cleanCleaningTemplate).filter((task) => task.title);
     }
     if (typeof body.businessName === "string" && body.businessName.trim()) {
       appData.settings.businessName = body.businessName.trim();
@@ -155,13 +303,43 @@ module.exports = async function handler(req, res) {
     if (typeof body.invoiceNotificationTo === "string") {
       appData.settings.invoiceNotificationTo = body.invoiceNotificationTo.trim().slice(0, 180) || appData.settings.invoiceNotificationTo || "pvo65@outlook.de";
     }
+    if (body.pushSettings && typeof body.pushSettings === "object") {
+      appData.settings.pushSettings = cleanPushSettings(body.pushSettings, appData.settings.pushSettings);
+    }
 
     await writeAppData(appData);
-    sendJson(res, 200, { ok: true, settings: publicSettings(appData.settings) });
+    sendJson(res, 200, {
+      ok: true,
+      settings: {
+        ...publicSettings(appData.settings),
+        invoiceNotificationTo: appData.settings.invoiceNotificationTo || ""
+      }
+    });
   } catch (error) {
     handleError(res, error);
   }
 };
+
+function rememberDeletedDefaultTasks(appData) {
+  const currentIds = new Set((appData.taskTemplates || []).map((task) => task.id).filter(Boolean));
+  const deleted = new Set(appData.deletedTaskTemplateIds || []);
+  for (const task of defaultData.taskTemplates || []) {
+    if (!currentIds.has(task.id)) deleted.add(task.id);
+  }
+  appData.deletedTaskTemplateIds = [...deleted];
+}
+
+function sortTaskTemplates(tasks = []) {
+  return tasks
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.task.createdAt || "") || 0;
+      const bTime = Date.parse(b.task.createdAt || "") || 0;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.index - b.index;
+    })
+    .map(({ task }) => task);
+}
 
 function cleanVisibility(value, keys) {
   return Object.fromEntries(keys.map((key) => [key, value[key] !== false]));
@@ -170,6 +348,87 @@ function cleanVisibility(value, keys) {
 function cleanTarget(value) {
   const text = String(value || "all").trim();
   return ["all", "Counter", "Service", "Kueche", "Reinigung", "Mechanik", "employees"].includes(text) ? text : "all";
+}
+
+function cleanEmployeeList(value, settings = {}) {
+  const valid = new Set((settings.employees || []).map(String));
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map(String)
+    .map((name) => name.trim())
+    .filter((name) => name && valid.has(name)))];
+}
+
+function cleanEmployeeTipSettings(value = {}, settings = {}) {
+  const currentEmployees = new Set((settings.employees || []).map(String));
+  const result = {};
+  for (const [name, setting] of Object.entries(value || {})) {
+    const employee = String(name || "").trim();
+    if (!employee || !currentEmployees.has(employee)) continue;
+    const factor = Number(String(setting?.factor ?? "").replace(",", "."));
+    result[employee] = {
+      eligible: setting?.eligible === true,
+      factor: Number.isFinite(factor) ? Math.max(0.1, Math.min(1, Math.round(factor * 1000) / 1000)) : 1
+    };
+  }
+  return result;
+}
+
+function cleanPushSettings(value = {}, fallback = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const read = (key) => Object.prototype.hasOwnProperty.call(source, key)
+    ? source[key] !== false
+    : fallback?.[key] !== false;
+  return {
+    schedulePublished: read("schedulePublished"),
+    assignmentsTomorrow: read("assignmentsTomorrow"),
+    messages: read("messages"),
+    schedulePublishedTitle: cleanPushText(source.schedulePublishedTitle, fallback?.schedulePublishedTitle || "LA-Bowling - Neuer Dienstplan online"),
+    schedulePublishedBody: cleanPushText(source.schedulePublishedBody, fallback?.schedulePublishedBody || "Der neue Dienstplan ist online. Bitte in der TeamApp prüfen."),
+    assignmentsTomorrowTitle: cleanPushText(source.assignmentsTomorrowTitle, fallback?.assignmentsTomorrowTitle || "LA-Bowling - Einteilung für morgen ist Online"),
+    assignmentsTomorrowBody: cleanPushText(source.assignmentsTomorrowBody, fallback?.assignmentsTomorrowBody || "Bitte prüfe deine Startzeit in der TeamApp."),
+    messagesTitle: cleanPushText(source.messagesTitle, fallback?.messagesTitle || "LA-Bowling - Du hast eine neue Nachricht im Dashboard"),
+    messagesBody: cleanPushText(source.messagesBody, fallback?.messagesBody || "{{text}}")
+  };
+}
+
+function cleanPushText(value, fallback = "") {
+  const text = String(value ?? "").trim();
+  return text ? text.slice(0, 240) : String(fallback || "").trim().slice(0, 240);
+}
+
+function pushTemplate(template, values = {}) {
+  return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    const value = values[key];
+    return value == null ? "" : String(value);
+  }).trim();
+}
+
+function pushSettingEnabled(settings = {}, key) {
+  return (settings.pushSettings || {})[key] !== false;
+}
+
+function messageRecipients(settings = {}, message = {}) {
+  const employees = (settings.employees || []).map(String).filter(Boolean);
+  if (message.target === "all") return employees;
+  if (message.target === "employees") return cleanEmployeeList(message.employees, settings);
+  return employees.filter((employee) => employeeMatchesTarget(settings, employee, message.target));
+}
+
+function employeeMatchesTarget(settings = {}, employee, target) {
+  const wanted = normalizeDepartment(target);
+  const departments = (settings.employeeDepartments?.[employee] || []).map(normalizeDepartment);
+  const role = normalizeDepartment(settings.employeeRoles?.[employee] || "");
+  return departments.includes(wanted) || role === wanted;
+}
+
+function normalizeDepartment(value) {
+  const clean = String(value || "").trim().toLowerCase();
+  if (clean.startsWith("counter")) return "Counter";
+  if (clean.startsWith("service")) return "Service";
+  if (clean.startsWith("kÃ¼che") || clean.startsWith("küche") || clean.startsWith("kueche") || clean.startsWith("kuche")) return "Kueche";
+  if (clean.startsWith("reinigung")) return "Reinigung";
+  if (clean.startsWith("mechanik")) return "Mechanik";
+  return String(value || "").trim();
 }
 
 function cleanTaskTemplate(task) {
@@ -187,8 +446,15 @@ function cleanTaskTemplate(task) {
     intervalDays: Math.max(1, Math.min(365, Number(task.intervalDays || 1))),
     weekdays: Array.isArray(task.weekdays) ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6) : [],
     dayOfMonth: Math.min(31, Math.max(1, Number(task.dayOfMonth || 1))),
-    createdAt: new Date().toISOString()
+    popupEnabled: task.popupEnabled === true || task.popupEnabled === "true",
+    popupTime: cleanTime(task.popupTime),
+    createdAt: String(task.createdAt || new Date().toISOString()).slice(0, 40)
   };
+}
+
+function cleanTime(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
 }
 
 function cleanReminder(reminder) {
@@ -199,6 +465,17 @@ function cleanReminder(reminder) {
     intervalMinutes: Math.max(5, Math.min(360, Number(reminder.intervalMinutes || 60))),
     active: reminder.active !== false,
     createdAt: new Date().toISOString()
+  };
+}
+
+function cleanCleaningTemplate(task) {
+  return {
+    id: String(task.id || `cleaning-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    title: String(task.title || "").trim().slice(0, 180),
+    note: String(task.note || "").trim().slice(0, 600),
+    frequency: "weekly",
+    weekdays: [],
+    createdAt: String(task.createdAt || new Date().toISOString()).slice(0, 40)
   };
 }
 

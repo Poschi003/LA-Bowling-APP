@@ -9,36 +9,85 @@
   employeeToken: "",
   adminToken: "",
   hasBackofficeAccess: false,
+  pinChangeRequired: false,
   isChef: false,
   chefTab: "reports",
   timesheets: {},
   messages: [],
+  terminalMessages: [],
+  pushPublicKey: "",
+  pushSubscriptionActive: false,
   dayReports: {},
+  assignmentTimes: {},
+  assignmentSchedules: {},
   missingAvailability: [],
   swaps: { open: [], mine: [], myShifts: [], admin: [] },
   availabilityChangeRequests: [],
   weather: null,
   weatherLoading: false,
   terminalToken: "",
-  terminalTab: "service",
+  terminalTab: "tasks",
   terminalDate: "",
   terminalEntries: {},
   terminalReport: {},
+  tipOverview: { employees: [], totalEarned: "0.00", totalPaid: "0.00", totalOpen: "0.00" },
   terminalSchedule: {},
   terminalTasks: [],
   terminalReminders: [],
+  terminalCleaningTemplates: [],
+  terminalWeeklyCleaningCompletions: {},
   pendingToiletCheck: "",
   pendingReminder: null,
+  terminalReminderRefreshInFlight: false,
+  timesheetRefreshInFlight: false,
   terminalDayMetaEditing: false,
+  terminalCorrectionMode: false,
   invoiceTerminalToken: window.localStorage?.getItem("invoiceTerminalToken") || "",
   invoiceDate: todayKey(),
   invoiceReport: {},
+  customerDirectory: [],
+  offers: [],
+  offerDraft: null,
+  offerDraftId: "",
+  offerDraftDirty: false,
   taskTemplates: [],
+  cleaningTemplates: [],
   reminderTemplates: [],
   plannerEditWeeks: []
 };
 
 const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+const defaultReminderTemplates = [
+  {
+    id: "default-toilet-reminder",
+    text: "Toiletten-Kontrolle durchführen",
+    startAfterOpeningMinutes: 60,
+    intervalMinutes: 60,
+    active: true
+  }
+];
+const defaultCleaningPlans = [
+  {
+    group: "weekly",
+    label: "Wöchentlich",
+    tasks: [
+      { id: "weekly-fridges", title: "Kühlungen und Getränkelager reinigen/kontrollieren" },
+      { id: "weekly-shoe-racks", title: "Schuhregale und Leihschuhe gründlich reinigen" },
+      { id: "weekly-storage", title: "Lagerflächen ordnen und Boden reinigen" },
+      { id: "weekly-glass", title: "Glasflächen, Türen und Eingangsbereich gründlich reinigen" },
+      { id: "weekly-sanitary", title: "Sanitärbereich Grundkontrolle dokumentieren" }
+    ]
+  }
+];
+const defaultCleaningTemplates = defaultCleaningPlans.flatMap((group) =>
+  group.tasks.map((task) => ({
+    ...task,
+    frequency: "weekly",
+    weekdays: [],
+    note: "",
+    createdAt: "2026-05-20T00:00:00.000Z"
+  }))
+);
 const motivationQuotes = [
   "Gemeinsam wird der Tag leichter.",
   "Ein gutes Team merkt man im laufenden Betrieb.",
@@ -76,7 +125,13 @@ const defaultData = {
       "Kevin Leicht": ["Counter", "Service"]
     },
     employeeRoles: {},
+    employeeTipSettings: {
+      "Renate Leicht": { eligible: true, factor: 0.675 }
+    },
+    fixedEmployees: [],
     availabilityExemptEmployees: [],
+    availabilityTargetMonth: nextMonthValue(),
+    availabilitySubmissionOpen: true,
     adminEmployees: [],
     positions: ["Counter 1", "Counter 2", "Service 1", "Service 2", "Service 3", "Service 4", "Service 5", "Kueche 1", "Kueche 2", "Spueler", "Reinigung", "Mechanik"],
     chefViewSections: {
@@ -102,18 +157,50 @@ const defaultData = {
     },
     scheduleAutoDeleteDays: 14,
     hourlyRate: 25,
-    invoiceNotificationTo: "pvo65@outlook.de"
+    invoiceNotificationTo: "pvo65@outlook.de",
+    pushSettings: {
+      schedulePublished: true,
+      assignmentsTomorrow: true,
+      messages: true,
+      schedulePublishedTitle: "LA-Bowling - Neuer Dienstplan online",
+      schedulePublishedBody: "Der neue Dienstplan ist online. Bitte in der TeamApp prüfen.",
+      assignmentsTomorrowTitle: "LA-Bowling - Einteilung für morgen ist Online",
+      assignmentsTomorrowBody: "Bitte prüfe deine Startzeit in der TeamApp.",
+      messagesTitle: "LA-Bowling - Du hast eine neue Nachricht im Dashboard",
+      messagesBody: "{{text}}"
+    }
   },
+  reminderTemplates: defaultReminderTemplates,
   availability: {},
   schedules: {},
   timesheets: {},
+  tipOverview: { employees: [], totalEarned: "0.00", totalPaid: "0.00", totalOpen: "0.00" },
+  cleaningTemplates: defaultCleaningTemplates,
   messages: [],
+  terminalMessages: [],
+  customerDirectory: [],
+  offers: [],
   dayReports: {},
+  assignmentTimes: {},
+  assignmentSchedules: {},
   availabilityChangeRequests: []
 };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const TIP_ELIGIBLE_AREAS = ["Counter", "Service", "Kueche", "Spueler"];
+const GERMAN_DISPLAY_REPLACEMENTS = [
+  [/Ã„/g, "Ä"], [/Ã–/g, "Ö"], [/Ãœ/g, "Ü"], [/Ã¤/g, "ä"], [/Ã¶/g, "ö"], [/Ã¼/g, "ü"], [/ÃŸ/g, "ß"],
+  [/Kueche/g, "Küche"], [/kueche/g, "küche"], [/Kuechen/g, "Küchen"], [/kuechen/g, "küchen"],
+  [/Spueler/g, "Spüler"], [/spueler/g, "spüler"], [/fuer/g, "für"], [/Fuer/g, "Für"],
+  [/Umsaetze/g, "Umsätze"], [/umsaetze/g, "umsätze"], [/gehoeren/g, "gehören"],
+  [/Verfuegbarkeit/g, "Verfügbarkeit"], [/verfuegbarkeit/g, "verfügbarkeit"],
+  [/Aenderung/g, "Änderung"], [/aenderung/g, "änderung"], [/geaendert/g, "geändert"],
+  [/veroeffentlicht/g, "veröffentlicht"], [/Veroeffentlicht/g, "Veröffentlicht"],
+  [/geoeffnet/g, "geöffnet"], [/Geoeffnet/g, "Geöffnet"], [/oeffnen/g, "öffnen"], [/Oeffnen/g, "Öffnen"],
+  [/hinzugefuegt/g, "hinzugefügt"], [/ausfuehrende/g, "ausführende"], [/auswaehlen/g, "auswählen"],
+  [/pruefen/g, "prüfen"], [/loeschen/g, "löschen"], [/geloescht/g, "gelöscht"]
+];
 
 function currentMonthValue() {
   return monthValue(new Date());
@@ -161,6 +248,10 @@ function formatDate(dateString) {
   return `${weekdays[date.getDay()]}, ${date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}`;
 }
 
+function formatNumericDate(dateString) {
+  return new Date(`${dateString}T12:00:00`).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 function formatLongDate(dateString) {
   return new Date(`${dateString}T12:00:00`).toLocaleDateString("de-DE", {
     weekday: "long",
@@ -184,13 +275,18 @@ function formatDateTime(value) {
 
 function taskFrequencyLabel(task = {}) {
   const category = taskCategoryLabel(task.category);
-  if (task.frequency === "daily") return `${category} | Täglich`;
-  if (task.frequency === "weekly") return `${category} | Wöchentlich ${((task.weekdays || []).map((day) => weekdays[Number(day)]).filter(Boolean).join(", ") || "")}`;
-  if (task.frequency === "monthly") return `${category} | Monatlich am ${Number(task.dayOfMonth || 1)}.`;
-  if (task.frequency === "interval") return `${category} | Alle ${Number(task.intervalDays || 1)} Tage ab ${task.startDate ? formatDate(task.startDate) : formatDate(task.date || todayKey())}${task.endDate ? ` bis ${formatDate(task.endDate)}` : ""}`;
-  if (task.frequency === "next-day") return `${category} | Für nächsten Tag${task.date ? ` (${formatDate(task.date)})` : ""}`;
-  if (task.frequency === "once") return `${category} | Einmalig${task.date ? ` (${formatDate(task.date)})` : ""}`;
+  const popup = taskPopupLabel(task);
+  if (task.frequency === "daily") return `${category} | Täglich${popup}`;
+  if (task.frequency === "weekly") return `${category} | Wöchentlich ${((task.weekdays || []).map((day) => weekdays[Number(day)]).filter(Boolean).join(", ") || "")}${popup}`;
+  if (task.frequency === "monthly") return `${category} | Monatlich am ${Number(task.dayOfMonth || 1)}.${popup}`;
+  if (task.frequency === "interval") return `${category} | Alle ${Number(task.intervalDays || 1)} Tage ab ${task.startDate ? formatDate(task.startDate) : formatDate(task.date || todayKey())}${task.endDate ? ` bis ${formatDate(task.endDate)}` : ""}${popup}`;
+  if (task.frequency === "next-day") return `${category} | Für nächsten Tag${task.date ? ` (${formatDate(task.date)})` : ""}${popup}`;
+  if (task.frequency === "once") return `${category} | Einmalig${task.date ? ` (${formatDate(task.date)})` : ""}${popup}`;
   return "Aufgabe";
+}
+
+function taskPopupLabel(task = {}) {
+  return task.popupEnabled && task.popupTime ? ` | Popup ${task.popupTime}` : "";
 }
 
 function taskCategoryLabel(value) {
@@ -205,6 +301,12 @@ function emptyDay() {
 
 function todayKey() {
   return isoDate(new Date());
+}
+
+function yesterdayKey() {
+  const date = new Date();
+  date.setDate(date.getDate() - 1);
+  return isoDate(date);
 }
 
 function dailyQuote(dateKey) {
@@ -278,7 +380,8 @@ function renderWeekSections(month, renderer) {
 }
 
 function renderPublishedWeekSections(month) {
-  const scheduleDays = state.schedule?.days || {};
+  const schedule = arguments.length > 1 ? arguments[1] : state.schedule;
+  const scheduleDays = schedule?.days || {};
   const weeks = groupedMonthWeeks(month).filter((week) => (
     week.dates.some((date) => scheduleDays[isoDate(date)])
   ));
@@ -289,10 +392,41 @@ function renderPublishedWeekSections(month) {
         <span class="week-state">veröffentlicht</span>
       </summary>
       <div class="week-days">
-        ${week.dates.map((date) => renderScheduleDay(date, { compact: true, collapsible: true })).join("")}
+        ${week.dates.map((date) => renderScheduleDay(date, { compact: true, collapsible: true, schedule })).join("")}
       </div>
     </details>
   `).join("");
+}
+
+function publishedScheduleDays(schedule = {}) {
+  const days = schedule.days || {};
+  if (!schedule.publishedWeeks || !Object.keys(schedule.publishedWeeks).length) return days;
+  return Object.fromEntries(Object.entries(days).filter(([dateKey]) => schedule.publishedWeeks?.[weekStartKey(dateKey)]));
+}
+
+function scheduleHasPublishedDays(schedule = {}) {
+  return Object.keys(publishedScheduleDays(schedule)).length > 0;
+}
+
+function chefPublishedSchedulesHtml() {
+  const schedules = Object.entries(state.allSchedules || {})
+    .filter(([, schedule]) => schedule && schedule.published && scheduleHasPublishedDays(schedule))
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (!schedules.length) {
+    return `<p class="hint">Es ist noch kein Dienstplan veröffentlicht.</p>`;
+  }
+  return schedules.map(([month, schedule]) => {
+    const publishedSchedule = { ...schedule, days: publishedScheduleDays(schedule) };
+    return `
+      <details class="chef-schedule-month" ${month === state.selectedMonth ? "open" : ""}>
+        <summary>
+          <strong>${formatMonth(month)}</strong>
+          <span>${Object.keys(publishedSchedule.days || {}).length} Tage veröffentlicht</span>
+        </summary>
+        ${renderPublishedWeekSections(month, publishedSchedule)}
+      </details>
+    `;
+  }).join("");
 }
 
 async function api(path, options = {}) {
@@ -323,7 +457,7 @@ async function loadState() {
   state.schedule = state.schedule || { month: state.selectedMonth, published: false, days: {} };
   state.allSchedules = state.allSchedules || {};
   renderAll();
-  const params = new URLSearchParams({ month: state.selectedMonth, nextMonth: nextMonthValue() });
+  const params = new URLSearchParams({ month: state.selectedMonth, nextMonth: availabilityMonthValue(), availabilityMonth: availabilityMonthValue() });
   if (state.employeeToken) params.set("employeeToken", state.employeeToken);
   if (state.adminToken) params.set("adminToken", state.adminToken);
   const data = await api(`/api/state?${params.toString()}`);
@@ -333,13 +467,27 @@ async function loadState() {
   state.allSchedules = data.schedules || {};
   state.timesheets = data.timesheets || {};
   state.messages = data.messages || [];
+  state.terminalMessages = data.terminalMessages || [];
+  state.pushPublicKey = data.pushPublicKey || "";
+  state.pushSubscriptionActive = Boolean(data.pushSubscriptionActive);
   state.taskTemplates = data.taskTemplates || [];
-  state.reminderTemplates = data.reminderTemplates || [];
+  state.cleaningTemplates = normalizeCleaningTemplates(data.cleaningTemplates);
+  state.reminderTemplates = normalizeReminderTemplates(data.reminderTemplates);
+  state.customerDirectory = normalizeCustomerDirectory(data.customerDirectory || state.customerDirectory || []);
+  state.offers = normalizeOffersClient(data.offers || state.offers || []);
+  if (!state.offerDraft || !state.offers.some((offer) => offer.id === state.offerDraft?.id)) {
+    state.offerDraft = state.offers[0] ? cloneData(state.offers[0]) : createBlankOfferDraft();
+    state.offerDraftId = state.offerDraft.id;
+  }
+  state.offerDraftDirty = false;
   state.dayReports = data.dayReports || {};
+  state.assignmentTimes = normalizeAssignmentTimes(data.assignmentTimes || {});
+  state.assignmentSchedules = data.assignmentSchedules || {};
   state.weather = data.weather || state.weather;
   state.isChef = Boolean(data.isChef);
   state.missingAvailability = data.missingAvailability || [];
   state.availabilityChangeRequests = data.availabilityChangeRequests || [];
+  await ensurePushSubscriptionSynced();
   renderAll();
   if (!state.weather || state.weather.error) loadWeather().catch(() => {});
   loadSwaps().catch(() => {});
@@ -383,6 +531,44 @@ function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function germanDisplayText(value) {
+  return GERMAN_DISPLAY_REPLACEMENTS.reduce(
+    (text, [pattern, replacement]) => text.replace(pattern, replacement),
+    String(value == null ? "" : value)
+  );
+}
+
+function hasGermanDisplayReplacement(value) {
+  const text = String(value || "");
+  return GERMAN_DISPLAY_REPLACEMENTS.some(([pattern]) => {
+    pattern.lastIndex = 0;
+    return pattern.test(text);
+  });
+}
+
+function normalizeGermanDisplay(root = document.body) {
+  if (!root || typeof document.createTreeWalker !== "function") return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!node.nodeValue || parent?.matches("script, style, textarea")) return NodeFilter.FILTER_REJECT;
+      return hasGermanDisplayReplacement(node.nodeValue)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    }
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach((node) => {
+    node.nodeValue = germanDisplayText(node.nodeValue);
+  });
+  root.querySelectorAll("input[placeholder], textarea[placeholder], [title], [aria-label]").forEach((element) => {
+    ["placeholder", "title", "aria-label"].forEach((attribute) => {
+      if (element.hasAttribute(attribute)) element.setAttribute(attribute, germanDisplayText(element.getAttribute(attribute)));
+    });
+  });
+}
+
 function mergeData(value) {
   const base = cloneData(defaultData);
   const incomingSettings = value && value.settings ? value.settings : {};
@@ -399,8 +585,15 @@ function mergeData(value) {
       employeeRoles: {
         ...(incomingSettings.employeeRoles || {})
       },
+      employeeTipSettings: normalizeEmployeeTipSettings({
+        ...base.settings.employeeTipSettings,
+        ...(incomingSettings.employeeTipSettings || {})
+      }),
+      fixedEmployees: incomingSettings.fixedEmployees || base.settings.fixedEmployees || [],
       availabilityExemptEmployees: incomingSettings.availabilityExemptEmployees || base.settings.availabilityExemptEmployees || []
       ,
+      availabilityTargetMonth: normalizeMonthValue(incomingSettings.availabilityTargetMonth) || base.settings.availabilityTargetMonth,
+      availabilitySubmissionOpen: incomingSettings.availabilitySubmissionOpen !== false,
       adminEmployees: incomingSettings.adminEmployees || base.settings.adminEmployees || [],
       positions: ensureRequiredPositions(incomingSettings.positions || base.settings.positions || []),
       chefViewSections: {
@@ -419,15 +612,24 @@ function mergeData(value) {
         incomingSettings.hourlyRate,
         base.settings.hourlyRate
       ),
-      invoiceNotificationTo: String(
-        incomingSettings.invoiceNotificationTo || base.settings.invoiceNotificationTo || "pvo65@outlook.de"
-      ).trim().slice(0, 180)
+      invoiceNotificationTo: String(incomingSettings.invoiceNotificationTo || base.settings.invoiceNotificationTo || "pvo65@outlook.de").trim().slice(0, 180),
+      pushSettings: {
+        ...base.settings.pushSettings,
+        ...(incomingSettings.pushSettings || {})
+      }
     },
     availability: value && value.availability ? value.availability : base.availability,
     schedules: value && value.schedules ? value.schedules : base.schedules,
     timesheets: value && value.timesheets ? value.timesheets : base.timesheets,
+    tipOverview: value && value.tipOverview ? value.tipOverview : base.tipOverview,
+    cleaningTemplates: normalizeCleaningTemplates(Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates),
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
+    terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
+    customerDirectory: normalizeCustomerDirectory(value?.customerDirectory || base.customerDirectory),
+    offers: normalizeOffersClient(value?.offers || base.offers || []),
     dayReports: value && value.dayReports ? value.dayReports : base.dayReports,
+    assignmentTimes: normalizeAssignmentTimes(value?.assignmentTimes || base.assignmentTimes),
+    assignmentSchedules: value && value.assignmentSchedules ? value.assignmentSchedules : base.assignmentSchedules,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };
   if (!merged.settings.businessName || merged.settings.businessName === "Dienstplan") {
@@ -438,6 +640,29 @@ function mergeData(value) {
 
 function normalizeSettings(settings) {
   return mergeData({ settings }).settings;
+}
+
+function normalizeAssignmentTimes(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  Object.entries(value).forEach(([dateKey, employees]) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || "")) || !employees || typeof employees !== "object" || Array.isArray(employees)) return;
+    const day = {};
+    Object.entries(employees).forEach(([employee, item]) => {
+      const cleanEmployee = String(employee || "").trim();
+      if (!cleanEmployee) return;
+      const from = cleanTimeValue(item?.from);
+      const note = String(item?.note || "").trim().slice(0, 240);
+      if (from || note) day[cleanEmployee] = { from, to: "", note };
+    });
+    if (Object.keys(day).length) result[dateKey] = day;
+  });
+  return result;
+}
+
+function cleanTimeValue(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
 }
 
 function normalizeScheduleAutoDeleteDays(value, fallback = 14) {
@@ -456,14 +681,440 @@ function currentHourlyRate() {
   return normalizeHourlyRate(state.settings?.hourlyRate, defaultData.settings.hourlyRate);
 }
 
+function normalizeMonthValue(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : "";
+}
+
+function availabilityMonthValue() {
+  return normalizeMonthValue(state.settings?.availabilityTargetMonth) || nextMonthValue();
+}
+
+function normalizeReminderTemplates(reminders) {
+  const list = Array.isArray(reminders) ? reminders.filter((reminder) => reminder && reminder.active !== false) : [];
+  return list.length ? list : cloneData(defaultReminderTemplates);
+}
+
+function normalizeCleaningTemplates(tasks) {
+  if (!Array.isArray(tasks)) return cloneData(defaultCleaningTemplates);
+  return tasks.map(cleanCleaningTemplateClient).filter((task) => task.title && task.frequency === "weekly");
+}
+
+function normalizeCustomerDirectory(customers) {
+  const byKey = new Map();
+  (Array.isArray(customers) ? customers : []).forEach((customer) => {
+    const entry = customerDirectoryEntry(customer);
+    const key = customerDirectoryKey(entry);
+    if (!key) return;
+    byKey.set(key, { ...(byKey.get(key) || {}), ...entry });
+  });
+  return [...byKey.values()]
+    .filter((customer) => customer.name)
+    .sort((a, b) => a.name.localeCompare(b.name, "de"))
+    .slice(0, 500);
+}
+
+function customerDirectoryEntry(item = {}) {
+  return {
+    id: String(item.id || customerDirectoryKey(item) || cryptoId()),
+    name: String(item.name || "").trim().slice(0, 160),
+    contact: String(item.contact || "").trim().slice(0, 160),
+    phone: String(item.phone || "").trim().slice(0, 80),
+    email: String(item.email || "").trim().slice(0, 180),
+    address: String(item.address || "").trim().slice(0, 600),
+    tip: String(item.tip || "").trim().slice(0, 160),
+    note: String(item.note || "").trim().slice(0, 600),
+    createdAt: String(item.createdAt || new Date().toISOString()),
+    updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString())
+  };
+}
+
+function customerDirectoryKey(item = {}) {
+  const email = String(item.email || "").trim().toLowerCase();
+  if (email) return `mail:${email}`;
+  const name = String(item.name || "").trim().toLowerCase();
+  const phone = String(item.phone || "").replace(/\s+/g, "");
+  return name ? `name:${name}|${phone}` : "";
+}
+
+function cleanCleaningTemplateClient(task = {}) {
+  return {
+    id: String(task.id || `cleaning-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    title: String(task.title || "").trim().slice(0, 180),
+    note: String(task.note || "").trim().slice(0, 600),
+    frequency: "weekly",
+    weekdays: [],
+    createdAt: String(task.createdAt || new Date().toISOString())
+  };
+}
+
+const OFFER_BUFFET_TEMPLATES = {
+  tradition: {
+    name: "Tradition",
+    pricePerPerson: 35.9,
+    categories: {
+      vorspeisen: [
+        { name: "Gegrillte Antipasti von Zucchini, Paprika und Aubergine" },
+        { name: "Tomate-Mozzarella mit frischem Basilikum" },
+        { name: "Rucola mit Parmesanspänen & Balsamico" },
+        { name: "Ciabatta" }
+      ],
+      fleisch: [
+        { name: "Zürcher Geschnetzeltes von der Pute mit Champignons und Rahmsauce" }
+      ],
+      fisch: [
+        { name: "Tagliatelle mit zartem Lachs in leichter Sauce" }
+      ],
+      vegetarisch: [
+        { name: "Spinatknödel mit brauner Butter" }
+      ],
+      suppen: [
+        { name: "Suppe nach Tagesempfehlung" }
+      ],
+      dessert: [
+        { name: "Classic New York Cheesecake mit fruchtigem Himbeer-Coulis" }
+      ]
+    }
+  },
+  elegant: {
+    name: "Elegant",
+    pricePerPerson: 39.9,
+    categories: {
+      vorspeisen: [
+        { name: "Feine Antipasti-Auswahl" },
+        { name: "Räucherlachs mit Zitronencreme" },
+        { name: "Blattsalat mit Balsamico-Dressing" }
+      ],
+      fleisch: [
+        { name: "Kalbsrahmgeschnetzeltes mit feinen Champignons" },
+        { name: "Hähnchenbrust mit Kräutersauce" }
+      ],
+      fisch: [
+        { name: "Gebratener Lachs auf Gemüsebett" }
+      ],
+      vegetarisch: [
+        { name: "Gemüsegratin mit Kräuterkruste" }
+      ],
+      suppen: [
+        { name: "Cremige Gemüsesuppe" }
+      ],
+      dessert: [
+        { name: "Panna Cotta mit Beerenragout" }
+      ]
+    }
+  },
+  festlich: {
+    name: "Festlich",
+    pricePerPerson: 44.9,
+    categories: {
+      vorspeisen: [
+        { name: "Carpaccio vom Rind mit Parmesan" },
+        { name: "Antipasti und Brotvariation" }
+      ],
+      fleisch: [
+        { name: "Rinderbraten mit Portweinsauce" },
+        { name: "Putenbraten mit feiner Rahmsauce" }
+      ],
+      fisch: [
+        { name: "Lachsfilet mit Kräuterkruste" }
+      ],
+      vegetarisch: [
+        { name: "Mediterrane Gemüsevariation" }
+      ],
+      suppen: [
+        { name: "Tomaten-Basilikum-Suppe" }
+      ],
+      dessert: [
+        { name: "Schokoladenmousse mit frischer Frucht" }
+      ]
+    }
+  },
+  modern: {
+    name: "Modern",
+    pricePerPerson: 37.9,
+    categories: {
+      vorspeisen: [
+        { name: "Bunte Salatbar" },
+        { name: "Fingerfood mit Dips" }
+      ],
+      fleisch: [
+        { name: "Pulled Chicken mit BBQ-Sauce" },
+        { name: "Rinderschmorbraten mit Jus" }
+      ],
+      fisch: [
+        { name: "Lachs mit Zitronen-Kräuter-Kruste" }
+      ],
+      vegetarisch: [
+        { name: "Cremiges Risotto mit Gemüse" }
+      ],
+      suppen: [
+        { name: "Suppe des Tages" }
+      ],
+      dessert: [
+        { name: "Mousse au Chocolat" },
+        { name: "Obstsalat" }
+      ]
+    }
+  }
+};
+const OFFER_CATEGORY_ORDER = ["vorspeisen", "fleisch", "fisch", "vegetarisch", "suppen", "dessert"];
+const OFFER_CATEGORY_LABELS = {
+  vorspeisen: "Vorspeisen",
+  fleisch: "Fleisch",
+  fisch: "Fisch",
+  vegetarisch: "Vegetarisch",
+  suppen: "Suppen",
+  dessert: "Dessert"
+};
+
+function normalizeOffersClient(offers = []) {
+  return (Array.isArray(offers) ? offers : [])
+    .map((offer) => normalizeOfferClient(offer))
+    .filter((offer) => offer.customerName || offer.title || offer.eventDate || offer.createdAt)
+    .sort((a, b) => {
+      const aTime = Date.parse(a.updatedAt || a.createdAt || "") || 0;
+      const bTime = Date.parse(b.updatedAt || b.createdAt || "") || 0;
+      if (a.archived !== b.archived) return a.archived ? 1 : -1;
+      return bTime - aTime;
+    });
+}
+
+function normalizeOfferClient(offer = {}) {
+  const buffet = offer.buffet && typeof offer.buffet === "object" ? offer.buffet : {};
+  return {
+    id: String(offer.id || `offer-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    archived: offer.archived === true,
+    createdAt: String(offer.createdAt || new Date().toISOString()),
+    updatedAt: String(offer.updatedAt || offer.createdAt || new Date().toISOString()),
+    title: String(offer.title || offer.customerName || "Angebot").trim().slice(0, 120),
+    offerDate: cleanOfferDateValue(offer.offerDate),
+    eventDate: cleanOfferDateValue(offer.eventDate),
+    customerName: String(offer.customerName || "").trim().slice(0, 160),
+    customerContact: String(offer.customerContact || "").trim().slice(0, 160),
+    customerEmail: String(offer.customerEmail || "").trim().slice(0, 180),
+    customerPhone: String(offer.customerPhone || "").trim().slice(0, 80),
+    customerAddress: String(offer.customerAddress || "").trim().slice(0, 600),
+    occasion: String(offer.occasion || "").trim().slice(0, 160),
+    personsAdults: cleanOfferIntegerValue(offer.personsAdults),
+    personsChildren: cleanOfferIntegerValue(offer.personsChildren),
+    startTime: cleanOfferTimeValue(offer.startTime),
+    reservedArea: String(offer.reservedArea || "").trim().slice(0, 200),
+    additionalInfo: String(offer.additionalInfo || "").trim().slice(0, 2000),
+    internalNote: String(offer.internalNote || "").trim().slice(0, 2000),
+    buffet: {
+      templateKey: String(buffet.templateKey || "").trim().slice(0, 40),
+      name: String(buffet.name || "").trim().slice(0, 160),
+      pricePerPerson: cleanOfferMoneyValue(buffet.pricePerPerson),
+      categories: normalizeOfferBuffetCategoriesClient(buffet.categories)
+    },
+    timeline: normalizeOfferTimelineClient(offer.timeline),
+    costs: normalizeOfferCostsClient(offer.costs)
+  };
+}
+
+function normalizeOfferTimelineClient(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      id: String(item?.id || `timeline-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      time: cleanOfferTimeValue(item?.time),
+      title: String(item?.title || item?.label || "").trim().slice(0, 160),
+      note: String(item?.note || "").trim().slice(0, 600)
+    }))
+    .filter((item) => item.time || item.title || item.note);
+}
+
+function normalizeOfferCostsClient(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      id: String(item?.id || `cost-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      label: String(item?.label || "").trim().slice(0, 160),
+      quantity: cleanOfferMoneyValue(item?.quantity),
+      unitPrice: cleanOfferMoneyValue(item?.unitPrice),
+      note: String(item?.note || "").trim().slice(0, 400)
+    }))
+    .filter((item) => item.label || item.quantity || item.unitPrice || item.note);
+}
+
+function normalizeOfferBuffetCategoriesClient(categories = {}) {
+  return Object.fromEntries(OFFER_CATEGORY_ORDER.map((key) => [key, normalizeOfferBuffetItemsClient(categories?.[key] || [])]));
+}
+
+function normalizeOfferBuffetItemsClient(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      id: String(item?.id || `dish-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+      name: String(item?.name || item?.title || "").trim().slice(0, 180),
+      note: String(item?.note || "").trim().slice(0, 240)
+    }))
+    .filter((item) => item.name || item.note);
+}
+
+function cleanOfferDateValue(value) {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+}
+
+function cleanOfferIntegerValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(9999, Math.floor(parsed))) : 0;
+}
+
+function cleanOfferMoneyValue(value) {
+  const parsed = Number(String(value ?? "0").replace(",", "."));
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(999999, Math.round(parsed * 100) / 100)) : 0;
+}
+
+function cleanOfferTimeValue(value) {
+  const text = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
+}
+
+function createBlankOfferDraft() {
+  return normalizeOfferClient({
+    title: "Neues Angebot",
+    offerDate: todayKey(),
+    eventDate: "",
+    customerName: "",
+    customerContact: "",
+    customerEmail: "",
+    customerPhone: "",
+    customerAddress: "",
+    occasion: "",
+    personsAdults: 0,
+    personsChildren: 0,
+    startTime: "",
+    reservedArea: "",
+    additionalInfo: "",
+    internalNote: "",
+    buffet: {
+      templateKey: "",
+      name: "",
+      pricePerPerson: 0,
+      categories: normalizeOfferBuffetCategoriesClient({})
+    },
+    timeline: [],
+    costs: []
+  });
+}
+
+function ensureOfferDraft() {
+  if (!state.offerDraft || !state.offerDraft.id) {
+    state.offerDraft = createBlankOfferDraft();
+    state.offerDraftId = state.offerDraft.id;
+  }
+  return state.offerDraft;
+}
+
+function setOfferDraftFromOffer(offer) {
+  state.offerDraft = cloneData(normalizeOfferClient(offer));
+  state.offerDraftId = state.offerDraft.id;
+  state.offerDraftDirty = false;
+}
+
+function currentOfferDraftFromDom() {
+  const root = $("#adminOffers");
+  if (!root) return normalizeOfferClient(state.offerDraft || createBlankOfferDraft());
+  const base = cloneData(state.offerDraft || createBlankOfferDraft());
+  const field = (name) => root.querySelector(`[data-offer-field="${cssEscape(name)}"]`);
+  const simpleText = (name) => String(field(name)?.value || "").trim();
+  const draft = {
+    ...base,
+    title: simpleText("title") || base.title,
+    offerDate: cleanOfferDateValue(field("offerDate")?.value || base.offerDate),
+    eventDate: cleanOfferDateValue(field("eventDate")?.value || base.eventDate),
+    customerName: simpleText("customerName"),
+    customerContact: simpleText("customerContact"),
+    customerEmail: simpleText("customerEmail"),
+    customerPhone: simpleText("customerPhone"),
+    customerAddress: String(field("customerAddress")?.value || "").trim(),
+    occasion: simpleText("occasion"),
+    personsAdults: cleanOfferIntegerValue(field("personsAdults")?.value),
+    personsChildren: cleanOfferIntegerValue(field("personsChildren")?.value),
+    startTime: cleanOfferTimeValue(field("startTime")?.value),
+    reservedArea: simpleText("reservedArea"),
+    additionalInfo: String(field("additionalInfo")?.value || "").trim(),
+    internalNote: String(field("internalNote")?.value || "").trim(),
+    buffet: {
+      ...base.buffet,
+      templateKey: String(field("buffetTemplateKey")?.value || "").trim(),
+      name: String(field("buffetName")?.value || "").trim(),
+      pricePerPerson: cleanOfferMoneyValue(field("buffetPricePerPerson")?.value),
+      categories: {}
+    },
+    timeline: [],
+    costs: []
+  };
+  OFFER_CATEGORY_ORDER.forEach((category) => {
+    draft.buffet.categories[category] = [...root.querySelectorAll(`[data-offer-dish-row="${category}"]`)].map((row) => ({
+      id: row.dataset.offerDishId || cryptoId(),
+      name: String(row.querySelector("[data-offer-dish-name]")?.value || "").trim(),
+      note: String(row.querySelector("[data-offer-dish-note]")?.value || "").trim()
+    })).filter((item) => item.name || item.note);
+  });
+  draft.timeline = [...root.querySelectorAll("[data-offer-timeline-row]")].map((row) => ({
+    id: row.dataset.offerTimelineId || cryptoId(),
+    time: cleanOfferTimeValue(row.querySelector("[data-offer-timeline-time]")?.value),
+    title: String(row.querySelector("[data-offer-timeline-title]")?.value || "").trim(),
+    note: String(row.querySelector("[data-offer-timeline-note]")?.value || "").trim()
+  })).filter((item) => item.time || item.title || item.note);
+  draft.costs = [...root.querySelectorAll("[data-offer-cost-row]")].map((row) => ({
+    id: row.dataset.offerCostId || cryptoId(),
+    label: String(row.querySelector("[data-offer-cost-label]")?.value || "").trim(),
+    quantity: cleanOfferMoneyValue(row.querySelector("[data-offer-cost-quantity]")?.value),
+    unitPrice: cleanOfferMoneyValue(row.querySelector("[data-offer-cost-unit]")?.value),
+    note: String(row.querySelector("[data-offer-cost-note]")?.value || "").trim()
+  })).filter((item) => item.label || item.quantity || item.unitPrice || item.note);
+  return normalizeOfferClient(draft);
+}
+
+function applyOfferTemplate(templateKey) {
+  const template = OFFER_BUFFET_TEMPLATES[templateKey];
+  if (!template) return;
+  const draft = cloneData(ensureOfferDraft());
+  draft.buffet = {
+    templateKey,
+    name: template.name,
+    pricePerPerson: template.pricePerPerson,
+    categories: normalizeOfferBuffetCategoriesClient(template.categories)
+  };
+  state.offerDraft = normalizeOfferClient(draft);
+  state.offerDraftDirty = false;
+  renderAdminOffers();
+  showToast(`Buffet-Vorlage ${template.name} übernommen.`);
+}
+
+function offerPersonCount(offer) {
+  return cleanOfferIntegerValue(offer?.personsAdults) + cleanOfferIntegerValue(offer?.personsChildren);
+}
+
+function offerTotals(offer) {
+  const draft = normalizeOfferClient(offer || {});
+  const personCount = offerPersonCount(draft);
+  const buffetTotal = personCount * cleanOfferMoneyValue(draft.buffet?.pricePerPerson || 0);
+  const extraRows = (draft.costs || []).reduce((sum, row) => sum + (cleanOfferMoneyValue(row.quantity) * cleanOfferMoneyValue(row.unitPrice)), 0);
+  const total = buffetTotal + extraRows;
+  return {
+    personCount,
+    buffetTotal,
+    extraRows,
+    total
+  };
+}
+
+function offerTemplateOptions(selectedKey = "") {
+  return Object.entries(OFFER_BUFFET_TEMPLATES).map(([key, template]) => `<option value="${escapeHtml(key)}" ${key === selectedKey ? "selected" : ""}>${escapeHtml(template.name)}</option>`).join("");
+}
+
 function renderAll() {
   $("#appTitle").textContent = isCustomerInvoiceMode() ? "Bezahlung auf Rechnung" : isTodoMode() ? "TO DO" : state.settings.businessName;
   if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = formatDate(localDateValue());
-  $("#monthInput").value = state.selectedMonth;
+  $("#monthInput").value = availabilityMonthValue();
+  $("#monthInput").disabled = true;
   renderAccess();
   renderEmployeeSelect();
   renderAvailability();
   renderHome();
+  renderAssignments();
   renderPublished();
   renderSwaps();
   renderChef();
@@ -473,39 +1124,68 @@ function renderAll() {
   renderAdminLock();
   renderAdminEmployeeOverview();
   renderAdminPublishedList();
+  renderAdminMonthlyNumbers();
   renderAdminSwaps();
   renderAdminAvailabilityRequests();
+  renderMessageEmployeePicker();
+  renderAdminOffers();
+  renderAdminPushControls();
   renderAdminMessages();
+  renderAdminTerminalMessages();
   renderAdminTasks();
+  renderAdminCleaningTasks();
   renderAdminReminders();
   renderAdminAvailabilityPreview();
+  renderAdminCorrection();
   renderWeather();
   renderTerminal();
   renderCustomerInvoiceDesk();
+  renderPinChangeOverlay();
+  normalizeGermanDisplay();
 }
 
 function renderAccess() {
   if (isTerminalMode() || isTodoMode()) {
+    document.body.classList.remove("login-mode");
     $("#mainTabs")?.classList.add("hidden");
     $("#topLogout")?.classList.add("hidden");
     return;
   }
   if (isCustomerInvoiceMode()) {
+    document.body.classList.remove("login-mode");
+    document.body.classList.remove("terminal-login-mode");
     $("#mainTabs")?.classList.add("hidden");
     $("#topLogout")?.classList.add("hidden");
     return;
   }
   const loggedIn = Boolean(state.activeEmployee);
   const chef = currentUserIsChef();
-  $("#mainTabs")?.classList.toggle("hidden", !loggedIn);
+  document.body.classList.remove("terminal-login-mode");
+  document.body.classList.toggle("login-mode", !loggedIn && !state.adminToken);
+  $("#mainTabs")?.classList.toggle("hidden", !loggedIn || state.pinChangeRequired);
   $$(".employee-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || chef));
   $('[data-tab="swaps"]')?.classList.add("hidden");
+  $$(".backoffice-only").forEach((element) => element.classList.toggle("hidden", !loggedIn || !state.hasBackofficeAccess));
   $$(".chef-only").forEach((element) => element.classList.toggle("hidden", !chef));
   $("#homeLogin")?.classList.toggle("hidden", loggedIn);
+  $(".home-access")?.classList.toggle("hidden", loggedIn);
   $("#homeGreeting")?.classList.toggle("hidden", !loggedIn);
   $("#topLogout")?.classList.toggle("hidden", !loggedIn && !state.adminToken);
   if ($("#homeEmployeeName")) {
     $("#homeEmployeeName").innerHTML = loggedIn ? renderEmployeeBadge() : "";
+  }
+}
+
+function renderPinChangeOverlay() {
+  const overlay = $("#pinChangeOverlay");
+  if (!overlay) return;
+  const show = Boolean(state.activeEmployee && state.employeeToken && state.pinChangeRequired);
+  overlay.classList.toggle("hidden", !show);
+  document.body.classList.toggle("pin-change-required", show);
+  if ($("#pinChangeText")) {
+    $("#pinChangeText").textContent = show
+      ? `${state.activeEmployee}, bitte lege jetzt deinen persönlichen PIN fest. Danach kommst du direkt in die App.`
+      : "Bitte lege deinen persönlichen PIN fest.";
   }
 }
 
@@ -531,21 +1211,29 @@ function currentUserIsChef() {
 }
 
 function renderEmployeeBadge() {
-  const role = state.settings.employeeRoles?.[state.activeEmployee] || "Team";
+  const role = roleLabel(state.settings.employeeRoles?.[state.activeEmployee] || "Team");
   if (currentUserIsChef()) {
     return `
-      <span class="employee-badge-name">${escapeHtml(state.activeEmployee)}</span>
-      <span class="employee-badge-role">${escapeHtml(role)}</span>
-      ${state.adminToken ? `<button class="employee-badge-stat compact" type="button" data-open-backoffice><small>Admin</small>Backoffice</button>` : ""}
+      <div class="employee-welcome-block">
+        <span class="employee-welcome-title">Willkommen in der Teamapp</span>
+        <div class="employee-welcome-name-row">
+          <span class="employee-badge-name">${escapeHtml(state.activeEmployee)}</span>
+          <span class="employee-badge-role">${escapeHtml(role)}</span>
+        </div>
+      </div>
     `;
   }
   const totals = timesheetTotals();
   return `
-    <span class="employee-badge-name">${escapeHtml(state.activeEmployee)}</span>
-    <span class="employee-badge-role">${escapeHtml(role)}</span>
-    <button class="employee-badge-stat compact" type="button" data-open-timesheet><small>Std</small>${formatHours(totals.hours)}</button>
-    <span class="employee-badge-stat compact"><small>TG</small>${formatMoney(totals.tip)}</span>
-    ${state.adminToken ? `<button class="employee-badge-stat compact" type="button" data-open-backoffice><small>Admin</small>Backoffice</button>` : ""}
+    <div class="employee-welcome-block">
+      <span class="employee-welcome-title">Willkommen in der Teamapp</span>
+      <div class="employee-welcome-name-row">
+        <span class="employee-badge-name">${escapeHtml(state.activeEmployee)}</span>
+        <span class="employee-badge-role">${escapeHtml(role)}</span>
+      </div>
+    </div>
+    <button class="employee-badge-stat compact" type="button" data-open-timesheet><small>Gesamtstunden in diesem Monat</small>${formatHours(totals.hours)}</button>
+    <span class="employee-badge-stat compact"><small>Gesammeltes Trinkgeld in diesem Monat</small>${formatMoney(totals.tip)}</span>
   `;
 }
 
@@ -563,18 +1251,22 @@ function renderHome() {
   }
   container.innerHTML = `
     ${renderDashboardMessages()}
-    <details class="today-section dashboard-today">
-      <summary>Heutiger Tag</summary>
+    ${renderPushNotificationBox()}
+    <section class="today-section dashboard-today dashboard-today-open">
+      <h2>Heutiger Tag</h2>
       ${renderScheduleDay(new Date(`${today}T12:00:00`), { today: true })}
-    </details>
+    </section>
     ${state.activeEmployee ? renderHomeSwaps() : ""}
     ${state.adminUnlocked ? renderMissingAvailability() : ""}
   `;
+  removeEmptyHomeBlocks(container);
   ensureWeatherVisible();
 }
 
 function renderDashboardMessages() {
-  const messages = state.messages || [];
+  const messages = dashboardMessagesForActiveEmployee()
+    .map((message) => ({ ...message, text: String(message.text || "").trim() }))
+    .filter((message) => message.text);
   if (!messages.length) return "";
   return `
     <section class="dashboard-messages">
@@ -582,16 +1274,167 @@ function renderDashboardMessages() {
         <article class="dashboard-message">
           <strong>${messageTargetLabel(message)}</strong>
           <p>${escapeHtml(message.text)}</p>
+          <button class="secondary dashboard-message-read" data-ack-message="${escapeHtml(message.id)}" type="button">Gelesen</button>
         </article>
       `).join("")}
     </section>
   `;
 }
 
+function renderPushNotificationBox() {
+  if (!state.activeEmployee || currentUserIsChef()) return "";
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "";
+  if (Notification.permission === "granted" && state.pushSubscriptionActive) return "";
+  const missingKey = !state.pushPublicKey;
+  const denied = Notification.permission === "denied";
+  return `
+    <section class="push-notice">
+      <div>
+        <strong>Benachrichtigungen am Handy</strong>
+        <p>${pushNotificationHint(missingKey, denied)}</p>
+      </div>
+      <button class="primary" data-enable-push type="button" ${missingKey || denied ? "disabled" : ""}>
+        Push aktivieren
+      </button>
+    </section>
+  `;
+}
+
+function pushNotificationHint(missingKey, denied) {
+  if (missingKey) return "Push ist im Code vorbereitet. In Vercel fehlen noch die VAPID-Schlüssel.";
+  if (denied) return "Benachrichtigungen sind im Browser blockiert. Bitte in den Handy-Einstellungen wieder erlauben.";
+  return "Erhalte eine Meldung, wenn ein neuer Dienstplan oder die Einteilung für morgen online ist.";
+}
+
+async function enablePushNotifications(button) {
+  if (!state.employeeToken) {
+    showToast("Bitte erneut mit Mitarbeiter-PIN anmelden.");
+    return;
+  }
+  if (!state.pushPublicKey) {
+    showToast("Push ist noch nicht fertig eingerichtet.");
+    return;
+  }
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    showToast("Dieses Gerät unterstützt Web-Push leider nicht.");
+    return;
+  }
+  const oldText = button?.textContent || "Push aktivieren";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Aktiviert...";
+  }
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      showToast("Benachrichtigungen wurden nicht erlaubt.");
+      return;
+    }
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(state.pushPublicKey)
+      });
+    }
+    await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "push-subscribe",
+        employeeToken: state.employeeToken,
+        subscription
+      })
+    });
+    state.pushSubscriptionActive = true;
+    renderHome();
+    showToast("Push-Benachrichtigungen sind aktiviert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function ensurePushSubscriptionSynced() {
+  if (!state.activeEmployee || !state.employeeToken || !state.pushPublicKey) return;
+  if (state.pushSubscriptionActive) return;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    const result = await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "push-subscribe",
+        employeeToken: state.employeeToken,
+        subscription
+      })
+    });
+    state.pushSubscriptionActive = Boolean(result.pushSubscriptionActive);
+  } catch (error) {
+    console.warn("Push-Abo konnte nicht automatisch synchronisiert werden.", error);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = `${base64String}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
+function dashboardMessagesForActiveEmployee() {
+  if (!state.activeEmployee) return [];
+  return (state.messages || []).filter((message) => {
+    if (!String(message.text || "").trim()) return false;
+    if (message.readBy?.[state.activeEmployee]) return false;
+    return messageRecipientsClient(message).includes(state.activeEmployee);
+  });
+}
+
+function removeEmptyHomeBlocks(container) {
+  container.querySelectorAll(".dashboard-message, .dashboard-messages, .home-swaps").forEach((element) => {
+    if (!element.textContent.trim()) element.remove();
+  });
+  [...container.children].forEach((element) => {
+    if (element.matches(".dashboard-today")) return;
+    if (!element.textContent.trim() && !element.querySelector("input, button, select, textarea, [data-weather-widget]")) {
+      element.remove();
+    }
+  });
+}
+
 function messageTargetLabel(message) {
   if (message.target === "all") return "Nachricht an alle";
-  if (message.target === "employees") return "Nachricht";
+  if (message.target === "employees") {
+    const recipients = messageRecipientsClient(message);
+    return recipients.length === 1 ? `Nachricht an ${recipients[0]}` : `Nachricht an ${recipients.length || ""} Mitarbeiter`;
+  }
   return `Nachricht ${message.target}`;
+}
+
+function messageRecipientsClient(message = {}) {
+  if (Array.isArray(message.recipients) && message.recipients.length) return message.recipients;
+  const employees = state.settings?.employees || [];
+  if (message.target === "all") return employees;
+  if (message.target === "employees") {
+    const wanted = new Set((message.employees || []).map(String));
+    return employees.filter((employee) => wanted.has(employee));
+  }
+  return employees.filter((employee) => employeeMatchesDepartment(employee, message.target));
+}
+
+function employeeMatchesDepartment(employee, target) {
+  const wanted = normalizeDepartment(target);
+  const departments = departmentsForEmployee(state.settings?.employeeDepartments || {}, employee).map(normalizeDepartment);
+  const role = normalizeDepartment(state.settings?.employeeRoles?.[employee] || "");
+  return departments.includes(wanted) || role === wanted;
 }
 
 function renderHomeStats() {
@@ -627,9 +1470,13 @@ function renderChef() {
 function chefDashboardHtml() {
   const today = todayKey();
   const schedule = state.schedule || {};
+  const openInvoiceCount = openInvoiceItems().length;
+  const pendingInvoiceCount = pendingInvoiceItems().length;
   const tabs = [
     ["reports", "Tagesberichte", chefSectionEnabled("reports")],
+    ["invoices", "Rechnung schreiben", openInvoiceCount > 0],
     ["employees", "Mitarbeiterübersicht", chefSectionEnabled("employees")],
+    ["numbers", "Monatszahlen", true],
     ["schedule", "Dienstplan", chefSectionEnabled("schedule")]
   ].filter(([, , visible]) => visible);
   if (!tabs.some(([key]) => key === state.chefTab)) state.chefTab = tabs[0]?.[0] || "";
@@ -639,12 +1486,15 @@ function chefDashboardHtml() {
       <summary>Heutiger Tag</summary>
       ${renderScheduleDay(new Date(`${today}T12:00:00`), { today: true })}
     </details>` : ""}
+    ${openInvoiceCount ? invoiceWriteAlertHtml(openInvoiceCount) : pendingInvoiceCount ? invoicePendingHintHtml(pendingInvoiceCount) : ""}
     <nav class="chef-tabs" aria-label="Chef-Bereiche">
-      ${tabs.map(([key, label]) => `<button class="chef-tab ${state.chefTab === key ? "active" : ""}" type="button" data-chef-tab="${key}">${label}</button>`).join("")}
+      ${tabs.map(([key, label]) => `<button class="chef-tab ${state.chefTab === key ? "active" : ""} ${key === "invoices" && openInvoiceCount ? "needs-attention" : ""}" type="button" data-chef-tab="${key}">${label}${key === "invoices" && openInvoiceCount ? ` <span>${openInvoiceCount}</span>` : ""}</button>`).join("")}
     </nav>
     ${chefSectionEnabled("reports") ? `<section class="chef-section ${state.chefTab === "reports" ? "active" : "hidden"}">
-      ${openInvoicesHtml()}
       ${dayReportFoldersByMonthHtml()}
+    </section>` : ""}
+    ${openInvoiceCount ? `<section class="chef-section ${state.chefTab === "invoices" ? "active" : "hidden"}">
+      ${openInvoicesHtml()}
     </section>` : ""}
     ${chefSectionEnabled("employees") ? `<section class="chef-section ${state.chefTab === "employees" ? "active" : "hidden"}">
       <div class="chef-section-head">
@@ -654,16 +1504,36 @@ function chefDashboardHtml() {
           <input id="chefEmployeeMonth" type="month" value="${escapeHtml(state.selectedMonth)}">
         </label>
       </div>
-      ${employeeOverviewHtml()}
+      ${employeeOverviewHtml({ allowCorrection: false })}
     </section>` : ""}
+    <section class="chef-section ${state.chefTab === "numbers" ? "active" : "hidden"}">
+      ${monthlyNumbersHtml("chef")}
+    </section>
     ${chefSectionEnabled("schedule") ? `<section class="chef-section ${state.chefTab === "schedule" ? "active" : "hidden"}">
       <div class="chef-current-plan">
-        <h3>Aktueller Dienstplan</h3>
-        ${schedule.published
-          ? renderPublishedWeekSections(state.selectedMonth)
-          : `<p class="hint">Für ${formatMonth(state.selectedMonth)} ist noch kein Dienstplan veröffentlicht.</p>`}
+        <h3>Veröffentlichte Dienstpläne</h3>
+        ${chefPublishedSchedulesHtml()}
       </div>
     </section>` : ""}
+  `;
+}
+
+function invoiceWriteAlertHtml(count) {
+  return `
+    <button class="invoice-write-alert" type="button" data-chef-tab="invoices">
+      <span>Rechnung schreiben</span>
+      <strong>${count} Rechnung${count === 1 ? "" : "en"} fertig</strong>
+      <small>Zum Öffnen klicken</small>
+    </button>
+  `;
+}
+
+function invoicePendingHintHtml(count) {
+  return `
+    <div class="invoice-pending-hint">
+      <strong>${count} Rechnungskunde${count === 1 ? "" : "n"} angelegt</strong>
+      <span>Noch nicht fertig für den Chef. In „Bezahlung auf Rechnung“ Betrag und Beleg ergänzen, dann „Fertig für Chef“ drücken.</span>
+    </div>
   `;
 }
 
@@ -682,15 +1552,9 @@ function dayReportsHtml() {
             <strong>${formatDate(dateKey)}</strong>
           <span>${dayReportSummaryLine(report)}</span>
           </summary>
-          ${dayReportValuesHtml(report)}
-          ${reportFieldEnabled("preparation") ? reportPreparationHtml(dateKey, report) : ""}
-          ${reportFieldEnabled("handovers") ? reportHandoversHtml(report.handovers) : ""}
-          ${reportFieldEnabled("invoiceCustomers") ? reportInvoiceCustomersHtml(report.invoiceCustomers) : ""}
-          ${reportFieldEnabled("expenses") ? reportExpensesHtml(report.expenses) : ""}
-          ${reportFieldEnabled("documents") ? reportDocumentsHtml(report.documents) : ""}
-          <button class="secondary" data-export-day-report="${escapeHtml(dateKey)}" type="button">Bericht exportieren</button>
-          ${reportFieldEnabled("extraEmployees") && report.extraEmployees?.length ? `<p><strong>Zusätzlich:</strong> ${report.extraEmployees.map(escapeHtml).join(", ")}</p>` : ""}
-          ${reportFieldEnabled("notes") ? `<p>${report.notes ? escapeHtml(report.notes) : "Keine Notizen."}</p>` : ""}
+          ${dayReportA4Html(dateKey, report)}
+          ${chefDayReportAttachmentsHtml(dateKey, report)}
+          <button class="secondary" data-print-day-report="${escapeHtml(dateKey)}" type="button">Bericht drucken</button>
         </details>
       `).join("")}
     </div>
@@ -712,15 +1576,9 @@ function dayReportsForMonthHtml(month) {
             <strong>${formatDate(dateKey)}</strong>
           <span>${dayReportSummaryLine(report)}</span>
           </summary>
-          ${dayReportValuesHtml(report)}
-          ${reportFieldEnabled("preparation") ? reportPreparationHtml(dateKey, report) : ""}
-          ${reportFieldEnabled("handovers") ? reportHandoversHtml(report.handovers) : ""}
-          ${reportFieldEnabled("invoiceCustomers") ? reportInvoiceCustomersHtml(report.invoiceCustomers) : ""}
-          ${reportFieldEnabled("expenses") ? reportExpensesHtml(report.expenses) : ""}
-          ${reportFieldEnabled("documents") ? reportDocumentsHtml(report.documents) : ""}
-          <button class="secondary" data-export-day-report="${escapeHtml(dateKey)}" type="button">Bericht exportieren</button>
-          ${reportFieldEnabled("extraEmployees") && report.extraEmployees?.length ? `<p><strong>Zusätzlich:</strong> ${report.extraEmployees.map(escapeHtml).join(", ")}</p>` : ""}
-          ${reportFieldEnabled("notes") ? `<p>${report.notes ? escapeHtml(report.notes) : "Keine Notizen."}</p>` : ""}
+          ${dayReportA4Html(dateKey, report)}
+          ${chefDayReportAttachmentsHtml(dateKey, report)}
+          <button class="secondary" data-print-day-report="${escapeHtml(dateKey)}" type="button">Bericht drucken</button>
         </details>
       `).join("")}
     </div>
@@ -729,24 +1587,298 @@ function dayReportsForMonthHtml(month) {
 
 function dayReportSummaryLine(report = {}) {
   return [
-    `Bar Gastro ${formatReportMoney(report.barGastro)}`,
-    `Bar Bowling ${formatReportMoney(report.barBowling)}`,
-    `Bar gesamt ${formatReportMoney(barTotal(report))}`,
-    `Rechnung ${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}`,
-    `Ausgaben ${formatReportMoney(reportItemsTotal(report.expenses))}`
+    `Umsatz ${formatReportMoney(reportRevenueTotal(report))}`,
+    `Rechnung ${formatReportMoney(reportInvoiceTotal(report))}`,
+    `EC ${formatReportMoney(reportEcTotal(report))}`,
+    ...(reportPersonalConsumptionTotal(report) ? [`Personalverzehr ${formatReportMoney(reportPersonalConsumptionTotal(report))}`] : []),
+    `Ausgaben Kasse ${formatReportMoney(reportCashExpensesTotal(report))}`,
+    `Abzugeben an Chef ${formatReportMoney(reportChefHandoverTotal(report))}`
   ].join(" · ");
 }
 
 function dayReportValuesHtml(report = {}) {
+  const gastroParts = reportGastroParts(report);
   return `
     <div class="day-report-values">
-      ${reportFieldEnabled("barGastro") ? `<span><small>Bar Gastro</small><strong>${formatReportMoney(report.barGastro)}</strong></span>` : ""}
-      ${reportFieldEnabled("barBowling") ? `<span><small>Bar Bowling</small><strong>${formatReportMoney(report.barBowling)}</strong></span>` : ""}
-      ${reportFieldEnabled("barTotal") ? `<span><small>Bar gesamt</small><strong>${formatReportMoney(barTotal(report))}</strong></span>` : ""}
-      ${reportFieldEnabled("invoiceCustomers") ? `<span><small>Rechnung</small><strong>${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}</strong></span>` : ""}
-      ${reportFieldEnabled("expenses") ? `<span><small>Ausgaben</small><strong>${formatReportMoney(reportItemsTotal(report.expenses))}</strong></span>` : ""}
-      ${reportFieldEnabled("ecTotal") ? `<span><small>EC gesamt</small><strong>${formatReportMoney(report.ecTotal)}</strong></span>` : ""}
+      <span><small>Umsatz Bowling</small><strong>${formatReportMoney(report.revenueBowling || report.barBowling)}</strong></span>
+      <span><small>Umsatz Gastro</small><strong>${formatReportMoney(gastroRevenueTotal(report))}</strong></span>
+      <span><small>Getränke</small><strong>${formatReportMoney(gastroParts.drinks || "")}</strong></span>
+      <span><small>Speisen</small><strong>${formatReportMoney(gastroParts.food || "")}</strong></span>
+      <span><small>Sonstiges</small><strong>${formatReportMoney(gastroParts.other || "")}</strong></span>
+      <span><small>Umsatz gesamt</small><strong>${formatReportMoney(reportRevenueTotal(report))}</strong></span>
+      ${reportFieldEnabled("invoiceCustomers") ? `<span><small>Rechnung</small><strong>${formatReportMoney(reportInvoiceTotal(report))}</strong></span>` : ""}
+      <span><small>EC</small><strong>${formatReportMoney(reportEcTotal(report))}</strong></span>
+      <span><small>Personalverzehr</small><strong>${formatReportMoney(reportPersonalConsumptionTotal(report))}</strong></span>
+      ${reportFieldEnabled("expenses") ? `<span><small>Ausgaben Kasse</small><strong>${formatReportMoney(reportCashExpensesTotal(report))}</strong></span>` : ""}
+      <span><small>Abzugeben an Chef</small><strong>${formatReportMoney(reportChefHandoverTotal(report))}</strong></span>
     </div>
+  `;
+}
+
+function dayReportA4Html(dateKey, report = {}) {
+  const printableInvoices = reportInvoiceCustomers(report);
+  const invoiceTotalValue = reportItemsTotal(printableInvoices);
+  const expenseTotalValue = reportCashExpensesTotal(report);
+  const ecTotalValue = reportEcTotal(report);
+  const ecTerminal1Value = reportMoneyNumber(report.ecTerminal1);
+  const ecTerminal2Value = reportMoneyNumber(report.ecTerminal2);
+  const personalConsumptionValue = reportPersonalConsumptionTotal(report);
+  const bowlingRevenueValue = reportMoneyNumber(report.revenueBowling || report.barBowling);
+  const gastroParts = reportGastroParts(report);
+  const gastroRevenueValue = gastroRevenueTotal(report);
+  const totalRevenueValue = reportRevenueTotal(report);
+  const chefHandoverValue = reportChefHandoverTotal(report);
+  return `
+    <section class="a4-report official-day-report">
+      <div class="a4-report-head official-report-head">
+        <div class="a4-report-topline">
+          <div class="a4-report-brand">
+            <img class="a4-report-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
+          </div>
+          <dl>
+            <div><dt>Schichtleitung</dt><dd>${escapeHtml(report.shiftLeader || "-")}</dd></div>
+          </dl>
+        </div>
+        <h2 class="a4-report-title">Tagesbericht vom ${escapeHtml(formatNumericDate(dateKey))}</h2>
+      </div>
+
+      <div class="a4-report-grid">
+        <section class="a4-report-block a4-report-finance-summary">
+          <h4>Umsätze</h4>
+          ${a4MoneyTable([
+            ["Umsatz Bowling", bowlingRevenueValue],
+            ["Getränke", gastroParts.drinks],
+            ["Speisen", gastroParts.food],
+            ["Sonstiges", gastroParts.other],
+            ["Umsatz Gastro gesamt", gastroRevenueValue],
+            ["Umsatz gesamt", totalRevenueValue, "strong"]
+          ])}
+        </section>
+        <section class="a4-report-block a4-report-finance-summary">
+          <h4>Zahlarten & Abzüge</h4>
+          ${a4MoneyTable([
+            ["Bezahlung auf Rechnung", invoiceTotalValue],
+            ["EC Terminal 1", ecTerminal1Value],
+            ["EC Terminal 2", ecTerminal2Value],
+            ["EC gesamt", ecTotalValue, "strong"],
+            ["Personalverzehr", personalConsumptionValue],
+            ["Ausgaben Kasse", expenseTotalValue]
+          ])}
+        </section>
+        <div class="a4-chef-mini-total" style="grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center;background:#fff0f2;padding:2px 8px;min-height:16px;line-height:1;">
+          <span style="font-size:12px;font-weight:700;line-height:1;">Abzugeben an Chef</span>
+          <strong style="font-size:15px;font-weight:700;line-height:1;">${escapeHtml(formatReportMoney(chefHandoverValue))}</strong>
+        </div>
+        ${reportFieldEnabled("invoiceCustomers") && printableInvoices.length ? a4InvoiceBlock(printableInvoices) : ""}
+        ${reportFieldEnabled("expenses") && (report.expenses || []).length ? a4ExpenseBlock(report.expenses) : ""}
+        <section class="a4-report-block a4-report-block-wide a4-report-staff">
+          <h4>Personalzeiten</h4>
+          ${dayReportEmployeeRowsHtml(dateKey, report) || `<p class="hint">Keine Arbeitszeiten erfasst.</p>`}
+        </section>
+        ${reportFieldEnabled("handovers") ? a4HandoversBlock(report.handovers) : ""}
+        ${reportFieldEnabled("notes") && String(report.notes || "").trim() ? a4NotesBlock(report.notes) : ""}
+        <section class="a4-report-signature">
+          <div>
+            <span>Ort / Datum</span>
+            <strong>Landshut, ${escapeHtml(formatNumericDate(dateKey))}</strong>
+          </div>
+          <div>
+            <span>Unterschrift Schichtleitung</span>
+            <strong>${escapeHtml(report.shiftLeader || "-")}</strong>
+          </div>
+        </section>
+      </div>
+    </section>
+  `;
+}
+
+function a4MoneyTable(rows = []) {
+  return `
+    <div class="a4-money-list">
+      ${rows.map(([label, value, mode]) => `
+        <div class="a4-money-row ${mode === "strong" ? "a4-money-strong" : ""}">
+          <span>${escapeHtml(label)}</span>
+          <strong>${formatReportMoney(value)}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function a4Kpi(label, value) {
+  return `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`;
+}
+
+function a4ReportLine(label, value, className = "") {
+  return `
+    <div class="a4-report-line ${className}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
+function a4TipDistributionBlock(report = {}) {
+  const rows = reportTipRows(report);
+  const tipTotal = reportMoneyNumber(report.tipTotal);
+  const distributed = rows.reduce((sum, row) => sum + row.amount, 0);
+  const remainder = reportMoneyNumber(report.tipRemainder);
+  if (!rows.length && tipTotal <= 0 && remainder <= 0) return "";
+  return `
+    <section class="a4-report-block a4-report-block-wide a4-report-tip-control">
+      <h4>Trinkgeld-Verteilung</h4>
+      <table class="a4-report-table">
+        <thead>
+          <tr><th>Mitarbeiter</th><th>Betrag</th></tr>
+        </thead>
+        <tbody>
+          ${rows.length ? rows.map((row) => `
+            <tr>
+              <td>${escapeHtml(row.employee)}</td>
+              <td>${formatReportMoney(row.amount)}</td>
+            </tr>
+          `).join("") : `<tr><td colspan="2">Noch keine Verteilung gespeichert.</td></tr>`}
+        </tbody>
+        <tfoot>
+          <tr><th>Verteilt</th><td>${formatReportMoney(distributed)}</td></tr>
+          <tr><th>Trinkgeld gesamt</th><td>${formatReportMoney(tipTotal)}</td></tr>
+        </tfoot>
+      </table>
+    </section>
+  `;
+}
+
+function reportTipRows(report = {}) {
+  return Object.entries(report.tipsByEmployee || {})
+    .map(([employee, amount]) => ({ employee, amount: reportMoneyNumber(amount) }))
+    .filter((row) => row.employee && row.amount > 0)
+    .sort((a, b) => a.employee.localeCompare(b.employee, "de"));
+}
+
+function dayReportEmployeeRowsHtml(dateKey, report = {}) {
+  const employees = reportEmployeesForDate(dateKey, report);
+  if (!employees.length) return "";
+  const rows = employees.map((employee) => {
+    const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
+    const hours = paidHours(entry);
+    return `
+      <div class="a4-staff-row">
+        <strong>${escapeHtml(employee)}</strong>
+        <span>${escapeHtml(dayReportShiftText(entry))}</span>
+        <b>${formatHours(hours)}</b>
+      </div>
+    `;
+  }).join("");
+  return `
+    <div class="a4-staff-list">
+      <div class="a4-staff-head"><span>Name</span><span>Dienstzeit</span><span>Arbeitszeit</span></div>
+      ${rows}
+    </div>
+  `;
+}
+
+function dayReportShiftText(entry = {}) {
+  const segments = timeSegments(entry);
+  if (!segments.length) return "offen bis offen";
+  return segments.map((segment) => `${segment.from || "offen"} bis ${segment.to || "offen"}`).join(" | ");
+}
+
+function reportEmployeesForDate(dateKey, report = {}) {
+  const names = new Set();
+  const removed = new Set(report.removedEmployees || state.terminalReport?.removedEmployees || []);
+  Object.entries(state.timesheets || {}).forEach(([employee, entries]) => {
+    const entry = entries?.[dateKey] || {};
+    if (entryHasAnyTime(entry)) names.add(employee);
+  });
+  if (dateKey === state.terminalDate) {
+    terminalEmployeesForDay(dateKey).forEach((employee) => names.add(employee));
+  }
+  (report.extraEmployees || []).forEach((item) => {
+    const employee = typeof item === "string" ? item : item.employee;
+    if (employee) names.add(employee);
+  });
+  return [...names].filter((employee) => {
+    if (!employee) return false;
+    if (!removed.has(employee)) return true;
+    const entry = state.timesheets?.[employee]?.[dateKey] || state.terminalEntries?.[employee]?.[dateKey] || {};
+    return entryHasAnyTime(entry);
+  }).sort((a, b) => a.localeCompare(b, "de"));
+}
+
+function a4InvoiceBlock(items = []) {
+  return `
+    <section class="a4-report-block a4-report-compact">
+      <h4>Rechnungskunden</h4>
+      ${items.length ? `<div class="a4-compact-list">
+        ${items.map((item, index) => `
+          <div class="a4-compact-row">
+            <div>
+              <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)}</strong>
+              <small>Bowling ${formatReportMoney(item.bowlingAmount)} · ${escapeHtml(invoiceGastroSummaryText(item))}</small>
+              ${item.gastroOtherNote ? `<small>Sonstiges Notiz: ${escapeHtml(item.gastroOtherNote)}</small>` : ""}
+            </div>
+            <strong>${formatReportMoney(invoiceTotal(item))}</strong>
+          </div>
+        `).join("")}
+      </div>` : `<p class="hint">Keine Rechnungskunden.</p>`}
+    </section>
+  `;
+}
+
+function a4ExpenseBlock(items = []) {
+  return `
+    <section class="a4-report-block">
+      <h4>Ausgaben</h4>
+      ${items.length ? `<div class="a4-compact-list">
+        ${items.map((item, index) => `
+          <div class="a4-compact-row">
+            <span>${escapeHtml(item.name || `Ausgabe ${index + 1}`)}${item.category ? ` · ${escapeHtml(item.category)}` : ""}</span>
+            <strong>${formatReportMoney(item.amount)}</strong>
+          </div>
+        `).join("")}
+      </div>` : `<p class="hint">Keine Ausgaben.</p>`}
+    </section>
+  `;
+}
+
+function a4DocumentsBlock(documents = {}) {
+  const entries = [
+    ["Penta", documents.penta],
+    ["Handschrift", documents.handwriting],
+    ["EC-Schnitt", documents.ecCut]
+  ];
+  return `
+    <section class="a4-report-block">
+      <h4>Dokumente Tagesordner</h4>
+      <table class="a4-report-table">
+        <tbody>${entries.map(([label, document]) => `
+          <tr>
+            <th>${escapeHtml(label)}</th>
+            <td>${document?.name ? escapeHtml(document.name) : "fehlt"}</td>
+            <td>${document?.path || document?.url || document?.data ? reportDocumentLinkHtml(document, label) : "-"}</td>
+          </tr>
+        `).join("")}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function a4HandoversBlock(items = []) {
+  if (!items.length) return "";
+  return `
+    <section class="a4-report-block">
+      <h4>Schichtübergaben</h4>
+      ${items.map((item) => `<p><strong>${escapeHtml(item.time || "--:--")} ${escapeHtml(item.from || "-")} an ${escapeHtml(item.to || "-")}:</strong> ${escapeHtml(item.note || "-")}</p>`).join("")}
+    </section>
+  `;
+}
+
+function a4NotesBlock(notes = "") {
+  return `
+    <section class="a4-report-block">
+      <h4>Notizen</h4>
+      <p>${notes ? escapeHtml(notes) : "Keine Notizen."}</p>
+    </section>
   `;
 }
 
@@ -755,7 +1887,7 @@ function openInvoicesHtml() {
   return `
     <section class="open-invoices-panel ${items.length ? "has-open-invoices" : ""}">
       <div>
-        <h3>Offene Rechnungen</h3>
+        <h3>Rechnung schreiben</h3>
         <p>${items.length ? `${items.length} Rechnung${items.length === 1 ? "" : "en"} zu schreiben` : "Keine offene Rechnung."}</p>
       </div>
       ${items.length ? `<div class="open-invoice-list">
@@ -777,25 +1909,38 @@ function openInvoiceItems() {
   return items.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
 }
 
+function pendingInvoiceItems() {
+  const items = [];
+  for (const [dateKey, report] of Object.entries(state.dayReports || {})) {
+    (report.invoiceCustomers || []).forEach((invoice, index) => {
+      if (invoice.invoiceDone || invoiceIsReady(invoice)) return;
+      items.push({ dateKey, invoice, index });
+    });
+  }
+  return items.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+}
+
 function openInvoiceCardHtml({ dateKey, invoice, index }) {
-  const bowling = Number(invoice.bowlingAmount || 0);
-  const gastro = invoiceGastroSplit(invoice);
-  const total = bowling + gastro.total || Number(invoice.amount || 0);
+  const bowling = reportMoneyNumber(invoice.bowlingAmount || 0);
+  const gastroSplit = invoiceGastroSplit(invoice);
+  const total = invoiceTotal(invoice);
   const token = `${dateKey}|${invoice.id || index}`;
   const briefhead = invoiceBriefhead(invoice);
-  const gastroFields = gastro.hasSplit
+  const gastroFields = gastroSplit.hasSplit
     ? `
-        ${invoiceCopyField("Gastro Getränke", formatReportMoney(gastro.drinks))}
-        ${invoiceCopyField("Gastro Speisen", formatReportMoney(gastro.food))}
-        ${invoiceCopyField("Gastro Sonstiges", formatReportMoney(gastro.other))}
-        ${invoiceCopyField("Gastro Gesamt", formatReportMoney(gastro.total))}
+        ${invoiceCopyField("Gastro Getränke", formatReportMoney(gastroSplit.drinks))}
+        ${invoiceCopyField("Gastro Speisen", formatReportMoney(gastroSplit.food))}
+        ${invoiceCopyField("Gastro Sonstiges", formatReportMoney(gastroSplit.other))}
       `
-    : invoiceCopyField("Gastro Betrag", formatReportMoney(gastro.total), "invoice-copy-field-wide");
+    : invoiceCopyField("Gastro Betrag", formatReportMoney(gastroSplit.total), "invoice-copy-field-wide");
   return `
     <article class="open-invoice-card">
       <div class="open-invoice-head">
         <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
-        <button class="primary" type="button" data-complete-invoice="${escapeHtml(token)}">Erledigt</button>
+        <div class="open-invoice-actions">
+          <button class="primary" type="button" data-complete-invoice="${escapeHtml(token)}">Erledigt</button>
+          <button class="secondary danger-lite" type="button" data-delete-invoice="${escapeHtml(token)}">Löschen</button>
+        </div>
       </div>
       <div class="invoice-copy-grid">
         ${invoiceCopyField("Rechnungsdatum", formatDate(dateKey))}
@@ -803,10 +1948,9 @@ function openInvoiceCardHtml({ dateKey, invoice, index }) {
         ${invoiceCopyField("Betrag Bowling", formatReportMoney(bowling))}
         ${gastroFields}
         ${invoiceCopyField("Betrag gesamt", formatReportMoney(total))}
-        ${invoiceCopyField("Tipp", formatReportMoney(invoice.tip || 0))}
       </div>
       <p class="hint">Ansprechpartner: ${escapeHtml(invoice.contact || "-")} · E-Mail: ${escapeHtml(invoice.email || "-")} · Telefon: ${escapeHtml(invoice.phone || "-")}</p>
-      ${gastro.note ? `<p class="hint">Sonstiges Notiz: ${escapeHtml(gastro.note)}</p>` : ""}
+      ${gastroSplit.note ? `<p class="hint">Sonstiges Notiz: ${escapeHtml(gastroSplit.note)}</p>` : ""}
       ${invoiceReceiptLinksHtml(invoice)}
     </article>
   `;
@@ -837,18 +1981,12 @@ function dayReportFoldersByMonthHtml() {
     .map((dateKey) => dateKey.slice(0, 7));
   const sortedMonths = [...new Set(months)].sort((a, b) => b.localeCompare(a));
   if (!sortedMonths.length) return "";
-  const folders = [
-    ["expenses", "Ausgaben"],
-    ["invoices", "Bezahlung auf Rechnung"],
-    ["penta", "Penta"],
-    ["handwriting", "Handschrift"]
-  ];
   return `
     <section class="report-folders">
       <div class="report-folders-head">
         <div>
           <h3>Monatsordner</h3>
-          <p>Tagesberichte und Dokumente monatsweise prüfen und exportieren.</p>
+          <p>Tagesberichte monatsweise prüfen. Belege und Dokumente stehen direkt im jeweiligen Tagesbericht.</p>
         </div>
       </div>
       ${sortedMonths.map((month) => `
@@ -858,18 +1996,12 @@ function dayReportFoldersByMonthHtml() {
               <strong>${formatMonth(month)}</strong>
               <small>${monthReportDays(month)} Tagesberichte</small>
             </span>
-            <b>${folders.reduce((sum, [key]) => sum + reportFolderItems(month, key).length, 0)} Dateien</b>
+            <b>${monthReportAttachmentCount(month)} Dateien</b>
           </summary>
           <details class="report-month-section">
             <summary>Tagesberichte</summary>
             ${dayReportsForMonthHtml(month)}
           </details>
-          ${chefSectionEnabled("reportFolders") ? `<details class="report-month-section">
-            <summary>Dokumente</summary>
-            <div class="report-folder-grid">
-              ${folders.map(([key, label]) => reportFolderHtml(month, key, label)).join("")}
-            </div>
-          </details>` : ""}
         </details>
       `).join("")}
     </section>
@@ -915,6 +2047,102 @@ function monthReportDays(month) {
   return Object.keys(state.dayReports || {}).filter((dateKey) => dateKey.startsWith(`${month}-`)).length;
 }
 
+function monthReportAttachmentCount(month) {
+  return Object.entries(state.dayReports || {})
+    .filter(([dateKey]) => dateKey.startsWith(`${month}-`))
+    .reduce((sum, [, report]) => sum + dayReportAttachmentCount(report), 0);
+}
+
+function dayReportAttachmentCount(report = {}) {
+  return chefDayReportAttachmentGroups(report).reduce((sum, group) => sum + group.items.length, 0);
+}
+
+function chefDayReportAttachmentsHtml(dateKey, report = {}) {
+  const groups = chefDayReportAttachmentGroups(report);
+  if (!groups.length) return "";
+  return `
+    <section class="day-report-attachments">
+      <div class="day-report-attachments-head">
+        <h4>Belege und Dokumente</h4>
+        <span>${groups.reduce((sum, group) => sum + group.items.length, 0)} Datei${groups.reduce((sum, group) => sum + group.items.length, 0) === 1 ? "" : "en"}</span>
+      </div>
+      <div class="day-report-attachment-groups">
+        ${groups.map((group) => `
+          <section class="day-report-attachment-group">
+            <h5>${escapeHtml(group.label)}</h5>
+            <div class="day-report-attachment-list">
+              ${group.items.map((item) => `
+                <article class="day-report-attachment-item">
+                  <div>
+                    <strong>${escapeHtml(item.title)}</strong>
+                    ${item.subtitle ? `<span>${escapeHtml(item.subtitle)}</span>` : ""}
+                  </div>
+                  ${item.link}
+                </article>
+              `).join("")}
+            </div>
+          </section>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function chefDayReportAttachmentGroups(report = {}) {
+  const invoiceItems = (report.invoiceCustomers || [])
+    .flatMap((customer, index) => invoiceAttachmentItems(customer, index));
+  const expenseItems = (report.expenses || [])
+    .flatMap((expense, index) => expenseAttachmentItems(expense, index));
+  const documentGroups = [
+    ["EC-Schnitt", report.documents?.ecCut],
+    ["Penta", report.documents?.penta],
+    ["Handschrift", report.documents?.handwriting]
+  ].map(([label, document]) => ({
+    label,
+    items: documentAttachmentItems(document, label)
+  }));
+  return [
+    { label: "Bezahlung auf Rechnung", items: invoiceItems },
+    { label: "Ausgaben", items: expenseItems },
+    ...documentGroups
+  ].filter((group) => group.items.length);
+}
+
+function invoiceAttachmentItems(customer = {}, index = 0) {
+  const base = customer.name || `Rechnungskunde ${index + 1}`;
+  const total = invoiceTotal(customer);
+  const singleReceipt = invoiceReceipt(customer);
+  if (singleReceipt) {
+    return [{
+      title: base,
+      subtitle: `Rechnungssumme ${formatReportMoney(total)}`,
+      link: receiptLinkHtml(singleReceipt, singleReceipt.receiptName || "Rechnungsbeleg")
+    }];
+  }
+  return invoiceLegacyReceipts(customer).map(({ receipt, title, label }) => ({
+    title: `${base} - ${title}`,
+    subtitle: `Rechnungssumme ${formatReportMoney(total)}`,
+    link: receiptLinkHtml(receipt, label)
+  }));
+}
+
+function expenseAttachmentItems(expense = {}, index = 0) {
+  return expenseReceiptEntries(expense).map((receipt, receiptIndex) => ({
+    title: expense.name || `Ausgabe ${index + 1}`,
+    subtitle: `${expense.category || "Ausgabe"} · ${formatReportMoney(expense.amount)} · Beleg ${receiptIndex + 1}`,
+    link: receiptLinkHtml(receipt, receipt.receiptName || `Beleg ${receiptIndex + 1}`)
+  }));
+}
+
+function documentAttachmentItems(document = {}, label = "Dokument") {
+  if (!hasDocument(document)) return [];
+  return [{
+    title: label,
+    subtitle: document.name || label,
+    link: reportDocumentLinkHtml(document, label)
+  }];
+}
+
 function reportFolderItems(month, key) {
   const reports = Object.entries(state.dayReports || {})
     .filter(([dateKey]) => dateKey.startsWith(`${month}-`))
@@ -923,7 +2151,9 @@ function reportFolderItems(month, key) {
   for (const [dateKey, report] of reports) {
     if (key === "expenses") {
       (report.expenses || []).forEach((expense, index) => {
-        if (hasReceipt(expense)) items.push(receiptFolderItem(dateKey, expense, `Ausgabe ${index + 1}`, expense.name || "Ausgabe"));
+        expenseReceiptEntries(expense).forEach((receipt, receiptIndex) => {
+          items.push(receiptFolderItem(dateKey, receipt, `${expense.name || `Ausgabe ${index + 1}`} - Beleg ${receiptIndex + 1}`, receipt.receiptName || `Beleg ${receiptIndex + 1}`));
+        });
       });
     }
     if (key === "invoices") {
@@ -945,12 +2175,15 @@ function reportFolderItems(month, key) {
     if (key === "handwriting" && hasDocument(report.documents?.handwriting)) {
       items.push(documentFolderItem(dateKey, report.documents.handwriting, "Handschrift"));
     }
+    if (key === "ecCut" && hasDocument(report.documents?.ecCut)) {
+      items.push(documentFolderItem(dateKey, report.documents.ecCut, "EC-Schnitt"));
+    }
   }
   return items;
 }
 
 function hasReceipt(item = {}) {
-  return Boolean(item.receiptPath || item.receiptUrl || item.receiptData);
+  return Boolean(item.receiptPath || item.receiptUrl || item.receiptData || expenseReceiptEntries(item).length);
 }
 
 function hasDocument(item = {}) {
@@ -1002,23 +2235,55 @@ function invoiceReceiptNameText(item = {}) {
 }
 
 function invoiceGastroSplit(item = {}) {
-  const drinksText = String(item.gastroDrinkAmount || "").trim();
-  const foodText = String(item.gastroFoodAmount || "").trim();
-  const otherText = String(item.gastroOtherAmount || "").trim();
-  const note = String(item.gastroOtherNote || "").trim();
-  const hasSplit = Boolean(drinksText || foodText || otherText || note);
-  const drinks = parseMoneyInput(item.gastroDrinkAmount);
-  const food = parseMoneyInput(item.gastroFoodAmount);
-  const other = parseMoneyInput(item.gastroOtherAmount);
-  const fallback = parseMoneyInput(item.gastroAmount || (item.area === "gastro" ? item.amount : ""));
+  const drinksText = String(item.gastroDrinksAmount ?? "").trim();
+  const foodText = String(item.gastroFoodAmount ?? "").trim();
+  const otherText = String(item.gastroOtherAmount ?? "").trim();
+  const hasSplit = [drinksText, foodText, otherText].some(Boolean);
+  const drinks = reportMoneyNumber(item.gastroDrinksAmount);
+  const food = reportMoneyNumber(item.gastroFoodAmount);
+  const other = reportMoneyNumber(item.gastroOtherAmount);
+  const fallback = reportMoneyNumber(item.gastroAmount || (item.area === "gastro" ? item.amount : ""));
+  const total = hasSplit ? drinks + food + other : fallback;
   return {
     drinks,
     food,
     other,
-    total: hasSplit ? drinks + food + other : fallback,
+    total,
     hasSplit,
-    note
+    note: String(item.gastroOtherNote || "").trim()
   };
+}
+
+function expenseReceiptEntries(item = {}) {
+  const receipts = [];
+  const seen = new Set();
+  const addReceipt = (receipt = {}) => {
+    const clean = {
+      receiptName: receipt.receiptName || receipt.name || "",
+      receiptPath: receipt.receiptPath || receipt.path || "",
+      receiptUrl: receipt.receiptUrl || receipt.url || "",
+      receiptData: receipt.receiptData || receipt.data || ""
+    };
+    if (!clean.receiptName && !clean.receiptPath && !clean.receiptUrl && !clean.receiptData) return;
+    const key = clean.receiptPath || clean.receiptUrl || clean.receiptData || clean.receiptName;
+    if (seen.has(key)) return;
+    seen.add(key);
+    receipts.push(clean);
+  };
+  (Array.isArray(item.receipts) ? item.receipts : []).forEach(addReceipt);
+  addReceipt({
+    receiptName: item.receiptName,
+    receiptPath: item.receiptPath,
+    receiptUrl: item.receiptUrl,
+    receiptData: item.receiptData
+  });
+  return receipts;
+}
+
+function expenseReceiptLinksHtml(item = {}) {
+  const receipts = expenseReceiptEntries(item);
+  if (!receipts.length) return `<span class="hint">Beleg: nicht hochgeladen.</span>`;
+  return `<div class="expense-receipt-links">${receipts.map((receipt, index) => receiptLinkHtml(receipt, receipt.receiptName || `Beleg ${index + 1}`)).join("")}</div>`;
 }
 
 function invoiceIsReady(item = {}) {
@@ -1029,6 +2294,7 @@ function invoiceIsReady(item = {}) {
 
 function invoiceStatusText(item = {}) {
   if (item.invoiceDone) return "Erledigt";
+  if (item.invoiceNotificationSentAt) return "An Chef gesendet";
   if (invoiceIsReady(item)) return "Fertig für Chef";
   return "Angelegt";
 }
@@ -1037,6 +2303,17 @@ function invoiceStatusClass(item = {}) {
   if (item.invoiceDone) return "is-done";
   if (invoiceIsReady(item)) return "is-ready";
   return "is-draft";
+}
+
+function invoiceGastroSummaryText(item = {}) {
+  const split = invoiceGastroSplit(item);
+  if (!split.hasSplit) return `Gastro ${formatReportMoney(split.total)}`;
+  const parts = [
+    `Getränke ${formatReportMoney(split.drinks)}`,
+    `Speisen ${formatReportMoney(split.food)}`,
+    `Sonstiges ${formatReportMoney(split.other)}`
+  ];
+  return `Gastro ${parts.join(" · ")}${split.note ? ` · Notiz: ${split.note}` : ""}`;
 }
 
 function receiptFolderItem(dateKey, receipt, title, label) {
@@ -1068,34 +2345,23 @@ function reportInvoiceCustomersHtml(items = []) {
   return `
     <div class="report-item-list">
       <h4>Rechnungskunden</h4>
-      ${items.map((item, index) => {
-        const gastro = invoiceGastroSplit(item);
-        const gastroLines = gastro.hasSplit
-          ? `
-            <span>Gastro Getränke ${formatReportMoney(gastro.drinks)}</span>
-            <span>Gastro Speisen ${formatReportMoney(gastro.food)}</span>
-            <span>Gastro Sonstiges ${formatReportMoney(gastro.other)}</span>
-            <span>Gastro Gesamt ${formatReportMoney(gastro.total)}</span>
-          `
-          : `<span>Gastro Betrag ${formatReportMoney(gastro.total)}</span>`;
-        return `
-          <article class="report-item">
-            <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)}</strong>
-            <span>Rechnungssumme ${formatReportMoney(invoiceTotal(item))}</span>
-            <span>Bowling ${formatReportMoney(item.bowlingAmount)}</span>
-            ${gastroLines}
-            <span>Briefkopf</span>
-            <p class="invoice-briefhead">${escapeHtml(invoiceBriefhead(item)).replace(/\n/g, "<br>")}</p>
-            <span>Ansprechpartner: ${escapeHtml(item.contact || "-")}</span>
-            <span>Telefon: ${escapeHtml(item.phone || "-")}</span>
-            <span>Tipp: ${escapeHtml(item.tip || "-")}</span>
-            <span>${escapeHtml(item.email || "Keine E-Mail")}</span>
-            ${gastro.note ? `<span>Sonstiges Notiz: ${escapeHtml(gastro.note)}</span>` : ""}
-            ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
-            ${invoiceReceiptLinksHtml(item)}
-          </article>
-        `;
-      }).join("")}
+      ${items.map((item, index) => `
+        <article class="report-item">
+          <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)}</strong>
+          <span>Rechnungssumme ${formatReportMoney(invoiceTotal(item))}</span>
+          <span>Bowling ${formatReportMoney(item.bowlingAmount)}</span>
+          <span>${escapeHtml(invoiceGastroSummaryText(item))}</span>
+          <span>Briefkopf</span>
+          <p class="invoice-briefhead">${escapeHtml(invoiceBriefhead(item)).replace(/\n/g, "<br>")}</p>
+          <span>Ansprechpartner: ${escapeHtml(item.contact || "-")}</span>
+          <span>Telefon: ${escapeHtml(item.phone || "-")}</span>
+          <span>Tipp: ${escapeHtml(item.tip || "-")}</span>
+          <span>${escapeHtml(item.email || "Keine E-Mail")}</span>
+          ${item.gastroOtherNote ? `<span>Sonstiges Notiz: ${escapeHtml(item.gastroOtherNote)}</span>` : ""}
+          ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
+          ${invoiceReceiptLinksHtml(item)}
+        </article>
+      `).join("")}
     </div>
   `;
 }
@@ -1143,7 +2409,7 @@ function reportExpensesHtml(items = []) {
           <strong>${escapeHtml(item.name || `Ausgabe ${index + 1}`)}</strong>
           <span>${escapeHtml(item.category || "Ausgabe")} · ${formatReportMoney(item.amount)}</span>
           ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
-          ${receiptLinkHtml(item)}
+          ${expenseReceiptLinksHtml(item)}
         </article>
       `).join("")}
     </div>
@@ -1153,7 +2419,8 @@ function reportExpensesHtml(items = []) {
 function reportDocumentsHtml(documents = {}) {
   const entries = [
     ["Penta", documents.penta],
-    ["Handschrift", documents.handwriting]
+    ["Handschrift", documents.handwriting],
+    ["EC-Schnitt", documents.ecCut]
   ].filter(([, document]) => document?.path || document?.url || document?.data);
   if (!entries.length) return "";
   return `
@@ -1190,55 +2457,150 @@ function reportItemsTotal(items = []) {
   return items.reduce((sum, item) => sum + invoiceTotal(item), 0);
 }
 
+function reportInvoiceCustomers(report = {}) {
+  return (report.invoiceCustomers || []).filter((item) => invoiceIsReady(item));
+}
+
+function reportInvoiceTotal(report = {}) {
+  return reportItemsTotal(reportInvoiceCustomers(report));
+}
+
 function barTotal(report = {}) {
-  return Number(report.barBowling || 0) + Number(report.barGastro || 0);
+  if (report.cashTotal !== "" && report.cashTotal != null) return reportMoneyNumber(report.cashTotal);
+  return reportMoneyNumber(report.barBowling) + reportMoneyNumber(report.barGastro);
+}
+
+function reportEcTotal(report = {}) {
+  const splitTotal = reportMoneyNumber(report.ecTerminal1) + reportMoneyNumber(report.ecTerminal2);
+  return splitTotal || reportMoneyNumber(report.ecTotal);
+}
+
+function reportPersonalConsumptionTotal(report = {}) {
+  return reportMoneyNumber(report.personalConsumption);
+}
+
+function reportCashExpensesTotal(report = {}) {
+  if (report.cashExpenses !== "" && report.cashExpenses != null) return reportMoneyNumber(report.cashExpenses);
+  return reportItemsTotal(report.expenses);
+}
+
+function reportGrossRevenueTotal(report = {}) {
+  const split = reportMoneyNumber(report.revenueBowling || report.barBowling) + gastroRevenueTotal(report);
+  if (split) return split;
+  return Math.max(0, barTotal(report) + reportEcTotal(report) - reportInvoiceTotal(report));
+}
+
+function reportRevenueTotal(report = {}) {
+  return Math.max(0, reportGrossRevenueTotal(report) - reportPersonalConsumptionTotal(report));
+}
+
+function reportGastroParts(report = {}) {
+  return {
+    drinks: reportMoneyNumber(report.revenueDrinks),
+    food: reportMoneyNumber(report.revenueFood),
+    other: reportMoneyNumber(report.revenueOther)
+  };
+}
+
+function gastroRevenueTotal(report = {}) {
+  const parts = reportGastroParts(report);
+  const split = parts.drinks + parts.food + parts.other;
+  return split || reportMoneyNumber(report.revenueGastro || report.barGastro);
+}
+
+function reportTipTotal(report = {}) {
+  if (report.tipTotal !== "" && report.tipTotal != null) return reportMoneyNumber(report.tipTotal);
+  const revenueBowling = reportMoneyNumber(report.revenueBowling || report.barBowling);
+  const revenueGastro = gastroRevenueTotal(report);
+  const revenueTotal = Math.max(0, revenueBowling + revenueGastro - reportPersonalConsumptionTotal(report));
+  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) - revenueTotal);
+}
+
+function reportChefHandoverTotal(report = {}) {
+  return Math.max(
+    0,
+    reportRevenueTotal(report)
+      - reportEcTotal(report)
+      - reportInvoiceTotal(report)
+      - reportCashExpensesTotal(report)
+  );
+}
+
+function reportMoneyNumber(value) {
+  const number = Number(String(value || "").replace(",", "."));
+  return Number.isFinite(number) ? number : 0;
 }
 
 function invoiceTotal(item = {}) {
-  const splitTotal = Number(item.bowlingAmount || 0) + invoiceGastroSplit(item).total;
-  return splitTotal || Number(item.amount || 0);
+  const splitTotal = reportMoneyNumber(item.bowlingAmount) + invoiceGastroSplit(item).total;
+  return splitTotal || reportMoneyNumber(item.amount);
 }
 
 function exportDayReport(dateKey) {
   const report = state.dayReports?.[dateKey];
   if (!report) return;
   const lineIf = (key, line) => reportFieldEnabled(key) ? [line] : [];
+  const printableInvoices = reportInvoiceCustomers(report);
+  const invoiceTotalValue = reportItemsTotal(printableInvoices);
+  const expenseTotalValue = reportCashExpensesTotal(report);
+  const ecTotalValue = reportEcTotal(report);
+  const personalConsumptionValue = reportPersonalConsumptionTotal(report);
+  const totalRevenueValue = reportRevenueTotal(report);
+  const gastroParts = reportGastroParts(report);
+  const chefHandoverValue = reportChefHandoverTotal(report);
+  const employees = reportEmployeesForDate(dateKey, report);
   const lines = [
     `Tagesbericht ${formatDate(dateKey)}`,
+    `Schichtleitung: ${report.shiftLeader || "-"}`,
+    `Öffnungszeit: ${report.openingHours || "-"}`,
+    `Status: ${report.closed ? "Abgeschlossen" : "Offen"}`,
     "",
-    ...lineIf("ecTotal", `EC gesamt: ${formatReportMoney(report.ecTotal)}`),
-    ...lineIf("barBowling", `Bar Bowling: ${formatReportMoney(report.barBowling)}`),
-    ...lineIf("barGastro", `Bar Gastro: ${formatReportMoney(report.barGastro)}`),
-    ...lineIf("barTotal", `Bar gesamt: ${formatReportMoney(barTotal(report))}`),
-    ...lineIf("invoiceCustomers", `Rechnungskunden gesamt: ${formatReportMoney(reportItemsTotal(report.invoiceCustomers))}`),
-    ...lineIf("expenses", `Ausgaben gesamt: ${formatReportMoney(reportItemsTotal(report.expenses))}`),
+    "Personalzeiten:",
+    ...(employees.length ? employees.map((employee) => {
+      const entry = state.timesheets?.[employee]?.[dateKey] || {};
+      return `- ${employee} | ${dayReportShiftText(entry)} | ${formatHours(paidHours(entry))}`;
+    }) : ["- Keine Arbeitszeiten erfasst."]),
+    "",
+    `Umsatz Bowling: ${formatReportMoney(report.revenueBowling || report.barBowling)}`,
+    `Umsatz Gastro: ${formatReportMoney(gastroRevenueTotal(report))}`,
+    `- Getränke: ${formatReportMoney(gastroParts.drinks || "")}`,
+    `- Speisen: ${formatReportMoney(gastroParts.food || "")}`,
+    `- Sonstiges: ${formatReportMoney(gastroParts.other || "")}`,
+    `Gesamtumsatz: ${formatReportMoney(totalRevenueValue)}`,
+    `Bezahlung auf Rechnung: ${formatReportMoney(invoiceTotalValue)}`,
+    `EC: ${formatReportMoney(ecTotalValue)}`,
+    `Personalverzehr: ${formatReportMoney(personalConsumptionValue)}`,
+    `Ausgaben: ${formatReportMoney(expenseTotalValue)}`,
+    `Abzugeben an Chef: ${formatReportMoney(chefHandoverValue)}`,
     ...(reportFieldEnabled("preparation") ? [reportPreparationLine(dateKey, report)] : []),
     "",
     ...(reportFieldEnabled("handovers") ? ["Übergaben:", ...(report.handovers || []).map((item) => `- ${item.time || "--:--"} | ${item.from || "-"} an ${item.to || "-"} | ${item.note || "-"}`)] : []),
     "",
-    ...(reportFieldEnabled("invoiceCustomers") ? ["Rechnungskunden:", ...(report.invoiceCustomers || []).map((item) => [
-      `- ${item.name || "Kunde"} | ${item.area === "gastro" ? "Gastro" : "Bowling"} | ${formatReportMoney(item.amount)}`,
-      `  Adresse: ${item.address || "-"}`,
-      `  Ansprechpartner: ${item.contact || "-"}`,
-      `  Telefon: ${item.phone || "-"}`,
-      `  Tipp: ${item.tip || "-"}`,
-      `  E-Mail: ${item.email || "-"}`,
-      `  Bowling: ${formatReportMoney(item.bowlingAmount)}`,
-      `  Gastro Getränke: ${formatReportMoney(invoiceGastroSplit(item).drinks)}`,
-      `  Gastro Speisen: ${formatReportMoney(invoiceGastroSplit(item).food)}`,
-      `  Gastro Sonstiges: ${formatReportMoney(invoiceGastroSplit(item).other)}`,
-      `  Gastro Gesamt: ${formatReportMoney(invoiceGastroSplit(item).total)}`,
-      ...(invoiceGastroSplit(item).note ? [`  Sonstiges Notiz: ${invoiceGastroSplit(item).note}`] : []),
-      `  Beleg: ${invoiceReceiptNameText(item)}`
-    ].join("\n"))] : []),
+    ...(reportFieldEnabled("invoiceCustomers") && printableInvoices.length ? ["Rechnungskunden:", ...printableInvoices.map((item) => `- ${item.name || "Kunde"} | ${formatReportMoney(invoiceTotal(item))}`)] : []),
     "",
     ...(reportFieldEnabled("expenses") ? ["Ausgaben:", ...(report.expenses || []).map((item) => `- ${item.name || "Ausgabe"} | ${item.category || "-"} | ${formatReportMoney(item.amount)} | Beleg: ${item.receiptName || "-"}`)] : []),
     "",
-    ...(reportFieldEnabled("documents") ? ["Abschlussdokumente:", `- Penta: ${report.documents?.penta?.name || "-"}`, `- Handschrift: ${report.documents?.handwriting?.name || "-"}`] : []),
+    ...(reportFieldEnabled("documents") ? ["Abschlussdokumente:", `- Penta: ${report.documents?.penta?.name || "-"}`, `- Handschrift: ${report.documents?.handwriting?.name || "-"}`, `- EC-Schnitt: ${report.documents?.ecCut?.name || "-"}`] : []),
     "",
     ...lineIf("notes", `Notizen: ${report.notes || "-"}`)
   ];
   downloadText(`tagesbericht-${dateKey}.txt`, lines.join("\n"));
+}
+
+function printDayReportFromChef(dateKey, button) {
+  const card = button?.closest(".day-report-card");
+  if (!card) return;
+  card.setAttribute("data-printing-report", dateKey);
+  card.open = true;
+  document.body.classList.add("print-chef-day-report");
+  const cleanup = () => {
+    document.body.classList.remove("print-chef-day-report");
+    card.removeAttribute("data-printing-report");
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  window.setTimeout(cleanup, 1200);
 }
 
 function exportReportFolder(value) {
@@ -1327,6 +2689,33 @@ async function completeInvoice(value, button) {
   }
 }
 
+async function deleteInvoiceCustomer(value, button) {
+  const [date, invoiceId] = String(value || "").split("|");
+  if (!date || !invoiceId) return;
+  if (!window.confirm("Rechnungskunden wirklich vollständig löschen? Der Eintrag verschwindet dann aus Chefansicht, Tagesbericht und Druckansicht.")) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Löscht...";
+  try {
+    await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "delete-invoice-customer",
+        date,
+        invoiceId,
+        employeeToken: state.employeeToken,
+        adminToken: state.adminToken
+      })
+    });
+    await loadState();
+    showToast("Rechnungskunde gelöscht.");
+  } catch (error) {
+    button.textContent = oldText;
+    button.disabled = false;
+    showError(error);
+  }
+}
+
 function reportFolderItemByToken(value) {
   const [month, key, indexText] = String(value || "").split("|");
   const index = Number(indexText);
@@ -1382,27 +2771,24 @@ function downloadText(filename, text) {
 }
 
 function renderLoginReminder(dateKey) {
-  return `
-    <section class="login-reminder">
-      <div class="dashboard-main">
-        <span class="dashboard-label">Daily Reminder</span>
-        <blockquote>${dailyQuote(dateKey)}</blockquote>
-      </div>
-    </section>
-  `;
+  return "";
 }
 
 function renderEmployeeSelect() {
   const loggedIn = Boolean(state.activeEmployee);
+  const fixed = loggedIn && employeeIsFixed(state.activeEmployee);
   $("#employeeLogin").classList.toggle("hidden", loggedIn);
   $("#employeeActive").classList.toggle("hidden", !loggedIn);
   $("#saveAvailability").classList.toggle("hidden", !loggedIn);
   $("#activeEmployeeName").textContent = loggedIn ? state.activeEmployee : "";
   const locked = loggedIn && availabilityIsSubmitted();
+  const monthLabel = formatMonth(availabilityMonthValue());
+  const isOpen = state.settings.availabilitySubmissionOpen !== false;
   $("#employeeViewHint").textContent = loggedIn
-    ? (locked ? "Verfügbarkeit wurde bereits abgegeben. Änderungen bitte anfragen." : "Markiere pro Tag, wann du kannst.")
+    ? (!isOpen ? `Die Verfügbarkeit für ${monthLabel} ist aktuell geschlossen.` : (locked ? `Verfügbarkeit für ${monthLabel} wurde bereits abgegeben. Änderungen bitte anfragen.` : (fixed ? `Markiere für ${monthLabel} nur die Tage, an denen du nicht kannst, bitte mit Grund.` : `Markiere für ${monthLabel} die Tage, an denen du kannst.`)))
     : "Mitarbeiter-PIN eingeben, um die eigene Verfügbarkeit zu bearbeiten.";
-  $("#saveAvailability").textContent = locked ? "Änderung anfragen" : "Verfügbarkeit absenden";
+  $("#saveAvailability").disabled = !isOpen;
+  $("#saveAvailability").textContent = locked ? "Änderung anfragen" : (fixed ? "Ausnahmen absenden" : "Verfügbarkeit absenden");
 }
 
 function renderAvailability() {
@@ -1412,23 +2798,24 @@ function renderAvailability() {
   }
   const employee = state.activeEmployee;
   const employeeDays = state.availability[employee] || {};
+  const fixed = employeeIsFixed(employee);
   const locked = availabilityIsSubmitted();
   const requestOpen = hasOpenAvailabilityRequest();
-  $("#availabilityGrid").innerHTML = renderWeekSections(state.selectedMonth, (date) => {
+  $("#availabilityGrid").innerHTML = renderWeekSections(availabilityMonthValue(), (date) => {
     const key = isoDate(date);
     const day = { ...emptyDay(), ...(employeeDays[key] || {}) };
     const holiday = holidayInfo(key);
-    const canWork = day.status === "yes";
+    const active = fixed ? day.status === "no" : day.status === "yes";
     return `
-      <article class="day-card ${canWork ? "can-work" : ""}" data-date="${key}">
-        <div class="day-title">
-          <span>${availabilityDayLabel(date)}${holiday.label ? " *" : ""}</span>
-          ${holiday.label ? `<span class="weekday">${escapeHtml(holiday.label)}</span>` : ""}
+      <article class="day-card ${active ? (fixed ? "cannot-work" : "can-work") : ""} ${fixed ? "fixed-availability-card" : ""}" data-date="${key}" data-availability-mode="${fixed ? "fixed" : "standard"}">
+        <div class="day-title availability-day-title">
+          <span class="availability-date">${availabilityDayLabel(date)}${holiday.label ? " *" : ""}</span>
+          ${holiday.label ? `<span class="weekday availability-special">${escapeHtml(holiday.label)}</span>` : ""}
         </div>
         <div class="status-row single">
-          <button data-status="yes" class="${canWork ? "active" : ""}" ${locked ? "disabled" : ""}>Kann</button>
+          <button data-status="${fixed ? "no" : "yes"}" class="${active ? "active" : ""}" ${locked ? "disabled" : ""}>${fixed ? "Kann nicht" : "Kann"}</button>
         </div>
-        <input type="text" data-field="note" value="${escapeHtml(day.note)}" placeholder="Notiz, z.B. nur frueh" ${locked ? "disabled" : ""}>
+        <input type="text" data-field="note" value="${escapeHtml(day.note)}" placeholder="${fixed ? "Grund, z.B. Urlaub oder Termin" : "Notiz, z.B. nur früh"}" ${locked ? "disabled" : ""}>
       </article>
     `;
   }) + (locked ? `
@@ -1441,22 +2828,24 @@ function renderAvailability() {
 
 function availabilityIsSubmitted() {
   if (!state.activeEmployee) return false;
-  return Object.keys(state.availability[state.activeEmployee] || {}).length > 0;
+  const days = state.availability[state.activeEmployee] || {};
+  return Boolean(days.__meta?.submitted) || Object.keys(days).filter((key) => key !== "__meta").length > 0;
 }
 
 function hasOpenAvailabilityRequest() {
   return (state.availabilityChangeRequests || []).some((request) => (
-    request.employee === state.activeEmployee && request.month === state.selectedMonth && request.status === "open"
+    request.employee === state.activeEmployee && request.month === availabilityMonthValue() && request.status === "open"
   ));
 }
 
 function collectAvailability() {
   const days = {};
+  const fixed = employeeIsFixed(state.activeEmployee);
   $$("#availabilityGrid .day-card").forEach((card) => {
     const active = card.querySelector(".status-row button.active");
     if (!active) return;
     days[card.dataset.date] = {
-      status: "yes",
+      status: fixed ? "no" : "yes",
       from: "",
       to: "",
       note: card.querySelector('[data-field="note"]').value.trim()
@@ -1464,14 +2853,137 @@ function collectAvailability() {
   });
   return days;
 }
+
+function availabilityValidationMessage() {
+  if (!employeeIsFixed(state.activeEmployee) || availabilityIsSubmitted()) return "";
+  const missing = [];
+  $$("#availabilityGrid .day-card").forEach((card) => {
+    const active = card.querySelector(".status-row button.active");
+    if (!active) return;
+    const note = card.querySelector('[data-field="note"]')?.value.trim();
+    if (!note) missing.push(card.dataset.date);
+  });
+  return missing.length ? "Bitte bei jedem markierten Kann-nicht-Tag einen Grund eintragen." : "";
+}
+
+function employeeIsFixed(employee) {
+  const fixed = new Set((state.settings.fixedEmployees || []).map((name) => String(name).trim().toLowerCase()));
+  return fixed.has(String(employee || "").trim().toLowerCase());
+}
+
+function renderAssignments() {
+  const container = $("#assignmentContent");
+  if (!container) return;
+  if (!state.activeEmployee) {
+    container.innerHTML = `<p class="hint">Bitte mit Mitarbeiter-PIN anmelden.</p>`;
+    return;
+  }
+  const dates = assignmentDateKeys(todayKey());
+  container.innerHTML = dates.map((dateKey, index) => assignmentDayHtml(dateKey, index)).join("");
+}
+
+function assignmentDateKeys(baseDate) {
+  const base = /^\d{4}-\d{2}-\d{2}$/.test(String(baseDate || "")) ? baseDate : todayKey();
+  return [base, isoDate(addDays(new Date(`${base}T12:00:00`), 1))];
+}
+
+function assignmentScheduleForDate(dateKey) {
+  const month = dateKey.slice(0, 7);
+  return state.assignmentSchedules?.[dateKey]
+    || state.schedules?.[month]?.days?.[dateKey]
+    || (dateKey === state.terminalDate ? state.terminalSchedule : null)
+    || (state.schedule?.month === month ? state.schedule?.days?.[dateKey] : null)
+    || {};
+}
+
+function assignmentRowsForDate(dateKey) {
+  const scheduleDay = assignmentScheduleForDate(dateKey);
+  return (state.settings.positions || [])
+    .filter((position) => scheduleDay[position] && assignmentPositionIncluded(position))
+    .map((position) => {
+      const employee = scheduleDay[position];
+      return {
+        dateKey,
+        position,
+        employee,
+        time: assignmentTimeForEmployee(dateKey, employee, scheduleDay, position)
+      };
+    });
+}
+
+function assignmentTimeForEmployee(dateKey, employee, scheduleDay = {}, position = "") {
+  const direct = state.assignmentTimes?.[dateKey]?.[employee];
+  if (direct?.from || direct?.note) return { from: direct.from || "", to: "", note: direct.note || "" };
+  return { from: "", to: "", note: "" };
+}
+
+function assignmentPositionIncluded(position) {
+  const department = departmentForPosition(position);
+  return department === "Counter" || department === "Service";
+}
+
+function assignmentDayHtml(dateKey, index = 0) {
+  const rows = assignmentRowsForDate(dateKey);
+  const ownRows = rows.filter((row) => row.employee === state.activeEmployee);
+  const title = index === 0 ? "Heute" : "Morgen";
+  const holiday = holidayInfo(dateKey);
+  return `
+    <article class="assignment-day-card ${ownRows.length ? "has-own-assignment" : ""}">
+      <div class="assignment-day-head">
+        <div>
+          <span>${escapeHtml(title)}</span>
+          <h3>${escapeHtml(formatLongDate(dateKey))}${holiday.label ? ` · ${escapeHtml(holiday.label)}` : ""}</h3>
+        </div>
+        ${ownRows.length ? `<strong>Du bist eingeteilt</strong>` : `<strong class="muted">Nicht eingeteilt</strong>`}
+      </div>
+      <div class="assignment-own-list">
+        ${ownRows.length ? ownRows.map(assignmentOwnRowHtml).join("") : `<p class="hint">Für dich ist an diesem Tag aktuell kein Dienst hinterlegt.</p>`}
+      </div>
+      <div class="assignment-team-list fixed-view">
+        <h4>Team-Einteilung</h4>
+        <div>
+          ${rows.length ? rows.map(assignmentTeamRowHtml).join("") : `<p class="hint">Für diesen Tag ist kein Counter- oder Service-Dienst gefunden.</p>`}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function assignmentOwnRowHtml(row) {
+  return `
+    <div class="assignment-own-row ${positionClass(row.position)}">
+      <span>${escapeHtml(row.position)}</span>
+      <strong>${escapeHtml(assignmentTimeText(row.time))}</strong>
+      ${row.time?.note ? `<small>${escapeHtml(row.time.note)}</small>` : ""}
+    </div>
+  `;
+}
+
+function assignmentTeamRowHtml(row) {
+  return `
+    <div class="assignment-team-row">
+      <span>${escapeHtml(row.position)}</span>
+      <strong>${escapeHtml(row.employee)}</strong>
+      <em>${escapeHtml(assignmentTimeText(row.time))}</em>
+    </div>
+  `;
+}
+
+function assignmentTimeText(time = {}) {
+  if (time.from) return `ab ${time.from}`;
+  return "Startzeit ausstehend";
+}
+
 function renderScheduleDay(date, options = {}) {
   const key = isoDate(date);
-  const assignments = state.schedule && state.schedule.days && state.schedule.days[key] ? state.schedule.days[key] : {};
+  const sourceSchedule = options.schedule || state.schedule;
+  const assignments = sourceSchedule && sourceSchedule.days && sourceSchedule.days[key] ? sourceSchedule.days[key] : {};
   const holiday = holidayInfo(key);
   const filled = state.settings.positions.filter((position) => assignments[position]);
-  const visiblePositions = state.settings.positions.filter((position) => (
-    !isOptionalServiceSlot(position) || assignments[position]
-  ));
+  const visiblePositions = state.settings.positions.filter((position) => assignments[position]);
+  const ownShiftCount = state.activeEmployee
+    ? filled.filter((position) => assignments[position] === state.activeEmployee).length
+    : 0;
   const cells = visiblePositions.map((position) => {
     const assignedEmployee = assignments[position] || "";
     const ownShift = Boolean(state.activeEmployee && assignedEmployee === state.activeEmployee && !state.adminUnlocked);
@@ -1479,7 +2991,7 @@ function renderScheduleDay(date, options = {}) {
           <div class="position-cell ${positionClass(position)} ${assignedEmployee ? "filled" : ""} ${ownShift ? "own-shift clickable-shift" : ""}"
             ${ownShift ? `data-request-swap-date="${key}" data-request-swap-position="${escapeHtml(position)}"` : ""}>
             <span class="position-name">${escapeHtml(position)}</span>
-            <span class="assignment">${escapeHtml(assignedEmployee || "Noch offen")}</span>
+            <span class="assignment">${escapeHtml(assignedEmployee)}</span>
             ${ownShift ? `<span class="assignment-note">Zum Diensttausch anklicken</span>` : ""}
           </div>
         `;
@@ -1489,31 +3001,30 @@ function renderScheduleDay(date, options = {}) {
   }
   const content = `
       <div class="day-header ${holiday.className}">
-          <span>${formatDate(key)}</span>
+          <span class="day-date-with-badge">${formatDate(key)}${holiday.label ? `<span class="day-badge holiday-inline">${escapeHtml(holiday.label)}</span>` : ""}</span>
           <span class="day-header-meta">
             ${options.today ? `<span class="opening-hours-inline">Geöffnet: ${openingHoursFor(key)}</span>` : ""}
-            ${holiday.label ? `<span class="day-badge">${escapeHtml(holiday.label)}</span>` : ""}
           </span>
         </div>
       <div class="position-grid">
         ${cells.join("")}
       </div>
-      ${options.today && filled.length === 0 ? `<div class="published-day-note">Es ist noch niemand eingeteilt.</div>` : ""}
+      ${options.today && filled.length === 0 ? `<div class="published-day-note">Es ist niemand eingeteilt.</div>` : ""}
       ${assignments.__dayNote ? `<div class="published-day-note">Tagesnotiz: ${escapeHtml(assignments.__dayNote)}</div>` : ""}
   `;
   if (options.collapsible) {
     return `
       <details class="schedule-day ${options.today ? "today-summary" : ""}">
-        <summary class="day-header ${holiday.className}">
-          <span>${formatDate(key)}</span>
+        <summary class="day-header ${holiday.className} ${ownShiftCount ? "has-own-assignment" : ""}">
+          <span class="day-date-with-badge">${formatDate(key)}${holiday.label ? `<span class="day-badge holiday-inline">${escapeHtml(holiday.label)}</span>` : ""}</span>
           <span class="day-header-meta">
-            ${filled.length ? `<span class="day-badge">${filled.length} Dienste</span>` : `<span class="day-badge">Noch offen</span>`}
-            ${holiday.label ? `<span class="day-badge">${escapeHtml(holiday.label)}</span>` : ""}
+            ${ownShiftCount ? `<span class="own-assignment-indicator"><i></i>Eingeteilt</span>` : ""}
           </span>
         </summary>
         <div class="position-grid">
           ${cells.join("")}
         </div>
+        ${filled.length === 0 ? `<div class="published-day-note">Es ist niemand eingeteilt.</div>` : ""}
         ${assignments.__dayNote ? `<div class="published-day-note">Tagesnotiz: ${escapeHtml(assignments.__dayNote)}</div>` : ""}
       </details>
     `;
@@ -1527,6 +3038,13 @@ function renderScheduleDay(date, options = {}) {
 
 function isOptionalServiceSlot(position) {
   return /^Service\s+[2-5]$/i.test(String(position || "").trim());
+}
+
+function weekStartKey(dateKey) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  return isoDate(date);
 }
 
 function renderPublished() {
@@ -1614,18 +3132,17 @@ function renderOpenSwaps() {
 
 function renderHomeSwaps() {
   const swaps = (state.swaps.open || []).filter((swap) => swap.status === "open");
+  if (!swaps.length) return "";
   return `
     <section class="missing-section home-swaps">
       <h2>Offene Ersatzanfragen</h2>
-      ${swaps.length
-        ? `<div class="swap-list">${swaps.slice(0, 6).map((swap) => `
+      <div class="swap-list">${swaps.slice(0, 6).map((swap) => `
             <article class="swap-card compact-swap-card clickable-card" data-open-swaps>
               <strong>${formatDate(swap.date)} | ${escapeHtml(swap.position)}</strong>
               <span>${escapeHtml(swap.employee)} sucht Ersatz${swap.responses.length ? `, ${swap.responses.length} gemeldet` : ""}</span>
               <button class="primary" type="button">Öffnen</button>
             </article>
-          `).join("")}</div>`
-        : `<p>Keine offenen Ersatzanfragen.</p>`}
+          `).join("")}</div>
     </section>
   `;
 }
@@ -1695,10 +3212,114 @@ function renderAdminMessages() {
         <strong>${escapeHtml(messageTargetLabel(message))}</strong>
         <span>${escapeHtml(message.text)}</span>
         <p class="hint">${message.createdAt ? formatDateTime(message.createdAt) : ""}</p>
+        <p class="hint">${escapeHtml(messageReadStatusText(message))}</p>
       </div>
       <button class="secondary" data-delete-message="${escapeHtml(message.id)}" type="button">Löschen</button>
     </article>
   `).join("") : `<p class="hint">Keine Nachrichten aktiv.</p>`;
+}
+
+function renderMessageEmployeePicker() {
+  const picker = $("#messageEmployeePicker");
+  if (!picker) return;
+  const target = $("#messageTarget")?.value || "all";
+  picker.classList.toggle("hidden", target !== "employees");
+  if (target !== "employees") {
+    picker.innerHTML = "";
+    return;
+  }
+  const employees = state.settings?.employees || [];
+  picker.innerHTML = employees.length
+    ? employees.map((employee) => `
+      <label>
+        <input type="checkbox" value="${escapeHtml(employee)}" data-message-employee>
+        ${escapeHtml(employee)}
+      </label>
+    `).join("")
+    : `<p class="hint">Keine Mitarbeiter angelegt.</p>`;
+}
+
+function selectedMessageEmployees() {
+  return $$("[data-message-employee]:checked").map((input) => input.value).filter(Boolean);
+}
+
+function renderAdminPushControls() {
+  const settings = {
+    ...defaultData.settings.pushSettings,
+    ...(state.settings?.pushSettings || {})
+  };
+  if ($("#pushAutoSchedule")) $("#pushAutoSchedule").checked = settings.schedulePublished !== false;
+  if ($("#pushAutoAssignment")) $("#pushAutoAssignment").checked = settings.assignmentsTomorrow !== false;
+  if ($("#pushAutoMessages")) $("#pushAutoMessages").checked = settings.messages !== false;
+  if ($("#pushScheduleTitle")) $("#pushScheduleTitle").value = settings.schedulePublishedTitle || "";
+  if ($("#pushScheduleBody")) $("#pushScheduleBody").value = settings.schedulePublishedBody || "";
+  if ($("#pushAssignmentTitle")) $("#pushAssignmentTitle").value = settings.assignmentsTomorrowTitle || "";
+  if ($("#pushAssignmentBody")) $("#pushAssignmentBody").value = settings.assignmentsTomorrowBody || "";
+  if ($("#pushMessagesTitle")) $("#pushMessagesTitle").value = settings.messagesTitle || "";
+  if ($("#pushMessagesBody")) $("#pushMessagesBody").value = settings.messagesBody || "";
+  renderPushEmployeePicker();
+}
+
+function renderPushEmployeePicker() {
+  const picker = $("#pushEmployeePicker");
+  if (!picker) return;
+  const target = $("#pushTarget")?.value || "all";
+  picker.classList.toggle("hidden", target !== "employees");
+  if (target !== "employees") {
+    picker.innerHTML = "";
+    return;
+  }
+  const employees = state.settings?.employees || [];
+  picker.innerHTML = employees.length
+    ? employees.map((employee) => `
+      <label>
+        <input type="checkbox" value="${escapeHtml(employee)}" data-push-employee>
+        ${escapeHtml(employee)}
+      </label>
+    `).join("")
+    : `<p class="hint">Keine Mitarbeiter angelegt.</p>`;
+}
+
+function selectedPushEmployees() {
+  return $$("[data-push-employee]:checked").map((input) => input.value).filter(Boolean);
+}
+
+function pushResultText(result = {}) {
+  if (result.skipped && result.reason === "missing-vapid") return "Push konnte nicht senden: VAPID-Schlüssel fehlen in Vercel.";
+  if (result.skipped && result.reason === "web-push-missing") return "Push konnte nicht senden: Server-Paket web-push ist noch nicht installiert.";
+  const sent = Number(result.sent || 0);
+  const removed = Number(result.removed || 0);
+  if (!sent && removed) return `Kein aktives Gerät erreicht. ${removed} alte Registrierung(en) wurden entfernt.`;
+  if (!sent) return "Kein aktives Handy für diese Empfänger registriert.";
+  return `Push gesendet: ${sent} Gerät(e).${removed ? ` ${removed} alte Registrierung(en) entfernt.` : ""}`;
+}
+
+function messageReadStatusText(message = {}) {
+  const recipients = messageRecipientsClient(message);
+  const total = recipients.length;
+  const read = Object.keys(message.readBy || {}).filter((employee) => !recipients.length || recipients.includes(employee)).length;
+  if (!total) return "Keine Empfänger hinterlegt.";
+  return `Gelesen: ${read}/${total}`;
+}
+
+function renderAdminTerminalMessages() {
+  const container = $("#adminTerminalMessagesList");
+  if (!container) return;
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  const messages = state.terminalMessages || [];
+  container.innerHTML = messages.length ? messages.map((message) => `
+    <article class="swap-card admin-swap-card">
+      <div>
+        <strong>Terminal / Schichtleitung</strong>
+        <span>${escapeHtml(message.text)}</span>
+        <p class="hint">${message.acknowledgedAt ? `Quittiert${message.acknowledgedBy ? ` von ${escapeHtml(message.acknowledgedBy)}` : ""} am ${escapeHtml(formatDateTime(message.acknowledgedAt))}` : `Offen${message.createdAt ? ` seit ${escapeHtml(formatDateTime(message.createdAt))}` : ""}`}</p>
+      </div>
+      <button class="secondary" data-delete-terminal-message="${escapeHtml(message.id)}" type="button">Löschen</button>
+    </article>
+  `).join("") : `<p class="hint">Keine Terminal-Nachrichten aktiv.</p>`;
 }
 
 function renderAdminTasks() {
@@ -1715,35 +3336,143 @@ function renderAdminTasks() {
   updateRunningTaskFields();
   if ($("#taskCalendarMonth") && !$("#taskCalendarMonth").value) $("#taskCalendarMonth").value = state.selectedMonth;
   if ($("#calendarTaskDate") && !$("#calendarTaskDate").value) $("#calendarTaskDate").value = todayKey();
-  const tasks = state.taskTemplates || [];
+  const tasks = sortTaskTemplates(state.taskTemplates || []);
   renderTaskTable("#prepTaskTable", tasks.filter((task) => task.category === "preparation"));
   renderTaskTable("#runningTaskTable", tasks.filter((task) => (task.category || "running") === "running"));
   renderTaskTable("#closingTaskTable", tasks.filter((task) => task.category === "closing"));
   renderTaskCalendar();
 }
 
+function renderAdminCleaningTasks() {
+  const container = $("#adminCleaningTaskTable");
+  if (!container) return;
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  fillCleaningWeekdaySelect();
+  updateCleaningTaskFields();
+  const tasks = normalizeCleaningTemplates(state.cleaningTemplates);
+  if (!tasks.length) {
+    container.innerHTML = `<p class="hint">Keine Reinigungsaufgaben angelegt.</p>`;
+    return;
+  }
+  container.innerHTML = `
+    <div class="admin-task-row admin-task-row-head">
+      <span>Aufgabe</span><span>Status</span><span>Notiz</span><span></span>
+    </div>
+    ${tasks.map((task) => `
+      <div class="admin-task-row">
+        <span><strong>${escapeHtml(task.title)}</strong></span>
+        <span>${escapeHtml(cleaningFrequencyLabel(task))}</span>
+        <span>${task.note ? escapeHtml(task.note) : "-"}</span>
+        <button class="secondary" data-delete-cleaning-task="${escapeHtml(task.id)}" type="button">Löschen</button>
+      </div>
+    `).join("")}
+  `;
+}
+
+function fillCleaningWeekdaySelect() {
+  const select = $("#cleaningTaskWeekday");
+  if (!select || select.options.length) return;
+  select.innerHTML = weekdays.map((day, index) => `<option value="${index}">${day}</option>`).join("");
+  select.value = "1";
+}
+
+function updateCleaningTaskFields() {
+  $("#cleaningWeekdayField")?.classList.add("hidden");
+}
+
+function cleaningFrequencyLabel(task) {
+  return "Wöchentlich offen bis erledigt";
+}
+
+function setCalendarTaskDate(dateKey) {
+  const dateInput = $("#calendarTaskDate");
+  if (dateInput) dateInput.value = dateKey;
+  const popupDate = $("#calendarTaskPopupDate");
+  if (popupDate) popupDate.textContent = formatDate(dateKey);
+}
+
+function openCalendarTaskPopup(dateKey) {
+  setCalendarTaskDate(dateKey);
+  updateCalendarPopupFields();
+  $("#calendarTaskPopup")?.classList.remove("hidden");
+  window.setTimeout(() => $("#calendarTaskTitle")?.focus(), 30);
+}
+
+function closeCalendarTaskPopup() {
+  $("#calendarTaskPopup")?.classList.add("hidden");
+}
+
+function updateCalendarPopupFields() {
+  const enabled = Boolean($("#calendarTaskPopupEnabled")?.checked);
+  $("#calendarTaskPopupTimeField")?.classList.toggle("hidden", !enabled);
+}
+
 function renderTaskCalendar() {
   const target = $("#adminTaskCalendar");
   if (!target) return;
   const month = $("#taskCalendarMonth")?.value || state.selectedMonth;
-  const weeks = groupedMonthWeeks(month);
+  const weeks = calendarWeeksForMonth(month);
   target.innerHTML = `
     <div class="admin-calendar-weekdays">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((day) => `<span>${day}</span>`).join("")}</div>
     <div class="admin-calendar-grid">
-      ${weeks.map((week) => week.dates.map((date) => calendarDayHtml(isoDate(date))).join("")).join("")}
+      ${weeks.map((week) => week.map((day) => calendarDayHtml(day)).join("")).join("")}
     </div>
   `;
 }
 
-function calendarDayHtml(dateKey) {
-  const tasks = (state.taskTemplates || [])
+function calendarWeeksForMonth(month) {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const first = new Date(year, monthIndex - 1, 1, 12);
+  const last = new Date(year, monthIndex, 0, 12);
+  const start = weekStart(first);
+  const end = weekEnd(last);
+  const weeks = [];
+  let week = [];
+  for (let cursor = new Date(start); cursor <= end; cursor = addDays(cursor, 1)) {
+    const date = new Date(cursor);
+    week.push({ date, inMonth: date.getMonth() === monthIndex - 1 });
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
+  }
+  return weeks;
+}
+
+function calendarDayHtml(day) {
+  const date = day.date;
+  const dateKey = isoDate(date);
+  const tasks = sortTaskTemplates(state.taskTemplates || [])
     .filter((task) => (task.category || "running") === "running" && taskAppliesToDate(task, dateKey));
+  const holiday = holidayInfo(dateKey);
+  const selected = ($("#calendarTaskDate")?.value || todayKey()) === dateKey;
+  const today = todayKey() === dateKey;
+  const weekend = [0, 6].includes(date.getDay());
+  const classes = [
+    "admin-calendar-day",
+    day.inMonth ? "" : "is-outside-month",
+    weekend ? "is-weekend" : "",
+    today ? "is-today" : "",
+    selected ? "selected" : "",
+    holiday.className ? `is-${holiday.className}` : ""
+  ].filter(Boolean).join(" ");
   return `
-    <article class="admin-calendar-day" data-calendar-date="${dateKey}">
-      <strong>${formatShortDate(new Date(`${dateKey}T12:00:00`))}</strong>
+    <article class="${classes}" data-calendar-date="${dateKey}" data-calendar-in-month="${day.inMonth ? "true" : "false"}">
+      <div class="admin-calendar-date-head">
+        <strong>${escapeHtml(weekdays[date.getDay()])} ${formatShortDate(date)}</strong>
+        ${today ? `<span>Heute</span>` : ""}
+      </div>
+      <div class="admin-calendar-tags">
+        ${holiday.label ? `<b class="calendar-special-badge ${escapeHtml(holiday.className)}">${escapeHtml(holiday.label)}</b>` : ""}
+        ${weekend ? `<b class="calendar-special-badge weekend">Wochenende</b>` : ""}
+      </div>
       ${tasks.map((task) => `
-        <span class="calendar-task calendar-${task.category || "running"}">
-          ${escapeHtml(task.title)}
+        <span class="calendar-task calendar-${task.category || "running"} ${task.popupEnabled && task.popupTime ? "has-popup" : ""}">
+          <span class="calendar-task-title">${escapeHtml(task.title)}</span>
+          ${task.popupEnabled && task.popupTime ? `<span class="calendar-popup-badge">Popup ${escapeHtml(task.popupTime)}</span>` : ""}
           <button type="button" aria-label="Eintrag löschen" data-calendar-delete-task="${escapeHtml(task.id)}">×</button>
         </span>
       `).join("")}
@@ -1800,14 +3529,15 @@ function fillWeekdaySelects() {
 function renderTaskTable(selector, tasks) {
   const target = $(selector);
   if (!target) return;
-  target.innerHTML = tasks.length ? `
+  const sortedTasks = sortTaskTemplates(tasks || []);
+  target.innerHTML = sortedTasks.length ? `
     <div class="admin-task-row admin-task-row-head">
       <span>Aufgabe</span>
       <span>Wann</span>
       <span>Notiz</span>
       <span></span>
     </div>
-    ${tasks.map((task) => `
+    ${sortedTasks.map((task) => `
       <div class="admin-task-row">
         <strong>${escapeHtml(task.title)}</strong>
         <span>${escapeHtml(taskFrequencyLabel(task).replace(`${taskCategoryLabel(task.category)} | `, ""))}</span>
@@ -1816,6 +3546,18 @@ function renderTaskTable(selector, tasks) {
       </div>
     `).join("")}
   ` : `<p class="hint">Noch keine Aufgaben eingetragen.</p>`;
+}
+
+function sortTaskTemplates(tasks = []) {
+  return tasks
+    .map((task, index) => ({ task, index }))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.task.createdAt || "") || 0;
+      const bTime = Date.parse(b.task.createdAt || "") || 0;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.index - b.index;
+    })
+    .map(({ task }) => task);
 }
 
 function updateRunningTaskFields() {
@@ -1839,33 +3581,490 @@ function renderAdminAvailabilityPreview() {
     container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
     return;
   }
-  const dates = datesInMonth(state.selectedMonth);
+  const availabilityMonth = availabilityMonthValue();
+  const dates = datesInMonth(availabilityMonth);
   const employees = state.settings.employees || [];
   const cards = dates.map((date) => {
     const dateKey = isoDate(date);
     const available = employees.filter((employee) => state.availability?.[employee]?.[dateKey]?.status === "yes");
+    const unavailable = employees
+      .map((employee) => ({ employee, day: state.availability?.[employee]?.[dateKey] }))
+      .filter((entry) => entry.day?.status === "no");
+    const cardClass = available.length ? "has-availability" : (unavailable.length ? "has-unavailable" : "");
     return `
-      <article class="availability-preview-card ${available.length ? "has-availability" : ""}">
+      <article class="availability-preview-card ${cardClass}">
         <strong>${formatShortDate(date)}</strong>
         <span>${weekdays[date.getDay()]}</span>
-        <p>${available.length ? escapeHtml(available.join(", ")) : "Keine Zusagen"}</p>
+        <p>${available.length ? `Kann: ${escapeHtml(available.join(", "))}` : "Keine Zusagen"}</p>
+        ${unavailable.length ? `<p class="availability-cannot-line">Kann nicht: ${unavailable.map((entry) => `${escapeHtml(entry.employee)}${entry.day.note ? ` (${escapeHtml(entry.day.note)})` : ""}`).join(", ")}</p>` : ""}
       </article>
     `;
   }).join("");
   container.innerHTML = `
     <div class="availability-preview-head">
-      <strong>${formatMonth(state.selectedMonth)}</strong>
+      <strong>${formatMonth(availabilityMonth)}</strong>
       <span>${employees.length} Mitarbeiter</span>
     </div>
     <div class="availability-preview-grid">${cards}</div>
   `;
 }
 
+function renderAdminOffers() {
+  const container = $("#adminOffers");
+  if (!container) return;
+  if (state.offerDraftDirty && container.querySelector("[data-offer-field]")) {
+    state.offerDraft = currentOfferDraftFromDom();
+    state.offerDraftId = state.offerDraft.id;
+  }
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  const draft = ensureOfferDraft();
+  const totals = offerTotals(draft);
+  const offers = normalizeOffersClient(state.offers || []);
+  const activeId = state.offerDraft?.id || draft.id;
+  const listHtml = offers.length ? offers.map((offer) => renderOfferListItem(offer, activeId)).join("") : `<p class="hint">Noch keine Angebote angelegt.</p>`;
+  container.innerHTML = `
+    <div class="offer-toolbar">
+      <div class="offer-toolbar-actions">
+        <button class="primary" type="button" data-offer-new>+ Neues Angebot</button>
+        <button class="secondary" type="button" data-offer-save>Speichern</button>
+        <button class="secondary" type="button" data-offer-duplicate>Duplizieren</button>
+        <button class="secondary" type="button" data-offer-toggle-archive>${draft.archived ? "Archivierung aufheben" : "Archivieren"}</button>
+        <button class="secondary danger-lite" type="button" data-offer-delete>Löschen</button>
+        <button class="secondary" type="button" data-offer-print>PDF / Drucken</button>
+      </div>
+      <div class="offer-toolbar-stats">
+        <span class="offer-stat"><small>Personen</small><strong>${totals.personCount}</strong></span>
+        <span class="offer-stat"><small>Buffet</small><strong>${formatMoney(totals.buffetTotal)}</strong></span>
+        <span class="offer-stat"><small>Zusatz</small><strong>${formatMoney(totals.extraRows)}</strong></span>
+        <span class="offer-stat offer-stat-total"><small>Gesamt</small><strong>${formatMoney(totals.total)}</strong></span>
+      </div>
+    </div>
+    <div class="offer-workspace-grid">
+      <aside class="offer-sidebar">
+        <div class="offer-sidebar-head">
+          <strong>Angebotsliste</strong>
+          <span>${offers.length} Einträge</span>
+        </div>
+        <div class="offer-list">${listHtml}</div>
+      </aside>
+      <section class="offer-editor">
+        <div class="offer-editor-head">
+          <div>
+            <h3>${escapeHtml(draft.title || "Angebot")}</h3>
+            <p>${draft.archived ? "Archiviert" : "Aktiv"} · zuletzt ${draft.updatedAt ? escapeHtml(formatDateTime(draft.updatedAt)) : "noch nicht gespeichert"}</p>
+          </div>
+          <div class="offer-head-badges">
+            <span class="offer-badge">${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "Datum offen")}</span>
+            <span class="offer-badge">${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "Veranstaltung offen")}</span>
+          </div>
+        </div>
+
+        <div class="offer-grid">
+          <label>Bezeichnung<input data-offer-field="title" value="${escapeHtml(draft.title)}" placeholder="z.B. Angebot Stoll"></label>
+          <label>Angebotsdatum<input data-offer-field="offerDate" type="date" value="${escapeHtml(draft.offerDate)}"></label>
+          <label>Veranstaltungsdatum<input data-offer-field="eventDate" type="date" value="${escapeHtml(draft.eventDate)}"></label>
+          <label>Anlass<input data-offer-field="occasion" value="${escapeHtml(draft.occasion)}" placeholder="z.B. Hochzeitsfeier"></label>
+          <label>Erwachsene<input data-offer-field="personsAdults" type="number" min="0" step="1" value="${escapeHtml(draft.personsAdults)}"></label>
+          <label>Kinder<input data-offer-field="personsChildren" type="number" min="0" step="1" value="${escapeHtml(draft.personsChildren)}"></label>
+          <label>Uhrzeit<input data-offer-field="startTime" type="time" value="${escapeHtml(draft.startTime)}"></label>
+          <label>Reservierter Bereich<input data-offer-field="reservedArea" value="${escapeHtml(draft.reservedArea)}" placeholder="z.B. Unser großes Nebenzimmer"></label>
+        </div>
+
+        <div class="offer-grid offer-grid-two">
+          <label>Kunde / Firma<input data-offer-field="customerName" value="${escapeHtml(draft.customerName)}" placeholder="Firma oder Name"></label>
+          <label>Ansprechpartner<input data-offer-field="customerContact" value="${escapeHtml(draft.customerContact)}" placeholder="Ansprechpartner"></label>
+          <label>E-Mail<input data-offer-field="customerEmail" value="${escapeHtml(draft.customerEmail)}" placeholder="E-Mail für Rückfragen"></label>
+          <label>Telefon<input data-offer-field="customerPhone" value="${escapeHtml(draft.customerPhone)}" placeholder="Telefonnummer"></label>
+          <label class="offer-grid-wide">Rechnungsadresse<textarea data-offer-field="customerAddress" rows="3" placeholder="Adresse">${escapeHtml(draft.customerAddress)}</textarea></label>
+        </div>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Buffet</strong>
+              <span>Vorlage auswählen, danach einzelne Gerichte frei anpassen.</span>
+            </div>
+            <div class="offer-inline-tools">
+              <select data-offer-field="buffetTemplateKey">
+                <option value="">Vorlage wählen</option>
+                ${offerTemplateOptions(draft.buffet?.templateKey || "")}
+              </select>
+              <button class="secondary" type="button" data-offer-apply-template>Vorlage übernehmen</button>
+            </div>
+          </div>
+          <div class="offer-grid offer-grid-two">
+            <label>Buffetname<input data-offer-field="buffetName" value="${escapeHtml(draft.buffet?.name)}" placeholder="Buffetname"></label>
+            <label>Preis pro Person<input data-offer-field="buffetPricePerPerson" type="number" min="0" step="0.01" value="${escapeHtml(draft.buffet?.pricePerPerson)}"></label>
+          </div>
+          <div class="offer-buffet-categories">
+            ${OFFER_CATEGORY_ORDER.map((category) => renderOfferBuffetCategory(category, draft)).join("")}
+          </div>
+        </section>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Ablauf</strong>
+              <span>Timeline für Aufbau, Sektempfang, Buffet und weitere Schritte.</span>
+            </div>
+            <button class="secondary" type="button" data-offer-add-timeline>+ Zeit hinzufügen</button>
+          </div>
+          <div class="offer-row-list">
+            ${(draft.timeline || []).length ? (draft.timeline || []).map((item, index) => renderOfferTimelineRow(item, index)).join("") : `<p class="hint">Noch keine Zeiten eingetragen.</p>`}
+          </div>
+        </section>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Kostenübersicht</strong>
+              <span>Freie Positionen wie Bowling, Sektempfang, Raummiete oder Sonstiges.</span>
+            </div>
+            <button class="secondary" type="button" data-offer-add-cost>+ Position hinzufügen</button>
+          </div>
+          <div class="offer-row-list">
+            ${(draft.costs || []).length ? (draft.costs || []).map((item, index) => renderOfferCostRow(item, index)).join("") : `<p class="hint">Noch keine Positionen angelegt.</p>`}
+          </div>
+        </section>
+
+        <div class="offer-grid offer-grid-two">
+          <label class="offer-grid-wide">Zusätzliche Informationen<textarea data-offer-field="additionalInfo" rows="4" placeholder="Für das Angebot sichtbar">${escapeHtml(draft.additionalInfo)}</textarea></label>
+          <label class="offer-grid-wide">Interne Notiz<textarea data-offer-field="internalNote" rows="4" placeholder="Nur intern">${escapeHtml(draft.internalNote)}</textarea></label>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderOfferListItem(offer, activeId) {
+  const totals = offerTotals(offer);
+  const title = offer.title || offer.customerName || "Angebot";
+  const dateLine = [offer.eventDate ? formatDate(offer.eventDate) : "", offer.customerName].filter(Boolean).join(" · ");
+  return `
+    <button class="offer-list-item ${offer.id === activeId ? "active" : ""}" type="button" data-select-offer="${escapeHtml(offer.id)}">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(dateLine || "Noch keine Details")}</span>
+      <small>${formatMoney(totals.total)} · ${offer.archived ? "Archiviert" : "Aktiv"}</small>
+    </button>
+  `;
+}
+
+function renderOfferBuffetCategory(category, draft) {
+  const items = draft.buffet?.categories?.[category] || [];
+  return `
+    <section class="offer-category">
+      <div class="offer-category-head">
+        <strong>${escapeHtml(OFFER_CATEGORY_LABELS[category] || category)}</strong>
+        <button class="secondary" type="button" data-offer-add-dish="${escapeHtml(category)}">+ Gericht</button>
+      </div>
+      <div class="offer-row-list">
+        ${items.length ? items.map((item) => renderOfferDishRow(category, item)).join("") : `<p class="hint">Noch keine Gerichte hinterlegt.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderOfferDishRow(category, item) {
+  return `
+    <div class="offer-edit-row" data-offer-dish-row="${escapeHtml(category)}" data-offer-dish-id="${escapeHtml(item.id)}">
+      <input data-offer-dish-name value="${escapeHtml(item.name)}" placeholder="Gericht">
+      <input data-offer-dish-note value="${escapeHtml(item.note)}" placeholder="Notiz">
+      <div class="row-actions">
+        <button class="secondary" type="button" data-offer-move-dish="up">↑</button>
+        <button class="secondary" type="button" data-offer-move-dish="down">↓</button>
+        <button class="secondary danger-lite" type="button" data-offer-remove-dish>Entfernen</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderOfferTimelineRow(item) {
+  return `
+    <div class="offer-edit-row" data-offer-timeline-row data-offer-timeline-id="${escapeHtml(item.id)}">
+      <input data-offer-timeline-time type="time" value="${escapeHtml(item.time)}">
+      <input data-offer-timeline-title value="${escapeHtml(item.title)}" placeholder="Schritt / Ablaufpunkt">
+      <input data-offer-timeline-note value="${escapeHtml(item.note)}" placeholder="Notiz">
+      <div class="row-actions">
+        <button class="secondary" type="button" data-offer-move-timeline="up">↑</button>
+        <button class="secondary" type="button" data-offer-move-timeline="down">↓</button>
+        <button class="secondary danger-lite" type="button" data-offer-remove-timeline>Entfernen</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderOfferCostRow(item) {
+  return `
+    <div class="offer-edit-row" data-offer-cost-row data-offer-cost-id="${escapeHtml(item.id)}">
+      <input data-offer-cost-label value="${escapeHtml(item.label)}" placeholder="Bezeichnung">
+      <input data-offer-cost-quantity type="number" min="0" step="0.01" value="${escapeHtml(item.quantity)}" placeholder="Menge">
+      <input data-offer-cost-unit type="number" min="0" step="0.01" value="${escapeHtml(item.unitPrice)}" placeholder="Einzelpreis">
+      <input data-offer-cost-note value="${escapeHtml(item.note)}" placeholder="Notiz">
+      <div class="row-actions">
+        <button class="secondary" type="button" data-offer-move-cost="up">↑</button>
+        <button class="secondary" type="button" data-offer-move-cost="down">↓</button>
+        <button class="secondary danger-lite" type="button" data-offer-remove-cost>Entfernen</button>
+      </div>
+    </div>
+  `;
+}
+
+async function saveCurrentOffer(button) {
+  const draft = currentOfferDraftFromDom();
+  const oldText = button?.textContent || "Speichern";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Speichert...";
+  }
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "save-offer",
+        adminToken: state.adminToken,
+        offer: draft
+      })
+    });
+    state.offers = normalizeOffersClient(result.offers || state.offers || []);
+    state.offerDraft = cloneData(result.offer || draft);
+    state.offerDraftId = state.offerDraft.id;
+    state.offerDraftDirty = false;
+    renderAdminOffers();
+    showToast("Angebot gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function deleteCurrentOffer(button) {
+  const draft = currentOfferDraftFromDom();
+  if (!draft?.id) return;
+  if (!window.confirm("Dieses Angebot wirklich löschen?")) return;
+  const oldText = button?.textContent || "Löschen";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Löscht...";
+  }
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "delete-offer",
+        adminToken: state.adminToken,
+        offerId: draft.id
+      })
+    });
+    state.offers = normalizeOffersClient(result.offers || []);
+    state.offerDraft = state.offers[0] ? cloneData(state.offers[0]) : createBlankOfferDraft();
+    state.offerDraftId = state.offerDraft.id;
+    state.offerDraftDirty = false;
+    renderAdminOffers();
+    showToast("Angebot gelöscht.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+function duplicateCurrentOffer() {
+  const draft = currentOfferDraftFromDom();
+  const clone = cloneData(draft);
+  clone.id = cryptoId();
+  clone.createdAt = new Date().toISOString();
+  clone.updatedAt = clone.createdAt;
+  clone.title = `${clone.title || "Angebot"} Kopie`;
+  state.offerDraft = normalizeOfferClient(clone);
+  state.offerDraftId = state.offerDraft.id;
+  state.offerDraftDirty = false;
+  renderAdminOffers();
+  showToast("Angebot dupliziert.");
+}
+
+function toggleCurrentOfferArchive() {
+  const draft = currentOfferDraftFromDom();
+  state.offerDraft = normalizeOfferClient({ ...draft, archived: !draft.archived });
+  state.offerDraftId = state.offerDraft.id;
+  state.offerDraftDirty = false;
+  renderAdminOffers();
+}
+
+function newOfferDraft() {
+  state.offerDraft = createBlankOfferDraft();
+  state.offerDraftId = state.offerDraft.id;
+  state.offerDraftDirty = false;
+  renderAdminOffers();
+}
+
+function moveOfferRow(list, rowId, direction) {
+  const index = list.findIndex((item) => item.id === rowId);
+  const nextIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || nextIndex < 0 || nextIndex >= list.length) return list;
+  const copy = list.slice();
+  const [item] = copy.splice(index, 1);
+  copy.splice(nextIndex, 0, item);
+  return copy;
+}
+
+function printOfferDraft() {
+  const draft = currentOfferDraftFromDom();
+  const totals = offerTotals(draft);
+  const win = window.open("", "_blank", "width=1100,height=1400");
+  if (!win) {
+    showToast("Popup wurde blockiert. Bitte Popups erlauben.");
+    return;
+  }
+  const buffetSections = OFFER_CATEGORY_ORDER.map((category) => {
+    const items = draft.buffet?.categories?.[category] || [];
+    if (!items.length) return "";
+    return `
+      <div class="offer-print-buffet-group">
+        <h4>${escapeHtml(OFFER_CATEGORY_LABELS[category] || category)}</h4>
+        <ul>${items.map((item) => `<li>${escapeHtml(item.name)}${item.note ? `<span>${escapeHtml(item.note)}</span>` : ""}</li>`).join("")}</ul>
+      </div>
+    `;
+  }).filter(Boolean).join("");
+  const timeline = (draft.timeline || []).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.time || "—")}</td>
+      <td>${escapeHtml(item.title || "—")}</td>
+      <td>${escapeHtml(item.note || "")}</td>
+    </tr>
+  `).join("");
+  const costs = (draft.costs || []).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.label || "—")}</td>
+      <td>${escapeHtml(item.quantity || 0)}</td>
+      <td>${formatMoney(item.unitPrice || 0)}</td>
+      <td>${formatMoney((cleanOfferMoneyValue(item.quantity) * cleanOfferMoneyValue(item.unitPrice)))}</td>
+    </tr>
+  `).join("");
+  win.document.write(`
+    <!doctype html>
+    <html lang="de">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Angebot ${escapeHtml(draft.customerName || draft.title || "")}</title>
+        <style>
+          @page { size: A4; margin: 14mm; }
+          * { box-sizing: border-box; }
+          body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; }
+          .sheet { width: 100%; }
+          .sheet + .sheet { page-break-before: always; margin-top: 0; }
+          .top { display:flex; justify-content:space-between; align-items:flex-start; gap: 20px; margin-bottom: 20px; }
+          .logo { width: 220px; height:auto; object-fit: contain; }
+          .meta { text-align:right; font-size: 12px; line-height: 1.4; }
+          h1 { margin: 0 0 10px; font-size: 28px; letter-spacing: 0; }
+          h2 { margin: 0 0 8px; font-size: 18px; }
+          h3 { margin: 0 0 6px; font-size: 14px; }
+          p { margin: 0 0 8px; }
+          .muted { color: #666; }
+          .box { border-top: 1px solid #d3d7dd; padding-top: 10px; margin-top: 10px; }
+          .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+          .kv { font-size: 12px; }
+          .kv strong { display:block; margin-bottom: 2px; }
+          .timeline, .costs { width:100%; border-collapse: collapse; margin-top: 8px; }
+          .timeline th, .timeline td, .costs th, .costs td { border-bottom: 1px solid #e5e7eb; padding: 6px 4px; text-align:left; font-size: 12px; vertical-align: top; }
+          .timeline th, .costs th { font-size: 11px; text-transform: uppercase; color: #666; }
+          .totals { margin-top: 10px; padding: 10px 12px; background: #f6f7f9; border: 1px solid #d7dce3; display:flex; justify-content:space-between; font-weight:700; }
+          .signature { margin-top: 26px; display:grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+          .signature .line { border-top: 1px solid #999; padding-top: 8px; min-height: 42px; }
+          .offer-print-buffet-group + .offer-print-buffet-group { margin-top: 10px; }
+          .offer-print-buffet-group ul { margin: 4px 0 0 18px; padding: 0; }
+          .offer-print-buffet-group li { margin-bottom: 4px; }
+          .offer-print-buffet-group span { display:block; color:#666; font-size:11px; margin-left: 2px; }
+        </style>
+      </head>
+      <body>
+        <div class="sheet">
+          <div class="top">
+            <img class="logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
+            <div class="meta">
+              <div><strong>ANGEBOT</strong></div>
+              <div>${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "")}</div>
+              <div>${escapeHtml(draft.customerName || "")}</div>
+            </div>
+          </div>
+          <h1>Angebot</h1>
+          <p class="muted">${escapeHtml(draft.occasion || "")}</p>
+          <div class="grid box">
+            <div class="kv"><strong>Kunde / Firma</strong>${escapeHtml(draft.customerName || "-")}</div>
+            <div class="kv"><strong>Ansprechpartner</strong>${escapeHtml(draft.customerContact || "-")}</div>
+            <div class="kv"><strong>E-Mail</strong>${escapeHtml(draft.customerEmail || "-")}</div>
+            <div class="kv"><strong>Telefon</strong>${escapeHtml(draft.customerPhone || "-")}</div>
+            <div class="kv"><strong>Veranstaltungsdatum</strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</div>
+            <div class="kv"><strong>Personen</strong>${escapeHtml(String(totals.personCount || 0))}</div>
+            <div class="kv"><strong>Uhrzeit</strong>${escapeHtml(draft.startTime || "-")}</div>
+            <div class="kv"><strong>Reservierter Bereich</strong>${escapeHtml(draft.reservedArea || "-")}</div>
+          </div>
+          ${draft.additionalInfo ? `<div class="box"><h2>Zusätzliche Informationen</h2><p>${escapeHtml(draft.additionalInfo)}</p></div>` : ""}
+          <div class="box">
+            <h2>Buffet ${escapeHtml(draft.buffet?.name || "")}</h2>
+            <p class="muted">${formatMoney(draft.buffet?.pricePerPerson || 0)} pro Person</p>
+            ${buffetSections}
+          </div>
+          ${timeline ? `<div class="box"><h2>Ablauf</h2><table class="timeline"><thead><tr><th>Zeit</th><th>Punkt</th><th>Notiz</th></tr></thead><tbody>${timeline}</tbody></table></div>` : ""}
+        </div>
+        <div class="sheet">
+          <div class="box">
+            <h2>Kostenübersicht</h2>
+            <table class="costs">
+              <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einzelpreis</th><th>Gesamt</th></tr></thead>
+              <tbody>
+                <tr><td>Buffet</td><td>${escapeHtml(String(totals.personCount || 0))}</td><td>${formatMoney(draft.buffet?.pricePerPerson || 0)}</td><td>${formatMoney(totals.buffetTotal)}</td></tr>
+                ${costs}
+              </tbody>
+            </table>
+            <div class="totals"><span>Gesamtsumme</span><span>${formatMoney(totals.total)}</span></div>
+          </div>
+          <div class="box">
+            <h2>Hinweise & Reservierungsbestätigung</h2>
+            <p>Dieses Angebot ist ab dem Ausstellungsdatum 14 Tage gültig.</p>
+            <p>${escapeHtml(draft.internalNote || draft.additionalInfo || "Reservierung vorbehaltlich Verfügbarkeit.")}</p>
+          </div>
+          <div class="signature">
+            <div class="line"><strong>Ort, Datum</strong><br>Landshut, ${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "")}</div>
+            <div class="line"><strong>Unterschrift / Firmenstempel</strong><br>________________________</div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `);
+  win.document.close();
+  win.onload = () => {
+    win.focus();
+    win.print();
+  };
+}
+
+function renderAdminCorrection() {
+  const dateInput = $("#correctionDate");
+  if (!dateInput) return;
+  if (!dateInput.value) dateInput.value = yesterdayKey();
+  const status = $("#correctionStatus");
+  if (!status || status.textContent) return;
+  status.textContent = "Datum wählen, Grund eintragen und Bericht gezielt zur Korrektur öffnen.";
+}
+
 function renderMissingAvailability() {
   const missing = state.missingAvailability || [];
   return `
     <section class="missing-section">
-      <h2>Fehlende Verfügbarkeit für ${formatMonth(nextMonthValue())}</h2>
+      <h2>Fehlende Verfügbarkeit für ${formatMonth(availabilityMonthValue())}</h2>
       ${missing.length
         ? `<div class="missing-list">${missing.map((name) => `<span>${escapeHtml(name)}</span>`).join("")}</div>`
         : `<p>Alle haben ihre Verfügbarkeit abgegeben.</p>`}
@@ -1983,15 +4182,20 @@ function renderTimesheet() {
   const totals = timesheetTotals();
   const rows = shiftDates.map((dateKey) => {
     const entry = entries[dateKey] || {};
-    const hours = hoursBetween(entry.from, entry.to);
+    const hours = paidHours(entry);
+    const hasTip = entry.tip !== "" && entry.tip != null && Number(entry.tip || 0) > 0;
+    const tipSource = entry.tipSource === "terminal-distribution" ? "aus Tagesabschluss" : "manuell erfasst";
     return `
       <article class="timesheet-row" data-date="${dateKey}">
         <div>
           <strong>${formatDate(dateKey)}</strong>
-          <span>${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")} · ${formatHours(hours)}</span>
+          <span>${escapeHtml(dayReportShiftText(entry))} · ${formatHours(hours)}</span>
         </div>
-        <label>Trinkgeld<input type="number" min="0" step="0.01" data-ts-field="tip" value="${escapeHtml(entry.tip || "")}" placeholder="0,00"></label>
-        <button class="secondary" data-save-timesheet="${dateKey}">Speichern</button>
+        <div class="timesheet-tip-display">
+          <span>Trinkgeld</span>
+          <strong>${hasTip ? formatMoney(entry.tip) : "Noch nicht verteilt"}</strong>
+          <small>${hasTip ? escapeHtml(tipSource) : "erscheint nach dem Tagesabschluss"}</small>
+        </div>
       </article>
     `;
   }).join("");
@@ -2005,7 +4209,7 @@ function renderTimesheet() {
 function completedTimesheetDates(employee, month) {
   const entries = state.timesheets?.[employee] || {};
   return Object.entries(entries)
-    .filter(([dateKey, entry]) => dateKey.startsWith(month) && entry.from && entry.to)
+    .filter(([dateKey, entry]) => dateKey.startsWith(month) && entryHasCompletedTime(entry))
     .map(([dateKey]) => dateKey)
     .sort();
 }
@@ -2026,7 +4230,7 @@ function timesheetTotals() {
   const entries = state.activeEmployee ? (state.timesheets[state.activeEmployee] || {}) : {};
   return Object.entries(entries).reduce((totals, [dateKey, entry]) => {
     if (!dateKey.startsWith(state.selectedMonth)) return totals;
-    totals.hours += hoursBetween(entry.from, entry.to);
+    totals.hours += paidHours(entry);
     totals.tip += Number(entry.tip || 0);
     return totals;
   }, { hours: 0, tip: 0 });
@@ -2034,12 +4238,47 @@ function timesheetTotals() {
 
 function hoursBetween(from, to) {
   if (!from || !to) return 0;
-  const [fromH, fromM] = from.split(":").map(Number);
-  const [toH, toM] = to.split(":").map(Number);
+  return minutesBetween(from, to) / 60;
+}
+
+function minutesBetween(from, to) {
+  if (!from || !to) return 0;
+  const [fromH, fromM] = String(from).split(":").map(Number);
+  const [toH, toM] = String(to).split(":").map(Number);
+  if (![fromH, fromM, toH, toM].every(Number.isFinite)) return 0;
   let start = fromH * 60 + fromM;
   let end = toH * 60 + toM;
   if (end < start) end += 24 * 60;
-  return Math.max(0, (end - start) / 60);
+  return Math.max(0, end - start);
+}
+
+function paidHours(entry = {}) {
+  const segments = timeSegments(entry);
+  if (!segments.length) return hoursBetween(entry.from, entry.to);
+  return segments.reduce((sum, segment) => sum + hoursBetween(segment.from, segment.to), 0);
+}
+
+function timeSegments(entry = {}) {
+  const segments = Array.isArray(entry.segments) ? entry.segments : [];
+  const normalized = segments.map((segment) => ({
+    from: String(segment?.from || "").trim(),
+    to: String(segment?.to || "").trim()
+  })).filter((segment) => segment.from || segment.to);
+  if (normalized.length) return normalized;
+  return entry.from || entry.to ? [{ from: entry.from || "", to: entry.to || "" }] : [];
+}
+
+function timeSegmentsForEdit(entry = {}) {
+  const segments = timeSegments(entry);
+  return segments.length ? segments : [{ from: "", to: "" }];
+}
+
+function entryHasAnyTime(entry = {}) {
+  return timeSegments(entry).some((segment) => segment.from || segment.to);
+}
+
+function entryHasCompletedTime(entry = {}) {
+  return timeSegments(entry).some((segment) => segment.from && segment.to);
 }
 
 function formatHours(value) {
@@ -2060,31 +4299,126 @@ function parseMoneyInput(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function ecInputValue(selector, reportKey) {
+  const field = $(selector);
+  if (field) return field.value;
+  return state.terminalReport?.[reportKey] || "";
+}
+
+function ecTotalFromFormOrReport() {
+  const terminal1 = ecInputValue("#reportEcTerminal1", "ecTerminal1");
+  const terminal2 = ecInputValue("#reportEcTerminal2", "ecTerminal2");
+  if (String(terminal1 || terminal2).trim()) {
+    return parseMoneyInput(terminal1) + parseMoneyInput(terminal2);
+  }
+  return parseMoneyInput(state.terminalReport?.ecTotal || $("#reportEcTotal")?.value || "");
+}
+
+function updateEcTotalField() {
+  const field = $("#reportEcTotal");
+  if (!field) return;
+  field.value = ecTotalFromFormOrReport().toFixed(2).replace(".", ",");
+}
+
+function gastroRevenueFromFormOrReport(report = state.terminalReport || {}) {
+  const drinks = parseMoneyInput($("#reportRevenueDrinks")?.value || report.revenueDrinks || "");
+  const food = parseMoneyInput($("#reportRevenueFood")?.value || report.revenueFood || "");
+  const other = parseMoneyInput($("#reportRevenueOther")?.value || report.revenueOther || "");
+  const split = drinks + food + other;
+  return split || parseMoneyInput($("#reportRevenueGastro")?.value || report.revenueGastro || report.barGastro || "");
+}
+
+function updateGastroTotalField() {
+  const field = $("#reportRevenueGastro");
+  if (!field) return;
+  field.value = gastroRevenueFromFormOrReport().toFixed(2).replace(".", ",");
+}
+
+function cashExpensesFromFormOrReport(report = state.terminalReport || {}) {
+  const field = $("#reportCashExpenses");
+  if (field && String(field.value || "").trim()) return parseMoneyInput(field.value);
+  if (report.cashExpenses !== "" && report.cashExpenses != null) return reportMoneyNumber(report.cashExpenses);
+  return reportItemsTotal(report.expenses || []);
+}
+
+function expenseRowsTotalFromDom() {
+  return $$("#expensesList [data-report-entry='expense']").reduce((sum, row) => {
+    return sum + parseMoneyInput(row.querySelector("[data-report-field='amount']")?.value || "");
+  }, 0);
+}
+
+function syncCashExpensesFromExpenseRows(force = false) {
+  const field = $("#reportCashExpenses");
+  if (!field) return;
+  const total = expenseRowsTotalFromDom();
+  if (force || !String(field.value || "").trim()) {
+    field.value = total > 0 ? total.toFixed(2) : "";
+  }
+}
+
 function updateReportBarTotal() {
-  const target = $("#reportBarTotal");
-  if (!target) return;
-  target.value = (parseMoneyInput($("#reportBarBowling")?.value) + parseMoneyInput($("#reportBarGastro")?.value))
-    .toFixed(2)
-    .replace(".", ",");
+  updateEcTotalField();
+  updateGastroTotalField();
+  renderTipDistribution();
+  renderDayReportA4Summary(state.terminalDate || todayKey(), reportPreviewFromForm());
+}
+
+function reportPreviewFromForm() {
+  const cashTotal = $("#reportCashTotal")?.value || state.terminalReport?.cashTotal || "";
+  const cashExpenses = cashExpensesFromFormOrReport().toFixed(2);
+  const revenueBowling = $("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "";
+  const revenueDrinks = $("#reportRevenueDrinks")?.value || state.terminalReport?.revenueDrinks || "";
+  const revenueFood = $("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "";
+  const revenueOther = $("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || "";
+  const revenueGastro = gastroRevenueFromFormOrReport().toFixed(2);
+  const personalConsumption = $("#reportPersonalConsumption")?.value || state.terminalReport?.personalConsumption || "";
+  const tipResult = calculateTipDistribution(state.terminalDate || todayKey());
+  return {
+    ...(state.terminalReport || {}),
+    cashTotal,
+    cashExpenses,
+    ecTerminal1: $("#reportEcTerminal1")?.value || state.terminalReport?.ecTerminal1 || "",
+    ecTerminal2: $("#reportEcTerminal2")?.value || state.terminalReport?.ecTerminal2 || "",
+    ecTotal: ecTotalFromFormOrReport().toFixed(2),
+    personalConsumption,
+    revenueBowling,
+    revenueDrinks,
+    revenueFood,
+    revenueOther,
+    revenueGastro,
+    barBowling: revenueBowling,
+    barGastro: revenueGastro,
+    tipTotal: tipResult.tipTotal.toFixed(2),
+    tipRemainder: tipResult.tipRemainder.toFixed(2),
+    tipsByEmployee: Object.fromEntries(tipResult.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
+    openingHours: $("#terminalOpeningHours")?.value || state.terminalReport?.openingHours || "",
+    shiftLeader: $("#terminalShiftLeader")?.value || state.terminalReport?.shiftLeader || ""
+  };
 }
 
 function renderTerminal() {
   const panel = $("#terminal");
   if (!panel) return;
   const todoMode = isTodoMode();
-  if (todoMode) state.terminalTab = "tasks";
-  if (!todoMode && state.terminalTab === "tasks") state.terminalTab = "service";
-  if ($("#terminalTitle")) $("#terminalTitle").textContent = todoMode ? "TO DO" : "Tages-Terminal";
+  if (todoMode && !["tasks", "checks"].includes(state.terminalTab)) state.terminalTab = "tasks";
+  if ($("#terminalTitle")) $("#terminalTitle").textContent = "Tages-Terminal";
   if ($("#terminalCodeLabel")) $("#terminalCodeLabel").textContent = todoMode ? "TO-DO-Code" : "Terminal-Code";
-  if ($("#unlockTerminal")) $("#unlockTerminal").textContent = todoMode ? "TO DO öffnen" : "Terminal öffnen";
-  $("#printDayReport")?.classList.toggle("hidden", todoMode);
-  $(".terminal-tabs")?.classList.toggle("hidden", todoMode);
+  if ($("#terminalLoginHint")) $("#terminalLoginHint").textContent = todoMode
+    ? "Willkommen bei der LA-Bowling To-do-App! Bitte melden Sie sich an."
+    : "Willkommen bei der LA-Bowling TerminalApp! Bitte melden Sie sich an.";
+  if ($("#unlockTerminal")) $("#unlockTerminal").textContent = "Login";
+  $(".terminal-tabs")?.classList.remove("hidden");
+  document.body.classList.toggle("terminal-login-mode", (isTerminalMode() || todoMode) && !state.terminalToken);
+  $("#terminalLoginBrand")?.classList.toggle("hidden", Boolean(state.terminalToken));
   $("#terminalLogin")?.classList.toggle("hidden", Boolean(state.terminalToken));
   $("#terminalContent")?.classList.toggle("hidden", !state.terminalToken);
   const dateKey = state.terminalDate || todayKey();
   state.terminalDate = dateKey;
   $("#terminalDate").textContent = formatLongDate(dateKey);
-  if (!state.terminalToken) return;
+  if (!state.terminalToken) {
+    normalizeGermanDisplay();
+    return;
+  }
 
   const employees = terminalEmployeesForDay(dateKey);
   const entries = state.terminalEntries || {};
@@ -2092,17 +4426,23 @@ function renderTerminal() {
   const reportClosed = Boolean(report.closed);
   renderTerminalTabs();
   renderTerminalDayMeta(dateKey, report, reportClosed);
+  renderTerminalCorrectionBanner(dateKey, report);
+  renderTerminalLeaderMessages(report, reportClosed);
   renderTerminalTasks(report, reportClosed);
   renderHandovers(report, reportClosed);
   renderToiletStatus(report);
+  renderTerminalChecks(report);
+  renderTerminalAssignments(dateKey);
   checkTerminalReminders(report, reportClosed);
   renderTerminalCosts(dateKey, employees);
+  renderTipDistribution();
   $(".terminal-add")?.classList.remove("hidden");
   $("#terminalEmployees").innerHTML = employees.length ? employees.map((employee) => {
     const entry = entries[employee]?.[dateKey] || {};
-    const hours = hoursBetween(entry.from, entry.to);
+    const hours = paidHours(entry);
     const planned = terminalIsPlanned(employee);
     const plannedShift = terminalPlannedShiftFor(employee);
+    const shiftText = dayReportShiftText(entry);
     return `
       <article class="terminal-employee ${reportClosed ? "is-locked" : ""}">
         <div class="terminal-employee-head">
@@ -2110,29 +4450,45 @@ function renderTerminal() {
           <strong>${escapeHtml(employee)}</strong>
             <span>${planned ? "Geplant" : "Zusätzlich"}${plannedShift.label ? ` · Plan ${escapeHtml(plannedShift.label)}` : ""}</span>
           </div>
-          <strong class="terminal-shift-time">${escapeHtml(entry.from || "--:--")} bis ${escapeHtml(entry.to || "--:--")}</strong>
+          <strong class="terminal-shift-time">${escapeHtml(shiftText)}</strong>
           ${hours ? `<span class="terminal-hours">${formatHours(hours)}</span>` : ""}
         </div>
         <div class="terminal-time-edit">
-          <label>Beginn<input type="time" data-terminal-time="from" value="${escapeHtml(entry.from || "")}" ${reportClosed ? "disabled" : ""}></label>
-          <label>Ende<input type="time" data-terminal-time="to" value="${escapeHtml(entry.to || "")}" ${reportClosed ? "disabled" : ""}></label>
-          <button class="secondary" data-terminal-adjust="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Korrigieren</button>
+          <div class="terminal-time-toolbar">
+            <strong>Arbeitszeiten</strong>
+            <div class="terminal-time-toolbar-actions">
+              <button class="secondary terminal-add-segment-button" type="button" data-add-time-segment="${escapeHtml(employee)}" title="Arbeitszeit hinzufügen" aria-label="Arbeitszeit hinzufügen" ${reportClosed ? "disabled" : ""}>+</button>
+              <button class="secondary terminal-save-times-button" data-terminal-adjust="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Speichern</button>
+            </div>
+          </div>
+          <div class="terminal-time-segments">
+            ${timeSegmentsForEdit(entry).map((segment, index) => terminalTimeSegmentRowHtml(segment, index, reportClosed)).join("")}
+          </div>
         </div>
         <div class="terminal-actions">
           <button class="primary" data-terminal-punch="start" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstbeginn</button>
           <button class="secondary" data-terminal-punch="end" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstende</button>
+          <button class="secondary danger-lite terminal-remove-button" data-terminal-remove="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Entfernen</button>
         </div>
       </article>
     `;
   }).join("") : `<p class="hint">Für heute ist noch niemand im Dienstplan eingeteilt.</p>`;
 
-  $("#reportEcTotal").value = report.ecTotal || "";
-  $("#reportBarBowling").value = report.barBowling || "";
-  $("#reportBarGastro").value = report.barGastro || "";
+  $("#reportCashTotal").value = report.cashTotal || "";
+  $("#reportCashExpenses").value = report.cashExpenses || (reportItemsTotal(report.expenses) ? reportItemsTotal(report.expenses).toFixed(2) : "");
+  $("#reportEcTerminal1").value = report.ecTerminal1 || "";
+  $("#reportEcTerminal2").value = report.ecTerminal2 || "";
+  $("#reportPersonalConsumption").value = report.personalConsumption || "";
+  $("#reportRevenueBowling").value = report.revenueBowling || report.barBowling || "";
+  $("#reportRevenueDrinks").value = report.revenueDrinks || "";
+  $("#reportRevenueFood").value = report.revenueFood || "";
+  $("#reportRevenueOther").value = report.revenueOther || "";
+  $("#reportRevenueGastro").value = report.revenueGastro || report.barGastro || "";
   updateReportBarTotal();
   $("#reportNotes").value = report.notes || "";
   renderReportEntryLists(report);
   renderReportDocuments(report);
+  renderDayReportA4Summary(dateKey, report);
   setDayReportLocked(reportClosed, report);
   applyDayReportVisibility();
 
@@ -2142,6 +4498,40 @@ function renderTerminal() {
     const options = (state.settings.employees || []).filter((employee) => !planned.has(employee));
     select.innerHTML = `<option value="">Ungeplanten Mitarbeiter auswählen</option>${options.map((employee) => `<option value="${escapeHtml(employee)}">${escapeHtml(employee)}</option>`).join("")}`;
   }
+  normalizeGermanDisplay();
+}
+
+function terminalTimeSegmentRowHtml(segment = {}, index = 0, disabled = false) {
+  return `
+    <div class="terminal-time-segment" data-terminal-segment-row>
+      <span>${index + 1}.</span>
+      <label>Beginn<input type="time" data-terminal-time="from" value="${escapeHtml(segment.from || "")}" ${disabled ? "disabled" : ""}></label>
+      <label>Ende<input type="time" data-terminal-time="to" value="${escapeHtml(segment.to || "")}" ${disabled ? "disabled" : ""}></label>
+      <button class="secondary terminal-remove-segment-button" type="button" data-remove-time-segment title="Arbeitszeit entfernen" aria-label="Arbeitszeit entfernen" ${disabled || index === 0 ? "disabled" : ""}>×</button>
+    </div>
+  `;
+}
+
+function collectTerminalTimeSegments(card) {
+  return [...card.querySelectorAll("[data-terminal-segment-row]")].map((row) => ({
+    from: row.querySelector('[data-terminal-time="from"]')?.value || "",
+    to: row.querySelector('[data-terminal-time="to"]')?.value || ""
+  })).filter((segment) => segment.from || segment.to);
+}
+
+function refreshTerminalSegmentNumbers(card) {
+  card.querySelectorAll("[data-terminal-segment-row]").forEach((row, index) => {
+    const number = row.querySelector("span");
+    if (number) number.textContent = `${index + 1}.`;
+    const removeButton = row.querySelector("[data-remove-time-segment]");
+    if (removeButton) removeButton.disabled = index === 0;
+  });
+}
+
+function renderDayReportA4Summary(dateKey, report = {}) {
+  const target = $("#dayReportA4Summary");
+  if (!target) return;
+  target.innerHTML = dayReportA4Html(dateKey, report);
 }
 
 function applyDayReportVisibility() {
@@ -2151,11 +4541,84 @@ function applyDayReportVisibility() {
 }
 
 function renderTerminalTabs() {
-  const active = isTodoMode() ? "tasks" : (state.terminalTab || "service");
+  const active = state.terminalTab === "cleaning" ? "tasks" : state.terminalTab || "tasks";
+  state.terminalTab = active;
   $$(".terminal-tab").forEach((button) => button.classList.toggle("active", button.dataset.terminalTab === active));
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "tasks");
+  $("#terminalChecksSection")?.classList.toggle("hidden", active !== "checks");
+  $("#terminalAssignmentsSection")?.classList.toggle("hidden", active !== "assignments");
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "service");
-  $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "finance");
+  $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "finance");
+  $("#terminalTipsSection")?.classList.toggle("hidden", active !== "tips");
+  $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "report");
+}
+
+function renderTerminalAssignments(dateKey) {
+  const target = $("#terminalAssignmentList");
+  if (!target) return;
+  target.innerHTML = assignmentDateKeys(dateKey).map((dayKey, index) => terminalAssignmentDayHtml(dayKey, index)).join("");
+}
+
+function terminalAssignmentDayHtml(dateKey, index = 0) {
+  const rows = assignmentEmployeeRowsForDate(dateKey);
+  const title = index === 0 ? "Heute" : "Morgen";
+  return `
+    <article class="terminal-assignment-day">
+      <div class="terminal-task-group-head">
+        <div>
+          <h4>${escapeHtml(title)} · ${escapeHtml(formatLongDate(dateKey))}</h4>
+          <span>${rows.length ? `${rows.length} Mitarbeiter` : "Keine Einteilung"}</span>
+        </div>
+      </div>
+      <div class="terminal-assignment-rows">
+        ${rows.length ? rows.map(terminalAssignmentRowHtml).join("") : `<p class="hint">Für diesen Tag ist kein Counter- oder Service-Dienst gefunden.</p>`}
+      </div>
+    </article>
+  `;
+}
+
+function assignmentEmployeeRowsForDate(dateKey) {
+  const byEmployee = new Map();
+  assignmentRowsForDate(dateKey).forEach((row) => {
+    const existing = byEmployee.get(row.employee) || {
+      dateKey,
+      employee: row.employee,
+      positions: [],
+      time: assignmentTimeForEmployee(dateKey, row.employee, assignmentScheduleForDate(dateKey), row.position)
+    };
+    existing.positions.push(row.position);
+    byEmployee.set(row.employee, existing);
+  });
+  return [...byEmployee.values()];
+}
+
+function terminalAssignmentRowHtml(row) {
+  const time = row.time || {};
+  return `
+    <div class="terminal-assignment-row" data-assignment-date="${escapeHtml(row.dateKey)}" data-assignment-employee="${escapeHtml(row.employee)}">
+      <div>
+        <strong>${escapeHtml(row.employee)}</strong>
+        <span>${escapeHtml(row.positions.join(", "))}</span>
+      </div>
+      <label>Beginn ab<input type="time" data-assignment-field="from" value="${escapeHtml(time.from || "")}"></label>
+      <label>Notiz<input data-assignment-field="note" value="${escapeHtml(time.note || "")}" placeholder="optional"></label>
+    </div>
+  `;
+}
+
+function collectTerminalAssignmentTimes() {
+  const result = {};
+  $$("#terminalAssignmentList [data-assignment-date][data-assignment-employee]").forEach((row) => {
+    const dateKey = row.dataset.assignmentDate;
+    const employee = row.dataset.assignmentEmployee;
+    result[dateKey] ||= {};
+    result[dateKey][employee] = {
+      from: row.querySelector('[data-assignment-field="from"]')?.value || "",
+      to: "",
+      note: row.querySelector('[data-assignment-field="note"]')?.value || ""
+    };
+  });
+  return result;
 }
 
 function renderTerminalDayMeta(dateKey, report, reportClosed) {
@@ -2202,6 +4665,52 @@ function renderTerminalDayMeta(dateKey, report, reportClosed) {
   $("#saveTerminalDayMeta")?.toggleAttribute("disabled", reportClosed);
 }
 
+function renderTerminalCorrectionBanner(dateKey, report = {}) {
+  const target = $("#terminalCorrectionBanner");
+  if (!target) return;
+  const active = Boolean(report.correctionOpen || state.terminalCorrectionMode);
+  target.classList.toggle("hidden", !active);
+  if (!active) {
+    target.innerHTML = "";
+    return;
+  }
+  target.innerHTML = `
+    <div>
+      <strong>Korrekturmodus aktiv</strong>
+      <span>${escapeHtml(formatLongDate(dateKey))}${report.correctionReason ? ` | Grund: ${escapeHtml(report.correctionReason)}` : ""}</span>
+      ${report.correctionOpenedAt ? `<small>Geöffnet am ${escapeHtml(formatDateTime(report.correctionOpenedAt))}</small>` : ""}
+    </div>
+    <button id="returnToAdminCorrection" class="secondary" type="button">Zurück zum Admin-Reiter</button>
+  `;
+}
+
+function renderTerminalLeaderMessages(report = {}, reportClosed = false) {
+  const target = $("#terminalLeaderMessages");
+  if (!target) return;
+  const checked = new Set((report.terminalMessageChecks || []).map((item) => item.messageId));
+  const messages = (state.terminalMessages || []).filter((message) => message && message.active !== false && !checked.has(message.id));
+  target.classList.toggle("hidden", !messages.length);
+  if (!messages.length) {
+    target.innerHTML = "";
+    return;
+  }
+  target.innerHTML = `
+    <div class="terminal-leader-message-head">
+      <strong>Nachricht an Schichtleitung</strong>
+      <span>${messages.length === 1 ? "1 offene Nachricht" : `${messages.length} offene Nachrichten`}</span>
+    </div>
+    ${messages.map((message) => `
+      <article class="terminal-leader-message">
+        <p>${escapeHtml(message.text)}</p>
+        <div>
+          <small>${message.createdAt ? escapeHtml(formatDateTime(message.createdAt)) : ""}</small>
+          <button class="primary" data-confirm-terminal-message="${escapeHtml(message.id)}" type="button" ${reportClosed ? "disabled" : ""}>Quittieren</button>
+        </div>
+      </article>
+    `).join("")}
+  `;
+}
+
 function shiftLeaderEmployees() {
   const employees = state.settings.employees || [];
   const wanted = [
@@ -2219,17 +4728,19 @@ function renderTerminalTasks(report, reportClosed) {
   const target = $("#terminalTaskList");
   if (!target) return;
   const done = report.taskCompletions || {};
-  const tasks = state.terminalTasks || [];
-  if (!tasks.length) {
-    target.innerHTML = `<p class="hint">Für heute sind keine Aufgaben eingetragen.</p>`;
-    return;
-  }
+  const tasks = sortTaskTemplates(state.terminalTasks || []);
+  const cleaningDone = weeklyCleaningCompletionsForTerminal(report);
+  const allCleaningTasks = weeklyCleaningTasksForTerminal();
+  const cleaningTasks = allCleaningTasks.filter((task) => !cleaningDone[task.id]);
+  const cleaningTotal = allCleaningTasks.length;
+  const cleaningCompleted = allCleaningTasks.filter((task) => cleaningDone[task.id]).length;
+  const employeeOptions = (selected = "") => `<option value="">Person auswählen</option>${(state.settings.employees || []).map((employee) => `<option value="${escapeHtml(employee)}" ${selected === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`).join("")}`;
   const groups = [
     ["preparation", "Vorbereitung"],
     ["running", "Laufender Betrieb"],
     ["closing", "Schlussdienst"]
   ];
-  target.innerHTML = groups.map(([category, label]) => {
+  const taskHtml = groups.map(([category, label]) => {
     const items = tasks.filter((task) => (task.category || "running") === category);
     const openItems = items.filter((task) => !done[task.id]);
     const completed = items.filter((task) => done[task.id]).length;
@@ -2238,26 +4749,116 @@ function renderTerminalTasks(report, reportClosed) {
       <section class="terminal-task-group terminal-task-${category}">
         <div class="terminal-task-group-head">
           <h4>${label}</h4>
-          <span>${completed}/${items.length} erledigt</span>
+          <span>${completed}/${items.length} erledigt · ${openItems.length} offen</span>
         </div>
         <div class="terminal-task-items">
-          ${openItems.map((task) => {
-            return `
+          ${openItems.map((task) => `
               <article class="terminal-task">
                 <label>
                   <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
                   <span>
                     <strong>${escapeHtml(task.title)}</strong>
+                    ${task.popupEnabled && task.popupTime ? `<small>Popup ${escapeHtml(task.popupTime)}</small>` : ""}
                     ${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}
                   </span>
                 </label>
               </article>
-            `;
-          }).join("")}
+            `).join("")}
         </div>
       </section>
     `;
-  }).join("") || `<p class="hint">Alle To Do Aufgaben sind erledigt.</p>`;
+  }).join("");
+  const cleaningHtml = cleaningTasks.length ? `
+    <section class="terminal-task-group terminal-task-cleaning">
+      <div class="terminal-task-group-head">
+        <h4>Wöchentliche Reinigung</h4>
+        <span>${cleaningCompleted}/${cleaningTotal} diese Woche erledigt · ${cleaningTasks.length} offen</span>
+      </div>
+      <div class="terminal-task-items">
+        ${cleaningTasks.map((task) => `
+          <article class="terminal-task terminal-cleaning-todo">
+            <label>
+              <input type="checkbox" data-cleaning-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
+              <span>
+                <strong>${escapeHtml(task.title)}</strong>
+                ${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}
+              </span>
+            </label>
+            <select data-cleaning-employee="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
+              ${employeeOptions()}
+            </select>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  ` : "";
+  target.innerHTML = taskHtml + cleaningHtml || `<p class="hint">Alle To Do Aufgaben sind erledigt.</p>`;
+}
+
+function weeklyCleaningTasksForTerminal() {
+  return normalizeCleaningTemplates(state.terminalToken ? state.terminalCleaningTemplates : state.cleaningTemplates)
+    .filter((task) => task.frequency === "weekly");
+}
+
+function weeklyCleaningCompletionsForTerminal(report = {}) {
+  return {
+    ...(state.terminalWeeklyCleaningCompletions || {}),
+    ...(report.cleaningCompletions || {})
+  };
+}
+
+function renderCleaningPlan(report, reportClosed) {
+  const target = $("#terminalCleaningList");
+  if (!target) return;
+  const completions = report.cleaningCompletions || {};
+  const employees = state.settings.employees || [];
+  const employeeOptions = (selected = "") => `<option value="">Person auswählen</option>${employees.map((employee) => `<option value="${escapeHtml(employee)}" ${selected === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`).join("")}`;
+  const groups = cleaningPlanGroupsForDate(state.terminalDate || todayKey());
+  if (!groups.some((group) => group.tasks.length)) {
+    target.innerHTML = `<p class="hint">Für heute sind keine Reinigungsaufgaben geplant.</p>`;
+    return;
+  }
+  target.innerHTML = groups.filter((group) => group.tasks.length).map((group) => `
+    <section class="terminal-cleaning-group">
+      <div class="terminal-task-group-head">
+        <h4>${escapeHtml(group.label)}</h4>
+        <span>${group.tasks.filter((task) => completions[task.id]).length}/${group.tasks.length} unterschrieben</span>
+      </div>
+      <div class="terminal-cleaning-items">
+        ${group.tasks.map((task) => {
+          const done = completions[task.id];
+          return `
+            <article class="terminal-cleaning-row ${done ? "is-done" : ""}">
+              <label>
+                <input type="checkbox" data-cleaning-task="${escapeHtml(task.id)}" ${done ? "checked" : ""} ${reportClosed ? "disabled" : ""}>
+                <span>${escapeHtml(task.title)}${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}</span>
+              </label>
+              <select data-cleaning-employee="${escapeHtml(task.id)}" ${done || reportClosed ? "disabled" : ""}>
+                ${employeeOptions(done?.employee || "")}
+              </select>
+              <div class="cleaning-signature">
+                <small>Unterschrift</small>
+                <strong>${done?.employee ? escapeHtml(done.employee) : "offen"}</strong>
+                <span>${done?.doneAt ? formatDateTime(done.doneAt) : ""}</span>
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function cleaningPlanGroupsForDate(dateKey) {
+  const tasks = normalizeCleaningTemplates(state.terminalToken ? state.terminalCleaningTemplates : state.cleaningTemplates);
+  const due = tasks.filter((task) => cleaningTaskAppliesToDate(task, dateKey));
+  return [
+    { group: "weekly", label: "Wöchentliche Reinigung", tasks: due.filter((task) => task.frequency === "weekly") }
+  ];
+}
+
+function cleaningTaskAppliesToDate(task, dateKey) {
+  return task.frequency === "weekly";
 }
 
 function renderHandovers(report, reportClosed) {
@@ -2304,6 +4905,65 @@ function renderToiletStatus(report) {
   target.classList.add("hidden");
 }
 
+function renderTerminalChecks(report = {}) {
+  const target = $("#terminalCheckLog");
+  if (!target) return;
+  const reminderChecks = (report.reminderChecks || []).map((item) => ({
+    key: item.checkKey || "",
+    text: item.text || "Toiletten-Kontrolle durchführen",
+    employee: item.employee || "",
+    checkedAt: item.checkedAt || "",
+    type: checkLogType(item)
+  }));
+  const reminderKeys = new Set(reminderChecks.map((item) => item.key));
+  const toiletOnly = (report.toiletChecks || [])
+    .filter((item) => item.checkKey && !reminderKeys.has(item.checkKey))
+    .map((item) => ({
+      key: item.checkKey || "",
+      text: "Toiletten-Kontrolle durchführen",
+      employee: item.employee || "",
+      checkedAt: item.checkedAt || "",
+      type: "Toilette"
+    }));
+  const entries = [...reminderChecks, ...toiletOnly]
+    .filter((item) => item.checkedAt || item.key)
+    .sort((a, b) => String(a.checkedAt || a.key).localeCompare(String(b.checkedAt || b.key)));
+  target.innerHTML = entries.length ? `
+    <div class="terminal-check-list">
+      ${entries.map((item) => `
+        <article class="terminal-check-entry">
+          <div>
+            <strong>${escapeHtml(item.type)}</strong>
+            <span>${escapeHtml(item.text)}</span>
+            ${item.employee ? `<small>${escapeHtml(item.employee)}</small>` : ""}
+          </div>
+          <time>${escapeHtml(item.checkedAt ? formatDateTime(item.checkedAt) : checkTimeFromKey(item.key))}</time>
+        </article>
+      `).join("")}
+    </div>
+  ` : `<p class="hint">Heute wurde noch keine Kontrolle quittiert.</p>`;
+}
+
+function checkLogType(item = {}) {
+  const text = String(item.text || "").toLowerCase();
+  const key = String(item.checkKey || "").toLowerCase();
+  if (text.includes("toilet") || text.includes("toilette") || key.includes("toilet")) return "Toilette";
+  if (key.includes("task-popup")) return "Aufgaben-Popup";
+  return "Popup";
+}
+
+function pendingReminderIsToilet(reminder = state.pendingReminder) {
+  if (!reminder) return false;
+  const key = String(reminder.checkKey || "").toLowerCase();
+  const id = String(reminder.reminderId || "").toLowerCase();
+  return !key.includes("task-popup") && (key.includes("toilet") || id.includes("toilet"));
+}
+
+function checkTimeFromKey(key = "") {
+  const match = String(key).match(/(\d{2}:\d{2})$/);
+  return match ? match[1] : "-";
+}
+
 function checkTerminalReminders(report, reportClosed) {
   const modal = $("#toiletReminder");
   if (!modal || reportClosed || !state.terminalToken) {
@@ -2313,30 +4973,110 @@ function checkTerminalReminders(report, reportClosed) {
   const due = dueReminder(state.terminalDate || todayKey(), report, report.openingHours || $("#terminalOpeningHours")?.value || "");
   state.pendingReminder = due;
   state.pendingToiletCheck = due?.checkKey || "";
-  $("#terminalReminderTitle").textContent = due?.title || "Erinnerung";
+  $("#terminalReminderTitle").textContent = due?.title || (isTodoMode() ? "TO DO Erinnerung" : "Terminal Erinnerung");
   $("#terminalReminderText").textContent = due?.text || "Bitte quittieren.";
+  const employeeWrap = $("#toiletCheckEmployeeWrap");
+  const employeeSelect = $("#toiletCheckEmployee");
+  const toiletDue = pendingReminderIsToilet(due);
+  employeeWrap?.classList.toggle("hidden", !toiletDue);
+  if (employeeSelect && toiletDue) {
+    const current = employeeSelect.value || report.shiftLeader || "";
+    employeeSelect.innerHTML = `<option value="">Mitarbeiter auswählen</option>${(state.settings?.employees || []).map((employee) => (
+      `<option value="${escapeHtml(employee)}" ${current === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`
+    )).join("")}`;
+  }
   modal.classList.toggle("hidden", !due);
 }
 
 function dueReminder(dateKey, report, openingText = "") {
-  const reminders = (state.terminalReminders || []).filter((reminder) => reminder.active !== false);
+  const reminders = normalizeReminderTemplates(state.terminalReminders);
   const checks = [...(report.toiletChecks || []), ...(report.reminderChecks || [])];
+  const checked = new Set((checks || []).map((item) => item.checkKey));
+  const taskPopup = dueTaskPopupReminder(dateKey, report, checked);
+  if (taskPopup) return taskPopup;
   const match = String(openingText || openingHoursFor(dateKey)).match(/(\d{2}):(\d{2})/);
   if (!match) return null;
   const now = new Date();
   const current = now.getHours() * 60 + now.getMinutes();
-  const checked = new Set((checks || []).map((item) => item.checkKey));
   for (const reminder of reminders) {
     const start = Number(match[1]) * 60 + Number(match[2]) + Number(reminder.startAfterOpeningMinutes || 60);
     if (current < start) continue;
     for (let minute = start; minute <= current; minute += Number(reminder.intervalMinutes || 60)) {
       const key = `${dateKey}-${reminder.id}-${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-      if (!checked.has(key) && window.localStorage?.getItem(`toilet-check-${key}`) !== "1") {
+      if (!checked.has(key)) {
         return { checkKey: key, text: reminder.text, title: reminder.text, reminderId: reminder.id };
       }
     }
   }
   return null;
+}
+
+function dueTaskPopupReminder(dateKey, report = {}, checked = new Set()) {
+  const now = new Date();
+  const current = now.getHours() * 60 + now.getMinutes();
+  const done = report.taskCompletions || {};
+  const tasks = (state.terminalTasks || [])
+    .filter((task) => task.popupEnabled && task.popupTime)
+    .sort((a, b) => String(a.popupTime || "").localeCompare(String(b.popupTime || "")));
+  for (const task of tasks) {
+    if (done[task.id]) continue;
+    const match = String(task.popupTime || "").match(/^(\d{2}):(\d{2})$/);
+    if (!match) continue;
+    const dueMinute = Number(match[1]) * 60 + Number(match[2]);
+    if (current < dueMinute) continue;
+    const key = `${dateKey}-task-popup-${task.id}-${task.popupTime}`;
+    if (!checked.has(key)) {
+      return {
+        checkKey: key,
+        text: task.note ? `${task.title}\n${task.note}` : task.title,
+        title: "Aufgaben-Popup",
+        reminderId: task.id
+      };
+    }
+  }
+  return null;
+}
+
+async function refreshTerminalReminderState() {
+  if (!state.terminalToken || state.terminalReminderRefreshInFlight) {
+    if (state.terminalToken) checkTerminalReminders(state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    return;
+  }
+  state.terminalReminderRefreshInFlight = true;
+  try {
+    const result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "load",
+        date: state.terminalDate || todayKey(),
+        terminalToken: state.terminalToken
+      })
+    });
+    const report = result.report || {};
+    state.terminalDate = result.date || state.terminalDate || todayKey();
+    state.terminalTasks = result.tasks || state.terminalTasks || [];
+    state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
+    state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.terminalCleaningTemplates);
+    state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || state.terminalWeeklyCleaningCompletions || {};
+    state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+    state.terminalReport = {
+      ...(state.terminalReport || {}),
+      closed: report.closed,
+      closedAt: report.closedAt || state.terminalReport?.closedAt || "",
+      taskCompletions: report.taskCompletions || state.terminalReport?.taskCompletions || {},
+      cleaningCompletions: report.cleaningCompletions || state.terminalReport?.cleaningCompletions || {},
+      toiletChecks: report.toiletChecks || state.terminalReport?.toiletChecks || [],
+      reminderChecks: report.reminderChecks || state.terminalReport?.reminderChecks || [],
+      terminalMessageChecks: report.terminalMessageChecks || state.terminalReport?.terminalMessageChecks || []
+    };
+    renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
+    renderTerminalChecks(state.terminalReport);
+    checkTerminalReminders(state.terminalReport, Boolean(state.terminalReport?.closed));
+  } catch (error) {
+    checkTerminalReminders(state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+  } finally {
+    state.terminalReminderRefreshInFlight = false;
+  }
 }
 
 function setDayReportLocked(isLocked, report = {}) {
@@ -2346,10 +5086,10 @@ function setDayReportLocked(isLocked, report = {}) {
   $("#dayReportLockStatus").textContent = isLocked
     ? `Abgeschlossen${report.closedAt ? ` am ${formatDateTime(report.closedAt)}` : ""}. Keine Änderungen mehr möglich.`
     : "Vor dem Tagesabschluss speichern und prüfen.";
-  target.querySelectorAll("input, textarea, select").forEach((field) => {
+  $$("#dayReportPrintArea input, #dayReportPrintArea textarea, #dayReportPrintArea select, #terminalFinanceSection input, #terminalFinanceSection textarea, #terminalFinanceSection select").forEach((field) => {
     field.disabled = isLocked;
   });
-  target.querySelectorAll("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-remove-report-entry], #saveDayReport").forEach((button) => {
+  $$("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-save-expense-entry], [data-remove-report-entry], [data-remove-report-document], #saveDayReport, #saveTipDistribution").forEach((button) => {
     button.disabled = isLocked;
   });
   const closeButton = $("#closeDayReport");
@@ -2399,19 +5139,83 @@ function renderReportDocuments(report = {}) {
   const documents = report.documents || {};
   const rows = [
     ["Penta", documents.penta],
-    ["Handschrift", documents.handwriting]
+    ["Handschrift", documents.handwriting],
+    ["EC-Schnitt", documents.ecCut]
   ];
+  const documentKey = (label) => {
+    if (label === "Penta") return "penta";
+    if (label === "Handschrift") return "handwriting";
+    return "ecCut";
+  };
   target.innerHTML = rows.map(([label, document]) => `
     <article class="report-entry compact-report-entry">
       <strong>${escapeHtml(label)}</strong>
       ${document?.name ? `<span class="hint">${escapeHtml(document.name)}</span>` : `<span class="hint">Noch nicht hochgeladen.</span>`}
-      ${document?.path || document?.url || document?.data ? reportDocumentLinkHtml(document, label) : ""}
-      <input type="hidden" data-report-document="${label === "Penta" ? "penta" : "handwriting"}" data-document-field="name" value="${escapeHtml(document?.name || "")}">
-      <input type="hidden" data-report-document="${label === "Penta" ? "penta" : "handwriting"}" data-document-field="path" value="${escapeHtml(document?.path || "")}">
-      <input type="hidden" data-report-document="${label === "Penta" ? "penta" : "handwriting"}" data-document-field="url" value="${escapeHtml(document?.url || "")}">
-      <input type="hidden" data-report-document="${label === "Penta" ? "penta" : "handwriting"}" data-document-field="data" value="${escapeHtml(document?.data || "")}">
+      ${document?.path || document?.url || document?.data ? `
+        <div class="report-document-actions">
+          ${reportDocumentLinkHtml(document, label)}
+          <button class="secondary danger-lite" data-remove-report-document="${documentKey(label)}" type="button">Entfernen</button>
+        </div>
+      ` : ""}
+      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="name" value="${escapeHtml(document?.name || "")}">
+      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="path" value="${escapeHtml(document?.path || "")}">
+      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="url" value="${escapeHtml(document?.url || "")}">
+      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="data" value="${escapeHtml(document?.data || "")}">
     </article>
   `).join("");
+}
+
+function reportDocumentInputForKey(key) {
+  return {
+    penta: "#reportDocumentPenta",
+    handwriting: "#reportDocumentHandwriting",
+    ecCut: "#reportDocumentEcCut"
+  }[key] || "";
+}
+
+function reportDocumentLabelForInput(input) {
+  if (input?.id === "reportDocumentPenta") return "Penta";
+  if (input?.id === "reportDocumentHandwriting") return "Handschrift";
+  if (input?.id === "reportDocumentEcCut") return "EC-Schnitt";
+  if (input?.id === "customerReportDocumentPenta") return "Penta";
+  if (input?.id === "customerReportDocumentHandwriting") return "Handschrift";
+  if (input?.id === "customerReportDocumentEcCut") return "EC-Schnitt";
+  return "Dokument";
+}
+
+function clearReportDocumentFields(key) {
+  $$(`[data-report-document="${key}"]`).forEach((field) => {
+    field.value = "";
+  });
+  const selector = reportDocumentInputForKey(key);
+  if (selector && $(selector)) $(selector).value = "";
+  if (state.terminalReport?.documents) {
+    state.terminalReport.documents[key] = {};
+  }
+}
+
+async function saveReportDocumentsNow(source, successText = "Abschlussdokumente gespeichert.") {
+  if (state.terminalReport?.closed) {
+    showToast("Tagesbericht ist abgeschlossen. Dokument kann nicht gespeichert werden.");
+    return;
+  }
+  const oldText = source?.tagName === "BUTTON" ? source.textContent : "";
+  if (source?.tagName === "BUTTON") {
+    source.disabled = true;
+    source.textContent = "Speichert...";
+  }
+  showToast("Dokument wird verkleinert und gespeichert...");
+  try {
+    await terminalAction(await collectDayReportPayload());
+    showToast(successText);
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (source?.tagName === "BUTTON") {
+      source.textContent = oldText;
+      source.disabled = false;
+    }
+  }
 }
 
 function renderCustomerInvoiceDesk() {
@@ -2448,6 +5252,7 @@ function renderCustomerInvoiceDesk() {
   if (invoiceList) {
     invoiceList.innerHTML = invoices.map((item) => invoiceRowHtml(item)).join("") || `<p class="hint">Noch keine Rechnungskunden für heute.</p>`;
   }
+  renderCustomerMaster();
   const expenseList = $("#customerExpenseWorkList");
   if (expenseList) {
     expenseList.innerHTML = expenses.map((item) => expenseRowHtml(item)).join("") || `<p class="hint">Noch keine Ausgaben für heute.</p>`;
@@ -2455,6 +5260,79 @@ function renderCustomerInvoiceDesk() {
   renderCustomerInvoiceDocuments(report);
   const status = $("#customerInvoiceStaffStatus");
   if (status && !status.textContent) status.textContent = "Tagesübersicht geöffnet.";
+  normalizeGermanDisplay();
+}
+
+function renderCustomerMaster() {
+  const select = $("#customerMasterSelect");
+  const preview = $("#customerMasterPreview");
+  if (!select || !preview) return;
+  const query = ($("#customerMasterSearch")?.value || "").trim().toLowerCase();
+  const customers = normalizeCustomerDirectory(state.customerDirectory);
+  const filtered = customers.filter((customer) => {
+    if (!query) return true;
+    return [
+      customer.name,
+      customer.contact,
+      customer.phone,
+      customer.email,
+      customer.address,
+      customer.tip,
+      customer.note
+    ].some((value) => String(value || "").toLowerCase().includes(query));
+  });
+  const previous = select.value;
+  select.innerHTML = filtered.length
+    ? filtered.map((customer) => `<option value="${escapeHtml(customer.id)}">${escapeHtml(customer.name)}${customer.contact ? ` - ${escapeHtml(customer.contact)}` : ""}</option>`).join("")
+    : `<option value="">Kein Kunde gefunden</option>`;
+  if (filtered.some((customer) => customer.id === previous)) {
+    select.value = previous;
+  }
+  const selected = filtered.find((customer) => customer.id === select.value) || filtered[0];
+  preview.innerHTML = selected ? customerMasterPreviewHtml(selected) : `<p class="hint">Noch keine Kunden in der Kartei. Sobald ein Rechnungskunde gespeichert wird, taucht er hier auf.</p>`;
+  const button = $("#addCustomerFromMaster");
+  if (button) button.disabled = !selected;
+}
+
+function customerMasterPreviewHtml(customer) {
+  return `
+    <strong>${escapeHtml(customer.name || "Kunde")}</strong>
+    ${customer.contact ? `<span>${escapeHtml(customer.contact)}</span>` : ""}
+    ${customer.email || customer.phone ? `<span>${escapeHtml([customer.email, customer.phone].filter(Boolean).join(" · "))}</span>` : ""}
+    ${customer.address ? `<span>${escapeHtml(customer.address)}</span>` : ""}
+    ${customer.tip ? `<span class="hint">Tipp: ${escapeHtml(customer.tip)}</span>` : ""}
+    ${customer.note ? `<span class="hint">Notiz: ${escapeHtml(customer.note)}</span>` : ""}
+  `;
+}
+
+function customerMasterToInvoice(customer = {}) {
+  return {
+    id: cryptoId(),
+    name: customer.name || "",
+    contact: customer.contact || "",
+    phone: customer.phone || "",
+    email: customer.email || "",
+    address: customer.address || "",
+    tip: customer.tip || "",
+    note: customer.note || "",
+    createdAt: new Date().toISOString(),
+    invoiceReady: false,
+    invoiceReadyAt: "",
+    invoiceDone: false,
+    invoiceDoneAt: "",
+    amount: "",
+    bowlingAmount: "",
+    gastroAmount: "",
+    gastroDrinksAmount: "",
+    gastroFoodAmount: "",
+    gastroOtherAmount: "",
+    gastroOtherNote: "",
+    receiptName: "",
+    receiptData: "",
+    receiptPath: "",
+    receiptUrl: "",
+    area: "rechnung"
+  };
 }
 
 function renderCustomerInvoiceDocuments(report = {}) {
@@ -2463,7 +5341,8 @@ function renderCustomerInvoiceDocuments(report = {}) {
   const documents = report.documents || {};
   const rows = [
     ["Penta", "penta", documents.penta],
-    ["Handschrift", "handwriting", documents.handwriting]
+    ["Handschrift", "handwriting", documents.handwriting],
+    ["EC-Schnitt", "ecCut", documents.ecCut]
   ];
   target.innerHTML = rows.map(([label, key, document]) => `
     <article class="report-entry compact-report-entry">
@@ -2479,21 +5358,18 @@ function renderCustomerInvoiceDocuments(report = {}) {
 }
 
 function invoiceRowHtml(item = {}) {
+  const isSaved = Boolean(item.id);
   const id = item.id || cryptoId();
   const singleReceipt = invoiceReceipt(item);
   const legacyReceipts = invoiceLegacyReceipts(item);
   const isReady = invoiceIsReady(item);
   const statusClass = invoiceStatusClass(item);
   const total = invoiceTotal(item);
-  const gastro = invoiceGastroSplit(item);
   const legacyHint = !singleReceipt && legacyReceipts.length
     ? `<span class="hint">Bisherige getrennte Belege: ${legacyReceipts.map(({ label, receipt }) => `${escapeHtml(label)} ${escapeHtml(receipt.receiptName || "")}`).join(" | ")}</span>`
     : "";
-  const gastroLegacyHint = !gastro.hasSplit && item.gastroAmount
-    ? `<span class="hint">Bisherige Gastro-Gesamtangabe: ${formatReportMoney(item.gastroAmount)}</span>`
-    : "";
   return `
-    <details class="report-entry invoice-entry ${statusClass}" data-report-entry="invoice" data-id="${escapeHtml(id)}" ${isReady ? "" : "open"}>
+    <details class="report-entry invoice-entry ${statusClass}" data-report-entry="invoice" data-id="${escapeHtml(id)}" data-saved="${isSaved ? "true" : "false"}" ${isReady ? "" : "open"}>
       <summary class="invoice-entry-summary">
         <div>
           <strong>${escapeHtml(item.name || "Neuer Rechnungskunde")}</strong>
@@ -2512,18 +5388,17 @@ function invoiceRowHtml(item = {}) {
       </div>
       <div class="report-entry-grid">
         <label>Bowling Betrag<input data-report-field="bowlingAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.bowlingAmount || (item.area === "bowling" ? item.amount : ""))}" placeholder="0,00"></label>
-        <label>Gastro Getränke<input data-report-field="gastroDrinkAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroDrinkAmount || "")}" placeholder="0,00"></label>
+        <label>Gastro Getränke<input data-report-field="gastroDrinksAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroDrinksAmount || "")}" placeholder="0,00"></label>
         <label>Gastro Speisen<input data-report-field="gastroFoodAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroFoodAmount || "")}" placeholder="0,00"></label>
         <label>Gastro Sonstiges<input data-report-field="gastroOtherAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroOtherAmount || "")}" placeholder="0,00"></label>
-        <input type="hidden" data-report-field="gastroAmount" value="${escapeHtml(item.gastroAmount || (gastro.hasSplit ? gastro.total.toFixed(2) : ""))}">
+        <label>Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="Hinweis zu Sonstiges">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
       </div>
-      <label>Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="z.B. Raummiete">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
       <label>Rechnungsadresse<textarea data-report-field="address" rows="2" placeholder="Adresse für Rechnung">${escapeHtml(item.address || "")}</textarea></label>
       <label>Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
       <label>Rechnungsbeleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
       ${singleReceipt?.receiptName ? `<span class="hint">Aktueller Rechnungsbeleg: ${escapeHtml(singleReceipt.receiptName)}</span>` : ""}
       ${legacyHint}
-      ${gastroLegacyHint}
+      <input type="hidden" data-report-field="gastroAmount" value="${escapeHtml(item.gastroAmount || "")}">
       <input type="hidden" data-report-field="receiptName" value="${escapeHtml(singleReceipt?.receiptName || item.receiptName || "")}">
       <input type="hidden" data-report-field="receiptData" value="${escapeHtml(singleReceipt?.receiptData || item.receiptData || "")}">
       <input type="hidden" data-report-field="receiptPath" value="${escapeHtml(singleReceipt?.receiptPath || item.receiptPath || "")}">
@@ -2545,7 +5420,7 @@ function invoiceRowHtml(item = {}) {
       <div class="invoice-entry-actions">
         <button class="secondary" data-save-invoice-draft type="button">Zwischenspeichern</button>
         <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut an Chef senden" : "Fertig für Chef"}</button>
-        <button class="secondary" data-remove-report-entry type="button">Entfernen</button>
+        <button class="secondary danger-lite" data-remove-report-entry type="button">Vollständig löschen</button>
       </div>
       </div>
     </details>
@@ -2554,6 +5429,7 @@ function invoiceRowHtml(item = {}) {
 
 function expenseRowHtml(item = {}) {
   const id = item.id || cryptoId();
+  const receipts = expenseReceiptEntries(item);
   return `
     <article class="report-entry" data-report-entry="expense" data-id="${escapeHtml(id)}">
       <div class="report-entry-grid">
@@ -2562,15 +5438,38 @@ function expenseRowHtml(item = {}) {
         <label>Betrag<input data-report-field="amount" type="number" min="0" step="0.01" value="${escapeHtml(item.amount || "")}" placeholder="0,00"></label>
       </div>
       <label>Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
-      <label>Beleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
-      ${item.receiptName ? `<span class="hint">Aktueller Beleg: ${escapeHtml(item.receiptName)}</span>` : ""}
+      <div class="expense-receipts">
+        <div class="expense-receipt-list">
+          ${receipts.length ? receipts.map((receipt, index) => `
+            <div class="expense-receipt-saved" data-expense-receipt="${index}">
+              <span>${escapeHtml(receipt.receiptName || `Beleg ${index + 1}`)}</span>
+              ${receiptLinkHtml(receipt, "öffnen")}
+              <input type="hidden" data-expense-receipt-field="receiptName" value="${escapeHtml(receipt.receiptName || "")}">
+              <input type="hidden" data-expense-receipt-field="receiptData" value="${escapeHtml(receipt.receiptData || "")}">
+              <input type="hidden" data-expense-receipt-field="receiptPath" value="${escapeHtml(receipt.receiptPath || "")}">
+              <input type="hidden" data-expense-receipt-field="receiptUrl" value="${escapeHtml(receipt.receiptUrl || "")}">
+            </div>
+          `).join("") : `<p class="hint">Noch kein Beleg hochgeladen.</p>`}
+        </div>
+        <div class="expense-receipt-upload-list">
+          ${expenseReceiptUploadHtml()}
+        </div>
+        <button class="secondary expense-add-receipt" data-add-expense-receipt type="button">+ Beleg hinzufügen</button>
+      </div>
       <input type="hidden" data-report-field="receiptName" value="${escapeHtml(item.receiptName || "")}">
       <input type="hidden" data-report-field="receiptData" value="${escapeHtml(item.receiptData || "")}">
       <input type="hidden" data-report-field="receiptPath" value="${escapeHtml(item.receiptPath || "")}">
       <input type="hidden" data-report-field="receiptUrl" value="${escapeHtml(item.receiptUrl || "")}">
-      <button class="secondary" data-remove-report-entry type="button">Entfernen</button>
+      <div class="report-entry-actions">
+        <button class="primary" data-save-expense-entry type="button">Ausgabe speichern</button>
+        <button class="secondary danger-lite" data-remove-report-entry type="button">Ausgabe löschen</button>
+      </div>
     </article>
   `;
+}
+
+function expenseReceiptUploadHtml() {
+  return `<label class="expense-receipt-upload">Beleg scannen/fotografieren<input data-expense-receipt-file type="file" accept="image/*,application/pdf" capture="environment"></label>`;
 }
 
 function cryptoId() {
@@ -2581,6 +5480,52 @@ async function collectReportEntries(type) {
   return collectReportEntriesFrom(document, type);
 }
 
+function mergeReportItemsById(existing = [], current = []) {
+  const merged = new Map();
+  (Array.isArray(existing) ? existing : []).forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const id = item.id || cryptoId();
+    merged.set(id, { ...item, id });
+  });
+  (Array.isArray(current) ? current : []).forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const id = item.id || cryptoId();
+    const previous = merged.get(id) || {};
+    const next = { ...previous, ...item, id };
+    if (!expenseReceiptEntries(item).length && expenseReceiptEntries(previous).length) {
+      next.receipts = previous.receipts;
+      next.receiptName = previous.receiptName;
+      next.receiptData = previous.receiptData;
+      next.receiptPath = previous.receiptPath;
+      next.receiptUrl = previous.receiptUrl;
+    }
+    merged.set(id, next);
+  });
+  return [...merged.values()];
+}
+
+async function collectExpenseReceipts(row) {
+  const receipts = [];
+  row.querySelectorAll("[data-expense-receipt]").forEach((receiptRow) => {
+    const receipt = {};
+    receiptRow.querySelectorAll("[data-expense-receipt-field]").forEach((field) => {
+      receipt[field.dataset.expenseReceiptField] = field.value;
+    });
+    if (receipt.receiptName || receipt.receiptPath || receipt.receiptUrl || receipt.receiptData) receipts.push(receipt);
+  });
+  for (const field of [...row.querySelectorAll("[data-expense-receipt-file]")]) {
+    const file = field.files?.[0];
+    if (!file) continue;
+    receipts.push({
+      receiptName: file.name,
+      receiptData: await fileToDataUrl(file),
+      receiptPath: "",
+      receiptUrl: ""
+    });
+  }
+  return receipts;
+}
+
 async function collectReportEntriesFrom(root, type) {
   const selector = type === "invoice" ? '[data-report-entry="invoice"]' : '[data-report-entry="expense"]';
   const entries = [];
@@ -2589,10 +5534,14 @@ async function collectReportEntriesFrom(root, type) {
     row.querySelectorAll("[data-report-field]").forEach((field) => {
       item[field.dataset.reportField] = field.value;
     });
-    const genericFile = row.querySelector("[data-report-file]:not([data-report-file='bowling']):not([data-report-file='gastro'])")?.files?.[0];
-    if (genericFile) {
-      item.receiptName = genericFile.name;
-      item.receiptData = await fileToDataUrl(genericFile);
+    if (type === "expense") {
+      item.receipts = await collectExpenseReceipts(row);
+    } else {
+      const genericFile = row.querySelector("[data-report-file]:not([data-report-file='bowling']):not([data-report-file='gastro'])")?.files?.[0];
+      if (genericFile) {
+        item.receiptName = genericFile.name;
+        item.receiptData = await fileToDataUrl(genericFile);
+      }
     }
     const bowlingFile = row.querySelector("[data-report-file='bowling']")?.files?.[0];
     if (bowlingFile) {
@@ -2603,18 +5552,6 @@ async function collectReportEntriesFrom(root, type) {
     if (gastroFile) {
       item.gastroReceiptName = gastroFile.name;
       item.gastroReceiptData = await fileToDataUrl(gastroFile);
-    }
-    if (type === "invoice") {
-      const gastro = invoiceGastroSplit({
-        gastroDrinkAmount: item.gastroDrinkAmount,
-        gastroFoodAmount: item.gastroFoodAmount,
-        gastroOtherAmount: item.gastroOtherAmount,
-        gastroOtherNote: item.gastroOtherNote,
-        gastroAmount: item.gastroAmount
-      });
-      if (gastro.hasSplit) {
-        item.gastroAmount = gastro.total ? gastro.total.toFixed(2) : "";
-      }
     }
     entries.push(item);
   }
@@ -2628,13 +5565,9 @@ async function collectReportEntriesFrom(root, type) {
     item.phone ||
     item.tip ||
     item.category ||
-    item.gastroAmount ||
-    item.gastroDrinkAmount ||
-    item.gastroFoodAmount ||
-    item.gastroOtherAmount ||
-    item.gastroOtherNote ||
     item.receiptData ||
     item.receiptPath ||
+    expenseReceiptEntries(item).length ||
     item.bowlingReceiptData ||
     item.bowlingReceiptPath ||
     item.gastroReceiptData ||
@@ -2643,7 +5576,7 @@ async function collectReportEntriesFrom(root, type) {
 }
 
 async function collectReportDocuments() {
-  const documents = { penta: {}, handwriting: {} };
+  const documents = { penta: {}, handwriting: {}, ecCut: {} };
   $$("[data-report-document]").forEach((field) => {
     const key = field.dataset.reportDocument;
     const name = field.dataset.documentField;
@@ -2660,27 +5593,52 @@ async function collectReportDocuments() {
     documents.handwriting.name = handwritingFile.name;
     documents.handwriting.data = await fileToDataUrl(handwritingFile);
   }
+  const ecCutFile = $("#reportDocumentEcCut")?.files?.[0];
+  if (ecCutFile) {
+    documents.ecCut.name = ecCutFile.name;
+    documents.ecCut.data = await fileToDataUrl(ecCutFile);
+  }
   return documents;
 }
 
 async function collectDayReportPayload() {
+  const tipResult = calculateTipDistribution(state.terminalDate || todayKey());
   return {
     action: "save-report",
-    ecTotal: $("#reportEcTotal").value,
-    barBowling: $("#reportBarBowling").value,
-    barGastro: $("#reportBarGastro").value,
+    cashTotal: $("#reportCashTotal")?.value || "",
+    cashExpenses: cashExpensesFromFormOrReport().toFixed(2),
+    ecTerminal1: $("#reportEcTerminal1")?.value || "",
+    ecTerminal2: $("#reportEcTerminal2")?.value || "",
+    ecTotal: ecTotalFromFormOrReport().toFixed(2),
+    personalConsumption: $("#reportPersonalConsumption")?.value || "",
+    revenueBowling: $("#reportRevenueBowling")?.value || "",
+    revenueDrinks: $("#reportRevenueDrinks")?.value || "",
+    revenueFood: $("#reportRevenueFood")?.value || "",
+    revenueOther: $("#reportRevenueOther")?.value || "",
+    revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
+    barBowling: $("#reportRevenueBowling")?.value || "",
+    barGastro: gastroRevenueFromFormOrReport().toFixed(2),
+    tipTotal: tipResult.tipTotal.toFixed(2),
+    tipRemainder: tipResult.tipRemainder.toFixed(2),
+    tipsByEmployee: Object.fromEntries(tipResult.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
     openingHours: $("#terminalOpeningHours")?.value || "",
     shiftLeader: $("#terminalShiftLeader")?.value || "",
     handovers: state.terminalReport.handovers || [],
     invoiceCustomers: await collectReportEntries("invoice"),
     expenses: await collectReportEntries("expense"),
     documents: await collectReportDocuments(),
-    notes: $("#reportNotes").value
+    notes: $("#reportNotes").value,
+    extraEmployees: state.terminalReport.extraEmployees || [],
+    removedEmployees: state.terminalReport.removedEmployees || [],
+    taskCompletions: state.terminalReport.taskCompletions || {},
+    cleaningCompletions: state.terminalReport.cleaningCompletions || {},
+    toiletChecks: state.terminalReport.toiletChecks || [],
+    reminderChecks: state.terminalReport.reminderChecks || []
   };
 }
 
 async function collectCustomerInvoiceDocuments() {
-  const documents = cloneData(state.invoiceReport?.documents || { penta: {}, handwriting: {} });
+  const documents = cloneData(state.invoiceReport?.documents || { penta: {}, handwriting: {}, ecCut: {} });
   $$("[data-customer-report-document]").forEach((field) => {
     const key = field.dataset.customerReportDocument;
     const name = field.dataset.documentField;
@@ -2699,6 +5657,12 @@ async function collectCustomerInvoiceDocuments() {
     documents.handwriting.name = handwritingFile.name;
     documents.handwriting.data = await fileToDataUrl(handwritingFile);
   }
+  const ecCutFile = $("#customerReportDocumentEcCut")?.files?.[0];
+  if (ecCutFile) {
+    documents.ecCut ||= {};
+    documents.ecCut.name = ecCutFile.name;
+    documents.ecCut.data = await fileToDataUrl(ecCutFile);
+  }
   return documents;
 }
 
@@ -2709,6 +5673,12 @@ async function collectCustomerInvoiceDeskPayload() {
     action: "save-report",
     date: state.invoiceDate || todayKey(),
     ecTotal: report.ecTotal || "",
+    personalConsumption: report.personalConsumption || "",
+    revenueBowling: report.revenueBowling || report.barBowling || "",
+    revenueDrinks: report.revenueDrinks || "",
+    revenueFood: report.revenueFood || "",
+    revenueOther: report.revenueOther || "",
+    revenueGastro: report.revenueGastro || report.barGastro || "",
     barBowling: report.barBowling || "",
     barGastro: report.barGastro || "",
     openingHours: report.openingHours || "",
@@ -2719,9 +5689,57 @@ async function collectCustomerInvoiceDeskPayload() {
     documents: await collectCustomerInvoiceDocuments(),
     notes: report.notes || "",
     taskCompletions: report.taskCompletions || {},
+    cleaningCompletions: report.cleaningCompletions || {},
     toiletChecks: report.toiletChecks || [],
     reminderChecks: report.reminderChecks || []
   };
+}
+
+async function acknowledgeDashboardMessage(messageId, button) {
+  if (!messageId || !state.employeeToken) {
+    showToast("Bitte erneut mit Mitarbeiter-PIN anmelden.");
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Speichert...";
+  }
+  try {
+    await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "ack-message",
+        employeeToken: state.employeeToken,
+        messageId
+      })
+    });
+    state.messages = (state.messages || []).map((message) => {
+      if (message.id !== messageId) return message;
+      return {
+        ...message,
+        readBy: {
+          ...(message.readBy || {}),
+          [state.activeEmployee]: new Date().toISOString()
+        }
+      };
+    }).filter((message) => {
+      if (message.id !== messageId) return true;
+      const recipients = messageRecipientsClient(message);
+      return !recipients.length || !recipients.every((employee) => message.readBy?.[employee]);
+    });
+    renderHome();
+    renderChef();
+    renderAdminMessages();
+    showToast("Nachricht als gelesen bestätigt.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText || "Gelesen";
+    }
+  }
 }
 
 async function loadCustomerInvoiceDesk() {
@@ -2737,35 +5755,50 @@ async function loadCustomerInvoiceDesk() {
   state.invoiceDate = result.date || state.invoiceDate || todayKey();
   state.invoiceReport = result.report || {};
   state.settings = normalizeSettings(result.settings || state.settings);
+  state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
   renderCustomerInvoiceDesk();
 }
 
 async function saveCustomerInvoiceDeskReport(button, successText = "Tagesübersicht gespeichert.") {
+  return saveCustomerInvoiceDeskReportWithOptions(button, successText);
+}
+
+async function saveCustomerInvoiceDeskReportWithOptions(button, successText = "Tagesübersicht gespeichert.", options = {}) {
   if (!state.invoiceTerminalToken) {
     showToast("Bitte Mitarbeiter-Code eingeben.");
-    return null;
+    return;
   }
   const oldText = button?.textContent || "";
   if (button) {
     button.disabled = true;
     button.textContent = "Speichert...";
   }
+  if (button?.type === "file") {
+    showToast("Dokument wird verkleinert und gespeichert...");
+  }
   try {
+    const payload = await collectCustomerInvoiceDeskPayload();
+    if (options.mergeExpenses) {
+      payload.expenses = mergeReportItemsById(state.invoiceReport?.expenses || [], payload.expenses || []);
+      payload.mergeExpenses = true;
+    }
     const result = await api("/api/day-terminal", {
       method: "POST",
       body: JSON.stringify({
-        ...(await collectCustomerInvoiceDeskPayload()),
+        ...payload,
+        sendInvoiceNotifications: Boolean(options.sendInvoiceNotifications),
+        sendInvoiceNotificationId: String(options.sendInvoiceNotificationId || "").trim(),
         terminalToken: state.invoiceTerminalToken
       })
     });
     state.invoiceDate = result.date || state.invoiceDate || todayKey();
     state.invoiceReport = result.report || {};
+    state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
     state.dayReports[state.invoiceDate] = state.invoiceReport;
     renderCustomerInvoiceDesk();
-    const mailText = result.mailSummary ? ` ${result.mailSummary}` : "";
-    const statusText = `${successText}${mailText}`.trim();
-    $("#customerInvoiceStaffStatus").textContent = statusText;
-    showToast(statusText);
+    const displayMessage = result?.mailMessage ? `${successText} ${result.mailMessage}` : successText;
+    $("#customerInvoiceStaffStatus").textContent = displayMessage;
+    showToast(displayMessage);
     return result;
   } catch (error) {
     showError(error);
@@ -2774,7 +5807,6 @@ async function saveCustomerInvoiceDeskReport(button, successText = "Tagesübersi
       window.localStorage?.removeItem("invoiceTerminalToken");
       renderCustomerInvoiceDesk();
     }
-    return null;
   } finally {
     if (button) {
       button.textContent = oldText;
@@ -2795,7 +5827,19 @@ async function saveCustomerInvoiceDeskRow(button, markReady = false) {
     setReportFieldValue(row, "invoiceReady", "true");
     setReportFieldValue(row, "invoiceReadyAt", new Date().toISOString());
   }
-  await saveCustomerInvoiceDeskReport(button, markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.");
+  await saveCustomerInvoiceDeskReport(button, markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.", {
+    sendInvoiceNotifications: markReady,
+    sendInvoiceNotificationId: row.dataset.id || ""
+  });
+}
+
+async function removeCustomerInvoiceDeskEntry(button) {
+  const row = button.closest(".report-entry");
+  if (!row) return;
+  const isInvoice = row.dataset.reportEntry === "invoice";
+  if (isInvoice && row.dataset.saved === "true" && !window.confirm("Rechnungskunden wirklich vollständig löschen? Der Eintrag verschwindet dann aus allen Ansichten.")) return;
+  row.remove();
+  await saveCustomerInvoiceDeskReport(button, isInvoice ? "Rechnungskunde gelöscht." : "Eintrag gelöscht.");
 }
 
 function reportFieldValue(row, name) {
@@ -2827,16 +5871,18 @@ function invoiceRowReadyProblems(row) {
   if (!reportFieldValue(row, "name")) problems.push("Firma/Name fehlt");
   if (!reportFieldValue(row, "address")) problems.push("Rechnungsadresse fehlt");
   if (!reportFieldValue(row, "email")) problems.push("E-Mail fehlt");
-  const gastro = invoiceGastroSplit({
-    gastroDrinkAmount: reportFieldValue(row, "gastroDrinkAmount"),
-    gastroFoodAmount: reportFieldValue(row, "gastroFoodAmount"),
-    gastroOtherAmount: reportFieldValue(row, "gastroOtherAmount"),
-    gastroOtherNote: reportFieldValue(row, "gastroOtherNote"),
-    gastroAmount: reportFieldValue(row, "gastroAmount")
-  });
-  const amount = parseMoneyInput(reportFieldValue(row, "bowlingAmount")) + gastro.total;
+  const gastroAmount = reportFieldValue(row, "gastroAmount");
+  const gastroDrinks = reportFieldValue(row, "gastroDrinksAmount");
+  const gastroFood = reportFieldValue(row, "gastroFoodAmount");
+  const gastroOther = reportFieldValue(row, "gastroOtherAmount");
+  const amount = parseMoneyInput(reportFieldValue(row, "bowlingAmount")) + invoiceGastroSplit({
+    gastroAmount,
+    gastroDrinksAmount: gastroDrinks,
+    gastroFoodAmount: gastroFood,
+    gastroOtherAmount: gastroOther
+  }).total;
   if (amount <= 0) problems.push("Bowling- oder Gastro-Betrag fehlt");
-  if (parseMoneyInput(reportFieldValue(row, "gastroOtherAmount")) > 0 && !reportFieldValue(row, "gastroOtherNote")) problems.push("Notiz für Sonstiges fehlt");
+  if (reportMoneyNumber(gastroOther) > 0 && !reportFieldValue(row, "gastroOtherNote")) problems.push("Notiz für Sonstiges fehlt");
   if (!invoiceRowHasReceipt(row)) problems.push("Rechnungsbeleg fehlt");
   return problems;
 }
@@ -2858,10 +5904,57 @@ async function saveInvoiceRow(button, markReady = false) {
   button.textContent = "Speichert...";
   try {
     const result = await terminalAction(await collectDayReportPayload());
-    const mailText = result?.mailSummary ? ` ${result.mailSummary}` : "";
-    showToast(markReady ? `Rechnung ist fertig für Chef.${mailText}`.trim() : "Rechnungskunde zwischengespeichert.");
+    const toastMessage = markReady
+      ? ["Rechnung ist fertig für Chef.", result?.mailMessage].filter(Boolean).join(" ")
+      : "Rechnungskunde zwischengespeichert.";
+    showToast(toastMessage);
   } catch (error) {
     if (markReady) setReportFieldValue(row, "invoiceReady", "false");
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
+}
+
+async function removeTerminalFinanceEntry(button) {
+  const row = button.closest(".report-entry");
+  if (!row || state.terminalReport?.closed) return;
+  const isInvoice = row.dataset.reportEntry === "invoice";
+  if (isInvoice && row.dataset.saved === "true" && !window.confirm("Rechnungskunden wirklich vollständig löschen? Der Eintrag verschwindet dann aus allen Ansichten.")) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Löscht...";
+  row.remove();
+  syncCashExpensesFromExpenseRows(true);
+  updateReportBarTotal();
+  try {
+    await terminalAction(await collectDayReportPayload());
+    showToast(isInvoice ? "Rechnungskunde gelöscht." : "Eintrag gelöscht.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
+}
+
+async function saveExpenseRow(button) {
+  const row = button.closest('[data-report-entry="expense"]');
+  if (!row || state.terminalReport?.closed) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  syncCashExpensesFromExpenseRows(true);
+  updateReportBarTotal();
+  try {
+    const payload = await collectDayReportPayload();
+    payload.expenses = mergeReportItemsById(state.terminalReport?.expenses || [], payload.expenses || []);
+    payload.cashExpenses = payload.expenses.reduce((sum, item) => sum + parseMoneyInput(item.amount), 0).toFixed(2);
+    payload.mergeExpenses = true;
+    await terminalAction(payload);
+    showToast("Ausgabe gespeichert.");
+  } catch (error) {
     showError(error);
   } finally {
     button.textContent = oldText;
@@ -2892,21 +5985,21 @@ function compressImageFile(file) {
       const image = new Image();
       image.onerror = () => reject(new Error("Bild konnte nicht verarbeitet werden."));
       image.onload = () => {
-        const maxSide = 1600;
+        const maxSide = 1500;
         const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(image.width * scale));
         canvas.height = Math.max(1, Math.round(image.height * scale));
         const context = canvas.getContext("2d");
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        let quality = 0.72;
+        let quality = 0.68;
         let dataUrl = canvas.toDataURL("image/jpeg", quality);
-        while (dataUrl.length > 2200000 && quality > 0.42) {
-          quality -= 0.08;
+        while (dataUrl.length > 1500000 && quality > 0.36) {
+          quality -= 0.07;
           dataUrl = canvas.toDataURL("image/jpeg", quality);
         }
-        if (dataUrl.length > 2800000) {
-          reject(new Error("Beleg ist trotz Verkleinerung zu groß. Bitte Foto näher zuschneiden."));
+        if (dataUrl.length > 1900000) {
+          reject(new Error("Dokument ist trotz Verkleinerung zu groß. Bitte Foto näher zuschneiden oder etwas weniger Rand fotografieren."));
           return;
         }
         resolve(dataUrl);
@@ -2919,6 +6012,7 @@ function compressImageFile(file) {
 
 function terminalEmployeesForDay(dateKey) {
   const names = new Set();
+  const removed = new Set(state.terminalReport?.removedEmployees || []);
   const schedule = state.terminalSchedule || {};
   Object.entries(schedule).forEach(([key, value]) => {
     if (!key.includes("__") && value) names.add(String(value));
@@ -2926,7 +6020,7 @@ function terminalEmployeesForDay(dateKey) {
   (state.terminalReport?.extraEmployees || []).forEach((item) => {
     names.add(typeof item === "string" ? item : item.employee);
   });
-  return [...names].filter((employee) => (state.settings.employees || []).includes(employee));
+  return [...names].filter((employee) => (state.settings.employees || []).includes(employee) && !removed.has(employee));
 }
 
 function terminalIsPlanned(employee) {
@@ -2948,7 +6042,7 @@ function renderTerminalCosts(dateKey, employees) {
   const planned = terminalPlannedCosts();
   const actualHours = employees.reduce((total, employee) => {
     const entry = state.terminalEntries?.[employee]?.[dateKey] || {};
-    return total + hoursBetween(entry.from, entry.to);
+    return total + paidHours(entry);
   }, 0);
   const actualCost = actualHours * hourlyRate;
   const difference = actualCost - planned.cost;
@@ -2972,6 +6066,413 @@ function renderTerminalCosts(dateKey, employees) {
       <small>${formatMoney(hourlyRate)}/h</small>
     </article>
   `;
+}
+
+function renderTipDistribution() {
+  renderDailyTipDistribution();
+  renderTipPayoutOverview();
+}
+
+function renderDailyTipDistribution() {
+  const summaryTargets = [$("#financeTipDaySummary")].filter(Boolean);
+  const listTargets = [$("#financeTipDayDistributionList"), $("#dayReportTipDayDistribution")].filter(Boolean);
+  if (!summaryTargets.length && !listTargets.length) return;
+  const result = calculateTipDistribution(state.terminalDate || todayKey());
+  const report = {
+    ...(state.terminalReport || {}),
+    cashTotal: result.cashTotal.toFixed(2),
+    cashExpenses: result.cashExpenses.toFixed(2),
+    ecTotal: result.ecTotal.toFixed(2),
+    personalConsumption: result.personalConsumption.toFixed(2),
+    revenueBowling: result.revenueBowling.toFixed(2),
+    revenueDrinks: result.revenueDrinks.toFixed(2),
+    revenueFood: result.revenueFood.toFixed(2),
+    revenueOther: result.revenueOther.toFixed(2),
+    revenueGastro: result.revenueGastro.toFixed(2),
+    barBowling: result.revenueBowling.toFixed(2),
+    barGastro: result.revenueGastro.toFixed(2),
+    tipTotal: result.tipTotal.toFixed(2),
+    tipRemainder: result.tipRemainder.toFixed(2),
+    tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)]))
+  };
+  const displayRows = dailyTipRowsForDisplay(result, state.terminalReport || {});
+  const distributed = displayRows.reduce((sum, row) => sum + Number(row.tip || 0), 0);
+  const chefHandover = reportChefHandoverTotal(report);
+  const cashAfterExpenses = Math.max(0, result.cashTotal - result.cashExpenses);
+  const summaryHtml = `
+    <article>
+      <span>Trinkgeld gesamt</span>
+      <strong>${formatMoney(result.tipTotal)}</strong>
+      <small>Bar + Ausgaben + EC - Umsatz nach Personalverzehr</small>
+    </article>
+    <article class="tip-summary-handover">
+      <span>Abzugeben an Chef</span>
+      <strong>${formatMoney(chefHandover)}</strong>
+      <small>Umsatz minus EC, Rechnung und Ausgaben</small>
+    </article>
+    <article>
+      <span>Bar nach Ausgaben</span>
+      <strong>${formatMoney(cashAfterExpenses)}</strong>
+      <small>Bar gesamt - ${formatMoney(result.cashExpenses)}</small>
+    </article>
+  `;
+  const listHtml = displayRows.length ? `
+    <section class="tip-group">
+      <div class="terminal-task-group-head">
+        <h4>Wer bekommt wie viel Trinkgeld?</h4>
+        <span>${formatMoney(distributed)} verteilt</span>
+      </div>
+      <div class="tip-rows">
+        <article class="tip-row tip-row-head">
+          <strong>Mitarbeiter</strong>
+          <span>Bereich</span>
+          <span>Stunden</span>
+          <span>Berechnung</span>
+          <strong>Trinkgeld</strong>
+        </article>
+        ${displayRows.map((row) => `
+          <article class="tip-row">
+            <strong>${escapeHtml(row.employee)}</strong>
+            <span>${escapeHtml(tipAreaLabel(row.area))}</span>
+            <span>${formatHours(row.hours)}</span>
+            <span class="tip-raw">${formatMoney(row.rawTip)} roh${row.factor !== 1 ? ` · Faktor ${String(row.factor).replace(".", ",")}` : ""}</span>
+            <strong>${formatMoney(row.tip)}</strong>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  ` : `<p class="hint">Noch keine Trinkgeld-Verteilung möglich. Dafür braucht es Arbeitszeiten mit Dienstende und Umsatzdetails.</p>`;
+  summaryTargets.forEach((target) => { target.innerHTML = summaryHtml; });
+  listTargets.forEach((target) => { target.innerHTML = listHtml; });
+}
+
+function dailyTipRowsForDisplay(result = {}, report = {}) {
+  const calculatedRows = Array.isArray(result.rows) ? result.rows : [];
+  if (calculatedRows.length) return calculatedRows;
+  const savedRows = reportTipRows(report);
+  if (!savedRows.length) return [];
+  const dateKey = state.terminalDate || todayKey();
+  return savedRows.map((row) => {
+    const entry = state.terminalEntries?.[row.employee]?.[dateKey] || {};
+    const hours = paidHoursAfterOpening(entry, tipOpeningTime(dateKey));
+    return {
+      employee: row.employee,
+      area: tipAreaForEmployee(row.employee),
+      hours,
+      factor: 1,
+      rawTip: row.amount,
+      tip: row.amount
+    };
+  });
+}
+
+function tipAreaLabel(area) {
+  if (!area) return "Trinkgeld";
+  if (area === "Kueche") return "Küche";
+  if (area === "Spueler") return "Spüler";
+  return area || "Bereich offen";
+}
+
+function renderTipPayoutOverview() {
+  const summary = $("#tipSummary");
+  const list = $("#tipDistributionList");
+  if (!summary || !list) return;
+  const overview = normalizedTipOverview();
+  const rows = overview.employees;
+  const openRows = rows.filter((row) => reportMoneyNumber(row.openAmount) > 0);
+  const status = $("#tipPayoutStatus");
+  if (status) {
+    status.textContent = openRows.length
+      ? `${openRows.length} Mitarbeiter mit offener Auszahlung. Auszahlung setzt nur diese Übersicht zurück.`
+      : "Keine offenen Trinkgeld-Auszahlungen. Mitarbeiter-App bleibt unverändert.";
+  }
+  summary.innerHTML = `
+    <article>
+      <span>Offen auszuzahlen</span>
+      <strong>${formatMoney(overview.totalOpen)}</strong>
+      <small>nur Terminal-Übersicht</small>
+    </article>
+    <article>
+      <span>Bereits bestätigt</span>
+      <strong>${formatMoney(overview.totalPaid)}</strong>
+      <small>historische Mitarbeiterwerte bleiben erhalten</small>
+    </article>
+  `;
+  list.innerHTML = rows.length ? `
+    <section class="tip-group">
+      <div class="terminal-task-group-head">
+        <h4>Mitarbeiter</h4>
+        <span>${formatMoney(overview.totalOpen)} offen</span>
+      </div>
+      <div class="tip-rows">
+        ${rows.map((row) => {
+          const openAmount = reportMoneyNumber(row.openAmount);
+          const lastPaid = row.lastPaidAt ? formatDateTime(row.lastPaidAt) : "Noch keine Auszahlung";
+          return `
+            <article class="tip-payout-row ${openAmount > 0 ? "" : "is-paid"}">
+              <strong>${escapeHtml(row.employee)}</strong>
+              <span><small>Offen</small>${formatMoney(openAmount)}</span>
+              <span><small>Gesamt</small>${formatMoney(row.earnedAmount)}</span>
+              <span><small>Ausbezahlt</small>${formatMoney(row.paidAmount)}</span>
+              <span><small>Letzte Auszahlung</small>${escapeHtml(lastPaid)}</span>
+              <button class="primary" type="button" data-confirm-tip-payout-employee="${escapeHtml(row.employee)}" ${openAmount > 0 ? "" : "disabled"}>${openAmount > 0 ? "Ausbezahlt" : "0,00 €"}</button>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  ` : `<p class="hint">Noch keine Mitarbeiter in der Trinkgeld-Übersicht.</p>`;
+}
+
+function normalizedTipOverview() {
+  const overview = state.tipOverview || {};
+  const rowsByEmployee = new Map((Array.isArray(overview.employees) ? overview.employees : []).map((row) => [row.employee, row]));
+  (state.settings?.employees || []).forEach((employee) => {
+    if (!rowsByEmployee.has(employee)) {
+      rowsByEmployee.set(employee, { employee, earnedAmount: "0.00", paidAmount: "0.00", openAmount: "0.00", lastPaidAt: "", payoutCount: 0 });
+    }
+  });
+  const employees = [...rowsByEmployee.values()].map((row) => ({
+    employee: String(row.employee || ""),
+    earnedAmount: moneyText(row.earnedAmount),
+    paidAmount: moneyText(row.paidAmount),
+    openAmount: moneyText(row.openAmount),
+    lastPaidAt: row.lastPaidAt || "",
+    payoutCount: Number(row.payoutCount || 0)
+  })).filter((row) => row.employee).sort((a, b) => a.employee.localeCompare(b.employee, "de"));
+  return {
+    employees,
+    totalEarned: moneyText(overview.totalEarned ?? employees.reduce((sum, row) => sum + reportMoneyNumber(row.earnedAmount), 0)),
+    totalPaid: moneyText(overview.totalPaid ?? employees.reduce((sum, row) => sum + reportMoneyNumber(row.paidAmount), 0)),
+    totalOpen: moneyText(overview.totalOpen ?? employees.reduce((sum, row) => sum + reportMoneyNumber(row.openAmount), 0))
+  };
+}
+
+function moneyText(value) {
+  return reportMoneyNumber(value).toFixed(2);
+}
+
+function calculateTipDistribution(dateKey) {
+  const cashTotal = parseMoneyInput($("#reportCashTotal")?.value || state.terminalReport?.cashTotal || "");
+  const cashExpenses = cashExpensesFromFormOrReport();
+  const ecTotal = ecTotalFromFormOrReport();
+  const personalConsumption = parseMoneyInput($("#reportPersonalConsumption")?.value || state.terminalReport?.personalConsumption || "");
+  const revenueBowling = parseMoneyInput($("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "");
+  const revenueFood = parseMoneyInput($("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "");
+  const revenueGastro = gastroRevenueFromFormOrReport();
+  const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
+  const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal - totalRevenue);
+  const openingTime = tipOpeningTime(dateKey);
+  const entries = state.terminalEntries || {};
+  const employees = terminalTipEmployeesForDay(dateKey);
+  let baseRows = employees.map((employee) => {
+    const entry = entries[employee]?.[dateKey] || {};
+    const area = tipAreaForEmployee(employee);
+    const hours = paidHoursAfterOpening(entry, openingTime);
+    return { employee, area, hours };
+  }).filter((row) => employeeTipEligible(row.employee, row.area) && row.hours > 0);
+  if (!baseRows.length) {
+    baseRows = Object.entries(entries).map(([employee, employeeEntries]) => {
+      const entry = employeeEntries?.[dateKey] || {};
+      const area = tipAreaForEmployee(employee);
+      const hours = paidHoursAfterOpening(entry, openingTime);
+      return { employee, area, hours };
+    }).filter((row) => employeeTipEligible(row.employee, row.area) && row.hours > 0);
+  }
+  const kitchenInfo = tipKitchenInfo(baseRows, revenueFood);
+  const rowsWithWeight = baseRows.map((row) => {
+    const factor = tipFactorForEmployee(row.employee, row.area, kitchenInfo);
+    return { ...row, factor, weight: row.hours * factor };
+  });
+  const totalWeight = rowsWithWeight.reduce((sum, row) => sum + row.weight, 0);
+  const exactTips = exactTipAmounts(rowsWithWeight, tipTotal);
+  const rows = rowsWithWeight.map((row) => {
+    const rawTip = totalWeight > 0 ? tipTotal * row.weight / totalWeight : 0;
+    return {
+      ...row,
+      rawTip,
+      tip: exactTips[row.employee] || 0
+    };
+  });
+  const distributedTipTotal = rows.reduce((sum, row) => sum + row.tip, 0);
+  const tipRemainder = Math.max(0, Math.round((tipTotal - distributedTipTotal) * 100) / 100);
+  return {
+    cashTotal,
+    cashExpenses,
+    cashAfterExpenses: Math.max(0, cashTotal - cashExpenses),
+    ecTotal,
+    personalConsumption,
+    revenueBowling,
+    revenueDrinks: parseMoneyInput($("#reportRevenueDrinks")?.value || state.terminalReport?.revenueDrinks || ""),
+    revenueFood,
+    revenueOther: parseMoneyInput($("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || ""),
+    revenueGastro,
+    totalRevenue,
+    tipTotal,
+    distributedTipTotal,
+    tipRemainder,
+    cashToBoss: Math.max(0, cashTotal - tipTotal),
+    rows
+  };
+}
+
+function terminalTipEmployeesForDay(dateKey) {
+  const names = new Set(terminalEmployeesForDay(dateKey));
+  Object.entries(state.terminalEntries || {}).forEach(([employee, entries]) => {
+    const entry = entries?.[dateKey] || {};
+    if (entryHasAnyTime(entry)) names.add(employee);
+  });
+  return [...names].filter(Boolean);
+}
+
+function exactTipAmounts(rows = [], tipTotal = 0) {
+  const totalCents = Math.round(Math.max(0, Number(tipTotal) || 0) * 100);
+  const totalWeight = rows.reduce((sum, row) => sum + Number(row.weight || 0), 0);
+  if (!rows.length || totalCents <= 0 || totalWeight <= 0) return {};
+  const shares = rows.map((row) => {
+    const rawCents = totalCents * Number(row.weight || 0) / totalWeight;
+    const cents = Math.floor(rawCents);
+    return { employee: row.employee, cents, rest: rawCents - cents };
+  });
+  let remaining = totalCents - shares.reduce((sum, row) => sum + row.cents, 0);
+  shares
+    .slice()
+    .sort((a, b) => b.rest - a.rest || a.employee.localeCompare(b.employee, "de"))
+    .forEach((row) => {
+      if (remaining <= 0) return;
+      row.cents += 1;
+      remaining -= 1;
+    });
+  return Object.fromEntries(shares.map((row) => [row.employee, row.cents / 100]));
+}
+
+function employeeTipEligible(employee, area) {
+  const setting = tipSettingForEmployee(employee);
+  if (setting) return setting.eligible;
+  return isTipEligibleArea(area);
+}
+
+function tipFactorForEmployee(employee, area, kitchenInfo = {}) {
+  const groupFactor = kitchenGroupTipFactor(area, kitchenInfo);
+  if (groupFactor !== null) return groupFactor;
+  const setting = tipSettingForEmployee(employee);
+  if (setting) return setting.eligible ? setting.factor : 0;
+  return automaticTipFactor(area, kitchenInfo);
+}
+
+function automaticTipFactor(area, kitchenInfo = {}) {
+  return kitchenGroupTipFactor(area, kitchenInfo) ?? 1;
+}
+
+function kitchenGroupTipFactor(area, kitchenInfo = {}) {
+  if (!isKitchenTipArea(area)) return null;
+  const cooks = Number(kitchenInfo.cooks || 0);
+  const spuelers = Number(kitchenInfo.spuelers || 0);
+  const kitchenRevenue = Number(kitchenInfo.kitchenRevenue || 0);
+  if (cooks >= 2 && spuelers >= 1 && kitchenRevenue >= 2000) return 1;
+  if (cooks >= 2 && spuelers >= 1) return 0.5;
+  if (area === "Kueche" && cooks >= 2) return 0.75;
+  return null;
+}
+
+function tipKitchenInfo(rows = [], kitchenRevenue = 0) {
+  return {
+    cooks: rows.filter((row) => row.area === "Kueche").length,
+    spuelers: rows.filter((row) => row.area === "Spueler").length,
+    kitchenRevenue: Number(kitchenRevenue || 0)
+  };
+}
+
+function tipSettingForEmployee(employee) {
+  return tipSettingFromSettings(state.settings || {}, employee);
+}
+
+function tipSettingFromSettings(settings = {}, employee = "") {
+  const tipSettings = settings.employeeTipSettings || {};
+  const exact = tipSettings[employee];
+  if (exact) return normalizeEmployeeTipSetting(exact);
+  const clean = String(employee || "").trim().toLowerCase();
+  const match = Object.entries(tipSettings).find(([name]) => String(name || "").trim().toLowerCase() === clean);
+  return match ? normalizeEmployeeTipSetting(match[1]) : null;
+}
+
+function normalizeEmployeeTipSettings(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([employee, setting]) => [String(employee || "").trim(), normalizeEmployeeTipSetting(setting)])
+    .filter(([employee]) => employee));
+}
+
+function normalizeEmployeeTipSetting(setting = {}) {
+  return {
+    eligible: setting?.eligible === true,
+    factor: normalizeTipFactor(setting?.factor, 1)
+  };
+}
+
+function normalizeTipFactor(value, fallback = 1) {
+  const parsed = Number(String(value ?? "").replace(",", "."));
+  const base = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.max(0.1, Math.min(1, Math.round(base * 1000) / 1000));
+}
+
+function tipOpeningTime(dateKey) {
+  const text = $("#terminalOpeningHours")?.value || state.terminalReport?.openingHours || openingHoursFor(dateKey) || "";
+  const match = String(text).match(/(\d{1,2}):(\d{2})/);
+  return match ? `${String(match[1]).padStart(2, "0")}:${match[2]}` : "00:00";
+}
+
+function paidHoursAfterOpening(entry = {}, openingTime = "00:00") {
+  const opening = timeToMinutes(openingTime);
+  return timeSegments(entry).reduce((sum, segment) => {
+    if (!segment.from || !segment.to) return sum;
+    const start = timeToMinutes(segment.from);
+    let end = timeToMinutes(segment.to);
+    if (end < start) end += 24 * 60;
+    const effectiveStart = Math.max(start, opening);
+    return sum + Math.max(0, end - effectiveStart) / 60;
+  }, 0);
+}
+
+function laterTime(left, right) {
+  return timeToMinutes(left) >= timeToMinutes(right) ? left : right;
+}
+
+function timeToMinutes(value) {
+  const [hours, minutes] = String(value || "00:00").split(":").map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function tipAreaForEmployee(employee) {
+  for (const [position, value] of Object.entries(state.terminalSchedule || {})) {
+    if (!position.includes("__") && value === employee) return tipAreaFromText(position);
+  }
+  const extra = (state.terminalReport?.extraEmployees || [])
+    .map((item) => typeof item === "string" ? { employee: item, role: "" } : item)
+    .find((item) => item.employee === employee);
+  if (extra?.role) return tipAreaFromText(extra.role);
+  const roleDepartment = tipAreaFromText(state.settings.employeeRoles?.[employee] || "");
+  if (roleDepartment) return roleDepartment;
+  const departments = departmentsForEmployee(state.settings.employeeDepartments || {}, employee).map(tipAreaFromText);
+  return TIP_ELIGIBLE_AREAS.find((area) => departments.includes(area)) || "";
+}
+
+function tipAreaFromText(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+  if (text.includes("spuel") || text.includes("spül")) return "Spueler";
+  if (text.includes("counter")) return "Counter";
+  if (text.includes("service")) return "Service";
+  if (text.includes("kueche") || text.includes("kuche") || text.includes("küche") || text.includes("koch")) return "Kueche";
+  return "";
+}
+
+function isTipEligibleArea(area) {
+  return TIP_ELIGIBLE_AREAS.includes(area);
+}
+
+function isKitchenTipArea(area) {
+  return area === "Kueche" || area === "Spueler";
 }
 
 function terminalPlannedCosts() {
@@ -3005,10 +6506,19 @@ async function terminalAction(payload) {
   state.terminalDate = result.date || state.terminalDate || isoDate(new Date());
   state.terminalEntries = result.entries || {};
   state.terminalReport = result.report || {};
+  state.tipOverview = result.tipOverview || state.tipOverview;
+  state.dayReports[state.terminalDate] = state.terminalReport;
   state.terminalSchedule = result.schedule || {};
+  state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
+  state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
   state.terminalTasks = result.tasks || [];
-  state.terminalReminders = result.reminders || [];
+  state.terminalReminders = normalizeReminderTemplates(result.reminders);
+  state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
+  state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
+  state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+  state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
   state.terminalDayMetaEditing = false;
+  state.terminalCorrectionMode = Boolean(result.correctionMode || state.terminalReport?.correctionOpen);
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
   renderAdminEmployeeOverview();
@@ -3025,52 +6535,219 @@ async function terminalLogin(code) {
   state.terminalDate = result.date || isoDate(new Date());
   state.terminalEntries = result.entries || {};
   state.terminalReport = result.report || {};
+  state.tipOverview = result.tipOverview || state.tipOverview;
+  state.dayReports[state.terminalDate] = state.terminalReport;
   state.terminalSchedule = result.schedule || {};
+  state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
+  state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
   state.terminalTasks = result.tasks || [];
-  state.terminalReminders = result.reminders || [];
+  state.terminalReminders = normalizeReminderTemplates(result.reminders);
+  state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
+  state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
+  state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+  state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
+  state.terminalCorrectionMode = false;
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
   showToast(isTodoMode() ? "TO DO geöffnet." : "Tages-Terminal geöffnet.");
+}
+
+async function openCorrectionReport(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin-Bereich erneut entsperren.");
+    return;
+  }
+  const date = $("#correctionDate")?.value || "";
+  const reason = $("#correctionReason")?.value.trim() || "";
+  if (!date) {
+    showToast("Bitte Datum wählen.");
+    return;
+  }
+  if (!reason) {
+    showToast("Bitte Grund der Korrektur eintragen.");
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Öffnet...";
+  }
+  try {
+    const result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "admin-open-correction",
+        adminToken: state.adminToken,
+        date,
+        reason
+      })
+    });
+    state.terminalToken = result.token || "";
+    state.terminalDate = result.date || date;
+    state.settings = normalizeSettings(result.settings || state.settings);
+    state.terminalEntries = result.entries || {};
+    state.terminalReport = result.report || {};
+    state.tipOverview = result.tipOverview || state.tipOverview;
+    state.dayReports[state.terminalDate] = state.terminalReport;
+    state.terminalSchedule = result.schedule || {};
+    state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
+    state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
+    state.terminalTasks = result.tasks || [];
+    state.terminalReminders = normalizeReminderTemplates(result.reminders);
+    state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
+    state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
+    state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+    state.terminalCorrectionMode = true;
+    state.timesheets = result.entries || state.timesheets || {};
+    const status = $("#correctionStatus");
+    if (status) status.textContent = result.message || "Korrekturmodus geöffnet.";
+    activateTab("terminal");
+    renderTerminal();
+    showToast("Korrekturmodus geöffnet.");
+  } catch (error) {
+    const status = $("#correctionStatus");
+    if (status) status.textContent = error.message || String(error);
+    showError(error);
+  } finally {
+    if (button) {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
+  }
+}
+
+async function closeCorrectionReport(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin-Bereich erneut entsperren.");
+    return;
+  }
+  const date = $("#correctionDate")?.value || state.terminalDate || "";
+  if (!date) {
+    showToast("Bitte Datum wählen.");
+    return;
+  }
+  if (!confirm(`Tagesbericht ${formatDate(date)} wieder abschließen?`)) return;
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Schließt...";
+  }
+  try {
+    const result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "admin-close-correction",
+        adminToken: state.adminToken,
+        date
+      })
+    });
+    state.terminalDate = result.date || date;
+    state.terminalReport = result.report || state.terminalReport || {};
+    state.tipOverview = result.tipOverview || state.tipOverview;
+    state.dayReports[state.terminalDate] = state.terminalReport;
+    state.terminalCorrectionMode = false;
+    if (state.terminalDate === date) {
+      state.terminalEntries = result.entries || state.terminalEntries || {};
+      state.terminalSchedule = result.schedule || state.terminalSchedule || {};
+      state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
+      state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
+      state.terminalTasks = result.tasks || state.terminalTasks || [];
+      state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
+      state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.terminalCleaningTemplates);
+      state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || state.terminalWeeklyCleaningCompletions || {};
+      state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+    }
+    const status = $("#correctionStatus");
+    if (status) status.textContent = result.message || "Tagesbericht wieder abgeschlossen.";
+    renderTerminal();
+    showToast("Tagesbericht wieder abgeschlossen.");
+  } catch (error) {
+    const status = $("#correctionStatus");
+    if (status) status.textContent = error.message || String(error);
+    showError(error);
+  } finally {
+    if (button) {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
+  }
+}
+
+async function saveAdminTimesheet(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin-Bereich erneut entsperren.");
+    return;
+  }
+  const employee = button.dataset.adminSaveTimesheet || "";
+  const form = button.closest(".admin-timesheet-form");
+  const field = (name) => form?.querySelector(`[data-admin-ts-field="${name}"]`)?.value || "";
+  const date = field("date");
+  const from = field("from");
+  const to = field("to");
+  const note = field("note");
+  if (!date || !from || !to) {
+    showToast("Bitte Datum, Beginn und Ende eintragen.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await api("/api/timesheet", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "admin-save-time",
+        adminToken: state.adminToken,
+        employee,
+        month: date.slice(0, 7),
+        date,
+        from,
+        to,
+        note
+      })
+    });
+    if (date.startsWith(state.selectedMonth)) {
+      state.timesheets = result.timesheets || state.timesheets || {};
+    } else {
+      state.selectedMonth = date.slice(0, 7);
+      $("#monthInput").value = state.selectedMonth;
+      await loadState();
+      showToast("Stunden nachgetragen. Monat wurde gewechselt.");
+      return;
+    }
+    renderAdminEmployeeOverview();
+    showToast("Stunden nur durch Admin nachgetragen.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
 }
 
 async function confirmToiletCheck() {
   if (!state.pendingReminder?.checkKey && !state.pendingToiletCheck) return { ok: true, message: "Keine offene Erinnerung." };
   const checkKey = state.pendingReminder?.checkKey || state.pendingToiletCheck;
   const text = state.pendingReminder?.text || "Toiletten-Kontrolle durchführen";
-  const checks = [...(state.terminalReport?.toiletChecks || [])];
-  const reminderChecks = [...(state.terminalReport?.reminderChecks || [])];
-  if (!checks.some((item) => item.checkKey === checkKey)) {
-    checks.push({ checkKey, checkedAt: new Date().toISOString() });
+  const isToilet = pendingReminderIsToilet();
+  const employee = $("#toiletCheckEmployee")?.value || "";
+  if (isToilet && !employee) {
+    throw new Error("Bitte Mitarbeiter auswählen.");
   }
-  if (!reminderChecks.some((item) => item.checkKey === checkKey)) {
-    reminderChecks.push({ checkKey, text, checkedAt: new Date().toISOString() });
-  }
-  state.terminalReport = { ...(state.terminalReport || {}), toiletChecks: checks, reminderChecks };
+  const result = await terminalAction({
+    action: isToilet ? "confirm-toilet" : "confirm-reminder",
+    checkKey,
+    text,
+    employee
+  });
   state.pendingToiletCheck = "";
   state.pendingReminder = null;
   window.localStorage?.setItem(`toilet-check-${checkKey}`, "1");
   $("#toiletReminder")?.classList.add("hidden");
   renderToiletStatus(state.terminalReport);
-  try {
-    await terminalAction({
-      action: "save-report",
-      ecTotal: $("#reportEcTotal")?.value || state.terminalReport.ecTotal || "",
-      barBowling: $("#reportBarBowling")?.value || state.terminalReport.barBowling || "",
-      barGastro: $("#reportBarGastro")?.value || state.terminalReport.barGastro || "",
-      openingHours: $("#terminalOpeningHours")?.value || state.terminalReport.openingHours || "",
-      shiftLeader: $("#terminalShiftLeader")?.value || state.terminalReport.shiftLeader || "",
-      handovers: state.terminalReport.handovers || [],
-      invoiceCustomers: await collectReportEntries("invoice"),
-      expenses: await collectReportEntries("expense"),
-      notes: $("#reportNotes")?.value || state.terminalReport.notes || "",
-      taskCompletions: state.terminalReport.taskCompletions || {},
-      toiletChecks: checks,
-      reminderChecks
-    });
-  } catch (error) {
-    console.warn("Toiletten-Kontrolle lokal quittiert, Server-Speicherung fehlgeschlagen:", error);
-  }
-  return { ok: true, message: "Kontrolle quittiert." };
+  renderTerminalChecks(state.terminalReport);
+  return result || { ok: true, message: "Kontrolle quittiert." };
 }
 
 function renderAdminPublishedList() {
@@ -3117,10 +6794,11 @@ function renderAdminEmployeeOverview() {
     container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
     return;
   }
-  container.innerHTML = employeeOverviewHtml();
+  container.innerHTML = employeeOverviewHtml({ allowCorrection: true });
 }
 
-function employeeOverviewHtml() {
+function employeeOverviewHtml({ allowCorrection = false } = {}) {
+  const defaultDate = adminTimesheetDefaultDate();
   return `
     <div class="employee-overview-head">
       <span>Name</span>
@@ -3145,11 +6823,20 @@ function employeeOverviewHtml() {
               ${shifts.map((shift) => `
                 <div class="employee-workday">
                   <strong>${formatDate(shift.date)}</strong>
-                  <span>${escapeHtml(shift.from || "?")} - ${escapeHtml(shift.to || "?")}</span>
+                  <span>${escapeHtml(shift.timeText || "?")}</span>
                   <span>${formatHours(shift.hours)}</span>
+                  ${shift.adminOnly ? `<small>Nur Admin${shift.adminNote ? ` | ${escapeHtml(shift.adminNote)}` : ""}</small>` : ""}
                 </div>
               `).join("") || `<p class="hint">Keine Arbeitszeiten für diesen Monat erfasst.</p>`}
             </div>
+            ${allowCorrection ? `<div class="admin-timesheet-form" data-admin-timesheet-form="${escapeHtml(employee)}">
+              <p class="hint">Nur Admin: vergessene Stunden und Tage können auch bei abgeschlossenen Tagesberichten ergänzt werden.</p>
+              <label>Datum<input type="date" data-admin-ts-field="date" value="${escapeHtml(defaultDate)}"></label>
+              <label>Beginn<input type="time" data-admin-ts-field="from"></label>
+              <label>Ende<input type="time" data-admin-ts-field="to"></label>
+              <label>Hinweis<input data-admin-ts-field="note" placeholder="z.B. vergessen einzutragen"></label>
+              <button class="primary" type="button" data-admin-save-timesheet="${escapeHtml(employee)}">Stunden nachtragen</button>
+            </div>` : ""}
           </div>
         </details>
       `;
@@ -3157,11 +6844,17 @@ function employeeOverviewHtml() {
   `;
 }
 
+function adminTimesheetDefaultDate() {
+  const today = todayKey();
+  if (today.startsWith(state.selectedMonth)) return today;
+  return `${state.selectedMonth}-01`;
+}
+
 function totalsForEmployee(employee) {
   const entries = state.timesheets?.[employee] || {};
   return Object.entries(entries).reduce((totals, [dateKey, entry]) => {
     if (!dateKey.startsWith(state.selectedMonth)) return totals;
-    totals.hours += hoursBetween(entry.from, entry.to);
+    totals.hours += paidHours(entry);
     totals.tip += Number(entry.tip || 0);
     return totals;
   }, { hours: 0, tip: 0 });
@@ -3170,14 +6863,122 @@ function totalsForEmployee(employee) {
 function timesheetDetailsForEmployee(employee) {
   const entries = state.timesheets?.[employee] || {};
   return Object.entries(entries)
-    .filter(([dateKey, entry]) => dateKey.startsWith(state.selectedMonth) && entry.from && entry.to)
+    .filter(([dateKey, entry]) => dateKey.startsWith(state.selectedMonth) && entryHasCompletedTime(entry))
     .map(([date, entry]) => ({
       date,
       from: entry.from || "",
       to: entry.to || "",
-      hours: hoursBetween(entry.from, entry.to)
+      timeText: dayReportShiftText(entry),
+      hours: paidHours(entry),
+      adminOnly: Boolean(entry.adminOnly || entry.source === "admin-manual"),
+      adminNote: entry.adminNote || ""
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function renderAdminMonthlyNumbers() {
+  const container = $("#adminMonthlyNumbers");
+  if (!container) return;
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  container.innerHTML = monthlyNumbersHtml("admin");
+}
+
+function monthlyNumbersHtml(context = "chef") {
+  const id = context === "admin" ? "adminNumbersMonth" : "chefNumbersMonth";
+  const numbers = monthlyNumbersForMonth(state.selectedMonth);
+  return `
+    <section class="monthly-numbers-panel">
+      <div class="chef-section-head">
+        <h3>Monatszahlen</h3>
+        <label>Monat<input id="${id}" type="month" value="${escapeHtml(state.selectedMonth)}"></label>
+      </div>
+      <div class="monthly-number-grid">
+        <article><span>Gesamtumsatz</span><strong>${formatMoney(numbers.revenue.total)}</strong><small>Bowling + Gastro</small></article>
+        <article><span>Arbeitsstunden</span><strong>${formatHours(numbers.hours.total)}</strong><small>Counter + Service + Küche + Sonstige</small></article>
+        <article><span>Umsatz je Stunde</span><strong>${formatMoney(numbers.revenuePerHour)}</strong><small>Grundgerüst</small></article>
+      </div>
+      <div class="monthly-number-grid">
+        <article><span>Counter</span><strong>${formatHours(numbers.hours.Counter)}</strong></article>
+        <article><span>Service</span><strong>${formatHours(numbers.hours.Service)}</strong></article>
+        <article><span>Küche</span><strong>${formatHours(numbers.hours.Kueche)}</strong></article>
+        <article><span>Sonstige</span><strong>${formatHours(numbers.hours.Sonstige)}</strong></article>
+      </div>
+      <table class="monthly-number-table">
+        <tbody>
+          <tr><th>Umsatz Bowling</th><td>${formatMoney(numbers.revenue.bowling)}</td></tr>
+          <tr><th>Umsatz Gastro</th><td>${formatMoney(numbers.revenue.gastro)}</td></tr>
+          <tr><th>Getränke</th><td>${formatMoney(numbers.revenue.drinks)}</td></tr>
+          <tr><th>Speisen</th><td>${formatMoney(numbers.revenue.food)}</td></tr>
+          <tr><th>Sonstiges</th><td>${formatMoney(numbers.revenue.other)}</td></tr>
+          <tr><th>EC gesamt</th><td>${formatMoney(numbers.revenue.ec)}</td></tr>
+          <tr><th>Personalverzehr</th><td>${formatMoney(numbers.revenue.personalConsumption)}</td></tr>
+          <tr><th>Rechnungskunden</th><td>${formatMoney(numbers.revenue.invoices)}</td></tr>
+          <tr><th>Ausgaben</th><td>${formatMoney(numbers.revenue.expenses)}</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">Die Stunden werden nach Dienstplan-Position zugeordnet. Falls keine Position gefunden wird, nutzt die App die Mitarbeiter-Bereiche als Fallback.</p>
+    </section>
+  `;
+}
+
+function monthlyNumbersForMonth(month) {
+  const hours = { Counter: 0, Service: 0, Kueche: 0, Sonstige: 0, total: 0 };
+  Object.entries(state.timesheets || {}).forEach(([employee, entries]) => {
+    Object.entries(entries || {}).forEach(([dateKey, entry]) => {
+      if (!dateKey.startsWith(month) || !entry?.from || !entry?.to) return;
+      const paid = paidHours(entry);
+      const area = workAreaForEmployeeDate(employee, dateKey);
+      hours[area] = (hours[area] || 0) + paid;
+      hours.total += paid;
+    });
+  });
+  const revenue = { bowling: 0, gastro: 0, drinks: 0, food: 0, other: 0, ec: 0, personalConsumption: 0, invoices: 0, expenses: 0, total: 0 };
+  Object.entries(state.dayReports || {}).forEach(([dateKey, report]) => {
+    if (!dateKey.startsWith(month) || !report || typeof report !== "object") return;
+    const parts = reportGastroParts(report);
+    revenue.bowling += reportMoneyNumber(report.revenueBowling || report.barBowling);
+    revenue.drinks += parts.drinks;
+    revenue.food += parts.food;
+    revenue.other += parts.other;
+    revenue.gastro += gastroRevenueTotal(report);
+    revenue.ec += reportEcTotal(report);
+    revenue.personalConsumption += reportPersonalConsumptionTotal(report);
+    revenue.invoices += reportInvoiceTotal(report);
+    revenue.expenses += reportCashExpensesTotal(report);
+  });
+  revenue.total = Math.max(0, revenue.bowling + revenue.gastro - revenue.personalConsumption);
+  return {
+    hours,
+    revenue,
+    revenuePerHour: hours.total > 0 ? revenue.total / hours.total : 0
+  };
+}
+
+function workAreaForEmployeeDate(employee, dateKey) {
+  const schedule = state.allSchedules?.[dateKey.slice(0, 7)] || state.schedule || {};
+  const positions = Object.entries(schedule.days?.[dateKey] || {})
+    .filter(([key, value]) => !key.includes("__") && value === employee)
+    .map(([key]) => key);
+  for (const position of positions) {
+    const area = workAreaFromText(position);
+    if (area !== "Sonstige") return area;
+  }
+  const departments = state.settings.employeeDepartments?.[employee] || [];
+  for (const department of ["Counter", "Kueche", "Service"]) {
+    if (departments.some((value) => normalizeDepartment(value) === department)) return department;
+  }
+  return workAreaFromText(state.settings.employeeRoles?.[employee] || departments[0] || "");
+}
+
+function workAreaFromText(value) {
+  const text = String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (text.includes("counter")) return "Counter";
+  if (text.includes("kuche") || text.includes("kueche") || text.includes("koch") || text.includes("spul")) return "Kueche";
+  if (text.includes("service")) return "Service";
+  return "Sonstige";
 }
 
 function renderSettings() {
@@ -3188,6 +6989,8 @@ function renderSettings() {
   if ($("#scheduleAutoDeleteDays")) $("#scheduleAutoDeleteDays").value = String(normalizeScheduleAutoDeleteDays(state.settings.scheduleAutoDeleteDays, 14));
   if ($("#hourlyRateSetting")) $("#hourlyRateSetting").value = String(normalizeHourlyRate(state.settings.hourlyRate, 25));
   if ($("#invoiceNotificationTo")) $("#invoiceNotificationTo").value = state.settings.invoiceNotificationTo || "";
+  if ($("#availabilityTargetMonthSetting")) $("#availabilityTargetMonthSetting").value = availabilityMonthValue();
+  if ($("#availabilitySubmissionOpenSetting")) $("#availabilitySubmissionOpenSetting").checked = state.settings.availabilitySubmissionOpen !== false;
   $("#employeePinsText").placeholder = "Nur neue oder geaenderte PINs eintragen, Format: Name=PIN";
   $("#adminEmployeesText").value = (state.settings.adminEmployees || []).join("\n");
   $("#employeeDepartmentsText").value = departmentsToText(state.settings.employeeDepartments || {});
@@ -3207,16 +7010,19 @@ function renderSettings() {
 function renderEmployeeDirectory() {
   const target = $("#employeeDirectory");
   if (!target) return;
-  const departments = state.settings.employeeDepartments || {};
-  const roles = state.settings.employeeRoles || {};
-  const admins = new Set(state.settings.adminEmployees || []);
-  const exempt = new Set(state.settings.availabilityExemptEmployees || []);
-  const departmentOptions = ["Counter", "Service", "Kueche", "Reinigung", "Mechanik"];
-  target.innerHTML = (state.settings.employees || []).map((name, index) => `
+  const departments = textToDepartments($("#employeeDepartmentsText")?.value || departmentsToText(state.settings.employeeDepartments || {}));
+  const roles = textToRoles($("#employeeRolesText")?.value || rolesToText(state.settings.employeeRoles || {}));
+  const admins = new Set(linesToList($("#adminEmployeesText")?.value || (state.settings.adminEmployees || []).join("\n")));
+  const exempt = new Set(linesToList($("#availabilityExemptText")?.value || (state.settings.availabilityExemptEmployees || []).join("\n")));
+  const fixedEmployees = new Set((state.settings.fixedEmployees || []).map(String));
+  const departmentOptions = departmentOptionsForEmployeeCards(departments);
+  target.innerHTML = (state.settings.employees || []).map((name, index) => {
+    const tipCard = employeeTipCardState(name, roles, departments);
+    return `
     <details class="employee-card" data-employee-card="${index}" data-original-employee-name="${escapeHtml(name)}">
       <summary>
         <strong>${escapeHtml(name)}</strong>
-        <span>${escapeHtml(roles[name] || "Keine Rolle")} · ${(departments[name] || []).join(", ") || "Keine Bereiche"}</span>
+        <span>${escapeHtml(roles[name] || "Keine Rolle")} · ${(departments[name] || []).join(", ") || "Keine Bereiche"}${fixedEmployees.has(name) ? " · Festanstellung" : ""}${tipCard.eligible ? ` · Trinkgeld ${tipCard.factorLabel}` : " · Kein Trinkgeld"}</span>
       </summary>
       <div class="employee-card-grid">
         <label>Name<input data-employee-field="name" value="${escapeHtml(name)}"></label>
@@ -3228,10 +7034,18 @@ function renderEmployeeDirectory() {
         </label>
         <div class="employee-card-checks">
           ${departmentOptions.map((department) => `
-            <label><input type="checkbox" data-employee-department="${department}" ${(departments[name] || []).includes(department) ? "checked" : ""}> ${department === "Kueche" ? "Küche" : department}</label>
+            <label><input type="checkbox" data-employee-department="${escapeHtml(department)}" ${(departments[name] || []).includes(department) ? "checked" : ""}> ${escapeHtml(departmentLabel(department))}</label>
           `).join("")}
           <label><input type="checkbox" data-employee-admin ${admins.has(name) ? "checked" : ""}> Admin-Rechte</label>
+          <label><input type="checkbox" data-employee-fixed ${fixedEmployees.has(name) ? "checked" : ""}> Festanstellung</label>
           <label><input type="checkbox" data-employee-exempt ${exempt.has(name) ? "checked" : ""}> Keine Verfügbarkeit nötig</label>
+        </div>
+        <div class="employee-card-tip">
+          <label class="employee-tip-toggle"><input type="checkbox" data-employee-tip-eligible ${tipCard.eligible ? "checked" : ""}> Trinkgeldberechtigt</label>
+          <label>Trinkgeld-Faktor
+            <input data-employee-tip-factor type="number" min="0.1" max="1" step="0.025" value="${escapeHtml(tipCard.factorValue)}" placeholder="Auto">
+          </label>
+          <small>Leer = automatische Regel. Faktor 0,1 bis 1,0. Küche automatisch: 1 Koch = 1, zwei Köche = 0,75, zwei Köche + Spüler = 0,5. Ab 2.000 Euro Speisen-Umsatz: Küche/Spüler wieder 1.</small>
         </div>
         <div class="employee-card-actions">
           <button class="primary" type="button" data-save-employees>Diese Karte speichern</button>
@@ -3239,7 +7053,22 @@ function renderEmployeeDirectory() {
         </div>
       </div>
     </details>
-  `).join("") || `<p class="hint">Noch keine Mitarbeiter angelegt.</p>`;
+  `;
+  }).join("") || `<p class="hint">Noch keine Mitarbeiter angelegt.</p>`;
+}
+
+function employeeTipCardState(employee, roles = {}, departments = {}) {
+  const setting = tipSettingFromSettings(state.settings || {}, employee);
+  const autoArea = tipAreaFromText(roles[employee] || "")
+    || departmentsForEmployee(departments, employee).map(tipAreaFromText).find(isTipEligibleArea)
+    || "";
+  const eligible = setting ? setting.eligible : isTipEligibleArea(autoArea);
+  const factorValue = setting && setting.eligible ? String(setting.factor) : "";
+  return {
+    eligible,
+    factorValue,
+    factorLabel: factorValue ? `x${factorValue}` : "(Auto)"
+  };
 }
 
 function roleLabel(role) {
@@ -3248,13 +7077,41 @@ function roleLabel(role) {
   return role;
 }
 
+function departmentOptionsForEmployeeCards(departments = {}) {
+  const positions = linesToList($("#positionsText")?.value || (state.settings.positions || []).join("\n"));
+  const selected = Object.values(departments).flat().map(canonicalDepartmentChoice).filter(Boolean);
+  const broad = ["Counter", "Service", "Kueche", "Reinigung", "Mechanik"];
+  const options = [...broad];
+  positions.forEach((position) => {
+    const exact = canonicalDepartmentChoice(position);
+    const group = departmentForPosition(position);
+    if (group && !options.includes(group)) options.push(group);
+    if (exact && !options.includes(exact)) options.push(exact);
+  });
+  selected.forEach((department) => {
+    if (department && !options.includes(department)) options.push(department);
+  });
+  return options;
+}
+
+function departmentLabel(value) {
+  const text = String(value || "").trim();
+  if (text === "Kueche") return "Küche";
+  if (text === "Kueche 1") return "Küche 1";
+  if (text === "Kueche 2") return "Küche 2";
+  if (text === "Spueler") return "Spüler";
+  return text;
+}
+
 function syncEmployeeDirectoryToTextareas() {
   const employees = [];
   const pins = {};
   const roles = {};
   const departments = {};
+  const tipSettings = {};
   const admins = [];
   const exempt = [];
+  const fixed = [];
   $$(".employee-card").forEach((card) => {
     const name = card.querySelector('[data-employee-field="name"]')?.value.trim();
     if (!name) return;
@@ -3269,7 +7126,18 @@ function syncEmployeeDirectoryToTextareas() {
     if (role) roles[name] = role;
     const deps = [...card.querySelectorAll("[data-employee-department]")].filter((input) => input.checked).map((input) => input.dataset.employeeDepartment);
     departments[name] = deps;
+    const tipEligible = card.querySelector("[data-employee-tip-eligible]")?.checked === true;
+    const rawTipFactor = card.querySelector("[data-employee-tip-factor]")?.value.trim() || "";
+    const autoArea = tipAreaFromText(role || "") || deps.map(tipAreaFromText).find(isTipEligibleArea) || "";
+    const autoEligible = isTipEligibleArea(autoArea);
+    if (tipEligible !== autoEligible || rawTipFactor) {
+      tipSettings[name] = {
+        eligible: tipEligible,
+        factor: rawTipFactor ? normalizeTipFactor(rawTipFactor, 1) : 1
+      };
+    }
     if (card.querySelector("[data-employee-admin]")?.checked) admins.push(name);
+    if (card.querySelector("[data-employee-fixed]")?.checked) fixed.push(name);
     if (card.querySelector("[data-employee-exempt]")?.checked) exempt.push(name);
   });
   $("#employeesText").value = employees.join("\n");
@@ -3278,6 +7146,8 @@ function syncEmployeeDirectoryToTextareas() {
   $("#employeeDepartmentsText").value = Object.entries(departments).map(([name, deps]) => `${name}=${deps.join(",")}`).join("\n");
   $("#adminEmployeesText").value = admins.join("\n");
   $("#availabilityExemptText").value = exempt.join("\n");
+  state.settings.fixedEmployees = fixed;
+  state.settings.employeeTipSettings = tipSettings;
 }
 
 function renderPositionDirectory() {
@@ -3526,10 +7396,19 @@ function plannerPositionHtml(position, dateKey, daySchedule = {}) {
 
 function availabilitySummary(dateKey) {
   const yes = [];
+  const no = [];
   for (const [employee, days] of Object.entries(state.availability)) {
-    if (days[dateKey] && days[dateKey].status === "yes") yes.push(employee);
+    const day = days?.[dateKey];
+    if (!day) continue;
+    if (day.status === "yes") yes.push(employee);
+    if (day.status === "no") {
+      no.push(`${employee}${day.note ? ` (${day.note})` : ""}`);
+    }
   }
-  return yes.length ? `Kann: ${yes.join(", ")}` : "Keine Zusagen";
+  const parts = [];
+  if (yes.length) parts.push(`Kann: ${yes.join(", ")}`);
+  if (no.length) parts.push(`Kann nicht: ${no.join(", ")}`);
+  return parts.length ? parts.join(" | ") : "Keine Zusagen";
 }
 
 function employeeHint(employee, dateKey) {
@@ -3538,6 +7417,9 @@ function employeeHint(employee, dateKey) {
   if (day.status === "yes") {
     const time = day.from || day.to ? ` ${day.from || "?"}-${day.to || "?"}` : "";
     return ` (kann${time})`;
+  }
+  if (day.status === "no") {
+    return ` (kann nicht${day.note ? `: ${day.note}` : ""})`;
   }
   return "";
 }
@@ -3657,7 +7539,7 @@ function textToDepartments(text) {
     const cleanName = (name || "").trim();
     const values = departmentParts.join("=")
       .split(",")
-      .map((item) => normalizeDepartment(item))
+      .map((item) => canonicalDepartmentChoice(item))
       .filter(Boolean);
     if (cleanName) {
       departments[cleanName] = [...new Set(values)];
@@ -3666,15 +7548,29 @@ function textToDepartments(text) {
   return departments;
 }
 
+function canonicalDepartmentChoice(value) {
+  const text = String(value || "").trim();
+  const clean = text.toLowerCase();
+  if (!clean) return "";
+  if (["counter", "service", "reinigung", "mechanik"].includes(clean)) return normalizeDepartment(text);
+  if (["küche", "kueche", "kuche"].includes(clean)) return "Kueche";
+  if (["spüler", "spueler", "spuler"].includes(clean)) return "Spueler";
+  return text
+    .replace(/^k[üu]che\b/i, "Kueche")
+    .replace(/^sp[üu]ler\b/i, "Spueler");
+}
+
 function normalizeDepartment(value) {
   const clean = String(value || "").trim().toLowerCase();
   if (!clean) return "";
   if (clean.startsWith("counter")) return "Counter";
   if (clean.startsWith("service")) return "Service";
   if (clean.startsWith("küche") || clean.startsWith("kueche") || clean.startsWith("kuche")) return "Kueche";
+  if (clean.includes("koch") || clean.includes("küchenchef") || clean.includes("kuechenchef") || clean.includes("kuchenchef")) return "Kueche";
   if (clean.startsWith("spüler") || clean.startsWith("spueler") || clean.startsWith("spuler")) return "Kueche";
   if (clean.startsWith("reinigung")) return "Reinigung";
   if (clean.startsWith("mechanik")) return "Mechanik";
+  if (clean.includes("mechaniker")) return "Mechanik";
   return value.trim();
 }
 
@@ -3692,15 +7588,34 @@ function positionClass(position) {
   return `position-${positionCategory(position) || "sonstige"}`;
 }
 
+function employeeNameKeys(employee) {
+  const clean = String(employee || "").trim();
+  const parts = clean.replace(",", " ").split(/\s+/).filter(Boolean);
+  const names = [clean];
+  if (parts.length > 1) {
+    names.push(parts[0], parts[parts.length - 1], `${parts[0]} ${parts[parts.length - 1]}`);
+    names.push(`${parts[parts.length - 1]}, ${parts[0]}`);
+    names.push(`${parts[parts.length - 1]} ${parts[0]}`);
+  }
+  return [...new Set(names.filter(Boolean))];
+}
+
+function departmentsForEmployee(departments, employee) {
+  for (const key of employeeNameKeys(employee)) {
+    if (Array.isArray(departments[key])) return departments[key];
+  }
+  return [];
+}
+
 function employeesForPosition(position) {
   const department = departmentForPosition(position);
-  if (department === "Service") return state.settings.employees || [];
+  const positionName = canonicalDepartmentChoice(position);
   const departments = state.settings.employeeDepartments || {};
   const roles = state.settings.employeeRoles || {};
   const matching = state.settings.employees.filter((employee) => {
-    const employeeDepartments = departments[employee] || [];
+    const employeeDepartments = departmentsForEmployee(departments, employee).map(canonicalDepartmentChoice);
     const roleDepartment = normalizeDepartment(roles[employee] || "");
-    return employeeDepartments.includes(department) || roleDepartment === department;
+    return employeeDepartments.includes(department) || employeeDepartments.includes(positionName) || roleDepartment === department;
   });
   return matching.length ? matching : state.settings.employees;
 }
@@ -3744,13 +7659,16 @@ function holidayMap(year) {
   const easter = easterDate(year);
   const items = [
     [`${year}-01-01`, "Neujahr"],
-    [`${year}-01-06`, "Hl. Drei Koenige"],
+    [`${year}-01-06`, "Hl. Drei Könige"],
     [isoDate(addDays(easter, -2)), "Karfreitag"],
+    [isoDate(easter), "Ostersonntag"],
     [isoDate(addDays(easter, 1)), "Ostermontag"],
     [`${year}-05-01`, "Tag der Arbeit"],
     [isoDate(addDays(easter, 39)), "Christi Himmelfahrt"],
+    [isoDate(addDays(easter, 49)), "Pfingstsonntag"],
     [isoDate(addDays(easter, 50)), "Pfingstmontag"],
     [isoDate(addDays(easter, 60)), "Fronleichnam"],
+    [`${year}-08-15`, "Mariä Himmelfahrt"],
     [`${year}-10-03`, "Tag der Deutschen Einheit"],
     [`${year}-11-01`, "Allerheiligen"],
     [`${year}-12-25`, "1. Weihnachtstag"],
@@ -3786,7 +7704,7 @@ function openingHoursFor(dateKey) {
 
 function showToast(message) {
   const toast = $("#toast");
-  toast.textContent = message;
+  toast.textContent = germanDisplayText(message);
   toast.classList.add("show");
   window.setTimeout(() => toast.classList.remove("show"), 2600);
 }
@@ -3804,12 +7722,18 @@ async function employeeLogin(pin) {
   state.employeeToken = login.token || "";
   state.adminToken = login.adminToken || "";
   state.hasBackofficeAccess = Boolean(login.isAdmin);
-  state.adminUnlocked = false;
+  state.adminUnlocked = Boolean(login.isAdmin);
+  state.pinChangeRequired = Boolean(login.mustChangePin);
   await loadState();
   if (!login.employee && login.isAdmin) {
     state.adminUnlocked = true;
     activateTab("admin");
     showToast("Admin-Bereich geöffnet.");
+  } else if (state.pinChangeRequired) {
+    activateTab("home");
+    renderPinChangeOverlay();
+    $("#newEmployeePin")?.focus();
+    showToast("Bitte neuen PIN festlegen.");
   } else if (currentUserIsChef()) {
     activateTab("chef");
     showToast(`Hallo ${login.employee}. Chef-Übersicht geöffnet.`);
@@ -3824,6 +7748,7 @@ function employeeLogout() {
   state.employeeToken = "";
   state.adminToken = "";
   state.hasBackofficeAccess = false;
+  state.pinChangeRequired = false;
   state.adminUnlocked = false;
   state.isChef = false;
   activateTab("home");
@@ -3831,8 +7756,18 @@ function employeeLogout() {
 }
 
 function activateTab(name) {
+  if (name === "admin" && state.hasBackofficeAccess && state.adminToken && !state.adminUnlocked) {
+    state.adminUnlocked = true;
+    renderAll();
+  }
   $$(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
   $$(".panel").forEach((panel) => panel.classList.toggle("active", panel.id === name));
+  if (name === "timesheet" && state.employeeToken && !state.timesheetRefreshInFlight) {
+    state.timesheetRefreshInFlight = true;
+    loadState().catch(showError).finally(() => {
+      state.timesheetRefreshInFlight = false;
+    });
+  }
 }
 
 async function adminLogin(pin) {
@@ -3846,6 +7781,48 @@ async function adminLogin(pin) {
   await loadState();
   activateTab("admin");
   showToast("Admin entsperrt.");
+}
+
+async function saveNewEmployeePin(button) {
+  const newPin = $("#newEmployeePin")?.value.trim() || "";
+  const confirmPin = $("#confirmEmployeePin")?.value.trim() || "";
+  if (!/^\d{4,10}$/.test(newPin)) {
+    showToast("Der neue PIN muss aus 4 bis 10 Ziffern bestehen.");
+    return;
+  }
+  if (newPin !== confirmPin) {
+    showToast("Die PIN-Wiederholung stimmt nicht überein.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await api("/api/employee-login", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "change-pin",
+        employeeToken: state.employeeToken,
+        newPin,
+        confirmPin
+      })
+    });
+    state.employeeToken = result.token || state.employeeToken;
+    state.adminToken = result.adminToken || state.adminToken;
+    state.hasBackofficeAccess = Boolean(result.isAdmin);
+    state.adminUnlocked = Boolean(result.isAdmin);
+    state.pinChangeRequired = false;
+    $("#newEmployeePin").value = "";
+    $("#confirmEmployeePin").value = "";
+    await loadState();
+    activateTab(currentUserIsChef() ? "chef" : "home");
+    showToast("PIN gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
 }
 
 function escapeHtml(value) {
@@ -3863,6 +7840,10 @@ async function saveSettings(button) {
   try {
     syncEmployeeDirectoryToTextareas();
     syncPositionDirectoryToTextarea();
+    const availabilityTargetMonth = normalizeMonthValue($("#availabilityTargetMonthSetting")?.value) || availabilityMonthValue();
+    const availabilitySubmissionOpen = $("#availabilitySubmissionOpenSetting")?.checked !== false;
+    state.settings.availabilityTargetMonth = availabilityTargetMonth;
+    state.settings.availabilitySubmissionOpen = availabilitySubmissionOpen;
     await api("/api/settings", {
       method: "POST",
       headers: { "x-admin-token": state.adminToken },
@@ -3872,12 +7853,16 @@ async function saveSettings(button) {
         terminalCode: $("#terminalCodeSetting").value,
         scheduleAutoDeleteDays: Number($("#scheduleAutoDeleteDays")?.value || 14),
         hourlyRate: Number($("#hourlyRateSetting")?.value || 25),
-        invoiceNotificationTo: ($("#invoiceNotificationTo")?.value || "").trim(),
+        invoiceNotificationTo: $("#invoiceNotificationTo")?.value.trim(),
+        availabilityTargetMonth,
+        availabilitySubmissionOpen,
         employees: $("#employeesText").value.split("\n"),
         employeePins: textToPins($("#employeePinsText").value),
         adminEmployees: linesToList($("#adminEmployeesText").value),
         employeeDepartments: textToDepartments($("#employeeDepartmentsText").value),
         employeeRoles: textToRoles($("#employeeRolesText").value),
+        employeeTipSettings: state.settings.employeeTipSettings || {},
+        fixedEmployees: state.settings.fixedEmployees || [],
         availabilityExemptEmployees: linesToList($("#availabilityExemptText").value),
         positions: $("#positionsText").value.split("\n"),
         chefViewSections: visibilityFromInputs("[data-chef-section]", "chefSection"),
@@ -3900,6 +7885,33 @@ async function saveSettings(button) {
     window.setTimeout(() => {
       button.disabled = false;
     }, 300);
+  }
+}
+
+async function sendInvoiceTestMail(button) {
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Sendet...";
+  const status = $("#invoiceTestMailStatus");
+  if (status) status.textContent = "";
+  try {
+    const result = await api("/api/settings", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "send-invoice-test-mail",
+        to: $("#invoiceNotificationTo")?.value.trim()
+      })
+    });
+    const message = result.message || (result.sent ? "Test-Mail versendet." : "Test-Mail nicht versendet.");
+    if (status) status.textContent = message;
+    showToast(message);
+  } catch (error) {
+    if (status) status.textContent = error.message || String(error);
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
   }
 }
 
@@ -3928,6 +7940,13 @@ function bindEvents() {
 
   $("#homeLogout")?.addEventListener("click", employeeLogout);
   $("#topLogout").addEventListener("click", employeeLogout);
+  $("#cancelPinChange")?.addEventListener("click", employeeLogout);
+  $("#saveNewEmployeePin")?.addEventListener("click", () => saveNewEmployeePin($("#saveNewEmployeePin")));
+  ["#newEmployeePin", "#confirmEmployeePin"].forEach((selector) => {
+    $(selector)?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") saveNewEmployeePin($("#saveNewEmployeePin"));
+    });
+  });
 
   $("#adminLogout").addEventListener("click", employeeLogout);
 
@@ -3990,8 +8009,10 @@ function bindEvents() {
     if (availabilityIsSubmitted()) return;
     if (!event.target.matches("button[data-status]")) return;
     const wasActive = event.target.classList.contains("active");
+    const card = event.target.closest(".day-card");
+    const activeClass = card?.dataset.availabilityMode === "fixed" ? "cannot-work" : "can-work";
     event.target.classList.toggle("active", !wasActive);
-    event.target.closest(".day-card").classList.toggle("can-work", !wasActive);
+    card?.classList.toggle(activeClass, !wasActive);
   });
 
   $("#publishedMonths").addEventListener("click", (event) => {
@@ -4001,6 +8022,16 @@ function bindEvents() {
   });
 
   $("#homeContent").addEventListener("click", (event) => {
+    const ackMessage = event.target.closest("[data-ack-message]");
+    if (ackMessage) {
+      acknowledgeDashboardMessage(ackMessage.dataset.ackMessage, ackMessage);
+      return;
+    }
+    const pushButton = event.target.closest("[data-enable-push]");
+    if (pushButton) {
+      enablePushNotifications(pushButton);
+      return;
+    }
     if (event.target.closest("[data-open-backoffice]")) {
       state.adminUnlocked = true;
       renderAll();
@@ -4056,9 +8087,14 @@ function bindEvents() {
       completeInvoice(completeInvoiceButton.dataset.completeInvoice, completeInvoiceButton);
       return;
     }
-    const exportButton = event.target.closest("[data-export-day-report]");
-    if (exportButton) {
-      exportDayReport(exportButton.dataset.exportDayReport);
+    const deleteInvoiceButton = event.target.closest("[data-delete-invoice]");
+    if (deleteInvoiceButton) {
+      deleteInvoiceCustomer(deleteInvoiceButton.dataset.deleteInvoice, deleteInvoiceButton);
+      return;
+    }
+    const printReportButton = event.target.closest("[data-print-day-report]");
+    if (printReportButton) {
+      printDayReportFromChef(printReportButton.dataset.printDayReport, printReportButton);
       return;
     }
     const folderButton = event.target.closest("[data-export-report-folder]");
@@ -4088,7 +8124,7 @@ function bindEvents() {
   });
 
   $("#chefDashboard")?.addEventListener("change", (event) => {
-    if (!event.target.matches("#chefEmployeeMonth")) return;
+    if (!event.target.matches("#chefEmployeeMonth, #chefNumbersMonth")) return;
     state.selectedMonth = event.target.value;
     loadState().catch(showError);
   });
@@ -4110,16 +8146,18 @@ function bindEvents() {
         tip: $("#customerTip").value,
         note: $("#customerNote").value
       };
-      await api("/api/state", {
+      const result = await api("/api/state", {
         method: "POST",
         body: JSON.stringify({
           action: "customer-invoice",
+          date: localDateValue(),
           customer
         })
       });
       event.target.reset();
-      status.textContent = "Danke, die Rechnungsdaten wurden für heute angelegt.";
-      showToast("Rechnungskunde angelegt.");
+      if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = formatDate(localDateValue());
+      status.textContent = result.message || "Rechnungskunde gespeichert.";
+      showToast(result.message || "Rechnungskunde angelegt.");
       if (state.invoiceTerminalToken) await loadCustomerInvoiceDesk();
     } catch (error) {
       status.textContent = error.message || String(error);
@@ -4149,6 +8187,7 @@ function bindEvents() {
       state.invoiceDate = result.date || todayKey();
       state.invoiceReport = result.report || {};
       state.settings = normalizeSettings(result.settings || state.settings);
+      state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
       window.localStorage?.setItem("invoiceTerminalToken", state.invoiceTerminalToken);
       $("#customerInvoiceStaffCode").value = "";
       renderCustomerInvoiceDesk();
@@ -4176,6 +8215,23 @@ function bindEvents() {
     list.insertAdjacentHTML("beforeend", invoiceRowHtml());
   });
 
+  $("#customerMasterSearch")?.addEventListener("input", renderCustomerMaster);
+  $("#customerMasterSelect")?.addEventListener("change", renderCustomerMaster);
+
+  $("#addCustomerFromMaster")?.addEventListener("click", () => {
+    const selectedId = $("#customerMasterSelect")?.value || "";
+    const customer = normalizeCustomerDirectory(state.customerDirectory).find((item) => item.id === selectedId);
+    if (!customer) {
+      showToast("Bitte zuerst einen Kunden aus der Kartei auswählen.");
+      return;
+    }
+    const list = $("#customerInvoiceWorkList");
+    if (!list) return;
+    if (list.querySelector(".hint")) list.innerHTML = "";
+    list.insertAdjacentHTML("beforeend", invoiceRowHtml(customerMasterToInvoice(customer)));
+    showToast(`${customer.name} wurde in den Tagesbericht übernommen.`);
+  });
+
   $("#addCustomerExpenseWorkRow")?.addEventListener("click", () => {
     const list = $("#customerExpenseWorkList");
     if (!list) return;
@@ -4195,6 +8251,12 @@ function bindEvents() {
     saveCustomerInvoiceDeskReport(event.currentTarget, "Dokumente gespeichert.");
   });
 
+  $("#customerInvoiceStaffArea")?.addEventListener("change", (event) => {
+    const input = event.target.closest("#customerReportDocumentPenta, #customerReportDocumentHandwriting, #customerReportDocumentEcCut");
+    if (!input || !input.files?.length) return;
+    saveCustomerInvoiceDeskReport(input, `${reportDocumentLabelForInput(input)} gespeichert.`);
+  });
+
   $("#customerInvoiceStaffArea")?.addEventListener("click", (event) => {
     const draftButton = event.target.closest("[data-save-invoice-draft]");
     if (draftButton) {
@@ -4206,10 +8268,20 @@ function bindEvents() {
       saveCustomerInvoiceDeskRow(readyButton, true);
       return;
     }
+    const expenseSaveButton = event.target.closest("[data-save-expense-entry]");
+    if (expenseSaveButton) {
+      saveCustomerInvoiceDeskReportWithOptions(expenseSaveButton, "Ausgabe gespeichert.", { mergeExpenses: true });
+      return;
+    }
+    const addExpenseReceiptButton = event.target.closest("[data-add-expense-receipt]");
+    if (addExpenseReceiptButton) {
+      const row = addExpenseReceiptButton.closest('[data-report-entry="expense"]');
+      row?.querySelector(".expense-receipt-upload-list")?.insertAdjacentHTML("beforeend", expenseReceiptUploadHtml());
+      return;
+    }
     const removeButton = event.target.closest("[data-remove-report-entry]");
     if (!removeButton) return;
-    removeButton.closest(".report-entry")?.remove();
-    showToast("Eintrag entfernt. Bitte speichern.");
+    removeCustomerInvoiceDeskEntry(removeButton);
   });
 
   $("#timesheetGrid").addEventListener("click", async (event) => {
@@ -4251,7 +8323,7 @@ function bindEvents() {
           method: "POST",
           body: JSON.stringify({
             action: "request",
-            month: state.selectedMonth,
+            month: availabilityMonthValue(),
             employeeToken: state.employeeToken,
             note: $("#availabilityChangeNote") ? $("#availabilityChangeNote").value : ""
           })
@@ -4268,12 +8340,20 @@ function bindEvents() {
     }
     button.textContent = "Speichert...";
     try {
+      const validation = availabilityValidationMessage();
+      if (validation) {
+        showToast(validation);
+        button.textContent = oldText;
+        button.disabled = false;
+        return;
+      }
       const employee = state.activeEmployee;
       await api("/api/availability", {
         method: "POST",
         body: JSON.stringify({
-          month: state.selectedMonth,
+          month: availabilityMonthValue(),
           employeeToken: state.employeeToken,
+          mode: employeeIsFixed(employee) ? "fixed" : "standard",
           days: collectAvailability()
         })
       });
@@ -4447,8 +8527,14 @@ function bindEvents() {
 
   $("#sendMessage")?.addEventListener("click", async () => {
     const text = $("#messageText").value.trim();
+    const target = $("#messageTarget").value;
+    const employees = target === "employees" ? selectedMessageEmployees() : [];
     if (!text) {
       showToast("Bitte Nachricht eingeben.");
+      return;
+    }
+    if (target === "employees" && !employees.length) {
+      showToast("Bitte mindestens einen Mitarbeiter auswählen.");
       return;
     }
     try {
@@ -4457,18 +8543,95 @@ function bindEvents() {
         headers: { "x-admin-token": state.adminToken },
         body: JSON.stringify({
           action: "add-message",
-          target: $("#messageTarget").value,
-          employees: linesToList($("#messageEmployees").value),
+          target,
+          employees,
           text
         })
       });
       state.messages = result.messages || [];
       $("#messageText").value = "";
-      $("#messageEmployees").value = "";
+      $$("[data-message-employee]").forEach((input) => { input.checked = false; });
       renderAdminMessages();
       showToast("Nachricht veröffentlicht.");
     } catch (error) {
       showError(error);
+    }
+  });
+
+  $("#messageTarget")?.addEventListener("change", renderMessageEmployeePicker);
+  $("#pushTarget")?.addEventListener("change", renderPushEmployeePicker);
+
+  $("#savePushSettings")?.addEventListener("click", async () => {
+    const button = $("#savePushSettings");
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Speichert...";
+    try {
+      const pushSettings = {
+        schedulePublished: $("#pushAutoSchedule")?.checked !== false,
+        assignmentsTomorrow: $("#pushAutoAssignment")?.checked !== false,
+        messages: $("#pushAutoMessages")?.checked !== false,
+        schedulePublishedTitle: $("#pushScheduleTitle")?.value.trim() || defaultData.settings.pushSettings.schedulePublishedTitle,
+        schedulePublishedBody: $("#pushScheduleBody")?.value.trim() || defaultData.settings.pushSettings.schedulePublishedBody,
+        assignmentsTomorrowTitle: $("#pushAssignmentTitle")?.value.trim() || defaultData.settings.pushSettings.assignmentsTomorrowTitle,
+        assignmentsTomorrowBody: $("#pushAssignmentBody")?.value.trim() || defaultData.settings.pushSettings.assignmentsTomorrowBody,
+        messagesTitle: $("#pushMessagesTitle")?.value.trim() || defaultData.settings.pushSettings.messagesTitle,
+        messagesBody: $("#pushMessagesBody")?.value.trim() || defaultData.settings.pushSettings.messagesBody
+      };
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({ action: "save-push-settings", pushSettings })
+      });
+      state.settings = normalizeSettings(result.settings || { ...state.settings, pushSettings });
+      renderAdminPushControls();
+      $("#pushAdminStatus").textContent = "Push-Einstellungen gespeichert.";
+      showToast("Push-Einstellungen gespeichert.");
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  });
+
+  $("#sendPushNotification")?.addEventListener("click", async () => {
+    const button = $("#sendPushNotification");
+    const title = $("#pushTitle")?.value.trim() || "LA-Bowling TeamApp";
+    const text = $("#pushText")?.value.trim() || "";
+    const target = $("#pushTarget")?.value || "all";
+    const employees = target === "employees" ? selectedPushEmployees() : [];
+    if (!text) {
+      showToast("Bitte Push-Nachricht eingeben.");
+      return;
+    }
+    if (target === "employees" && !employees.length) {
+      showToast("Bitte mindestens einen Mitarbeiter auswählen.");
+      return;
+    }
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Sendet...";
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({
+          action: "send-push",
+          title,
+          text,
+          target,
+          employees
+        })
+      });
+      $("#pushText").value = "";
+      $("#pushAdminStatus").textContent = pushResultText(result);
+      showToast("Push wurde gesendet.");
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
     }
   });
 
@@ -4489,10 +8652,65 @@ function bindEvents() {
     }
   });
 
+  $("#sendTerminalMessage")?.addEventListener("click", async () => {
+    const text = $("#terminalMessageText")?.value.trim() || "";
+    if (!text) {
+      showToast("Bitte Terminal-Nachricht eingeben.");
+      return;
+    }
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({
+          action: "add-terminal-message",
+          text
+        })
+      });
+      state.terminalMessages = result.terminalMessages || [];
+      $("#terminalMessageText").value = "";
+      renderAdminTerminalMessages();
+      renderTerminalLeaderMessages(state.terminalReport, Boolean(state.terminalReport?.closed));
+      showToast("Terminal-Nachricht gesendet.");
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  $("#adminTerminalMessagesList")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-delete-terminal-message]");
+    if (!button) return;
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({ action: "delete-terminal-message", id: button.dataset.deleteTerminalMessage })
+      });
+      state.terminalMessages = result.terminalMessages || [];
+      renderAdminTerminalMessages();
+      renderTerminalLeaderMessages(state.terminalReport, Boolean(state.terminalReport?.closed));
+      showToast("Terminal-Nachricht gelöscht.");
+    } catch (error) {
+      showError(error);
+    }
+  });
+
   $("#runningTaskFrequency")?.addEventListener("change", updateRunningTaskFields);
   $("#prepTaskFrequency")?.addEventListener("change", updatePrepClosingTaskFields);
   $("#closingTaskFrequency")?.addEventListener("change", updatePrepClosingTaskFields);
   $("#taskCalendarMonth")?.addEventListener("change", renderTaskCalendar);
+  $("#calendarTaskDate")?.addEventListener("change", (event) => {
+    const month = String(event.target.value || "").slice(0, 7);
+    if ($("#taskCalendarMonth") && month && $("#taskCalendarMonth").value !== month) $("#taskCalendarMonth").value = month;
+    if (event.target.value) setCalendarTaskDate(event.target.value);
+    renderTaskCalendar();
+  });
+
+  $("#closeCalendarTaskPopup")?.addEventListener("click", closeCalendarTaskPopup);
+  $("#calendarTaskPopup")?.addEventListener("click", (event) => {
+    if (event.target.id === "calendarTaskPopup") closeCalendarTaskPopup();
+  });
+  $("#calendarTaskPopupEnabled")?.addEventListener("change", updateCalendarPopupFields);
 
   $("#adminTaskCalendar")?.addEventListener("click", (event) => {
     const deleteButton = event.target.closest("[data-calendar-delete-task]");
@@ -4504,13 +8722,16 @@ function bindEvents() {
     const day = event.target.closest("[data-calendar-date]");
     if (!day) return;
     $("#calendarTaskDate").value = day.dataset.calendarDate;
-    $$(".admin-calendar-day").forEach((item) => item.classList.toggle("selected", item === day));
+    const month = day.dataset.calendarDate.slice(0, 7);
+    if ($("#taskCalendarMonth") && $("#taskCalendarMonth").value !== month) $("#taskCalendarMonth").value = month;
+    renderTaskCalendar();
+    openCalendarTaskPopup(day.dataset.calendarDate);
   });
 
   $("#addCalendarTask")?.addEventListener("click", async () => {
     const intervalDays = Number($("#calendarTaskInterval")?.value || 0);
     const date = $("#calendarTaskDate")?.value || todayKey();
-    await addAdminTask({
+    const saved = await addAdminTask({
       titleSelector: "#calendarTaskTitle",
       noteSelector: "#calendarTaskNote",
       category: "running",
@@ -4518,8 +8739,11 @@ function bindEvents() {
       date,
       startDate: date,
       endDate: $("#calendarTaskEndDate")?.value || "",
-      intervalDays: intervalDays || 1
+      intervalDays: intervalDays || 1,
+      popupEnabled: $("#calendarTaskPopupEnabled")?.checked || false,
+      popupTime: $("#calendarTaskPopupTime")?.value || ""
     });
+    if (saved) closeCalendarTaskPopup();
   });
 
   $("#addPrepTask")?.addEventListener("click", async () => {
@@ -4568,7 +8792,11 @@ function bindEvents() {
     const title = titleInput?.value.trim() || "";
     if (!title) {
       showToast("Bitte Aufgabe eingeben.");
-      return;
+      return false;
+    }
+    if (config.popupEnabled && !config.popupTime) {
+      showToast("Bitte Popup-Uhrzeit eintragen.");
+      return false;
     }
     const task = {
       title,
@@ -4580,10 +8808,12 @@ function bindEvents() {
       endDate: config.endDate || "",
       intervalDays: config.intervalDays || 1,
       weekdays: config.weekdays || [],
-      dayOfMonth: config.dayOfMonth || 1
+      dayOfMonth: config.dayOfMonth || 1,
+      popupEnabled: Boolean(config.popupEnabled),
+      popupTime: config.popupEnabled ? config.popupTime : ""
     };
     try {
-      state.taskTemplates = [withTaskDefaults(task), ...(state.taskTemplates || [])];
+      state.taskTemplates = sortTaskTemplates([...(state.taskTemplates || []), withTaskDefaults(task)]);
       await saveAllTaskTemplates();
       if (titleInput) titleInput.value = "";
       if (noteInput) noteInput.value = "";
@@ -4591,12 +8821,17 @@ function bindEvents() {
       if (config.titleSelector === "#calendarTaskTitle") {
         $("#calendarTaskInterval").value = "";
         $("#calendarTaskEndDate").value = "";
+        $("#calendarTaskPopupEnabled").checked = false;
+        $("#calendarTaskPopupTime").value = "";
+        updateCalendarPopupFields();
       }
       renderAdminTasks();
       await refreshTerminalTasks();
       showToast("Aufgabe gespeichert.");
+      return true;
     } catch (error) {
       showError(error);
+      return false;
     }
   }
 
@@ -4628,6 +8863,15 @@ function bindEvents() {
     }
   }
 
+  async function refreshTerminalCleaning() {
+    if (!state.terminalToken) return;
+    try {
+      await terminalAction({ action: "load" });
+    } catch (error) {
+      console.warn("Reinigungsplan konnte nicht aktualisiert werden:", error);
+    }
+  }
+
   function withTaskDefaults(task) {
     return {
       id: `task-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -4637,6 +8881,7 @@ function bindEvents() {
   }
 
   async function saveAllTaskTemplates() {
+    state.taskTemplates = sortTaskTemplates(state.taskTemplates || []);
     await api("/api/settings", {
       method: "POST",
       headers: { "x-admin-token": state.adminToken },
@@ -4687,6 +8932,240 @@ function bindEvents() {
     }
   });
 
+  $("#cleaningTaskFrequency")?.addEventListener("change", updateCleaningTaskFields);
+
+  $("#addCleaningTask")?.addEventListener("click", async () => {
+    const title = $("#cleaningTaskTitle")?.value.trim() || "";
+    if (!title) return showToast("Bitte Reinigungsaufgabe eingeben.");
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({
+          action: "add-cleaning-template",
+          task: {
+            title,
+            frequency: "weekly",
+            weekdays: [],
+            note: $("#cleaningTaskNote")?.value || ""
+          }
+        })
+      });
+      state.cleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates);
+      $("#cleaningTaskTitle").value = "";
+      $("#cleaningTaskNote").value = "";
+      renderAdminCleaningTasks();
+      await refreshTerminalCleaning();
+      showToast("Reinigungsaufgabe gespeichert.");
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  $("#adminCleaningTaskTable")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-delete-cleaning-task]");
+    if (!button) return;
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({ action: "delete-cleaning-template", id: button.dataset.deleteCleaningTask })
+      });
+      state.cleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates);
+      renderAdminCleaningTasks();
+      await refreshTerminalCleaning();
+      showToast("Reinigungsaufgabe gelöscht.");
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  $("#adminEmployeeOverview")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-admin-save-timesheet]");
+    if (!button) return;
+    saveAdminTimesheet(button);
+  });
+
+  $("#adminOffers")?.addEventListener("input", () => {
+    state.offerDraftDirty = true;
+  });
+
+  $("#adminOffers")?.addEventListener("change", () => {
+    state.offerDraftDirty = true;
+  });
+
+  $("#adminOffers")?.addEventListener("click", async (event) => {
+    const selectOffer = event.target.closest("[data-select-offer]");
+    if (selectOffer) {
+      if (state.offerDraftDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+      const offer = normalizeOffersClient(state.offers || []).find((item) => item.id === selectOffer.dataset.selectOffer);
+      if (!offer) return;
+      setOfferDraftFromOffer(offer);
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const newOffer = event.target.closest("[data-offer-new]");
+    if (newOffer) {
+      if (state.offerDraftDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+      newOfferDraft();
+      return;
+    }
+    const saveOffer = event.target.closest("[data-offer-save]");
+    if (saveOffer) {
+      await saveCurrentOffer(saveOffer);
+      return;
+    }
+    const duplicateOffer = event.target.closest("[data-offer-duplicate]");
+    if (duplicateOffer) {
+      duplicateCurrentOffer();
+      return;
+    }
+    const archiveOffer = event.target.closest("[data-offer-toggle-archive]");
+    if (archiveOffer) {
+      toggleCurrentOfferArchive();
+      return;
+    }
+    const deleteOffer = event.target.closest("[data-offer-delete]");
+    if (deleteOffer) {
+      await deleteCurrentOffer(deleteOffer);
+      return;
+    }
+    const printOffer = event.target.closest("[data-offer-print]");
+    if (printOffer) {
+      printOfferDraft();
+      return;
+    }
+    const applyTemplate = event.target.closest("[data-offer-apply-template]");
+    if (applyTemplate) {
+      const templateKey = currentOfferDraftFromDom().buffet.templateKey || $("#adminOffers")?.querySelector('[data-offer-field="buffetTemplateKey"]')?.value || "";
+      if (!templateKey) {
+        showToast("Bitte eine Buffet-Vorlage wählen.");
+        return;
+      }
+      applyOfferTemplate(templateKey);
+      return;
+    }
+    const addDish = event.target.closest("[data-offer-add-dish]");
+    if (addDish) {
+      const draft = currentOfferDraftFromDom();
+      const category = addDish.dataset.offerAddDish;
+      draft.buffet.categories[category] ||= [];
+      draft.buffet.categories[category].push({ id: cryptoId(), name: "", note: "" });
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const removeDish = event.target.closest("[data-offer-remove-dish]");
+    if (removeDish) {
+      const row = removeDish.closest("[data-offer-dish-row]");
+      const category = row?.dataset.offerDishRow;
+      const id = row?.dataset.offerDishId;
+      if (!category || !id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.buffet.categories[category] = (draft.buffet.categories[category] || []).filter((item) => item.id !== id);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const moveDish = event.target.closest("[data-offer-move-dish]");
+    if (moveDish) {
+      const row = moveDish.closest("[data-offer-dish-row]");
+      const category = row?.dataset.offerDishRow;
+      const id = row?.dataset.offerDishId;
+      if (!category || !id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.buffet.categories[category] = moveOfferRow(draft.buffet.categories[category] || [], id, moveDish.dataset.offerMoveDish);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const addTimeline = event.target.closest("[data-offer-add-timeline]");
+    if (addTimeline) {
+      const draft = currentOfferDraftFromDom();
+      draft.timeline.push({ id: cryptoId(), time: "", title: "", note: "" });
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const removeTimeline = event.target.closest("[data-offer-remove-timeline]");
+    if (removeTimeline) {
+      const row = removeTimeline.closest("[data-offer-timeline-row]");
+      const id = row?.dataset.offerTimelineId;
+      if (!id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.timeline = (draft.timeline || []).filter((item) => item.id !== id);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const moveTimeline = event.target.closest("[data-offer-move-timeline]");
+    if (moveTimeline) {
+      const row = moveTimeline.closest("[data-offer-timeline-row]");
+      const id = row?.dataset.offerTimelineId;
+      if (!id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.timeline = moveOfferRow(draft.timeline || [], id, moveTimeline.dataset.offerMoveTimeline);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const addCost = event.target.closest("[data-offer-add-cost]");
+    if (addCost) {
+      const draft = currentOfferDraftFromDom();
+      draft.costs.push({ id: cryptoId(), label: "", quantity: 0, unitPrice: 0, note: "" });
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const removeCost = event.target.closest("[data-offer-remove-cost]");
+    if (removeCost) {
+      const row = removeCost.closest("[data-offer-cost-row]");
+      const id = row?.dataset.offerCostId;
+      if (!id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.costs = (draft.costs || []).filter((item) => item.id !== id);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      return;
+    }
+    const moveCost = event.target.closest("[data-offer-move-cost]");
+    if (moveCost) {
+      const row = moveCost.closest("[data-offer-cost-row]");
+      const id = row?.dataset.offerCostId;
+      if (!id) return;
+      const draft = currentOfferDraftFromDom();
+      draft.costs = moveOfferRow(draft.costs || [], id, moveCost.dataset.offerMoveCost);
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+    }
+  });
+
+  $("#adminContent")?.addEventListener("change", (event) => {
+    if (!event.target.matches("#adminNumbersMonth")) return;
+    state.selectedMonth = event.target.value;
+    if ($("#monthInput")) $("#monthInput").value = state.selectedMonth;
+    loadState().catch(showError);
+  });
+
   $("#addEmployeeCard")?.addEventListener("click", () => {
     syncEmployeeDirectoryToTextareas();
     const base = "Neuer Mitarbeiter";
@@ -4735,6 +9214,8 @@ function bindEvents() {
     }
     $("#positionsText").value = [...existing, name].join("\n");
     renderPositionDirectory();
+    syncEmployeeDirectoryToTextareas();
+    renderEmployeeDirectory();
     [...document.querySelectorAll("[data-position-name]")].at(-1)?.focus();
   });
 
@@ -4743,13 +9224,28 @@ function bindEvents() {
     if (!button) return;
     button.closest(".position-row")?.remove();
     syncPositionDirectoryToTextarea();
+    syncEmployeeDirectoryToTextareas();
+    renderEmployeeDirectory();
     showToast("Dienstbereich entfernt. Bitte Einstellungen speichern.");
   });
 
-  $("#positionDirectory")?.addEventListener("input", syncPositionDirectoryToTextarea);
+  $("#positionDirectory")?.addEventListener("input", () => {
+    syncPositionDirectoryToTextarea();
+    syncEmployeeDirectoryToTextareas();
+    renderEmployeeDirectory();
+  });
 
   $("#saveSettings").addEventListener("click", () => saveSettings($("#saveSettings")));
   $("#saveEmployees")?.addEventListener("click", () => saveSettings($("#saveEmployees")));
+  $("#sendInvoiceTestMail")?.addEventListener("click", () => sendInvoiceTestMail($("#sendInvoiceTestMail")));
+
+  $("#openCorrectionReport")?.addEventListener("click", (event) => {
+    openCorrectionReport(event.currentTarget);
+  });
+
+  $("#closeCorrectionReport")?.addEventListener("click", (event) => {
+    closeCorrectionReport(event.currentTarget);
+  });
 
   $("#unlockTerminal")?.addEventListener("click", async () => {
     const button = $("#unlockTerminal");
@@ -4774,19 +9270,130 @@ function bindEvents() {
       renderTerminal();
       return;
     }
+    const saveAssignments = event.target.closest("#saveTerminalAssignments");
+    if (saveAssignments) {
+      const oldText = saveAssignments.textContent;
+      saveAssignments.disabled = true;
+      saveAssignments.textContent = "Speichert...";
+      try {
+        const result = await terminalAction({
+          action: "save-assignment-times",
+          assignmentTimes: collectTerminalAssignmentTimes()
+        });
+        showToast(result.message || "Einteilung gespeichert.");
+        saveAssignments.textContent = "Gespeichert";
+        window.setTimeout(() => {
+          saveAssignments.textContent = oldText;
+        }, 1400);
+      } catch (error) {
+        saveAssignments.textContent = oldText;
+        showError(error);
+      } finally {
+        window.setTimeout(() => {
+          saveAssignments.disabled = false;
+        }, 300);
+      }
+      return;
+    }
+    const terminalMessageButton = event.target.closest("[data-confirm-terminal-message]");
+    if (terminalMessageButton) {
+      const oldText = terminalMessageButton.textContent;
+      terminalMessageButton.disabled = true;
+      terminalMessageButton.textContent = "Quittiert...";
+      try {
+        const result = await terminalAction({
+          action: "confirm-terminal-message",
+          messageId: terminalMessageButton.dataset.confirmTerminalMessage
+        });
+        showToast(result.message || "Nachricht quittiert.");
+      } catch (error) {
+        terminalMessageButton.disabled = false;
+        terminalMessageButton.textContent = oldText;
+        showError(error);
+      }
+      return;
+    }
     const editDayMeta = event.target.closest("#editTerminalDayMeta");
     if (editDayMeta) {
       state.terminalDayMetaEditing = true;
       renderTerminal();
       return;
     }
+    const returnToCorrection = event.target.closest("#returnToAdminCorrection");
+    if (returnToCorrection) {
+      state.adminUnlocked = true;
+      renderAll();
+      activateTab("admin");
+      $$(".admin-workspace-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.adminWorkspaceTab === "correction"));
+      $$(".admin-workspace").forEach((section) => section.classList.toggle("active", section.dataset.adminWorkspace === "correction"));
+      showToast("Korrekturmodus im Admin-Bereich geöffnet.");
+    }
+  });
+
+  $("#terminalContent")?.addEventListener("change", async (event) => {
     const taskInput = event.target.closest("[data-terminal-task]");
-    if (taskInput) {
-      try {
-        await terminalAction({ action: "complete-task", id: taskInput.dataset.terminalTask, done: taskInput.checked });
-      } catch (error) {
-        showError(error);
+    if (!taskInput) return;
+    const taskId = taskInput.dataset.terminalTask;
+    const done = taskInput.checked;
+    const previousCompletions = cloneData(state.terminalReport?.taskCompletions || {});
+    state.terminalReport = {
+      ...(state.terminalReport || {}),
+      taskCompletions: {
+        ...(state.terminalReport?.taskCompletions || {}),
+        ...(done ? { [taskId]: { done: true, doneAt: new Date().toISOString() } } : {})
       }
+    };
+    if (!done) delete state.terminalReport.taskCompletions[taskId];
+    renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
+    try {
+      await terminalAction({ action: "complete-task", id: taskId, done });
+      showToast(done ? "Aufgabe erledigt." : "Aufgabe wieder geöffnet.");
+    } catch (error) {
+      state.terminalReport = { ...(state.terminalReport || {}), taskCompletions: previousCompletions };
+      renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
+      showError(error);
+    }
+  });
+
+  $("#terminalContent")?.addEventListener("change", async (event) => {
+    const cleaningInput = event.target.closest("[data-cleaning-task]");
+    if (!cleaningInput) return;
+    const taskId = cleaningInput.dataset.cleaningTask;
+    const done = cleaningInput.checked;
+    const employeeSelect = $(`[data-cleaning-employee="${cssEscape(taskId)}"]`);
+    const employee = employeeSelect?.value || "";
+    if (done && !employee) {
+      cleaningInput.checked = false;
+      showToast("Bitte ausführende Person auswählen.");
+      return;
+    }
+    const previousCompletions = cloneData(state.terminalReport?.cleaningCompletions || {});
+    const previousWeeklyCompletions = cloneData(state.terminalWeeklyCleaningCompletions || {});
+    state.terminalReport = {
+      ...(state.terminalReport || {}),
+      cleaningCompletions: {
+        ...(state.terminalReport?.cleaningCompletions || {}),
+        ...(done ? { [taskId]: { done: true, employee, doneAt: new Date().toISOString() } } : {})
+      }
+    };
+    if (done) {
+      state.terminalWeeklyCleaningCompletions = {
+        ...(state.terminalWeeklyCleaningCompletions || {}),
+        [taskId]: state.terminalReport.cleaningCompletions[taskId]
+      };
+    } else {
+      delete state.terminalReport.cleaningCompletions[taskId];
+      delete state.terminalWeeklyCleaningCompletions[taskId];
+    }
+    renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
+    try {
+      await terminalAction({ action: "complete-cleaning", id: taskId, employee, done });
+      showToast(done ? "Reinigung dokumentiert." : "Reinigung wieder geöffnet.");
+    } catch (error) {
+      state.terminalReport = { ...(state.terminalReport || {}), cleaningCompletions: previousCompletions };
+      state.terminalWeeklyCleaningCompletions = previousWeeklyCompletions;
+      renderTerminalTasks(state.terminalReport, Boolean(state.terminalReport?.closed));
+      showError(error);
     }
   });
 
@@ -4871,6 +9478,44 @@ function bindEvents() {
   });
 
   $("#terminalEmployees")?.addEventListener("click", async (event) => {
+    const addSegmentButton = event.target.closest("[data-add-time-segment]");
+    if (addSegmentButton) {
+      const card = addSegmentButton.closest(".terminal-employee");
+      const list = card?.querySelector(".terminal-time-segments");
+      if (!card || !list) return;
+      const index = list.querySelectorAll("[data-terminal-segment-row]").length;
+      list.insertAdjacentHTML("beforeend", terminalTimeSegmentRowHtml({}, index, false));
+      refreshTerminalSegmentNumbers(card);
+      list.querySelectorAll("[data-terminal-segment-row]").item(index)?.querySelector("input")?.focus();
+      return;
+    }
+    const removeSegmentButton = event.target.closest("[data-remove-time-segment]");
+    if (removeSegmentButton) {
+      const card = removeSegmentButton.closest(".terminal-employee");
+      removeSegmentButton.closest("[data-terminal-segment-row]")?.remove();
+      if (card) refreshTerminalSegmentNumbers(card);
+      return;
+    }
+    const removeButton = event.target.closest("[data-terminal-remove]");
+    if (removeButton) {
+      if (!window.confirm(`${removeButton.dataset.terminalRemove} aus der heutigen Arbeitszeit-Ansicht entfernen?`)) return;
+      const oldText = removeButton.textContent;
+      removeButton.disabled = true;
+      removeButton.textContent = "Entfernt...";
+      try {
+        const result = await terminalAction({
+          action: "remove-employee",
+          employee: removeButton.dataset.terminalRemove
+        });
+        showToast(result.message || "Mitarbeiter entfernt.");
+      } catch (error) {
+        showError(error);
+      } finally {
+        removeButton.textContent = oldText;
+        removeButton.disabled = false;
+      }
+      return;
+    }
     const adjustButton = event.target.closest("[data-terminal-adjust]");
     if (adjustButton) {
       const card = adjustButton.closest(".terminal-employee");
@@ -4881,8 +9526,7 @@ function bindEvents() {
         const result = await terminalAction({
           action: "adjust-time",
           employee: adjustButton.dataset.terminalAdjust,
-          from: card.querySelector('[data-terminal-time="from"]')?.value || "",
-          to: card.querySelector('[data-terminal-time="to"]')?.value || ""
+          segments: collectTerminalTimeSegments(card)
         });
         showToast(result.message || "Zeiten korrigiert.");
       } catch (error) {
@@ -4925,6 +9569,8 @@ function bindEvents() {
     button.textContent = "Fügt hinzu...";
     try {
       const result = await terminalAction({ action: "add-employee", employee: select.value });
+      select.value = "";
+      select.closest("details")?.removeAttribute("open");
       showToast(result.message || "Mitarbeiter hinzugefügt.");
     } catch (error) {
       showError(error);
@@ -4946,9 +9592,11 @@ function bindEvents() {
     if (!list) return;
     if (list.querySelector(".hint")) list.innerHTML = "";
     list.insertAdjacentHTML("beforeend", expenseRowHtml());
+    syncCashExpensesFromExpenseRows(false);
+    updateReportBarTotal();
   });
 
-  $("#dayReportPrintArea")?.addEventListener("click", (event) => {
+  $("#terminalFinanceSection")?.addEventListener("click", (event) => {
     const draftButton = event.target.closest("[data-save-invoice-draft]");
     if (draftButton) {
       saveInvoiceRow(draftButton, false);
@@ -4959,11 +9607,34 @@ function bindEvents() {
       saveInvoiceRow(readyButton, true);
       return;
     }
+    const expenseSaveButton = event.target.closest("[data-save-expense-entry]");
+    if (expenseSaveButton) {
+      saveExpenseRow(expenseSaveButton);
+      return;
+    }
+    const addExpenseReceiptButton = event.target.closest("[data-add-expense-receipt]");
+    if (addExpenseReceiptButton) {
+      const row = addExpenseReceiptButton.closest('[data-report-entry="expense"]');
+      row?.querySelector(".expense-receipt-upload-list")?.insertAdjacentHTML("beforeend", expenseReceiptUploadHtml());
+      return;
+    }
+    const removeDocumentButton = event.target.closest("[data-remove-report-document]");
+    if (removeDocumentButton) {
+      const key = removeDocumentButton.dataset.removeReportDocument;
+      if (!key) return;
+      clearReportDocumentFields(key);
+      saveReportDocumentsNow(removeDocumentButton, "Dokument entfernt.");
+      return;
+    }
     const removeButton = event.target.closest("[data-remove-report-entry]");
     if (!removeButton) return;
-    if (state.terminalReport?.closed) return;
-    removeButton.closest(".report-entry")?.remove();
-    showToast("Eintrag entfernt. Bitte Tagesbericht speichern.");
+    removeTerminalFinanceEntry(removeButton);
+  });
+
+  $("#terminalFinanceSection")?.addEventListener("change", (event) => {
+    const input = event.target.closest("#reportDocumentPenta, #reportDocumentHandwriting, #reportDocumentEcCut");
+    if (!input || !input.files?.length) return;
+    saveReportDocumentsNow(input, `${reportDocumentLabelForInput(input)} gespeichert.`);
   });
 
   $("#saveDayReport")?.addEventListener("click", async () => {
@@ -4988,8 +9659,82 @@ function bindEvents() {
     }
   });
 
-  $("#reportBarBowling")?.addEventListener("input", updateReportBarTotal);
-  $("#reportBarGastro")?.addEventListener("input", updateReportBarTotal);
+  ["#reportCashTotal", "#reportCashExpenses", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportRevenueGastro"].forEach((selector) => {
+    $(selector)?.addEventListener("input", updateReportBarTotal);
+  });
+
+  $("#expensesList")?.addEventListener("input", () => {
+    syncCashExpensesFromExpenseRows(false);
+    updateReportBarTotal();
+  });
+
+  $("#saveTipDistribution")?.addEventListener("click", async () => {
+    const button = $("#saveTipDistribution");
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Speichert...";
+    try {
+      const result = calculateTipDistribution(state.terminalDate || todayKey());
+      await terminalAction({
+        action: "save-tips",
+        cashTotal: $("#reportCashTotal")?.value || "",
+        cashExpenses: cashExpensesFromFormOrReport().toFixed(2),
+        ecTerminal1: $("#reportEcTerminal1")?.value || "",
+        ecTerminal2: $("#reportEcTerminal2")?.value || "",
+        ecTotal: ecTotalFromFormOrReport().toFixed(2),
+        personalConsumption: $("#reportPersonalConsumption")?.value || "",
+        revenueBowling: $("#reportRevenueBowling")?.value || "",
+        revenueDrinks: $("#reportRevenueDrinks")?.value || "",
+        revenueFood: $("#reportRevenueFood")?.value || "",
+        revenueOther: $("#reportRevenueOther")?.value || "",
+        revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
+        resetTipPayout: true,
+        tipTotal: result.tipTotal.toFixed(2),
+        tipRemainder: result.tipRemainder.toFixed(2),
+        tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
+        documents: await collectReportDocuments()
+      });
+      button.textContent = "Gespeichert";
+      showToast("Umsatzdetails gespeichert.");
+      window.setTimeout(() => {
+        button.textContent = oldText;
+      }, 1400);
+    } catch (error) {
+      button.textContent = oldText;
+      showError(error);
+    } finally {
+      window.setTimeout(() => {
+        button.disabled = false;
+      }, 300);
+    }
+  });
+
+  $("#tipDistributionList")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-confirm-tip-payout-employee]");
+    if (!button) return;
+    const employee = button.dataset.confirmTipPayoutEmployee || "";
+    const row = normalizedTipOverview().employees.find((item) => item.employee === employee);
+    const amount = reportMoneyNumber(row?.openAmount);
+    if (!employee || amount <= 0) {
+      showToast("Kein Trinkgeld zum Auszahlen vorhanden.");
+      return;
+    }
+    if (!confirm(`${employee}: Auszahlung von ${formatMoney(amount)} bestätigen? Nur der Terminal-Zähler springt auf 0,00 €, die Mitarbeiter-App bleibt unverändert.`)) return;
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Bestätigt...";
+    try {
+      await terminalAction({
+        action: "confirm-employee-tip-payout",
+        employee
+      });
+      showToast(`${employee}: Trinkgeld-Auszahlung bestätigt.`);
+    } catch (error) {
+      button.textContent = oldText;
+      button.disabled = false;
+      showError(error);
+    }
+  });
 
   $("#closeDayReport")?.addEventListener("click", async () => {
     if (!confirm("Tagesbericht abschließen? Danach kann er nicht mehr verändert werden.")) return;
@@ -5008,7 +9753,26 @@ function bindEvents() {
     }
   });
 
-  $("#printDayReport")?.addEventListener("click", () => window.print());
+  $("#printDayReport")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const report = $("#dayReportPrintArea");
+    if (report) report.open = true;
+    const hadTerminalMode = document.body.classList.contains("terminal-mode");
+    document.body.classList.add("terminal-mode");
+    const cleanup = () => {
+      if (!hadTerminalMode) document.body.classList.remove("terminal-mode");
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
+    window.print();
+    window.setTimeout(cleanup, 1200);
+  });
+  $("#printCleaningPlan")?.addEventListener("click", () => {
+    document.body.classList.add("print-cleaning-plan");
+    window.setTimeout(() => window.print(), 20);
+    window.setTimeout(() => document.body.classList.remove("print-cleaning-plan"), 800);
+  });
   $("#printSchedule").addEventListener("click", () => window.print());
 }
 
@@ -5241,8 +10005,11 @@ async function saveSchedule(published) {
 
 bindEvents();
 window.setInterval(() => {
-  if (state.terminalToken) checkTerminalReminders(state.terminalReport || {}, Boolean(state.terminalReport?.closed));
-}, 60000);
+  if (state.terminalToken) refreshTerminalReminderState();
+}, 30000);
+window.addEventListener("focus", () => {
+  if (state.terminalToken) refreshTerminalReminderState();
+});
 if (isTerminalMode()) document.body.classList.add("terminal-mode");
 if (isTodoMode()) document.body.classList.add("todo-mode");
 if (isCustomerInvoiceMode()) document.body.classList.add("customer-invoice-mode");

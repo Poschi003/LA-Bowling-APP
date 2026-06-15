@@ -1,4 +1,4 @@
-const crypto = require("crypto");
+﻿const crypto = require("crypto");
 
 const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
@@ -14,6 +14,19 @@ const defaultPins = {
   Bianca: "1009",
   "Kevin Leicht": "1010"
 };
+
+const defaultCleaningTemplates = [
+  { id: "daily-toilets", title: "Toiletten reinigen und Verbrauchsmaterial auffuellen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "daily-counter", title: "Counter, EC-Geraete und Kassenbereich reinigen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "daily-gastro", title: "Tische, Sitzbereiche und Gastroflaechen reinigen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "daily-lanes", title: "Bahnbereich, Kugeln und Schuhe sichtbar kontrollieren", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "daily-trash", title: "Muell und Leergut aus Gaestebereichen entfernen", frequency: "daily", weekdays: [], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-fridges", title: "Kuehlungen und Getraenkelager reinigen/kontrollieren", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-shoe-racks", title: "Schuhregale und Leihschuhe gruendlich reinigen", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-storage", title: "Lagerflaechen ordnen und Boden reinigen", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-glass", title: "Glasflaechen, Tueren und Eingangsbereich gruendlich reinigen", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" },
+  { id: "weekly-sanitary", title: "Sanitaerbereich Grundkontrolle dokumentieren", frequency: "weekly", weekdays: [1], note: "", createdAt: "2026-05-20T00:00:00.000Z" }
+];
 
 const defaultData = {
   settings: {
@@ -47,31 +60,55 @@ const defaultData = {
     employeeRoles: {},
     availabilityExemptEmployees: [],
     adminEmployees: [],
-    positions: ["Counter 1", "Counter 2", "Service 1", "Service 2", "Service 3", "Service 4", "Service 5", "Kueche 1", "Kueche 2", "Spueler", "Reinigung", "Mechanik"]
+    positions: ["Counter 1", "Counter 2", "Service 1", "Service 2", "Service 3", "Service 4", "Service 5", "Kueche 1", "Kueche 2", "Spueler", "Reinigung", "Mechanik"],
+    chefViewSections: {
+      messages: true,
+      today: true,
+      reports: true,
+      reportFolders: true,
+      employees: true,
+      schedule: true
+    },
+    dayReportFields: {
+      ecTotal: true,
+      barBowling: true,
+      barGastro: true,
+      barTotal: true,
+      invoiceCustomers: true,
+      expenses: true,
+      documents: true,
+      notes: true,
+      preparation: true,
+      handovers: true,
+      extraEmployees: true
+    },
+    scheduleAutoDeleteDays: 14,
+    hourlyRate: 25
   },
   availability: {},
   schedules: {},
   timesheets: {},
+  cleaningTemplates: defaultCleaningTemplates,
   taskTemplates: [
     {
       id: "default-prep-kasse",
-      title: "Kasse und EC-Geräte vorbereiten",
-      note: "Kassenstart, Wechselgeld und EC-Geräte prüfen.",
+      title: "Kasse und EC-GerÃ¤te vorbereiten",
+      note: "Kassenstart, Wechselgeld und EC-GerÃ¤te prÃ¼fen.",
       frequency: "daily",
       category: "preparation",
       createdAt: "2026-05-09T00:00:00.000Z"
     },
     {
       id: "default-prep-bahnen",
-      title: "Bahnen, Schuhe und Gästebereich kontrollieren",
-      note: "Sichtkontrolle vor Öffnung, Mängel direkt notieren.",
+      title: "Bahnen, Schuhe und GÃ¤stebereich kontrollieren",
+      note: "Sichtkontrolle vor Ã–ffnung, MÃ¤ngel direkt notieren.",
       frequency: "daily",
       category: "preparation",
       createdAt: "2026-05-09T00:00:00.000Z"
     },
     {
       id: "default-restmuell-roentgenstrasse-12",
-      title: "Restmuell Entleerung Röntgenstraße 12 prüfen",
+      title: "Restmuell Entleerung RÃ¶ntgenstraÃŸe 12 prÃ¼fen",
       note: "Abfuhrtermin kontrollieren und rechtzeitig rausstellen.",
       frequency: "weekly",
       category: "running",
@@ -80,7 +117,7 @@ const defaultData = {
     },
     {
       id: "default-gelbe-saecke-roentgenstrasse-12",
-      title: "Gelbe Säcke Röntgenstraße 12 prüfen",
+      title: "Gelbe SÃ¤cke RÃ¶ntgenstraÃŸe 12 prÃ¼fen",
       note: "Abfuhrtermin kontrollieren und rechtzeitig rausstellen.",
       frequency: "weekly",
       category: "running",
@@ -89,7 +126,7 @@ const defaultData = {
     },
     {
       id: "default-closing-kasse",
-      title: "Kassenabschluss und Tagesbericht prüfen",
+      title: "Kassenabschluss und Tagesbericht prÃ¼fen",
       note: "EC, Bar Bowling, Bar Gastro, Ausgaben und Rechnungskunden kontrollieren.",
       frequency: "daily",
       category: "closing",
@@ -97,8 +134,8 @@ const defaultData = {
     },
     {
       id: "default-closing-haus",
-      title: "Schlussrunde durchführen",
-      note: "Lichter, Türen, Geräte, Toiletten und offene Notizen prüfen.",
+      title: "Schlussrunde durchfÃ¼hren",
+      note: "Lichter, TÃ¼ren, GerÃ¤te, Toiletten und offene Notizen prÃ¼fen.",
       frequency: "daily",
       category: "closing",
       createdAt: "2026-05-09T00:00:00.000Z"
@@ -107,7 +144,7 @@ const defaultData = {
   reminderTemplates: [
     {
       id: "default-toilet-reminder",
-      text: "Toiletten-Kontrolle durchführen",
+      text: "Toiletten-Kontrolle durchfÃ¼hren",
       startAfterOpeningMinutes: 60,
       intervalMinutes: 60,
       active: true,
@@ -115,6 +152,7 @@ const defaultData = {
     }
   ],
   messages: [],
+  terminalMessages: [],
   swaps: [],
   availabilityChangeRequests: []
 };
@@ -150,14 +188,32 @@ function mergeData(value) {
       },
       availabilityExemptEmployees: value?.settings?.availabilityExemptEmployees || base.settings.availabilityExemptEmployees,
       adminEmployees: value?.settings?.adminEmployees || base.settings.adminEmployees,
-      positions: ensureRequiredPositions(value?.settings?.positions || base.settings.positions)
+      positions: ensureRequiredPositions(value?.settings?.positions || base.settings.positions),
+      chefViewSections: {
+        ...base.settings.chefViewSections,
+        ...(value?.settings?.chefViewSections || {})
+      },
+      dayReportFields: {
+        ...base.settings.dayReportFields,
+        ...(value?.settings?.dayReportFields || {})
+      },
+      scheduleAutoDeleteDays: normalizeScheduleAutoDeleteDays(
+        value?.settings?.scheduleAutoDeleteDays,
+        base.settings.scheduleAutoDeleteDays
+      ),
+      hourlyRate: normalizeHourlyRate(
+        value?.settings?.hourlyRate,
+        base.settings.hourlyRate
+      )
     },
     availability: value?.availability || base.availability,
-    schedules: value?.schedules || base.schedules,
+    schedules: normalizeSchedules(value?.schedules || base.schedules),
     timesheets: value?.timesheets || base.timesheets,
+    cleaningTemplates: Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates,
     taskTemplates: mergeTaskTemplates(value?.taskTemplates, base.taskTemplates),
     reminderTemplates: Array.isArray(value?.reminderTemplates) ? value.reminderTemplates : base.reminderTemplates,
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
+    terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };
@@ -165,6 +221,43 @@ function mergeData(value) {
     merged.settings.businessName = "Teamapp";
   }
   return merged;
+}
+
+function normalizeSchedules(schedules) {
+  const result = {};
+  for (const [month, schedule] of Object.entries(schedules || {})) {
+    const safeSchedule = schedule && typeof schedule === "object" ? schedule : {};
+    const days = safeSchedule.days && typeof safeSchedule.days === "object" ? safeSchedule.days : {};
+    const publishedWeeks = safeSchedule.publishedWeeks && typeof safeSchedule.publishedWeeks === "object"
+      ? { ...safeSchedule.publishedWeeks }
+      : {};
+    const hasPublishedWeekFlags = Object.values(publishedWeeks).some(Boolean);
+    if (safeSchedule.published && !hasPublishedWeekFlags && Object.keys(days).length > 0) {
+      for (const dateKey of Object.keys(days)) {
+        const key = weekStartKey(dateKey);
+        if (key) publishedWeeks[key] = true;
+      }
+    }
+    result[month] = {
+      ...safeSchedule,
+      month: safeSchedule.month || month,
+      days,
+      publishedWeeks
+    };
+  }
+  return result;
+}
+
+function weekStartKey(dateKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return "";
+  const date = new Date(`${dateKey}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const dayOfMonth = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${dayOfMonth}`;
 }
 
 function mergeTaskTemplates(value, defaults) {
@@ -184,7 +277,17 @@ function publicSettings(settings) {
     employeeRoles: settings.employeeRoles || {},
     availabilityExemptEmployees: settings.availabilityExemptEmployees || [],
     adminEmployees: settings.adminEmployees || [],
-    positions: ensureRequiredPositions(settings.positions || [])
+    positions: ensureRequiredPositions(settings.positions || []),
+    chefViewSections: settings.chefViewSections || defaultData.settings.chefViewSections,
+    dayReportFields: settings.dayReportFields || defaultData.settings.dayReportFields,
+    scheduleAutoDeleteDays: normalizeScheduleAutoDeleteDays(
+      settings.scheduleAutoDeleteDays,
+      defaultData.settings.scheduleAutoDeleteDays
+    ),
+    hourlyRate: normalizeHourlyRate(
+      settings.hourlyRate,
+      defaultData.settings.hourlyRate
+    )
   };
 }
 
@@ -192,8 +295,8 @@ function normalizePositionGroup(value) {
   const clean = String(value || "").trim().toLowerCase();
   if (clean.startsWith("counter")) return "counter";
   if (clean.startsWith("service")) return "service";
-  if (clean.startsWith("küche") || clean.startsWith("kueche") || clean.startsWith("kuche")) return "kueche";
-  if (clean.startsWith("spüler") || clean.startsWith("spueler") || clean.startsWith("spuler")) return "spueler";
+  if (clean.startsWith("kÃ¼che") || clean.startsWith("kueche") || clean.startsWith("kuche")) return "kueche";
+  if (clean.startsWith("spÃ¼ler") || clean.startsWith("spueler") || clean.startsWith("spuler")) return "spueler";
   if (clean.startsWith("reinigung")) return "reinigung";
   if (clean.startsWith("mechanik")) return "mechanik";
   return clean;
@@ -203,10 +306,24 @@ function ensureRequiredPositions(positions) {
   const clean = [...new Set((positions || []).map(String).map((name) => name.trim()).filter(Boolean))];
   if (!clean.some((position) => normalizePositionGroup(position) === "counter")) clean.push("Counter 1");
   if (!clean.some((position) => position.toLowerCase() === "counter 2")) clean.push("Counter 2");
-  if (!clean.some((position) => position.toLowerCase() === "kueche 2" || position.toLowerCase() === "küche 2")) clean.push("Kueche 2");
+  if (!clean.some((position) => position.toLowerCase() === "kueche 2" || position.toLowerCase() === "kÃ¼che 2")) clean.push("Kueche 2");
   if (!clean.some((position) => normalizePositionGroup(position) === "spueler")) clean.push("Spueler");
   if (!clean.some((position) => normalizePositionGroup(position) === "mechanik")) clean.push("Mechanik");
   return clean;
+}
+
+function normalizeScheduleAutoDeleteDays(value, fallback = 14) {
+  const normalizedFallback = Number.isFinite(Number(fallback)) ? Number(fallback) : 14;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return Math.max(0, Math.min(365, Math.floor(normalizedFallback)));
+  return Math.max(0, Math.min(365, Math.floor(parsed)));
+}
+
+function normalizeHourlyRate(value, fallback = 25) {
+  const normalizedFallback = Number.isFinite(Number(fallback)) ? Number(fallback) : 25;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return Math.max(0, Math.min(200, Math.round(normalizedFallback * 100) / 100));
+  return Math.max(0, Math.min(200, Math.round(parsed * 100) / 100));
 }
 
 function sanitizeSchedules(schedules) {
@@ -398,10 +515,42 @@ function verifyAdmin(settings, pin) {
   return verifyPin(pin, settings.adminPinHash || settings.adminPin);
 }
 
+function employeePinKeys(employee) {
+  const clean = String(employee || "").trim();
+  const names = [clean];
+  const parts = clean.replace(",", " ").split(/\s+/).filter(Boolean);
+  if (clean.includes(",")) {
+    const [last, rest = ""] = clean.split(",");
+    const first = rest.trim().split(/\s+/).filter(Boolean)[0] || "";
+    if (first && last.trim()) names.push(`${first} ${last.trim()}`);
+    if (first) names.push(first);
+    if (last.trim()) names.push(last.trim());
+  }
+  if (parts.length > 1) {
+    names.push(parts[0]);
+    names.push(parts[parts.length - 1]);
+    names.push(`${parts[0]} ${parts[parts.length - 1]}`);
+  }
+  return [...new Set(names.filter(Boolean))];
+}
+
+function employeePinCandidates(settings, employee) {
+  const exact = String(employee || "").trim();
+  const exactCandidates = [
+    settings.employeePinHashes?.[exact],
+    settings.employeePins?.[exact]
+  ];
+  const aliasCandidates = employeePinKeys(exact)
+    .filter((key) => key !== exact)
+    .flatMap((key) => [settings.employeePinHashes?.[key], settings.employeePins?.[key]]);
+  return [...new Set([...exactCandidates, ...aliasCandidates].filter(Boolean))];
+}
+
 function employeeByPin(settings, pin) {
   for (const employee of settings.employees || []) {
-    const stored = settings.employeePinHashes?.[employee] || settings.employeePins?.[employee];
-    if (verifyPin(pin, stored)) return employee;
+    for (const stored of employeePinCandidates(settings, employee)) {
+      if (verifyPin(pin, stored)) return employee;
+    }
   }
   return "";
 }

@@ -1,4 +1,4 @@
-const { handleError, publicSettings, readAppData, readJson, sendJson, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
+﻿const { handleError, publicSettings, readAppData, readJson, sendJson, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
 const crypto = require("crypto");
 
 module.exports = async function handler(req, res) {
@@ -7,16 +7,23 @@ module.exports = async function handler(req, res) {
     const body = await readJson(req);
     const action = String(body.action || "").trim();
     if (action === "login") return login(body, res);
+    if (action === "admin-open-correction") return adminOpenCorrection(body, res);
+    if (action === "admin-close-correction") return adminCloseCorrection(body, res);
     if (action === "add-task-template" || action === "delete-task-template") return saveTaskTemplate(body, res);
     const session = verifyToken(body.terminalToken, "terminal");
     if (!session?.terminal) return sendJson(res, 401, { error: "Terminal-Code bitte erneut eingeben." });
-    if (action === "load") return load(body, res);
+    if (session.correctionDate && cleanDate(body.date) !== session.correctionDate) return sendJson(res, 403, { error: "Korrekturmodus ist nur für das freigegebene Datum gültig." });
+    if (!session.correctionDate && await reportIsInCorrection(body)) return sendJson(res, 423, { error: "Dieser Tagesbericht ist im Admin-Korrekturmodus geöffnet." });
+    if (action === "load") return load(body, res, session);
     if (action === "punch") return punch(body, res);
+    if (action === "break-punch") return breakPunch(body, res);
     if (action === "adjust-time") return adjustTime(body, res);
     if (action === "add-employee") return addEmployee(body, res);
     if (action === "complete-task") return completeTask(body, res);
+    if (action === "complete-cleaning") return completeCleaning(body, res);
     if (action === "confirm-toilet" || action === "toilet-check") return confirmToilet(body, res);
     if (action === "confirm-reminder") return confirmReminder(body, res);
+    if (action === "confirm-terminal-message") return confirmTerminalMessage(body, res);
     if (action === "save-day-meta") return saveDayMeta(body, res);
     if (action === "add-handover") return addHandover(body, res);
     if (action === "save-report") return saveReport(body, res);
@@ -33,9 +40,61 @@ async function login(body, res) {
   sendJson(res, 200, { ok: true, token: signToken({ type: "terminal", terminal: true }), ...terminalPayload(appData, activeTerminalDate(appData, cleanDate(body.date))) });
 }
 
-async function load(body, res) {
+async function adminOpenCorrection(body, res) {
+  const session = verifyToken(body.adminToken || "", "admin");
+  if (!session) return sendJson(res, 401, { error: "Bitte Admin erneut entsperren." });
+  const date = cleanDate(body.date);
+  const reason = cleanText(body.reason, 800);
+  if (!reason) return sendJson(res, 400, { error: "Bitte Grund der Korrektur eintragen." });
   const appData = await readAppData();
-  sendJson(res, 200, terminalPayload(appData, activeTerminalDate(appData, cleanDate(body.date))));
+  appData.dayReports ||= {};
+  const existing = appData.dayReports[date] || {};
+  const correctionLog = Array.isArray(existing.correctionLog) ? existing.correctionLog : [];
+  appData.dayReports[date] = {
+    ...existing,
+    closed: false,
+    closedAt: "",
+    correctionOpen: true,
+    correctionReason: reason,
+    correctionOpenedAt: new Date().toISOString(),
+    correctionLog: [...correctionLog, { action: "opened", reason, at: new Date().toISOString() }],
+    updatedAt: new Date().toISOString()
+  };
+  await writeAppData(appData);
+  sendJson(res, 200, {
+    ok: true,
+    token: signToken({ type: "terminal", terminal: true, correction: true, correctionDate: date }),
+    correctionMode: true,
+    message: "Tagesbericht im Korrekturmodus geöffnet.",
+    ...terminalPayload(appData, date)
+  });
+}
+
+async function adminCloseCorrection(body, res) {
+  const session = verifyToken(body.adminToken || "", "admin");
+  if (!session) return sendJson(res, 401, { error: "Bitte Admin erneut entsperren." });
+  const date = cleanDate(body.date);
+  const appData = await readAppData();
+  appData.dayReports ||= {};
+  const existing = appData.dayReports[date] || {};
+  const correctionLog = Array.isArray(existing.correctionLog) ? existing.correctionLog : [];
+  appData.dayReports[date] = {
+    ...existing,
+    closed: true,
+    closedAt: new Date().toISOString(),
+    correctionOpen: false,
+    correctionClosedAt: new Date().toISOString(),
+    correctionLog: [...correctionLog, { action: "closed", at: new Date().toISOString() }],
+    updatedAt: new Date().toISOString()
+  };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Tagesbericht wieder abgeschlossen.", ...terminalPayload(appData, date) });
+}
+
+async function load(body, res, session = {}) {
+  const appData = await readAppData();
+  const date = session.correctionDate || activeTerminalDate(appData, cleanDate(body.date));
+  sendJson(res, 200, terminalPayload(appData, date));
 }
 
 async function saveTaskTemplate(body, res) {
@@ -63,9 +122,50 @@ async function punch(body, res) {
   if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   const month = date.slice(0, 7), time = roundToQuarter(new Date());
   appData.timesheets ||= {}; appData.timesheets[month] ||= {}; appData.timesheets[month][employee] ||= {};
-  appData.timesheets[month][employee][date] = { ...(appData.timesheets[month][employee][date] || {}), [punchType === "start" ? "from" : "to"]: time, updatedAt: new Date().toISOString(), source: "terminal" };
+  const existing = appData.timesheets[month][employee][date] || {};
+  const nextEntry = { ...existing, [punchType === "start" ? "from" : "to"]: time, updatedAt: new Date().toISOString(), source: "terminal" };
+  if (punchType === "end") {
+    const breaks = normalizeBreaks(existing.breaks);
+    for (let index = breaks.length - 1; index >= 0; index -= 1) {
+      if (breaks[index].from && !breaks[index].to) {
+        breaks[index] = { ...breaks[index], to: time, updatedAt: new Date().toISOString() };
+        nextEntry.breaks = breaks;
+        break;
+      }
+    }
+  }
+  appData.timesheets[month][employee][date] = nextEntry;
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, message: `${employee}: ${punchType === "start" ? "Beginn" : "Ende"} ${time}`, ...terminalPayload(appData, date) });
+}
+
+async function breakPunch(body, res) {
+  const appData = await readAppData(), employee = String(body.employee || "").trim(), breakType = String(body.breakType || "").trim(), date = cleanDate(body.date);
+  if (!employee || !["start", "end"].includes(breakType)) return sendJson(res, 400, { error: "Mitarbeiter oder Pausen-Aktion fehlt." });
+  if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
+  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  const month = date.slice(0, 7), time = roundToQuarter(new Date());
+  appData.timesheets ||= {}; appData.timesheets[month] ||= {}; appData.timesheets[month][employee] ||= {};
+  const existing = appData.timesheets[month][employee][date] || {};
+  if (!existing.from) return sendJson(res, 400, { error: "Bitte zuerst Dienstbeginn eintragen." });
+  const breaks = normalizeBreaks(existing.breaks);
+  let openIndex = -1;
+  for (let index = breaks.length - 1; index >= 0; index -= 1) {
+    if (breaks[index].from && !breaks[index].to) {
+      openIndex = index;
+      break;
+    }
+  }
+  if (breakType === "start") {
+    if (openIndex >= 0) return sendJson(res, 400, { error: "Pause/Rauchen läuft bereits." });
+    breaks.push({ from: time, to: "", createdAt: new Date().toISOString() });
+  } else {
+    if (openIndex < 0) return sendJson(res, 400, { error: "Keine offene Pause gefunden." });
+    breaks[openIndex] = { ...breaks[openIndex], to: time, updatedAt: new Date().toISOString() };
+  }
+  appData.timesheets[month][employee][date] = { ...existing, breaks, updatedAt: new Date().toISOString(), source: existing.source || "terminal" };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: `${employee}: ${breakType === "start" ? "Pause/Rauchen abgemeldet" : "wieder angemeldet"} ${time}`, ...terminalPayload(appData, date) });
 }
 
 async function adjustTime(body, res) {
@@ -93,7 +193,7 @@ async function saveReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen und kann nicht mehr geaendert werden." });
   appData.dayReports ||= {};
-  appData.dayReports[date] = { ...existing, ecTotal: cleanMoney(body.ecTotal), barBowling: cleanMoney(body.barBowling), barGastro: cleanMoney(body.barGastro), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), updatedAt: new Date().toISOString() };
+  appData.dayReports[date] = { ...existing, ecTotal: cleanMoney(body.ecTotal), barBowling: cleanMoney(body.barBowling), barGastro: cleanMoney(body.barGastro), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), updatedAt: new Date().toISOString() };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
 }
@@ -111,6 +211,25 @@ async function completeTask(body, res) {
     delete taskCompletions[id];
   }
   appData.dayReports[date] = { ...report, taskCompletions, updatedAt: new Date().toISOString() };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
+}
+
+async function completeCleaning(body, res) {
+  const appData = await readAppData(), date = cleanDate(body.date), id = String(body.id || "");
+  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  if (!id) return sendJson(res, 400, { error: "Reinigungsaufgabe fehlt." });
+  appData.dayReports ||= {};
+  const report = appData.dayReports[date] || {};
+  const cleaningCompletions = { ...(report.cleaningCompletions || {}) };
+  if (body.done) {
+    const employee = cleanText(body.employee, 160);
+    if (!employee) return sendJson(res, 400, { error: "Bitte ausfuehrende Person auswaehlen." });
+    cleaningCompletions[id] = { done: true, employee, doneAt: new Date().toISOString() };
+  } else {
+    delete cleaningCompletions[id];
+  }
+  appData.dayReports[date] = { ...report, cleaningCompletions, updatedAt: new Date().toISOString() };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
 }
@@ -145,6 +264,34 @@ async function confirmReminder(body, res) {
   sendJson(res, 200, { ok: true, message: "Erinnerung quittiert.", ...terminalPayload(appData, date) });
 }
 
+async function confirmTerminalMessage(body, res) {
+  const appData = await readAppData(), date = cleanDate(body.date), id = cleanText(body.messageId, 120);
+  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  if (!id) return sendJson(res, 400, { error: "Nachricht fehlt." });
+  const message = (appData.terminalMessages || []).find((item) => item.id === id);
+  const checkedAt = new Date().toISOString();
+  appData.dayReports ||= {};
+  const report = appData.dayReports[date] || {};
+  const terminalMessageChecks = cleanTerminalMessageChecks(report.terminalMessageChecks);
+  if (!terminalMessageChecks.some((item) => item.messageId === id)) {
+    terminalMessageChecks.push({
+      messageId: id,
+      text: cleanText(message?.text, 240),
+      shiftLeader: cleanText(report.shiftLeader, 160),
+      checkedAt
+    });
+  }
+  if (message) {
+    message.active = false;
+    message.acknowledgedAt = checkedAt;
+    message.acknowledgedBy = cleanText(report.shiftLeader, 160);
+    message.acknowledgedDate = date;
+  }
+  appData.dayReports[date] = { ...report, terminalMessageChecks, updatedAt: new Date().toISOString() };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Schichtleiter-Nachricht quittiert.", ...terminalPayload(appData, date) });
+}
+
 async function saveDayMeta(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
@@ -158,35 +305,51 @@ async function addHandover(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   const item = cleanHandover(body.handover || body);
-  if (!item.from || !item.to || !item.note) return sendJson(res, 400, { error: "Bitte Von, An und Übergabe-Notiz ausfüllen." });
+  if (!item.from || !item.to || !item.note) return sendJson(res, 400, { error: "Bitte Von, An und Ãœbergabe-Notiz ausfÃ¼llen." });
   appData.dayReports ||= {};
   appData.dayReports[date] = { ...existing, handovers: [...cleanHandovers(existing.handovers), item], shiftLeader: item.to, updatedAt: new Date().toISOString() };
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Übergabe gespeichert.", ...terminalPayload(appData, date) });
+  sendJson(res, 200, { ok: true, message: "Ãœbergabe gespeichert.", ...terminalPayload(appData, date) });
 }
 
 async function closeReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
-  appData.dayReports ||= {}; appData.dayReports[date] = { ...existing, closed: true, closedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const correctionLog = Array.isArray(existing.correctionLog) ? existing.correctionLog : [];
+  appData.dayReports ||= {}; appData.dayReports[date] = {
+    ...existing,
+    closed: true,
+    closedAt: new Date().toISOString(),
+    correctionOpen: false,
+    correctionClosedAt: existing.correctionOpen ? new Date().toISOString() : existing.correctionClosedAt,
+    correctionLog: existing.correctionOpen ? [...correctionLog, { action: "closed", at: new Date().toISOString() }] : correctionLog,
+    updatedAt: new Date().toISOString()
+  };
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Tagesbericht abgeschlossen.", ...terminalPayload(appData, activeTerminalDate(appData, date)) });
+  sendJson(res, 200, { ok: true, message: "Tagesbericht abgeschlossen.", ...terminalPayload(appData, date) });
 }
 
 function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report: defaultReport(appData.dayReports?.[date]), tasks: tasksForDate(appData, date), reminders: appData.reminderTemplates || [] };
+  const report = defaultReport(appData.dayReports?.[date]);
+  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: appData.cleaningTemplates || [], reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData) };
 }
 
 function activeTerminalDate(appData, requestedDate) {
   const today = localDate(new Date());
   const requested = cleanDate(requestedDate);
   const requestedReport = appData.dayReports?.[requested];
-  if (requestedReport && !requestedReport.closed) return requested;
+  if (requestedReport && !requestedReport.closed && !requestedReport.correctionOpen) return requested;
   const openDates = Object.entries(appData.dayReports || {})
-    .filter(([dateKey, report]) => dateKey <= today && report && typeof report === "object" && !report.closed && reportHasActivity(report))
+    .filter(([dateKey, report]) => dateKey <= today && report && typeof report === "object" && !report.closed && !report.correctionOpen && reportHasActivity(report))
     .map(([dateKey]) => dateKey)
     .sort();
   return openDates.at(-1) || today;
+}
+
+async function reportIsInCorrection(body) {
+  const date = cleanDate(body.date);
+  const appData = await readAppData();
+  return Boolean(appData.dayReports?.[date]?.correctionOpen);
 }
 
 function reportHasActivity(report = {}) {
@@ -199,13 +362,21 @@ function reportHasActivity(report = {}) {
     (report.expenses || []).length ||
     (report.handovers || []).length ||
     Object.keys(report.taskCompletions || {}).length ||
+    Object.keys(report.cleaningCompletions || {}).length ||
     (report.toiletChecks || []).length ||
-    (report.reminderChecks || []).length
+    (report.reminderChecks || []).length ||
+    (report.terminalMessageChecks || []).length
   );
 }
 
 function defaultReport(report = {}) {
-  return { ecTotal: "", barBowling: "", barGastro: "", invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, toiletChecks: [], reminderChecks: [], ...report };
+  return { ecTotal: "", barBowling: "", barGastro: "", invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+}
+
+function activeTerminalMessages(appData) {
+  return (appData.terminalMessages || [])
+    .filter((message) => message && message.active !== false && message.id && message.text)
+    .slice(0, 30);
 }
 
 function tasksForDate(appData, dateKey) {
@@ -238,12 +409,31 @@ function cleanTaskCompletions(value) {
   return Object.fromEntries(Object.entries(value).map(([id, item]) => [String(id), { done: Boolean(item?.done), doneAt: String(item?.doneAt || "") }]));
 }
 
+function cleanCleaningCompletions(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([id, item]) => [String(id), {
+    done: Boolean(item?.done),
+    employee: cleanText(item?.employee, 160),
+    doneAt: String(item?.doneAt || "")
+  }]));
+}
+
 function cleanToiletChecks(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 40).map((item) => ({
     checkKey: String(item.checkKey || "").slice(0, 40),
     checkedAt: String(item.checkedAt || new Date().toISOString()).slice(0, 40)
   })).filter((item) => item.checkKey);
+}
+
+function cleanTerminalMessageChecks(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 80).map((item) => ({
+    messageId: cleanText(item.messageId, 120),
+    text: cleanText(item.text, 240),
+    shiftLeader: cleanText(item.shiftLeader, 160),
+    checkedAt: cleanText(item.checkedAt || new Date().toISOString(), 40)
+  })).filter((item) => item.messageId);
 }
 
 function cleanHandover(item = {}) {
@@ -277,6 +467,8 @@ function cleanTaskTemplate(task) {
     intervalDays: Math.max(1, Math.min(365, Number(task.intervalDays || 1))),
     weekdays: Array.isArray(task.weekdays) ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6) : [],
     dayOfMonth: Math.min(31, Math.max(1, Number(task.dayOfMonth || 1))),
+    popupEnabled: task.popupEnabled === true || task.popupEnabled === "true",
+    popupTime: cleanTime(task.popupTime),
     createdAt: cleanText(task.createdAt || new Date().toISOString(), 40)
   };
 }
@@ -288,6 +480,15 @@ function roundToQuarter(date) { const p = berlinParts(date), m = Number(p.hour) 
 function berlinParts(date) { const parts = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date); return Object.fromEntries(parts.filter((p) => p.type !== "literal").map((p) => [p.type, p.value])); }
 function cleanMoney(value) { const n = Number(String(value || "").replace(",", ".").trim()); return Number.isFinite(n) && String(value || "").trim() ? n.toFixed(2) : ""; }
 function cleanTime(value) { const text = String(value || "").trim(); return /^\d{2}:\d{2}$/.test(text) ? text : ""; }
+function normalizeBreaks(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 20).map((item) => ({
+    from: cleanTime(item?.from),
+    to: cleanTime(item?.to),
+    createdAt: cleanText(item?.createdAt, 40),
+    updatedAt: cleanText(item?.updatedAt, 40)
+  })).filter((item) => item.from || item.to);
+}
 function cleanReceiptData(value) { const text = String(value || ""); return text.startsWith("data:") && text.length <= 700000 ? text : ""; }
 function cleanReceiptPath(value) { return String(value || "").trim().replace(/^\/+/, "").slice(0, 300); }
 function cleanReceiptUrl(value) { const text = String(value || "").trim(); return text.startsWith("/api/receipt?") ? text.slice(0, 500) : ""; }
@@ -366,6 +567,11 @@ async function cleanReportItems(items, type, date) {
       tip: String(raw.tip || "").trim().slice(0, 160),
       email: String(raw.email || "").trim().slice(0, 180),
       category: String(raw.category || "").trim().slice(0, 120),
+      createdAt: cleanText(raw.createdAt || new Date().toISOString(), 80),
+      invoiceReady: raw.invoiceReady === true || raw.invoiceReady === "true",
+      invoiceReadyAt: cleanText(raw.invoiceReadyAt, 80),
+      invoiceDone: raw.invoiceDone === true || raw.invoiceDone === "true",
+      invoiceDoneAt: cleanText(raw.invoiceDoneAt, 80),
       area: type === "invoice" ? "rechnung" : raw.area
     };
     await applyReceiptUpload(item, "receipt", date, `${type}-${item.id}`);
@@ -377,3 +583,4 @@ async function cleanReportItems(items, type, date) {
 }
 function verifyTerminalCode(settings, code) { return verifyPin(code, settings?.terminalCodeHash || settings?.terminalCode || process.env.DEFAULT_TERMINAL_CODE || "2468"); }
 function verifyPin(pin, stored) { if (!pin || !stored) return false; if (!String(stored).startsWith("pbkdf2_sha256$")) return String(pin) === String(stored); const [, iterations, salt, digest] = String(stored).split("$"), test = crypto.pbkdf2Sync(String(pin), salt, Number(iterations), 32, "sha256").toString("hex"); return crypto.timingSafeEqual(Buffer.from(test, "hex"), Buffer.from(digest, "hex")); }
+
