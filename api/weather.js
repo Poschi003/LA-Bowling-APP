@@ -7,6 +7,7 @@ module.exports = async function handler(req, res) {
     url.searchParams.set("latitude", "48.5442");
     url.searchParams.set("longitude", "12.1467");
     url.searchParams.set("current", "temperature_2m,precipitation,weather_code,wind_speed_10m");
+    url.searchParams.set("hourly", "temperature_2m,precipitation_probability,precipitation,weather_code");
     url.searchParams.set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum");
     url.searchParams.set("timezone", "Europe/Berlin");
     url.searchParams.set("forecast_days", "1");
@@ -21,10 +22,27 @@ module.exports = async function handler(req, res) {
         tempMax: data.daily?.temperature_2m_max?.[0],
         tempMin: data.daily?.temperature_2m_min?.[0],
         precipitation: data.daily?.precipitation_sum?.[0]
-      }
+      },
+      hourly: hourlyForecast(data.hourly)
     });
   } catch (error) {
     handleError(res, error);
   }
 };
+
+function hourlyForecast(hourly = {}) {
+  const times = hourly.time || [];
+  const now = new Date();
+  const startIndex = Math.max(0, times.findIndex((time) => new Date(time) >= now));
+  return times.slice(startIndex, startIndex + 6).map((time, index) => {
+    const sourceIndex = startIndex + index;
+    return {
+      time,
+      temperature: hourly.temperature_2m?.[sourceIndex],
+      rainProbability: hourly.precipitation_probability?.[sourceIndex],
+      precipitation: hourly.precipitation?.[sourceIndex],
+      weatherCode: hourly.weather_code?.[sourceIndex]
+    };
+  });
+}
 
