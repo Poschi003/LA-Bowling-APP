@@ -1,7 +1,6 @@
-﻿const { handleError, publicSettings, readAppData, readJson, sendInvoiceNotificationEmail, sendJson, sendPushToEmployees, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
+﻿const { handleError, publicSettings, readAppData, readJson, sendJson, signToken, uploadReceiptDataUrl, verifyToken, writeAppData } = require("./_data");
 const crypto = require("crypto");
-const { defaultData } = require("./_data");
-const { sameEmployeeName } = require("./_data");
+const { sendInvoiceNotificationEmail } = require("./_data");
 
 module.exports = async function handler(req, res) {
   try {
@@ -9,29 +8,18 @@ module.exports = async function handler(req, res) {
     const body = await readJson(req);
     const action = String(body.action || "").trim();
     if (action === "login") return login(body, res);
-    if (action === "admin-open-correction") return adminOpenCorrection(body, res);
-    if (action === "admin-close-correction") return adminCloseCorrection(body, res);
     if (action === "add-task-template" || action === "delete-task-template") return saveTaskTemplate(body, res);
     const session = verifyToken(body.terminalToken, "terminal");
     if (!session?.terminal) return sendJson(res, 401, { error: "Terminal-Code bitte erneut eingeben." });
-    if (session.correctionDate && cleanDate(body.date) !== session.correctionDate) return sendJson(res, 403, { error: "Korrekturmodus ist nur für das freigegebene Datum gültig." });
-    if (!session.correctionDate && await reportIsInCorrection(body)) return sendJson(res, 423, { error: "Dieser Tagesbericht ist im Admin-Korrekturmodus geöffnet." });
-    if (action === "load") return load(body, res, session);
+    if (action === "load") return load(body, res);
     if (action === "punch") return punch(body, res);
     if (action === "adjust-time") return adjustTime(body, res);
     if (action === "add-employee") return addEmployee(body, res);
-    if (action === "remove-employee") return removeEmployee(body, res);
     if (action === "complete-task") return completeTask(body, res);
-    if (action === "complete-cleaning") return completeCleaning(body, res);
     if (action === "confirm-toilet" || action === "toilet-check") return confirmToilet(body, res);
     if (action === "confirm-reminder") return confirmReminder(body, res);
-    if (action === "confirm-terminal-message") return confirmTerminalMessage(body, res);
     if (action === "save-day-meta") return saveDayMeta(body, res);
-    if (action === "save-assignment-times") return saveAssignmentTimes(body, res);
     if (action === "add-handover") return addHandover(body, res);
-    if (action === "save-tips") return saveTips(body, res);
-    if (action === "confirm-employee-tip-payout") return confirmEmployeeTipPayout(body, res);
-    if (action === "confirm-tip-payout") return confirmTipPayout(body, res);
     if (action === "save-report") return saveReport(body, res);
     if (action === "close-report") return closeReport(body, res);
     return sendJson(res, 400, { error: "Unbekannte Aktion." });
@@ -43,66 +31,12 @@ module.exports = async function handler(req, res) {
 async function login(body, res) {
   const appData = await readAppData();
   if (!verifyTerminalCode(appData.settings, body.code)) return sendJson(res, 401, { error: "Code stimmt nicht." });
-  if (require("./_data").syncReportTipsToTimesheets(appData)) await writeAppData(appData);
   sendJson(res, 200, { ok: true, token: signToken({ type: "terminal", terminal: true }), ...terminalPayload(appData, activeTerminalDate(appData, cleanDate(body.date))) });
 }
 
-async function adminOpenCorrection(body, res) {
-  const session = verifyToken(body.adminToken || "", "admin");
-  if (!session) return sendJson(res, 401, { error: "Bitte Admin erneut entsperren." });
-  const date = cleanDate(body.date);
-  const reason = cleanText(body.reason, 800);
-  if (!reason) return sendJson(res, 400, { error: "Bitte Grund der Korrektur eintragen." });
+async function load(body, res) {
   const appData = await readAppData();
-  appData.dayReports ||= {};
-  const existing = appData.dayReports[date] || {};
-  const correctionLog = Array.isArray(existing.correctionLog) ? existing.correctionLog : [];
-  appData.dayReports[date] = {
-    ...existing,
-    closed: false,
-    closedAt: "",
-    correctionOpen: true,
-    correctionReason: reason,
-    correctionOpenedAt: new Date().toISOString(),
-    correctionLog: [...correctionLog, { action: "opened", reason, at: new Date().toISOString() }],
-    updatedAt: new Date().toISOString()
-  };
-  await writeAppData(appData);
-  sendJson(res, 200, {
-    ok: true,
-    token: signToken({ type: "terminal", terminal: true, correction: true, correctionDate: date }),
-    correctionMode: true,
-    message: "Tagesbericht im Korrekturmodus geöffnet.",
-    ...terminalPayload(appData, date)
-  });
-}
-
-async function adminCloseCorrection(body, res) {
-  const session = verifyToken(body.adminToken || "", "admin");
-  if (!session) return sendJson(res, 401, { error: "Bitte Admin erneut entsperren." });
-  const date = cleanDate(body.date);
-  const appData = await readAppData();
-  appData.dayReports ||= {};
-  const existing = appData.dayReports[date] || {};
-  const correctionLog = Array.isArray(existing.correctionLog) ? existing.correctionLog : [];
-  appData.dayReports[date] = {
-    ...existing,
-    closed: true,
-    closedAt: new Date().toISOString(),
-    correctionOpen: false,
-    correctionClosedAt: new Date().toISOString(),
-    correctionLog: [...correctionLog, { action: "closed", at: new Date().toISOString() }],
-    updatedAt: new Date().toISOString()
-  };
-  await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Tagesbericht wieder abgeschlossen.", ...terminalPayload(appData, date) });
-}
-
-async function load(body, res, session = {}) {
-  const appData = await readAppData();
-  if (require("./_data").syncReportTipsToTimesheets(appData)) await writeAppData(appData);
-  const date = session.correctionDate || activeTerminalDate(appData, cleanDate(body.date));
-  sendJson(res, 200, terminalPayload(appData, date));
+  sendJson(res, 200, terminalPayload(appData, activeTerminalDate(appData, cleanDate(body.date))));
 }
 
 async function saveTaskTemplate(body, res) {
@@ -113,20 +47,14 @@ async function saveTaskTemplate(body, res) {
     const task = cleanTaskTemplate(body.task || {});
     if (!task.title) return sendJson(res, 400, { error: "Aufgabe fehlt." });
     appData.taskTemplates ||= [];
-    appData.taskTemplates.push(task);
+    appData.taskTemplates.unshift(task);
     await writeAppData(appData);
     return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
   }
   const id = String(body.id || "");
   appData.taskTemplates = (appData.taskTemplates || []).filter((task) => task.id !== id);
-  rememberDeletedDefaultTask(appData, id);
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true, taskTemplates: appData.taskTemplates });
-}
-
-function rememberDeletedDefaultTask(appData, id) {
-  if (!(defaultData.taskTemplates || []).some((task) => task.id === id)) return;
-  appData.deletedTaskTemplateIds = [...new Set([...(appData.deletedTaskTemplateIds || []), id])];
 }
 
 async function punch(body, res) {
@@ -136,22 +64,7 @@ async function punch(body, res) {
   if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   const month = date.slice(0, 7), time = roundToQuarter(new Date());
   appData.timesheets ||= {}; appData.timesheets[month] ||= {}; appData.timesheets[month][employee] ||= {};
-  const existing = appData.timesheets[month][employee][date] || {};
-  const segments = cleanTimeSegments(existing.segments, existing);
-  if (punchType === "start") {
-    if (!segments.length || (segments.at(-1).from && segments.at(-1).to)) {
-      segments.push({ from: time, to: "" });
-    } else {
-      segments[segments.length - 1].from = time;
-    }
-  } else if (!segments.length) {
-    segments.push({ from: "", to: time });
-  } else {
-    segments[segments.length - 1].to = time;
-  }
-  const bounds = timeBoundsFromSegments(segments);
-  const nextEntry = { ...existing, ...bounds, segments, updatedAt: new Date().toISOString(), source: "terminal" };
-  appData.timesheets[month][employee][date] = nextEntry;
+  appData.timesheets[month][employee][date] = { ...(appData.timesheets[month][employee][date] || {}), [punchType === "start" ? "from" : "to"]: time, updatedAt: new Date().toISOString(), source: "terminal" };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, message: `${employee}: ${punchType === "start" ? "Beginn" : "Ende"} ${time}`, ...terminalPayload(appData, date) });
 }
@@ -161,9 +74,7 @@ async function adjustTime(body, res) {
   if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
   if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   appData.timesheets ||= {}; appData.timesheets[month] ||= {}; appData.timesheets[month][employee] ||= {};
-  const segments = cleanTimeSegments(body.segments, { from: body.from, to: body.to });
-  const bounds = timeBoundsFromSegments(segments);
-  appData.timesheets[month][employee][date] = { ...(appData.timesheets[month][employee][date] || {}), ...bounds, segments, updatedAt: new Date().toISOString(), source: "terminal-correction" };
+  appData.timesheets[month][employee][date] = { ...(appData.timesheets[month][employee][date] || {}), from: cleanTime(body.from), to: cleanTime(body.to), updatedAt: new Date().toISOString(), source: "terminal-correction" };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, message: `${employee}: Zeiten korrigiert.`, ...terminalPayload(appData, date) });
 }
@@ -173,181 +84,23 @@ async function addEmployee(body, res) {
   if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
   if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   appData.dayReports ||= {}; const report = appData.dayReports[date] || {}, role = String(body.role || "Zusatz").trim().slice(0, 80);
-  const scheduleDay = appData.schedules?.[date.slice(0, 7)]?.days?.[date] || {};
-  const isPlanned = Object.entries(scheduleDay).some(([key, value]) => !key.includes("__") && value === employee);
   const extraEmployees = (report.extraEmployees || []).map((item) => typeof item === "string" ? { employee: item, role: "Zusatz" } : item).filter((item) => item?.employee !== employee);
-  const removedEmployees = cleanEmployeeList(report.removedEmployees).filter((name) => name !== employee);
-  appData.dayReports[date] = {
-    ...report,
-    extraEmployees: isPlanned ? extraEmployees : [...extraEmployees, { employee, role }],
-    removedEmployees,
-    updatedAt: new Date().toISOString()
-  };
+  appData.dayReports[date] = { ...report, extraEmployees: [...extraEmployees, { employee, role }], updatedAt: new Date().toISOString() };
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: `${employee} wurde hinzugefügt.`, ...terminalPayload(appData, date) });
-}
-
-async function removeEmployee(body, res) {
-  const appData = await readAppData(), employee = String(body.employee || "").trim(), date = cleanDate(body.date);
-  if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
-  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
-  appData.dayReports ||= {};
-  const report = appData.dayReports[date] || {};
-  const extraEmployees = (report.extraEmployees || [])
-    .map((item) => typeof item === "string" ? { employee: item, role: "Zusatz" } : item)
-    .filter((item) => item?.employee !== employee);
-  const removedEmployees = [...new Set([...cleanEmployeeList(report.removedEmployees), employee])];
-  appData.dayReports[date] = { ...report, extraEmployees, removedEmployees, updatedAt: new Date().toISOString() };
-  await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: `${employee} wurde aus der Terminal-Ansicht entfernt.`, ...terminalPayload(appData, date) });
+  sendJson(res, 200, { ok: true, message: `${employee} wurde hinzugefuegt.`, ...terminalPayload(appData, date) });
 }
 
 async function saveReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen und kann nicht mehr geaendert werden." });
   appData.dayReports ||= {};
-  const ecTerminal1 = Object.prototype.hasOwnProperty.call(body, "ecTerminal1") ? cleanMoney(body.ecTerminal1) : existing.ecTerminal1 || "";
-  const ecTerminal2 = Object.prototype.hasOwnProperty.call(body, "ecTerminal2") ? cleanMoney(body.ecTerminal2) : existing.ecTerminal2 || "";
-  const ecTotal = cleanEcTotal(body.ecTotal, ecTerminal1, ecTerminal2);
-  const revenueDrinks = cleanMoney(body.revenueDrinks ?? existing.revenueDrinks);
-  const revenueFood = cleanMoney(body.revenueFood ?? existing.revenueFood);
-  const revenueOther = cleanMoney(body.revenueOther ?? existing.revenueOther);
-  const revenueGastro = cleanGastroTotal(body.revenueGastro ?? body.barGastro ?? existing.revenueGastro ?? existing.barGastro, revenueDrinks, revenueFood, revenueOther);
-  const personalConsumption = cleanMoney(body.personalConsumption ?? existing.personalConsumption);
-  const cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
-  const invoiceCustomers = await cleanReportItems(body.invoiceCustomers, "invoice", date);
-  const cleanedExpenses = await cleanReportItems(body.expenses, "expense", date);
-  const expenses = body.mergeExpenses === true || body.mergeExpenses === "true"
-    ? mergeReportItemsById(existing.expenses || [], cleanedExpenses)
-    : cleanedExpenses;
-  const documents = await cleanReportDocuments(body.documents || existing.documents, date);
-  upsertCustomerDirectory(appData, invoiceCustomers);
-  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), extraEmployees: cleanExtraEmployees(body.extraEmployees || existing.extraEmployees), removedEmployees: cleanEmployeeList(body.removedEmployees || existing.removedEmployees), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
-  applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
+  appData.dayReports[date] = { ...existing, ecTotal: cleanMoney(body.ecTotal), barBowling: cleanMoney(body.barBowling), barGastro: cleanMoney(body.barGastro), invoiceCustomers: await cleanReportItems(body.invoiceCustomers, "invoice", date), expenses: await cleanReportItems(body.expenses, "expense", date), documents: await cleanReportDocuments(body.documents || existing.documents, date), notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), updatedAt: new Date().toISOString() };
   await writeAppData(appData);
-  const shouldSendInvoiceNotifications = body.sendInvoiceNotifications === true || body.sendInvoiceNotifications === "true";
-  const targetInvoiceId = shouldSendInvoiceNotifications ? String(body.sendInvoiceNotificationId || "").trim() : "";
-  const mailResult = shouldSendInvoiceNotifications
-    ? await sendReadyInvoiceNotifications(appData, date, targetInvoiceId)
-    : { sent: 0, failed: 0, skipped: 0, skipReasons: [], changed: false, errors: [] };
-  const mailMessage = mailResult.sent || mailResult.failed || mailResult.skipped
-    ? mailResult.failed
-      ? (mailResult.sent ? "E-Mail teilweise versendet." : "E-Mail konnte nicht versendet werden.")
-      : mailResult.skipped
-        ? (mailResult.skipReasons.some((item) => item.reason === "missing-smtp-config")
-          ? "E-Mail nicht versendet: SMTP in Vercel fehlt."
-          : mailResult.skipReasons.some((item) => item.reason === "nodemailer-missing")
-            ? "E-Mail nicht versendet: Mail-Modul fehlt im Build."
-            : "E-Mail nicht versendet."
-        )
-      : "E-Mail wurde versendet."
-    : "";
-  sendJson(res, 200, { ok: true, message: "Tagesbericht gespeichert.", mailMessage, mailSent: mailResult.sent > 0, mailFailed: mailResult.failed > 0, ...terminalPayload(appData, date) });
-}
-
-async function saveTips(body, res) {
-  const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
-  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
-  appData.dayReports ||= {};
-  const tipsByEmployee = cleanTipsByEmployee(body.tipsByEmployee || {});
-  const ecTerminal1 = cleanMoney(body.ecTerminal1);
-  const ecTerminal2 = cleanMoney(body.ecTerminal2);
-  const revenueDrinks = cleanMoney(body.revenueDrinks);
-  const revenueFood = cleanMoney(body.revenueFood);
-  const revenueOther = cleanMoney(body.revenueOther);
-  const revenueGastro = cleanGastroTotal(body.revenueGastro, revenueDrinks, revenueFood, revenueOther);
-  const personalConsumption = cleanMoney(body.personalConsumption ?? existing.personalConsumption);
-  const cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
-  const documents = await cleanReportDocuments(body.documents || existing.documents, date);
-  appData.dayReports[date] = {
-    ...existing,
-    cashTotal: cleanMoney(body.cashTotal),
-    cashExpenses,
-    ecTerminal1,
-    ecTerminal2,
-    ecTotal: cleanEcTotal(body.ecTotal, ecTerminal1, ecTerminal2),
-    personalConsumption,
-    revenueBowling: cleanMoney(body.revenueBowling),
-    revenueDrinks,
-    revenueFood,
-    revenueOther,
-    revenueGastro,
-    barBowling: cleanMoney(body.revenueBowling),
-    barGastro: revenueGastro,
-    tipTotal: cleanMoney(body.tipTotal),
-    tipRemainder: cleanMoney(body.tipRemainder),
-    tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt,
-    tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount,
-    tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder,
-    tipsByEmployee,
-    documents,
-    updatedAt: new Date().toISOString()
-  };
-  applyTipsToTimesheets(appData, date, tipsByEmployee);
-  await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Umsatzdetails gespeichert.", ...terminalPayload(appData, date) });
-}
-
-async function confirmTipPayout(body, res) {
-  const appData = await readAppData(), date = cleanDate(body.date);
-  appData.dayReports ||= {};
-  const existing = appData.dayReports[date] || {};
-  const tipsByEmployee = cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee);
-  const ecTerminal1 = Object.prototype.hasOwnProperty.call(body, "ecTerminal1") ? cleanMoney(body.ecTerminal1) : existing.ecTerminal1 || "";
-  const ecTerminal2 = Object.prototype.hasOwnProperty.call(body, "ecTerminal2") ? cleanMoney(body.ecTerminal2) : existing.ecTerminal2 || "";
-  const revenueDrinks = cleanMoney(body.revenueDrinks ?? existing.revenueDrinks);
-  const revenueFood = cleanMoney(body.revenueFood ?? existing.revenueFood);
-  const revenueOther = cleanMoney(body.revenueOther ?? existing.revenueOther);
-  const revenueGastro = cleanGastroTotal(body.revenueGastro ?? existing.revenueGastro, revenueDrinks, revenueFood, revenueOther);
-  appData.dayReports[date] = {
-    ...existing,
-    cashTotal: Object.prototype.hasOwnProperty.call(body, "cashTotal") ? cleanMoney(body.cashTotal) : existing.cashTotal || "",
-    cashExpenses: cleanMoney(body.cashExpenses ?? existing.cashExpenses),
-    ecTerminal1,
-    ecTerminal2,
-    ecTotal: cleanEcTotal(body.ecTotal ?? existing.ecTotal, ecTerminal1, ecTerminal2),
-    personalConsumption: cleanMoney(body.personalConsumption ?? existing.personalConsumption),
-    revenueBowling: cleanMoney(body.revenueBowling ?? existing.revenueBowling),
-    revenueDrinks,
-    revenueFood,
-    revenueOther,
-    revenueGastro,
-    barBowling: cleanMoney(body.revenueBowling ?? existing.barBowling),
-    barGastro: revenueGastro,
-    tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal),
-    tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder),
-    tipsByEmployee,
-    tipPayoutConfirmedAt: new Date().toISOString(),
-    tipPayoutAmount: cleanMoney(body.tipPayoutAmount),
-    tipPayoutRemainder: cleanMoney(body.tipRemainder),
-    updatedAt: new Date().toISOString()
-  };
-  applyTipsToTimesheets(appData, date, tipsByEmployee);
-  await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Trinkgeld-Auszahlung bestätigt.", ...terminalPayload(appData, date) });
-}
-
-async function confirmEmployeeTipPayout(body, res) {
-  const appData = await readAppData(), date = cleanDate(body.date);
-  const employee = cleanText(body.employee, 160);
-  if (!employee) return sendJson(res, 400, { error: "Mitarbeiter fehlt." });
-  const overview = tipPayoutOverview(appData);
-  const row = overview.employees.find((item) => item.employee === employee);
-  const amount = Number(row?.openAmount || 0);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return sendJson(res, 400, { error: "Für diesen Mitarbeiter ist kein Trinkgeld offen." });
+  const mailSummary = await sendInvoiceNotificationEmails(appData, date);
+  if (mailSummary.changed) {
+    await writeAppData(appData);
   }
-  appData.tipPayouts ||= {};
-  appData.tipPayouts[employee] = Array.isArray(appData.tipPayouts[employee]) ? appData.tipPayouts[employee] : [];
-  appData.tipPayouts[employee].push({
-    id: `tip-payout-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`,
-    employee,
-    amount: amount.toFixed(2),
-    terminalDate: date,
-    paidAt: new Date().toISOString()
-  });
-  await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: `${employee}: Trinkgeld-Auszahlung bestätigt.`, ...terminalPayload(appData, date) });
+  sendJson(res, 200, { ok: true, mailSummary: mailSummary.message || "", mailResults: mailSummary.results || [], ...terminalPayload(appData, date) });
 }
 
 async function completeTask(body, res) {
@@ -367,37 +120,15 @@ async function completeTask(body, res) {
   sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
 }
 
-async function completeCleaning(body, res) {
-  const appData = await readAppData(), date = cleanDate(body.date), id = String(body.id || "");
-  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
-  if (!id) return sendJson(res, 400, { error: "Reinigungsaufgabe fehlt." });
-  appData.dayReports ||= {};
-  const report = appData.dayReports[date] || {};
-  const cleaningCompletions = { ...(report.cleaningCompletions || {}) };
-  if (body.done) {
-    const employee = cleanText(body.employee, 160);
-    if (!employee) return sendJson(res, 400, { error: "Bitte ausführende Person auswählen." });
-    cleaningCompletions[id] = { done: true, employee, doneAt: new Date().toISOString() };
-  } else {
-    delete cleaningCompletions[id];
-  }
-  appData.dayReports[date] = { ...report, cleaningCompletions, updatedAt: new Date().toISOString() };
-  await writeAppData(appData);
-  sendJson(res, 200, { ok: true, ...terminalPayload(appData, date) });
-}
-
 async function confirmToilet(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), checkKey = String(body.checkKey || "");
   if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   if (!checkKey) return sendJson(res, 400, { error: "Kontrolle fehlt." });
-  const employee = cleanText(body.employee || body.checkEmployee, 160);
-  if (!employee) return sendJson(res, 400, { error: "Bitte Mitarbeiter auswählen." });
-  if (!(appData.settings.employees || []).includes(employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
   appData.dayReports ||= {};
   const report = appData.dayReports[date] || {};
   const toiletChecks = Array.isArray(report.toiletChecks) ? report.toiletChecks : [];
   if (!toiletChecks.some((item) => item.checkKey === checkKey)) {
-    toiletChecks.push({ checkKey, employee, checkedAt: new Date().toISOString() });
+    toiletChecks.push({ checkKey, checkedAt: new Date().toISOString() });
   }
   appData.dayReports[date] = { ...report, toiletChecks, updatedAt: new Date().toISOString() };
   await writeAppData(appData);
@@ -419,34 +150,6 @@ async function confirmReminder(body, res) {
   sendJson(res, 200, { ok: true, message: "Erinnerung quittiert.", ...terminalPayload(appData, date) });
 }
 
-async function confirmTerminalMessage(body, res) {
-  const appData = await readAppData(), date = cleanDate(body.date), id = cleanText(body.messageId, 120);
-  if (appData.dayReports?.[date]?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
-  if (!id) return sendJson(res, 400, { error: "Nachricht fehlt." });
-  const message = (appData.terminalMessages || []).find((item) => item.id === id);
-  const checkedAt = new Date().toISOString();
-  appData.dayReports ||= {};
-  const report = appData.dayReports[date] || {};
-  const terminalMessageChecks = cleanTerminalMessageChecks(report.terminalMessageChecks);
-  if (!terminalMessageChecks.some((item) => item.messageId === id)) {
-    terminalMessageChecks.push({
-      messageId: id,
-      text: cleanText(message?.text, 240),
-      shiftLeader: cleanText(report.shiftLeader, 160),
-      checkedAt
-    });
-  }
-  if (message) {
-    message.active = false;
-    message.acknowledgedAt = checkedAt;
-    message.acknowledgedBy = cleanText(report.shiftLeader, 160);
-    message.acknowledgedDate = date;
-  }
-  appData.dayReports[date] = { ...report, terminalMessageChecks, updatedAt: new Date().toISOString() };
-  await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Schichtleiter-Nachricht quittiert.", ...terminalPayload(appData, date) });
-}
-
 async function saveDayMeta(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
@@ -456,137 +159,39 @@ async function saveDayMeta(body, res) {
   sendJson(res, 200, { ok: true, message: "Tageskopf gespeichert.", ...terminalPayload(appData, date) });
 }
 
-async function saveAssignmentTimes(body, res) {
-  const appData = await readAppData();
-  const baseDate = cleanDate(body.date);
-  const validEmployees = new Set(appData.settings.employees || []);
-  const nextTimes = cleanAssignmentTimes(body.assignmentTimes || {}, validEmployees);
-  appData.assignmentTimes ||= {};
-  for (const dateKey of terminalAssignmentDates(baseDate)) {
-    if (nextTimes[dateKey] && Object.keys(nextTimes[dateKey]).length) {
-      appData.assignmentTimes[dateKey] = nextTimes[dateKey];
-    } else {
-      delete appData.assignmentTimes[dateKey];
-    }
-  }
-  const tomorrow = addDaysKey(baseDate, 1);
-  const employeesForTomorrow = Object.entries(nextTimes[tomorrow] || {})
-    .filter(([, item]) => item?.from || item?.note)
-    .map(([employee]) => employee);
-  if (employeesForTomorrow.length && appData.settings?.pushSettings?.assignmentsTomorrow !== false) {
-    await sendPushToEmployees(appData, employeesForTomorrow, {
-      title: appData.settings?.pushSettings?.assignmentsTomorrowTitle || "LA-Bowling - Einteilung für morgen ist Online",
-      body: appData.settings?.pushSettings?.assignmentsTomorrowBody || "Bitte prüfe deine Startzeit in der TeamApp.",
-      url: "/",
-      tag: `assignment-${tomorrow}`
-    });
-  }
-  await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Einteilung gespeichert.", ...terminalPayload(appData, baseDate) });
-}
-
 async function addHandover(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
   const item = cleanHandover(body.handover || body);
-  if (!item.from || !item.to || !item.note) return sendJson(res, 400, { error: "Bitte Von, An und Übergabe-Notiz ausfüllen." });
+  if (!item.from || !item.to || !item.note) return sendJson(res, 400, { error: "Bitte Von, An und Ãœbergabe-Notiz ausfÃ¼llen." });
   appData.dayReports ||= {};
   appData.dayReports[date] = { ...existing, handovers: [...cleanHandovers(existing.handovers), item], shiftLeader: item.to, updatedAt: new Date().toISOString() };
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Übergabe gespeichert.", ...terminalPayload(appData, date) });
+  sendJson(res, 200, { ok: true, message: "Ãœbergabe gespeichert.", ...terminalPayload(appData, date) });
 }
 
 async function closeReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
-  const correctionLog = Array.isArray(existing.correctionLog) ? existing.correctionLog : [];
-  appData.dayReports ||= {}; appData.dayReports[date] = {
-    ...existing,
-    closed: true,
-    closedAt: new Date().toISOString(),
-    correctionOpen: false,
-    correctionClosedAt: existing.correctionOpen ? new Date().toISOString() : existing.correctionClosedAt,
-    correctionLog: existing.correctionOpen ? [...correctionLog, { action: "closed", at: new Date().toISOString() }] : correctionLog,
-    updatedAt: new Date().toISOString()
-  };
+  appData.dayReports ||= {}; appData.dayReports[date] = { ...existing, closed: true, closedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   await writeAppData(appData);
-  sendJson(res, 200, { ok: true, message: "Tagesbericht abgeschlossen.", ...terminalPayload(appData, date) });
+  sendJson(res, 200, { ok: true, message: "Tagesbericht abgeschlossen.", ...terminalPayload(appData, activeTerminalDate(appData, date)) });
 }
 
 function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
-  const report = defaultReport(appData.dayReports?.[date]);
-  const assignmentDates = terminalAssignmentDates(date);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory) };
-}
-
-function terminalAssignmentDates(dateKey) {
-  return [dateKey, addDaysKey(dateKey, 1)];
-}
-
-function addDaysKey(dateKey, days) {
-  const date = new Date(`${dateKey}T12:00:00`);
-  date.setDate(date.getDate() + days);
-  return localDate(date);
-}
-
-function assignmentTimesForDates(appData, dates = []) {
-  return Object.fromEntries(dates.map((dateKey) => [
-    dateKey,
-    appData.assignmentTimes?.[dateKey] || {}
-  ]));
-}
-
-function assignmentSchedulesForDates(appData, dates = []) {
-  return Object.fromEntries(dates.map((dateKey) => {
-    const schedule = appData.schedules?.[dateKey.slice(0, 7)] || {};
-    const day = schedule.days?.[dateKey] || {};
-    const isPublished = schedule.publishedWeeks?.[weekStartKey(dateKey)] || schedule.published;
-    return [dateKey, isPublished ? day : {}];
-  }));
-}
-
-function weekStartKey(dateKey) {
-  const date = new Date(`${dateKey}T12:00:00`);
-  const day = date.getDay() || 7;
-  date.setDate(date.getDate() - day + 1);
-  return localDate(date);
-}
-
-function cleanAssignmentTimes(value = {}, validEmployees = new Set()) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const result = {};
-  for (const [dateKey, employees] of Object.entries(value)) {
-    const date = cleanDate(dateKey);
-    if (date !== dateKey || !employees || typeof employees !== "object" || Array.isArray(employees)) continue;
-    const day = {};
-    for (const [employee, item] of Object.entries(employees)) {
-      const cleanEmployee = cleanText(employee, 160);
-      if (!cleanEmployee || !validEmployees.has(cleanEmployee)) continue;
-      const from = cleanTime(item?.from);
-      const note = cleanText(item?.note, 240);
-      if (from || note) day[cleanEmployee] = { from, to: "", note };
-    }
-    result[date] = day;
-  }
-  return result;
+  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report: defaultReport(appData.dayReports?.[date]), tasks: tasksForDate(appData, date), reminders: appData.reminderTemplates || [] };
 }
 
 function activeTerminalDate(appData, requestedDate) {
   const today = localDate(new Date());
   const requested = cleanDate(requestedDate);
   const requestedReport = appData.dayReports?.[requested];
-  if (requestedReport && !requestedReport.closed && !requestedReport.correctionOpen) return requested;
+  if (requestedReport && !requestedReport.closed) return requested;
   const openDates = Object.entries(appData.dayReports || {})
-    .filter(([dateKey, report]) => dateKey <= today && report && typeof report === "object" && !report.closed && !report.correctionOpen && reportHasActivity(report))
+    .filter(([dateKey, report]) => dateKey <= today && report && typeof report === "object" && !report.closed && reportHasActivity(report))
     .map(([dateKey]) => dateKey)
     .sort();
   return openDates.at(-1) || today;
-}
-
-async function reportIsInCorrection(body) {
-  const date = cleanDate(body.date);
-  const appData = await readAppData();
-  return Boolean(appData.dayReports?.[date]?.correctionOpen);
 }
 
 function reportHasActivity(report = {}) {
@@ -595,126 +200,78 @@ function reportHasActivity(report = {}) {
     report.openingHours ||
     report.shiftLeader ||
     report.notes ||
-    report.cashExpenses ||
     (report.invoiceCustomers || []).length ||
     (report.expenses || []).length ||
-    Object.values(report.documents || {}).some((document) => document?.name || document?.path || document?.url || document?.data) ||
     (report.handovers || []).length ||
     Object.keys(report.taskCompletions || {}).length ||
-    Object.keys(report.cleaningCompletions || {}).length ||
     (report.toiletChecks || []).length ||
-    (report.reminderChecks || []).length ||
-    (report.terminalMessageChecks || []).length
+    (report.reminderChecks || []).length
   );
 }
 
 function defaultReport(report = {}) {
-  return { cashTotal: "", cashExpenses: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], removedEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+  return { ecTotal: "", barBowling: "", barGastro: "", invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], handovers: [], taskCompletions: {}, toiletChecks: [], reminderChecks: [], ...report };
 }
 
-function tipPayoutOverview(appData) {
-  const employeeNames = new Set((appData.settings?.employees || []).map((name) => cleanText(name, 160)).filter(Boolean));
-  const earned = {};
-  const lastTipDate = {};
-  Object.entries(appData.timesheets || {}).forEach(([, employees]) => {
-    Object.entries(employees || {}).forEach(([employee, entries]) => {
-      const cleanEmployee = cleanText(employee, 160);
-      if (!cleanEmployee) return;
-      employeeNames.add(cleanEmployee);
-      Object.entries(entries || {}).forEach(([dateKey, entry]) => {
-        const amount = moneyNumber(entry?.tip);
-        if (amount <= 0) return;
-        earned[cleanEmployee] = (earned[cleanEmployee] || 0) + amount;
-        if (!lastTipDate[cleanEmployee] || dateKey > lastTipDate[cleanEmployee]) lastTipDate[cleanEmployee] = dateKey;
+async function sendInvoiceNotificationEmails(appData, date) {
+  const report = appData.dayReports?.[date];
+  const invoices = Array.isArray(report?.invoiceCustomers) ? report.invoiceCustomers : [];
+  const to = String(appData.settings?.invoiceNotificationTo || "").trim();
+  const results = [];
+  let changed = false;
+  let sentCount = 0;
+  let failedCount = 0;
+  let skippedCount = 0;
+
+  for (const invoice of invoices) {
+    if (!invoice || invoice.invoiceDone || !invoice.invoiceReady || invoice.invoiceNotificationSentAt) continue;
+    const result = await sendInvoiceNotificationEmail({
+      to,
+      date,
+      customer: invoice
+    });
+    if (result?.ok) {
+      invoice.invoiceNotificationSentAt = new Date().toISOString();
+      changed = true;
+      sentCount += 1;
+      results.push({
+        invoiceId: invoice.id || "",
+        status: "sent",
+        messageId: result.messageId || "",
+        accepted: result.accepted || []
       });
+      continue;
+    }
+    if (result?.skipped) {
+      skippedCount += 1;
+      results.push({
+        invoiceId: invoice.id || "",
+        status: "skipped",
+        reason: result.reason || "unknown"
+      });
+      continue;
+    }
+    failedCount += 1;
+    results.push({
+      invoiceId: invoice.id || "",
+      status: "failed",
+      error: result?.error || "unbekannt"
     });
-  });
-  const payouts = normalizeTipPayouts(appData.tipPayouts);
-  Object.keys(payouts).forEach((employee) => employeeNames.add(employee));
-  const employees = [...employeeNames].sort((a, b) => a.localeCompare(b, "de")).map((employee) => {
-    const history = payouts[employee] || [];
-    const paid = history.reduce((sum, item) => sum + moneyNumber(item.amount), 0);
-    const earnedTotal = earned[employee] || 0;
-    const open = Math.max(0, earnedTotal - paid);
-    const lastPaid = history.at(-1) || null;
-    return {
-      employee,
-      earnedAmount: earnedTotal.toFixed(2),
-      paidAmount: paid.toFixed(2),
-      openAmount: open.toFixed(2),
-      lastTipDate: lastTipDate[employee] || "",
-      lastPaidAt: lastPaid?.paidAt || "",
-      payoutCount: history.length
-    };
-  });
-  return {
-    employees,
-    totalEarned: employees.reduce((sum, row) => sum + moneyNumber(row.earnedAmount), 0).toFixed(2),
-    totalPaid: employees.reduce((sum, row) => sum + moneyNumber(row.paidAmount), 0).toFixed(2),
-    totalOpen: employees.reduce((sum, row) => sum + moneyNumber(row.openAmount), 0).toFixed(2)
-  };
-}
+  }
 
-function normalizeTipPayouts(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const result = {};
-  Object.entries(value).forEach(([employee, history]) => {
-    const cleanEmployee = cleanText(employee, 160);
-    if (!cleanEmployee) return;
-    result[cleanEmployee] = (Array.isArray(history) ? history : []).map((item) => ({
-      id: cleanText(item?.id, 80),
-      employee: cleanEmployee,
-      amount: cleanMoney(item?.amount) || "0.00",
-      terminalDate: /^\d{4}-\d{2}-\d{2}$/.test(String(item?.terminalDate || "")) ? String(item.terminalDate) : "",
-      paidAt: cleanText(item?.paidAt, 40)
-    })).filter((item) => moneyNumber(item.amount) > 0);
-  });
-  return result;
-}
-
-function moneyNumber(value) {
-  const n = Number(String(value ?? "").replace(",", ".").trim());
-  return Number.isFinite(n) ? Math.max(0, n) : 0;
-}
-
-function weeklyCleaningTemplates(templates = []) {
-  return (Array.isArray(templates) ? templates : []).filter((task) => task && task.frequency === "weekly" && task.title);
-}
-
-function weeklyCleaningCompletions(appData, dateKey) {
-  const range = weekRange(dateKey);
-  const completions = {};
-  Object.entries(appData.dayReports || {}).forEach(([reportDate, report]) => {
-    if (reportDate < range.start || reportDate > range.end) return;
-    Object.entries(report?.cleaningCompletions || {}).forEach(([id, item]) => {
-      if (!item?.done) return;
-      completions[id] = { ...item, date: reportDate };
-    });
-  });
-  return completions;
-}
-
-function weekRange(dateKey) {
-  const date = new Date(`${dateKey}T12:00:00`);
-  const diffToMonday = (date.getDay() + 6) % 7;
-  const start = new Date(date);
-  start.setDate(date.getDate() - diffToMonday);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { start: localDate(start), end: localDate(end) };
-}
-
-function activeTerminalMessages(appData) {
-  return (appData.terminalMessages || [])
-    .filter((message) => message && message.active !== false && message.id && message.text)
-    .slice(0, 30);
+  const summaryParts = [];
+  if (sentCount) summaryParts.push(`${sentCount} E-Mail${sentCount === 1 ? "" : "s"} versendet`);
+  if (failedCount) summaryParts.push(`${failedCount} fehlgeschlagen`);
+  if (skippedCount) summaryParts.push(`${skippedCount} uebersprungen`);
+  const message = summaryParts.length ? `${summaryParts.join(", ")}.` : "";
+  return { changed, results, message };
 }
 
 function tasksForDate(appData, dateKey) {
   const date = new Date(`${dateKey}T12:00:00`);
   const weekday = date.getDay();
   const dayOfMonth = date.getDate();
-  return sortTaskTemplates(appData.taskTemplates || []).filter((task) => {
+  return (appData.taskTemplates || []).filter((task) => {
     if (task.frequency === "daily") return true;
     if (task.frequency === "weekly") return (task.weekdays || []).map(Number).includes(weekday);
     if (task.frequency === "monthly") return Number(task.dayOfMonth || 1) === dayOfMonth;
@@ -722,18 +279,6 @@ function tasksForDate(appData, dateKey) {
     if (task.frequency === "once" || task.frequency === "next-day") return task.date === dateKey;
     return false;
   });
-}
-
-function sortTaskTemplates(tasks = []) {
-  return tasks
-    .map((task, index) => ({ task, index }))
-    .sort((a, b) => {
-      const aTime = Date.parse(a.task.createdAt || "") || 0;
-      const bTime = Date.parse(b.task.createdAt || "") || 0;
-      if (aTime !== bTime) return aTime - bTime;
-      return a.index - b.index;
-    })
-    .map(({ task }) => task);
 }
 
 function intervalAppliesToDate(task, dateKey) {
@@ -752,62 +297,12 @@ function cleanTaskCompletions(value) {
   return Object.fromEntries(Object.entries(value).map(([id, item]) => [String(id), { done: Boolean(item?.done), doneAt: String(item?.doneAt || "") }]));
 }
 
-function cleanCleaningCompletions(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(Object.entries(value).map(([id, item]) => [String(id), {
-    done: Boolean(item?.done),
-    employee: cleanText(item?.employee, 160),
-    doneAt: String(item?.doneAt || "")
-  }]));
-}
-
-function cleanTipsByEmployee(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(Object.entries(value).map(([employee, amount]) => [
-    cleanText(employee, 160),
-    cleanMoney(amount)
-  ]).filter(([employee]) => employee));
-}
-
-function applyTipsToTimesheets(appData, date, tipsByEmployee = {}) {
-  const month = date.slice(0, 7);
-  appData.timesheets ||= {};
-  appData.timesheets[month] ||= {};
-  for (const [employee, tip] of Object.entries(tipsByEmployee || {})) {
-    const canonicalEmployee = matchEmployeeName(appData.settings, employee)
-      || (appData.settings.employees || []).find((name) => sameEmployeeName(name, employee))
-      || String(employee || "").trim();
-    if (!canonicalEmployee) continue;
-    appData.timesheets[month][canonicalEmployee] ||= {};
-    const existing = appData.timesheets[month][canonicalEmployee][date] || {};
-    if (!cleanTimeSegments(existing.segments, existing).some((segment) => segment.from || segment.to)) continue;
-    appData.timesheets[month][canonicalEmployee][date] = {
-      ...existing,
-      tip,
-      tipSource: "terminal-distribution",
-      updatedAt: new Date().toISOString()
-    };
-  }
-}
-
 function cleanToiletChecks(value) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 40).map((item) => ({
     checkKey: String(item.checkKey || "").slice(0, 40),
-    text: cleanText(item.text, 240),
-    employee: cleanText(item.employee, 160),
     checkedAt: String(item.checkedAt || new Date().toISOString()).slice(0, 40)
   })).filter((item) => item.checkKey);
-}
-
-function cleanTerminalMessageChecks(value) {
-  if (!Array.isArray(value)) return [];
-  return value.slice(0, 80).map((item) => ({
-    messageId: cleanText(item.messageId, 120),
-    text: cleanText(item.text, 240),
-    shiftLeader: cleanText(item.shiftLeader, 160),
-    checkedAt: cleanText(item.checkedAt || new Date().toISOString(), 40)
-  })).filter((item) => item.messageId);
 }
 
 function cleanHandover(item = {}) {
@@ -841,8 +336,6 @@ function cleanTaskTemplate(task) {
     intervalDays: Math.max(1, Math.min(365, Number(task.intervalDays || 1))),
     weekdays: Array.isArray(task.weekdays) ? task.weekdays.map(Number).filter((day) => day >= 0 && day <= 6) : [],
     dayOfMonth: Math.min(31, Math.max(1, Number(task.dayOfMonth || 1))),
-    popupEnabled: task.popupEnabled === true || task.popupEnabled === "true",
-    popupTime: cleanTime(task.popupTime),
     createdAt: cleanText(task.createdAt || new Date().toISOString(), 40)
   };
 }
@@ -852,46 +345,8 @@ function cleanDate(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""
 function cleanText(value, max) { return String(value || "").trim().slice(0, max); }
 function roundToQuarter(date) { const p = berlinParts(date), m = Number(p.hour) * 60 + Number(p.minute), r = Math.round(m / 15) * 15; return `${String(Math.floor(r / 60) % 24).padStart(2, "0")}:${String(r % 60).padStart(2, "0")}`; }
 function berlinParts(date) { const parts = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date); return Object.fromEntries(parts.filter((p) => p.type !== "literal").map((p) => [p.type, p.value])); }
-function cleanMoney(value) { const n = Number(String(value || "").replace(",", ".").trim()); return Number.isFinite(n) && String(value || "").trim() ? n.toFixed(2) : ""; }
-
-function cleanEcTotal(value, ecTerminal1 = "", ecTerminal2 = "") {
-  const first = cleanMoney(ecTerminal1);
-  const second = cleanMoney(ecTerminal2);
-  if (first || second) return (Number(first || 0) + Number(second || 0)).toFixed(2);
-  return cleanMoney(value);
-}
-function cleanGastroTotal(value, drinks = "", food = "", other = "") {
-  const parts = [drinks, food, other].map(cleanMoney);
-  if (parts.some(Boolean)) return parts.reduce((sum, part) => sum + Number(part || 0), 0).toFixed(2);
-  return cleanMoney(value);
-}
+function cleanMoney(value) { const text = String(value ?? "").replace(",", ".").trim(); const n = Number(text); return Number.isFinite(n) && text !== "" ? n.toFixed(2) : ""; }
 function cleanTime(value) { const text = String(value || "").trim(); return /^\d{2}:\d{2}$/.test(text) ? text : ""; }
-function matchEmployeeName(settings = {}, employee = "") {
-  const clean = String(employee || "").trim();
-  if (!clean) return "";
-  return (settings.employees || []).find((name) => sameEmployeeName(name, clean)) || "";
-}
-function cleanTimeSegments(value, fallback = {}) {
-  const source = Array.isArray(value) ? value : [];
-  const segments = source.map((segment) => ({
-    from: cleanTime(segment?.from),
-    to: cleanTime(segment?.to)
-  })).filter((segment) => segment.from || segment.to);
-  if (segments.length) return segments.slice(0, 8);
-  const from = cleanTime(fallback.from);
-  const to = cleanTime(fallback.to);
-  return from || to ? [{ from, to }] : [];
-}
-function timeBoundsFromSegments(segments = []) {
-  const clean = cleanTimeSegments(segments);
-  const first = clean.find((segment) => segment.from || segment.to) || {};
-  const lastWithTo = [...clean].reverse().find((segment) => segment.to);
-  const last = lastWithTo || clean.at(-1) || {};
-  return {
-    from: first.from || "",
-    to: last.to || ""
-  };
-}
 function cleanReceiptData(value) { const text = String(value || ""); return text.startsWith("data:") && text.length <= 700000 ? text : ""; }
 function cleanReceiptPath(value) { return String(value || "").trim().replace(/^\/+/, "").slice(0, 300); }
 function cleanReceiptUrl(value) { const text = String(value || "").trim(); return text.startsWith("/api/receipt?") ? text.slice(0, 500) : ""; }
@@ -938,70 +393,46 @@ async function cleanReportDocumentUpload(raw, date, key) {
 async function cleanReportDocuments(value = {}, date) {
   return {
     penta: await cleanReportDocumentUpload(value.penta || {}, date, "penta"),
-    handwriting: await cleanReportDocumentUpload(value.handwriting || {}, date, "handschrift"),
-    ecCut: await cleanReportDocumentUpload(value.ecCut || {}, date, "ec-schnitt")
+    handwriting: await cleanReportDocumentUpload(value.handwriting || {}, date, "handschrift")
   };
 }
-
-function cleanEmployeeList(value = []) {
-  return [...new Set((Array.isArray(value) ? value : [])
-    .map((name) => cleanText(name, 160))
-    .filter(Boolean))];
+function invoiceGastroSplit(item = {}) {
+  const drinksText = String(item.gastroDrinkAmount || "").trim();
+  const foodText = String(item.gastroFoodAmount || "").trim();
+  const otherText = String(item.gastroOtherAmount || "").trim();
+  const note = String(item.gastroOtherNote || "").trim();
+  const hasSplit = Boolean(drinksText || foodText || otherText || note);
+  const drinks = Number(cleanMoney(item.gastroDrinkAmount) || 0);
+  const food = Number(cleanMoney(item.gastroFoodAmount) || 0);
+  const other = Number(cleanMoney(item.gastroOtherAmount) || 0);
+  const fallback = Number(cleanMoney(item.gastroAmount ?? (item.area === "gastro" ? item.amount : "")) || 0);
+  return { drinks, food, other, total: hasSplit ? drinks + food + other : fallback, hasSplit, note };
 }
 
-function cleanExtraEmployees(value = []) {
-  return (Array.isArray(value) ? value : [])
-    .map((item) => typeof item === "string" ? { employee: item, role: "Zusatz" } : item)
-    .map((item) => ({
-      employee: cleanText(item?.employee, 160),
-      role: cleanText(item?.role || "Zusatz", 80) || "Zusatz"
-    }))
-    .filter((item) => item.employee)
-    .filter((item, index, list) => list.findIndex((other) => other.employee === item.employee) === index);
+function totalInvoiceAmount(item) {
+  const b = Number(cleanMoney(item.bowlingAmount ?? (item.area === "bowling" ? item.amount : "")) || 0);
+  const g = invoiceGastroSplit(item).total;
+  return b + g || item.amount || "";
 }
-
-function totalInvoiceGastroAmount(item) {
-  const drinksText = String(item.gastroDrinksAmount ?? "").trim();
-  const foodText = String(item.gastroFoodAmount ?? "").trim();
-  const otherText = String(item.gastroOtherAmount ?? "").trim();
-  const hasSplit = [drinksText, foodText, otherText].some(Boolean);
-  const split = Number(cleanMoney(item.gastroDrinksAmount) || 0)
-    + Number(cleanMoney(item.gastroFoodAmount) || 0)
-    + Number(cleanMoney(item.gastroOtherAmount) || 0);
-  if (hasSplit) return split;
-  return Number(cleanMoney(item.gastroAmount ?? (item.area === "gastro" ? item.amount : "")) || 0);
-}
-function totalInvoiceAmount(item) { const b = Number(cleanMoney(item.bowlingAmount ?? (item.area === "bowling" ? item.amount : "")) || 0), g = totalInvoiceGastroAmount(item); return b + g || item.amount || ""; }
 async function cleanReportItems(items, type, date) {
   if (!Array.isArray(items)) return [];
   const cleaned = await Promise.all(items.slice(0, 20).map(async (raw) => {
-  const gastroDrinksAmount = cleanMoney(raw.gastroDrinksAmount);
-  const gastroFoodAmount = cleanMoney(raw.gastroFoodAmount);
-  const gastroOtherAmount = cleanMoney(raw.gastroOtherAmount);
-  const hasGastroSplit = [String(raw.gastroDrinksAmount ?? "").trim(), String(raw.gastroFoodAmount ?? "").trim(), String(raw.gastroOtherAmount ?? "").trim()].some(Boolean);
-  const gastroAmount = hasGastroSplit
-      ? cleanMoney(String(
-        Number(gastroDrinksAmount || 0)
-        + Number(gastroFoodAmount || 0)
-        + Number(gastroOtherAmount || 0)
-      ))
-      : cleanMoney(raw.gastroAmount ?? (raw.area === "gastro" ? raw.amount : ""));
+    const gastroSplit = invoiceGastroSplit(raw);
     const item = {
       id: String(raw.id || crypto.randomUUID()),
       name: String(raw.name || "").trim().slice(0, 160),
       amount: cleanMoney(totalInvoiceAmount(raw)),
       bowlingAmount: cleanMoney(raw.bowlingAmount ?? (raw.area === "bowling" ? raw.amount : "")),
-      gastroAmount,
-      gastroDrinksAmount,
-      gastroFoodAmount,
-      gastroOtherAmount,
-      gastroOtherNote: String(raw.gastroOtherNote || "").trim().slice(0, 300),
+      gastroAmount: cleanMoney(gastroSplit.total),
+      gastroDrinkAmount: cleanMoney(raw.gastroDrinkAmount),
+      gastroFoodAmount: cleanMoney(raw.gastroFoodAmount),
+      gastroOtherAmount: cleanMoney(raw.gastroOtherAmount),
+      gastroOtherNote: String(raw.gastroOtherNote || "").trim().slice(0, 600),
       note: String(raw.note || "").trim().slice(0, 600),
       receiptName: String(raw.receiptName || "").trim().slice(0, 180),
       receiptData: String(raw.receiptData || ""),
       receiptPath: cleanReceiptPath(raw.receiptPath),
       receiptUrl: cleanReceiptUrl(raw.receiptUrl),
-      receipts: [],
       bowlingReceiptName: String(raw.bowlingReceiptName || "").trim().slice(0, 180),
       bowlingReceiptData: String(raw.bowlingReceiptData || ""),
       bowlingReceiptPath: cleanReceiptPath(raw.bowlingReceiptPath),
@@ -1024,173 +455,12 @@ async function cleanReportItems(items, type, date) {
       invoiceNotificationSentAt: cleanText(raw.invoiceNotificationSentAt, 80),
       area: type === "invoice" ? "rechnung" : raw.area
     };
-    if (type === "expense") {
-      item.receipts = await cleanExpenseReceipts(raw, date, item.id);
-      const firstReceipt = item.receipts[0] || {};
-      item.receiptName = firstReceipt.receiptName || "";
-      item.receiptData = firstReceipt.receiptData || "";
-      item.receiptPath = firstReceipt.receiptPath || "";
-      item.receiptUrl = firstReceipt.receiptUrl || "";
-    } else {
-      await applyReceiptUpload(item, "receipt", date, `${type}-${item.id}`);
-    }
+    await applyReceiptUpload(item, "receipt", date, `${type}-${item.id}`);
     await applyReceiptUpload(item, "bowlingReceipt", date, `bowling-${item.id}`);
     await applyReceiptUpload(item, "gastroReceipt", date, `gastro-${item.id}`);
     return item;
   }));
-  return cleaned.filter((i) => i.name || i.amount || i.note || i.receiptData || i.receiptPath || (i.receipts || []).length || i.bowlingReceiptData || i.bowlingReceiptPath || i.gastroReceiptData || i.gastroReceiptPath || i.address || i.contact || i.phone || i.tip || i.email);
-}
-async function cleanExpenseReceipts(raw, date, id) {
-  const entries = [];
-  const seen = new Set();
-  const addReceipt = (receipt = {}) => {
-    const item = {
-      receiptName: String(receipt.receiptName || receipt.name || "").trim().slice(0, 180),
-      receiptData: String(receipt.receiptData || receipt.data || ""),
-      receiptPath: cleanReceiptPath(receipt.receiptPath || receipt.path),
-      receiptUrl: cleanReceiptUrl(receipt.receiptUrl || receipt.url)
-    };
-    if (!item.receiptName && !item.receiptData && !item.receiptPath && !item.receiptUrl) return;
-    const key = item.receiptPath || item.receiptUrl || item.receiptData || item.receiptName;
-    if (seen.has(key)) return;
-    seen.add(key);
-    entries.push(item);
-  };
-  (Array.isArray(raw.receipts) ? raw.receipts : []).forEach(addReceipt);
-  addReceipt({
-    receiptName: raw.receiptName,
-    receiptData: raw.receiptData,
-    receiptPath: raw.receiptPath,
-    receiptUrl: raw.receiptUrl
-  });
-  const cleaned = [];
-  for (const [index, entry] of entries.slice(0, 10).entries()) {
-    await applyReceiptUpload(entry, "receipt", date, `expense-${id}-${index + 1}`);
-    if (entry.receiptName || entry.receiptData || entry.receiptPath || entry.receiptUrl) cleaned.push(entry);
-  }
-  return cleaned;
-}
-function mergeReportItemsById(existing = [], current = []) {
-  const merged = new Map();
-  (Array.isArray(existing) ? existing : []).forEach((item) => {
-    if (!item || typeof item !== "object") return;
-    const id = cleanText(item.id || crypto.randomUUID(), 120);
-    merged.set(id, { ...item, id });
-  });
-  (Array.isArray(current) ? current : []).forEach((item) => {
-    if (!item || typeof item !== "object") return;
-    const id = cleanText(item.id || crypto.randomUUID(), 120);
-    const previous = merged.get(id) || {};
-    const next = { ...previous, ...item, id };
-    if (!(item.receipts || []).length && (previous.receipts || []).length) {
-      next.receipts = previous.receipts;
-      next.receiptName = previous.receiptName;
-      next.receiptData = previous.receiptData;
-      next.receiptPath = previous.receiptPath;
-      next.receiptUrl = previous.receiptUrl;
-    }
-    if (!String(next.invoiceNotificationSentAt || "").trim() && String(previous.invoiceNotificationSentAt || "").trim()) {
-      next.invoiceNotificationSentAt = previous.invoiceNotificationSentAt;
-    }
-    merged.set(id, next);
-  });
-  return [...merged.values()].slice(0, 20);
-}
-
-async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = "") {
-  const report = appData.dayReports?.[date];
-  const invoices = Array.isArray(report?.invoiceCustomers) ? report.invoiceCustomers : [];
-  const now = new Date().toISOString();
-  let sent = 0;
-  let failed = 0;
-  let skipped = 0;
-  let changed = false;
-  const errors = [];
-  const skipReasons = new Map();
-
-  for (const invoice of invoices) {
-    if (!invoice || typeof invoice !== "object") continue;
-    const isReady = invoice.invoiceReady === true || invoice.invoiceReady === "true";
-    const isDone = invoice.invoiceDone === true || invoice.invoiceDone === "true";
-    const alreadySent = String(invoice.invoiceNotificationSentAt || "").trim();
-    if (targetInvoiceId && String(invoice.id || "").trim() !== targetInvoiceId) continue;
-    if (!isReady || isDone || alreadySent) continue;
-    const result = await sendInvoiceNotificationEmail({
-      date,
-      customer: invoice,
-      to: appData.settings?.invoiceNotificationTo
-    });
-    if (result?.ok) {
-      invoice.invoiceNotificationSentAt = now;
-      sent += 1;
-      changed = true;
-    } else if (result?.skipped) {
-      skipped += 1;
-      const reason = String(result.reason || "unbekannt").trim();
-      skipReasons.set(reason, (skipReasons.get(reason) || 0) + 1);
-    } else {
-      failed += 1;
-      const error = result?.error || result?.reason || "unbekannter Fehler";
-      errors.push({ id: invoice.id || "", name: invoice.name || "", error });
-      console.error("Rechnungskunden-Mailversand nicht erfolgreich.", { date, invoiceId: invoice.id || "", name: invoice.name || "", error });
-    }
-  }
-
-  if (changed && report) {
-    report.updatedAt = new Date().toISOString();
-    appData.dayReports[date] = report;
-    await writeAppData(appData);
-  }
-
-  return { sent, failed, skipped, skipReasons: [...skipReasons.entries()].map(([reason, count]) => ({ reason, count })), changed, errors };
-}
-
-function upsertCustomerDirectory(appData, customers) {
-  const byKey = new Map();
-  normalizeCustomerDirectory(appData.customerDirectory).forEach((customer) => {
-    const key = customerDirectoryKey(customer);
-    if (key) byKey.set(key, customer);
-  });
-  (Array.isArray(customers) ? customers : [customers]).forEach((customer) => {
-    const entry = customerDirectoryEntry(customer);
-    const key = customerDirectoryKey(entry);
-    if (!key) return;
-    byKey.set(key, { ...(byKey.get(key) || {}), ...entry, updatedAt: new Date().toISOString() });
-  });
-  appData.customerDirectory = [...byKey.values()]
-    .filter((customer) => customer.name)
-    .sort((a, b) => a.name.localeCompare(b.name, "de"))
-    .slice(0, 500);
-}
-function normalizeCustomerDirectory(customers) {
-  const byKey = new Map();
-  (Array.isArray(customers) ? customers : []).forEach((customer) => {
-    const entry = customerDirectoryEntry(customer);
-    const key = customerDirectoryKey(entry);
-    if (key) byKey.set(key, { ...(byKey.get(key) || {}), ...entry });
-  });
-  return [...byKey.values()].filter((customer) => customer.name).sort((a, b) => a.name.localeCompare(b.name, "de")).slice(0, 500);
-}
-function customerDirectoryEntry(item = {}) {
-  return {
-    id: cleanText(item.id || customerDirectoryKey(item) || `customer-${Date.now()}-${Math.random().toString(16).slice(2)}`, 120),
-    name: cleanText(item.name, 160),
-    contact: cleanText(item.contact, 160),
-    phone: cleanText(item.phone, 80),
-    email: cleanText(item.email, 180),
-    address: cleanText(item.address, 600),
-    tip: cleanText(item.tip, 160),
-    note: cleanText(item.note, 600),
-    createdAt: cleanText(item.createdAt || new Date().toISOString(), 80),
-    updatedAt: cleanText(item.updatedAt || item.createdAt || new Date().toISOString(), 80)
-  };
-}
-function customerDirectoryKey(item = {}) {
-  const email = cleanText(item.email, 180).toLowerCase();
-  if (email) return `mail:${email}`;
-  const name = cleanText(item.name, 160).toLowerCase();
-  const phone = cleanText(item.phone, 80).replace(/\s+/g, "");
-  return name ? `name:${name}|${phone}` : "";
+  return cleaned.filter((i) => i.name || i.amount || i.note || i.receiptData || i.receiptPath || i.bowlingReceiptData || i.bowlingReceiptPath || i.gastroReceiptData || i.gastroReceiptPath || i.address || i.contact || i.phone || i.tip || i.email || i.gastroDrinkAmount || i.gastroFoodAmount || i.gastroOtherAmount || i.gastroOtherNote || i.invoiceNotificationSentAt);
 }
 function verifyTerminalCode(settings, code) { return verifyPin(code, settings?.terminalCodeHash || settings?.terminalCode || process.env.DEFAULT_TERMINAL_CODE || "2468"); }
 function verifyPin(pin, stored) { if (!pin || !stored) return false; if (!String(stored).startsWith("pbkdf2_sha256$")) return String(pin) === String(stored); const [, iterations, salt, digest] = String(stored).split("$"), test = crypto.pbkdf2Sync(String(pin), salt, Number(iterations), 32, "sha256").toString("hex"); return crypto.timingSafeEqual(Buffer.from(test, "hex"), Buffer.from(digest, "hex")); }
