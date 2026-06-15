@@ -4,18 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Teamapp</title>
-    <meta name="theme-color" content="#f8fafc">
-    <link rel="manifest" href="/manifest.webmanifest">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260602-einteilung-reiter-v1">
+    <link rel="stylesheet" href="styles.css?v=20260615-invoice-split-v2">
   </head>
   <body>
     <header class="topbar">
       <div>
-        <img class="brand-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
+        <img class="brand-logo" src="la-bowling-logo.png" alt="LA Bowling">
         <h1 id="appTitle">Teamapp</h1>
       </div>
       <button id="topLogout" class="top-logout hidden" type="button">Abmelden</button>
@@ -25,11 +19,9 @@
       <nav id="mainTabs" class="tabs hidden" aria-label="Bereiche">
         <button class="tab active" type="button" data-tab="home">Dashboard</button>
         <button class="tab employee-only hidden" type="button" data-tab="availability">Verfügbarkeit</button>
-        <button class="tab employee-only hidden" type="button" data-tab="assignments">Einteilung</button>
         <button class="tab employee-only hidden" type="button" data-tab="published">Dienstplan</button>
         <button class="tab employee-only hidden" type="button" data-tab="timesheet">Stundenübersicht</button>
         <button class="tab employee-only hidden" type="button" data-tab="swaps">Ersatz Suchen</button>
-        <button class="tab backoffice-only hidden" type="button" data-tab="admin">Backoffice</button>
         <button class="tab chef-only hidden" type="button" data-tab="chef">Chef</button>
       </nav>
 
@@ -38,16 +30,12 @@
           <strong id="homeEmployeeName"></strong>
         </div>
         <div class="home-access">
-          <div class="login-card-brand">
-            <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
-            <p>Willkommen bei der LA-Bowling TeamApp! Bitte melden Sie sich an.</p>
-          </div>
           <div id="homeLogin" class="home-login form-grid">
             <label>
               Mitarbeiter-PIN
               <input id="homePin" type="password" inputmode="numeric" placeholder="PIN">
             </label>
-            <button id="unlockHome" class="primary">Login</button>
+            <button id="unlockHome" class="primary">Anmelden</button>
           </div>
         </div>
         <div id="homeContent" class="schedule-list"></div>
@@ -91,21 +79,11 @@
         <div id="publishedSchedule" class="schedule-list"></div>
       </section>
 
-      <section id="assignments" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>Meine Einteilung</h2>
-            <p>Heute und morgen mit den kurzfristig festgelegten Startzeiten.</p>
-          </div>
-        </div>
-        <div id="assignmentContent" class="assignment-list"></div>
-      </section>
-
       <section id="timesheet" class="panel">
         <div class="section-head">
           <div>
             <h2>Stundenübersicht</h2>
-            <p>Gearbeitete Dienste und automatisch verteiltes Trinkgeld.</p>
+            <p>Gearbeitete Dienste und optional Trinkgeld ergänzen.</p>
           </div>
         </div>
         <div id="timesheetSummary" class="timesheet-summary"></div>
@@ -128,17 +106,14 @@
             <h2 id="terminalTitle">Tages-Terminal</h2>
             <p id="terminalDate">Heute</p>
           </div>
-        </div>
-        <div id="terminalLoginBrand" class="login-card-brand terminal-login-brand hidden">
-          <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
-          <p id="terminalLoginHint">Willkommen bei der LA-Bowling TerminalApp! Bitte melden Sie sich an.</p>
+          <button id="printDayReport" class="secondary">Tagesbericht drucken</button>
         </div>
         <div id="terminalLogin" class="form-grid">
           <label>
             <span id="terminalCodeLabel">Terminal-Code</span>
             <input id="terminalCode" type="password" inputmode="numeric" placeholder="Code">
           </label>
-          <button id="unlockTerminal" class="primary">Login</button>
+          <button id="unlockTerminal" class="primary">Terminal öffnen</button>
         </div>
         <div id="terminalContent" class="terminal-content hidden">
           <div id="terminalDayHeadForm" class="terminal-day-head">
@@ -148,16 +123,34 @@
             <button id="saveTerminalDayMeta" class="secondary" type="button">Tageskopf speichern</button>
           </div>
           <div id="terminalDayMetaDisplay" class="terminal-day-meta-display hidden"></div>
-          <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
-          <div id="terminalLeaderMessages" class="terminal-leader-messages hidden"></div>
+          <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
+            <div class="terminal-task-group-head">
+              <div>
+                <h4>Übergabe</h4>
+                <span id="handoverCount">0 Übergaben</span>
+              </div>
+              <button id="openHandover" class="secondary" type="button">Übergabe eintragen</button>
+            </div>
+            <div id="handoverList" class="terminal-handover-list"></div>
+          </section>
+          <div id="handoverModal" class="handover-modal hidden" role="dialog" aria-modal="true">
+            <section class="terminal-handover">
+              <div class="terminal-task-group-head">
+                <h4>Übergabe Schichtleitung</h4>
+                <button id="closeHandover" class="secondary" type="button">Schließen</button>
+              </div>
+              <div class="terminal-handover-form form-grid">
+              <label>Von<select id="handoverFrom"></select></label>
+              <label>An<select id="handoverTo"></select></label>
+              <label>Uhrzeit<input id="handoverTime" type="time"></label>
+              <label>Offene Punkte<textarea id="handoverNote" rows="3" placeholder="Was muss die nächste Schicht wissen?"></textarea></label>
+              <button id="saveHandover" class="primary" type="button">Übergabe speichern</button>
+              </div>
+            </section>
+          </div>
           <nav class="terminal-tabs" aria-label="Terminal-Bereiche">
-            <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
-            <button class="terminal-tab" data-terminal-tab="checks" type="button">Kontrollen</button>
-            <button class="terminal-tab" data-terminal-tab="assignments" type="button">Einteilung</button>
-            <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
+            <button class="terminal-tab active" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
-            <button class="terminal-tab" data-terminal-tab="tips" type="button">Trinkgeld</button>
-            <button class="terminal-tab" data-terminal-tab="report" type="button">Tagesbericht</button>
           </nav>
           <section id="terminalTasksSection" class="terminal-section hidden">
             <div class="terminal-section-head">
@@ -169,111 +162,30 @@
             <div id="terminalTaskList" class="terminal-task-list"></div>
             <div id="toiletCheckStatus" class="toilet-check-status"></div>
           </section>
-          <section id="terminalChecksSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Kontrollen & Popups</h3>
-                <p class="hint">Hier steht, wann Toiletten-Kontrollen und Aufgaben-Popups quittiert wurden.</p>
-              </div>
-            </div>
-            <div id="terminalCheckLog" class="terminal-check-log"></div>
-          </section>
-          <section id="terminalAssignmentsSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Einteilung</h3>
-                <p class="hint">Startzeiten für heute und morgen festlegen. Die Mitarbeiter sehen diese Zeiten in der TeamApp.</p>
-              </div>
-              <button id="saveTerminalAssignments" class="primary" type="button">Einteilung speichern</button>
-            </div>
-            <div id="terminalAssignmentList" class="terminal-assignment-list"></div>
-          </section>
           <section id="terminalServiceSection" class="terminal-section hidden">
-            <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
-              <div class="terminal-task-group-head">
-                <div>
-                  <h4>Übergabe</h4>
-                  <span id="handoverCount">0 Übergaben</span>
-                </div>
-                <button id="openHandover" class="secondary" type="button">Übergabe eintragen</button>
-              </div>
-              <div id="handoverList" class="terminal-handover-list"></div>
-            </section>
-            <div id="handoverModal" class="handover-modal hidden" role="dialog" aria-modal="true">
-              <section class="terminal-handover">
-                <div class="terminal-task-group-head">
-                  <h4>Übergabe Schichtleitung</h4>
-                  <button id="closeHandover" class="secondary" type="button">Schließen</button>
-                </div>
-                <div class="terminal-handover-form form-grid">
-                <label>Von<select id="handoverFrom"></select></label>
-                <label>An<select id="handoverTo"></select></label>
-                <label>Uhrzeit<input id="handoverTime" type="time"></label>
-                <label>Offene Punkte<textarea id="handoverNote" rows="3" placeholder="Was muss die nächste Schicht wissen?"></textarea></label>
-                <button id="saveHandover" class="primary" type="button">Übergabe speichern</button>
-                </div>
-              </section>
+            <div class="terminal-add form-grid">
+              <label>
+                Ungeplanten Mitarbeiter hinzufügen
+                <select id="terminalAddEmployee"></select>
+              </label>
+              <button id="addTerminalEmployee" class="secondary">Hinzufügen</button>
             </div>
-            <details class="terminal-add terminal-add-compact">
-              <summary aria-label="Ungeplanten Mitarbeiter hinzufügen"><span>+</span></summary>
-              <div class="form-grid">
-                <label>
-                  Schicht hinzufügen
-                  <select id="terminalAddEmployee"></select>
-                </label>
-                <button id="addTerminalEmployee" class="secondary">Hinzufügen</button>
-              </div>
-            </details>
             <div id="terminalCostSummary" class="terminal-cost-summary"></div>
             <div id="terminalEmployees" class="terminal-employees"></div>
           </section>
-          <section id="terminalFinanceSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
+          <section id="dayReportPrintArea" class="day-report">
+            <div class="day-report-title">
               <div>
-                <h3>Finanz</h3>
-                <p class="hint">Kassenabrechnung, Trinkgeld, Rechnungskunden, Ausgaben und Abschlussdokumente.</p>
+                <h3>Tagesbericht</h3>
+                <p id="dayReportLockStatus" class="hint"></p>
               </div>
             </div>
-            <section class="report-subsection report-documents-inline" data-report-field-box="documents">
-              <div class="terminal-section-head">
-                <div>
-                  <h3>Abschlussdokumente</h3>
-                  <p class="hint">Penta, Handschrift und EC-Schnitt direkt zum Tagesbericht scannen.</p>
-                </div>
-              </div>
-              <div class="report-entry-grid">
-                <label>Penta scannen/fotografieren<input id="reportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>Handschrift scannen/fotografieren<input id="reportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>EC-Schnitt scannen/fotografieren<input id="reportDocumentEcCut" type="file" accept="image/*,application/pdf" capture="environment"></label>
-              </div>
-              <div id="reportDocumentStatus" class="report-entry-list"></div>
-            </section>
-            <section class="report-subsection tip-finance-block">
-              <div class="terminal-section-head">
-                <div>
-                  <h3>Trinkgeld</h3>
-                  <p class="hint">Bar, EC und Umsatz erfassen. Trinkgeld wird nach Arbeitszeit verteilt und auf Scheine gerundet.</p>
-                </div>
-              </div>
-              <div class="tip-input-grid">
-                <label>Bar gesamt<input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Ausgaben aus Kasse<input id="reportCashExpenses" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>EC Terminal 1<input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>EC Terminal 2<input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>EC gesamt<input id="reportEcTotal" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
-                <label>Personalverzehr<input id="reportPersonalConsumption" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Umsatz Bowling<input id="reportRevenueBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Getränke<input id="reportRevenueDrinks" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Speisen<input id="reportRevenueFood" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Sonstiges<input id="reportRevenueOther" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Umsatz Gastro gesamt<input id="reportRevenueGastro" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
-              </div>
-              <div id="financeTipDaySummary" class="tip-summary tip-day-summary"></div>
-              <div id="financeTipDayDistributionList" class="tip-distribution-list"></div>
-              <div class="finance-save-row">
-                <button id="saveTipDistribution" class="primary" type="button">Umsatzdetails speichern</button>
-              </div>
-            </section>
+            <div class="day-report-grid">
+              <label data-report-field-box="ecTotal">EC gesamt<input id="reportEcTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
+              <label data-report-field-box="barBowling">Bar Bowling<input id="reportBarBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
+              <label data-report-field-box="barGastro">Bar Gastro<input id="reportBarGastro" type="number" min="0" step="0.01" placeholder="0,00"></label>
+              <label data-report-field-box="barTotal">Bar gesamt<input id="reportBarTotal" type="text" readonly placeholder="0,00"></label>
+            </div>
             <details class="report-subsection" data-report-field-box="invoiceCustomers">
               <summary>Kunden auf Rechnung</summary>
               <div id="invoiceCustomersList" class="report-entry-list"></div>
@@ -284,42 +196,24 @@
               <div id="expensesList" class="report-entry-list"></div>
               <button id="addExpense" class="secondary" type="button">Ausgabe hinzufügen</button>
             </details>
-          </section>
-          <section id="terminalTipsSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Trinkgeld Übersicht</h3>
-                <p class="hint">Offene Auszahlungen pro Mitarbeiter. Bestätigungen setzen nur diese Übersicht zurück, nicht die Mitarbeiter-App.</p>
+            <details class="report-subsection" data-report-field-box="documents">
+              <summary>Abschlussdokumente</summary>
+              <div class="report-entry-grid">
+                <label>Penta scannen/fotografieren<input id="reportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
+                <label>Handschrift scannen/fotografieren<input id="reportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
               </div>
-            </div>
-            <div id="tipPayoutStatus" class="action-status"></div>
-            <div id="tipSummary" class="tip-summary"></div>
-            <div id="tipDistributionList" class="tip-distribution-list"></div>
-          </section>
-          <details id="dayReportPrintArea" class="day-report">
-            <summary class="day-report-title">
-              <div>
-                <h3>Tagesbericht</h3>
-                <p id="dayReportLockStatus" class="hint"></p>
-              </div>
-              <button id="printDayReport" class="secondary" type="button">Tagesbericht drucken</button>
-            </summary>
-            <div id="dayReportTipDayDistribution" class="tip-distribution-list day-report-tip-control"></div>
-            <div id="dayReportA4Summary" class="day-report-a4-summary"></div>
+              <div id="reportDocumentStatus" class="report-entry-list"></div>
+            </details>
             <label data-report-field-box="notes">Notizen<textarea id="reportNotes" rows="5"></textarea></label>
             <div class="day-report-actions">
               <button id="saveDayReport" class="primary">Tagesbericht speichern</button>
               <button id="closeDayReport" class="secondary danger-button" type="button">Tagesabschluss</button>
             </div>
-          </details>
+          </section>
           <div id="toiletReminder" class="toilet-reminder hidden" role="dialog" aria-modal="true">
             <div>
               <h3 id="terminalReminderTitle">Erinnerung</h3>
               <p id="terminalReminderText">Bitte quittieren.</p>
-              <label id="toiletCheckEmployeeWrap" class="toilet-check-employee hidden">
-                Kontrolle gemacht von
-                <select id="toiletCheckEmployee"></select>
-              </label>
               <button id="confirmToiletCheck" class="primary" type="button">Quittieren</button>
             </div>
           </div>
@@ -365,18 +259,6 @@
           </div>
           <div id="customerInvoiceStaffArea" class="customer-invoice-staff-area hidden">
             <div class="invoice-day-overview" id="customerInvoiceDaySummary"></div>
-            <details class="report-subsection customer-master-section" open>
-              <summary>Kundenstamm</summary>
-              <div class="customer-master-tools">
-                <label>Kunde suchen<input id="customerMasterSearch" placeholder="Firma, Ansprechpartner, E-Mail"></label>
-                <label>Kunde auswählen<select id="customerMasterSelect"></select></label>
-              </div>
-              <div id="customerMasterPreview" class="customer-master-preview"></div>
-              <div class="day-report-actions">
-                <button id="addCustomerFromMaster" class="primary" type="button">In Tagesbericht übernehmen</button>
-              </div>
-              <p class="hint customer-master-hint">Neue Rechnungskunden werden nach dem Speichern automatisch in diese Kartei übernommen.</p>
-            </details>
             <details class="report-subsection" open>
               <summary>Rechnungskunden vervollständigen</summary>
               <div id="customerInvoiceWorkList" class="report-entry-list"></div>
@@ -394,13 +276,15 @@
               </div>
             </details>
             <details class="report-subsection">
-              <summary>Abschlussdokumente</summary>
+              <summary>Penta und Handschrift</summary>
               <div class="report-entry-grid">
                 <label>Penta scannen/fotografieren<input id="customerReportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
                 <label>Handschrift scannen/fotografieren<input id="customerReportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>EC-Schnitt scannen/fotografieren<input id="customerReportDocumentEcCut" type="file" accept="image/*,application/pdf" capture="environment"></label>
               </div>
               <div id="customerReportDocumentStatus" class="report-entry-list"></div>
+              <div class="day-report-actions">
+                <button id="saveCustomerDocuments" class="primary" type="button">Dokumente speichern</button>
+              </div>
             </details>
             <p id="customerInvoiceStaffStatus" class="action-status"></p>
           </div>
@@ -457,19 +341,6 @@
         </div>
 
         <div id="adminContent" class="admin-content hidden">
-        <nav class="admin-workspace-tabs" aria-label="Admin-Arbeitsbereiche">
-          <button class="admin-workspace-tab active" type="button" data-admin-workspace-tab="planning">Planung</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="employees">Mitarbeiter Sicht</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="numbers">Monatszahlen</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="offers">Angebote</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="push">Push</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="correction">Korrekturmodus</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="settings">Einstellungen</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="approvals">Freigaben</button>
-        </nav>
-
-        <section class="admin-workspace active" data-admin-workspace="planning">
         <details class="settings-box admin-primary-box">
           <summary>Wochenplanung</summary>
           <div id="planner" class="planner"></div>
@@ -479,24 +350,7 @@
           <summary>Veröffentlichte Wochen</summary>
           <div id="adminPublishedList" class="swap-list"></div>
         </details>
-        </section>
 
-        <section class="admin-workspace" data-admin-workspace="employees">
-        <details class="settings-box admin-priority" open>
-          <summary>Mitarbeiter Sicht</summary>
-          <p class="settings-note">Nur Admin: Hier kannst du Arbeitstage und Stunden nachtragen, auch wenn der Tagesbericht schon abgeschlossen ist.</p>
-          <div id="adminEmployeeOverview" class="employee-overview"></div>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="numbers">
-        <details class="settings-box admin-priority" open>
-          <summary>Monatszahlen</summary>
-          <div id="adminMonthlyNumbers" class="monthly-numbers"></div>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="operations">
         <details class="settings-box admin-priority">
           <summary>Nachrichten fürs Dashboard</summary>
           <div class="message-editor form-grid">
@@ -512,7 +366,10 @@
                 <option value="employees">Einzelne Mitarbeiter</option>
               </select>
             </label>
-            <div id="messageEmployeePicker" class="message-employee-picker checkbox-grid hidden"></div>
+            <label>
+              Einzelne Mitarbeiter, eine Person pro Zeile
+              <textarea id="messageEmployees" rows="3" placeholder="Nur bei Einzelne Mitarbeiter nötig"></textarea>
+            </label>
             <label>
               Nachricht
               <textarea id="messageText" rows="3" placeholder="Nachricht fürs Dashboard"></textarea>
@@ -523,50 +380,20 @@
         </details>
 
         <details class="settings-box admin-priority">
-          <summary>Nachricht ans Terminal</summary>
-          <div class="message-editor form-grid">
-            <label>
-              Nachricht für Schichtleitung
-              <textarea id="terminalMessageText" rows="3" placeholder="Wird im Terminal angezeigt, bis sie quittiert wird"></textarea>
-            </label>
-            <button id="sendTerminalMessage" class="primary" type="button">An Terminal senden</button>
-          </div>
-          <div id="adminTerminalMessagesList" class="swap-list"></div>
-        </details>
-
-        <details class="settings-box admin-priority">
           <summary>Aufgabenkalender</summary>
           <div class="admin-calendar-tools">
             <label>Kalendermonat<input id="taskCalendarMonth" type="month"></label>
+            <label>Gewähltes Datum<input id="calendarTaskDate" type="date"></label>
+            <label>Kalendereintrag<input id="calendarTaskTitle" placeholder="z.B. Restmüll rausstellen"></label>
+            <label>Intervall Tage<input id="calendarTaskInterval" type="number" min="1" step="1" placeholder="leer = einmalig"></label>
+            <label>Bis Datum<input id="calendarTaskEndDate" type="date"></label>
+            <label>Notiz<input id="calendarTaskNote" placeholder="optional"></label>
+            <button id="addCalendarTask" class="primary" type="button">In Kalender eintragen</button>
             <div class="admin-calendar-legend">
               <span class="legend-run">Kalender / laufender Betrieb</span>
-              <span class="legend-holiday">Feiertag</span>
-              <span class="legend-preholiday">Vorfeiertag</span>
-              <span class="legend-weekend">Wochenende</span>
             </div>
           </div>
           <div id="adminTaskCalendar" class="admin-task-calendar"></div>
-          <div id="calendarTaskPopup" class="admin-calendar-popup hidden" role="dialog" aria-modal="true">
-            <section class="admin-calendar-popup-panel">
-              <div class="admin-calendar-popup-head">
-                <div>
-                  <strong>Kalendereintrag</strong>
-                  <span id="calendarTaskPopupDate">Datum wählen</span>
-                </div>
-                <button id="closeCalendarTaskPopup" class="secondary" type="button">Schließen</button>
-              </div>
-              <div class="admin-calendar-popup-form">
-                <label>Gewähltes Datum<input id="calendarTaskDate" type="date"></label>
-                <label>Kalendereintrag<input id="calendarTaskTitle" placeholder="z.B. Restmüll rausstellen"></label>
-                <label>Intervall Tage<input id="calendarTaskInterval" type="number" min="1" step="1" placeholder="leer = einmalig"></label>
-                <label>Bis Datum<input id="calendarTaskEndDate" type="date"></label>
-                <label>Notiz<input id="calendarTaskNote" placeholder="optional"></label>
-                <label class="calendar-popup-option"><input id="calendarTaskPopupEnabled" type="checkbox"> Als Popup anzeigen</label>
-                <label id="calendarTaskPopupTimeField" class="hidden">Popup-Uhrzeit<input id="calendarTaskPopupTime" type="time"></label>
-                <button id="addCalendarTask" class="primary" type="button">In Kalender eintragen</button>
-              </div>
-            </section>
-          </div>
           <div id="adminTaskList" class="admin-task-board">
             <details class="admin-task-section task-preparation">
               <summary>Vorbereitung</summary>
@@ -618,13 +445,6 @@
           </div>
         </details>
 
-        <section class="admin-workspace" data-admin-workspace="offers">
-        <details class="settings-box admin-priority" open>
-          <summary>Angebote erstellen</summary>
-          <div id="adminOffers" class="offer-workspace"></div>
-        </details>
-        </section>
-
         <details class="settings-box admin-priority">
           <summary>Popup-Erinnerungen Terminal</summary>
           <div class="admin-task-form">
@@ -638,104 +458,10 @@
         </details>
 
         <details class="settings-box admin-priority">
-          <summary>Wöchentliche Reinigung</summary>
-          <div class="admin-task-form">
-            <label>Aufgabe<input id="cleaningTaskTitle" placeholder="z.B. Toiletten reinigen"></label>
-            <label>Notiz<input id="cleaningTaskNote" placeholder="optional"></label>
-            <button id="addCleaningTask" class="primary" type="button">Hinzufügen</button>
-          </div>
-          <div id="adminCleaningTaskTable" class="admin-task-table"></div>
-        </details>
-
-        <details class="settings-box admin-priority">
           <summary>Verfügbarkeiten Vorschau</summary>
           <div id="adminAvailabilityPreview" class="availability-preview"></div>
         </details>
-        </section>
 
-        <section class="admin-workspace" data-admin-workspace="push">
-        <details class="settings-box admin-priority" open>
-          <summary>Push-Mitteilungen</summary>
-          <div class="settings-note">Hier steuerst du automatische Pushs für Dienstplan, Einteilung und Dashboard-Nachrichten sowie eine manuelle Testnachricht.</div>
-          <div class="message-editor form-grid">
-            <label class="calendar-popup-option"><input id="pushAutoSchedule" type="checkbox"> Automatisch bei neuem Dienstplan senden</label>
-            <label class="calendar-popup-option"><input id="pushAutoAssignment" type="checkbox"> Automatisch bei Einteilung für morgen senden</label>
-            <label class="calendar-popup-option"><input id="pushAutoMessages" type="checkbox"> Automatisch bei Dashboard-Nachrichten senden</label>
-            <button id="savePushSettings" class="secondary" type="button">Push-Einstellungen speichern</button>
-          </div>
-          <div class="push-template-grid form-grid">
-            <label>
-              Dienstplan Titel
-              <input id="pushScheduleTitle" placeholder="LA-Bowling - Neuer Dienstplan online">
-            </label>
-            <label>
-              Dienstplan Text
-              <textarea id="pushScheduleBody" rows="2" placeholder="Der neue Dienstplan ist online. Bitte in der TeamApp prüfen."></textarea>
-            </label>
-            <label>
-              Einteilung Titel
-              <input id="pushAssignmentTitle" placeholder="LA-Bowling - Einteilung für morgen ist Online">
-            </label>
-            <label>
-              Einteilung Text
-              <textarea id="pushAssignmentBody" rows="2" placeholder="Bitte prüfe deine Startzeit in der TeamApp."></textarea>
-            </label>
-            <label>
-              Nachrichten Titel
-              <input id="pushMessagesTitle" placeholder="LA-Bowling - Du hast eine neue Nachricht im Dashboard">
-            </label>
-            <label>
-              Nachrichten Text
-              <textarea id="pushMessagesBody" rows="2" placeholder="{{text}}"></textarea>
-            </label>
-          </div>
-          <div class="message-editor form-grid">
-            <label>
-              Empfänger
-              <select id="pushTarget">
-                <option value="all">Alle</option>
-                <option value="Counter">Counter</option>
-                <option value="Service">Service</option>
-                <option value="Kueche">Küche</option>
-                <option value="Reinigung">Reinigung</option>
-                <option value="Mechanik">Mechanik</option>
-                <option value="employees">Einzelne Mitarbeiter</option>
-              </select>
-            </label>
-            <div id="pushEmployeePicker" class="message-employee-picker checkbox-grid hidden"></div>
-            <label>
-              Titel
-              <input id="pushTitle" placeholder="z.B. Neuer Dienstplan online">
-            </label>
-            <label>
-              Nachricht
-              <textarea id="pushText" rows="3" placeholder="Nachricht fürs Handy"></textarea>
-            </label>
-            <button id="sendPushNotification" class="primary" type="button">Push senden</button>
-          </div>
-          <p id="pushAdminStatus" class="hint"></p>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="correction">
-        <details class="settings-box admin-priority" open>
-          <summary>Tagesbericht zur Korrektur öffnen</summary>
-          <div class="correction-admin-panel">
-            <p class="settings-note">Nur für bewusste Korrekturen nach Tagesabschluss. Nach dem Öffnen wechselst du automatisch ins Terminal und kannst Personalzeiten, Finanzdaten, Belege und Tagesbericht bearbeiten.</p>
-            <div class="form-grid">
-              <label>Datum<input id="correctionDate" type="date"></label>
-              <label>Grund der Korrektur<textarea id="correctionReason" rows="3" placeholder="z.B. Test, Personal vergessen, Beleg nachgetragen"></textarea></label>
-            </div>
-            <div class="day-report-actions">
-              <button id="openCorrectionReport" class="primary" type="button">Bericht im Korrekturmodus öffnen</button>
-              <button id="closeCorrectionReport" class="secondary danger-button" type="button">Ausgewählten Bericht wieder abschließen</button>
-            </div>
-            <p id="correctionStatus" class="action-status"></p>
-          </div>
-        </details>
-        </section>
-
-        <section class="admin-workspace" data-admin-workspace="settings">
         <details class="settings-box admin-priority">
           <summary>Chefansicht und Tagesbericht definieren</summary>
           <div class="visibility-settings">
@@ -752,9 +478,11 @@
             </section>
             <section>
               <h4>Tagesbericht</h4>
-              <p class="settings-note">Der Tagesbericht ist das Abschlussdokument fuer den Chef: Umsaetze, Rechnungskunden, EC, Ausgaben und Abgabe an Chef gehoeren in eine klare A4-Ansicht.</p>
-              <div class="checkbox-grid report-definition-grid">
+              <div class="checkbox-grid">
                 <label><input type="checkbox" data-day-report-field="ecTotal"> EC gesamt</label>
+                <label><input type="checkbox" data-day-report-field="barBowling"> Bar Bowling</label>
+                <label><input type="checkbox" data-day-report-field="barGastro"> Bar Gastro</label>
+                <label><input type="checkbox" data-day-report-field="barTotal"> Bar gesamt</label>
                 <label><input type="checkbox" data-day-report-field="invoiceCustomers"> Kunden auf Rechnung</label>
                 <label><input type="checkbox" data-day-report-field="expenses"> Ausgaben</label>
                 <label><input type="checkbox" data-day-report-field="documents"> Penta / Handschrift</label>
@@ -796,10 +524,6 @@
               Rechnungsmail für Chef
               <input id="invoiceNotificationTo" type="email" placeholder="pvo65@outlook.de">
             </label>
-            <div class="day-report-actions">
-              <button id="sendInvoiceTestMail" class="secondary" type="button">Test-Mail senden</button>
-              <p id="invoiceTestMailStatus" class="action-status"></p>
-            </div>
           </div>
           </details>
           <details class="settings-sub">
@@ -839,17 +563,6 @@
           </details>
           <details class="settings-sub">
             <summary>Verfügbarkeit und Dienstbereiche</summary>
-          <div class="availability-control-card">
-            <label>
-              Verfügbarkeit abgeben für
-              <input id="availabilityTargetMonthSetting" type="month">
-            </label>
-            <label class="checkline">
-              <input id="availabilitySubmissionOpenSetting" type="checkbox">
-              Abgabe für Mitarbeiter geöffnet
-            </label>
-            <p class="hint">Dieser Monat wird den Mitarbeitern automatisch angezeigt. Aktuell soll hier Juni stehen.</p>
-          </div>
           <div class="position-directory-toolbar">
             <button id="addPositionRow" class="primary" type="button">+ Dienstbereich hinzufügen</button>
             <span class="hint">Personen ohne Verfügbarkeit stellst du direkt in der Mitarbeiter-Kartei ein.</span>
@@ -869,9 +582,12 @@
           </details>
           <button id="saveSettings" class="secondary">Einstellungen speichern</button>
         </details>
-        </section>
 
-        <section class="admin-workspace" data-admin-workspace="approvals">
+        <details class="settings-box">
+          <summary>Mitarbeiterübersicht</summary>
+          <div id="adminEmployeeOverview" class="employee-overview"></div>
+        </details>
+
         <details class="settings-box">
           <summary>Ersatz freigeben</summary>
           <div id="adminSwapList" class="swap-list"></div>
@@ -881,26 +597,9 @@
           <summary>Verfügbarkeit freigeben</summary>
           <div id="adminAvailabilityRequests" class="swap-list"></div>
         </details>
-        </section>
         </div>
       </section>
     </main>
-
-    <div id="pinChangeOverlay" class="pin-change-overlay hidden" role="dialog" aria-modal="true">
-      <section class="pin-change-card">
-        <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
-        <h2>Neuen PIN vergeben</h2>
-        <p id="pinChangeText">Bitte lege deinen persönlichen PIN fest.</p>
-        <label>Neuer PIN
-          <input id="newEmployeePin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="4 bis 10 Ziffern">
-        </label>
-        <label>PIN wiederholen
-          <input id="confirmEmployeePin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="PIN wiederholen">
-        </label>
-        <button id="saveNewEmployeePin" class="primary" type="button">PIN speichern</button>
-        <button id="cancelPinChange" class="secondary" type="button">Abmelden</button>
-      </section>
-    </div>
 
     <div id="toast" class="toast" role="status"></div>
     <script>
@@ -914,22 +613,9 @@
         const panel = document.getElementById(button.dataset.tab);
         if (panel) panel.classList.add("active");
       });
-
-      const adminContent = document.querySelector("#adminContent");
-      if (adminContent) adminContent.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-admin-workspace-tab]");
-        if (!button) return;
-        const target = button.dataset.adminWorkspaceTab;
-        adminContent.querySelectorAll("[data-admin-workspace-tab]").forEach((tab) => {
-          tab.classList.toggle("active", tab === button);
-        });
-        adminContent.querySelectorAll("[data-admin-workspace]").forEach((section) => {
-          section.classList.toggle("active", section.dataset.adminWorkspace === target);
-        });
-      });
     </script>
-    <script src="teamapp-client.js?v=20260602-einteilung-reiter-v1"></script>
-    <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
+    <script src="teamapp-client.js?v=20260615-invoice-split-v2"></script>
+    <script src="terminal-roles-addon.js?v=20260506-terminal-roles-v1"></script>
   </body>
 </html>
 
