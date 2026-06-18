@@ -3075,8 +3075,9 @@ function reportTipTotal(report = {}) {
   if (report.tipTotal !== "" && report.tipTotal != null) return reportMoneyNumber(report.tipTotal);
   const revenueBowling = reportMoneyNumber(report.revenueBowling || report.barBowling);
   const revenueGastro = gastroRevenueTotal(report);
+  const invoiceTotal = reportInvoiceTotal(report);
   const revenueTotal = Math.max(0, revenueBowling + revenueGastro - reportPersonalConsumptionTotal(report));
-  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) - revenueTotal);
+  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) + invoiceTotal - revenueTotal);
 }
 
 function reportChefHandoverTotal(report = {}) {
@@ -9338,7 +9339,7 @@ function renderDailyTipDistribution() {
     <article>
       <span>Trinkgeld gesamt</span>
       <strong>${formatMoney(result.tipTotal)}</strong>
-      <small>Bar + Ausgaben + EC - Umsatz nach Personalverzehr</small>
+      <small>Bar + Ausgaben + EC + Rechnung - Umsatz nach Personalverzehr</small>
     </article>
     <article class="tip-summary-handover">
       <span>Abzugeben an Chef</span>
@@ -9495,8 +9496,9 @@ function calculateTipDistribution(dateKey) {
   const revenueBowling = parseMoneyInput($("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "");
   const revenueFood = parseMoneyInput($("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "");
   const revenueGastro = gastroRevenueFromFormOrReport();
+  const invoiceTotal = reportInvoiceTotal(state.terminalReport || {});
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
-  const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal - totalRevenue);
+  const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal + invoiceTotal - totalRevenue);
   const openingTime = tipOpeningTime(dateKey);
   const entries = state.terminalEntries || {};
   const employees = terminalTipEmployeesForDay(dateKey);
@@ -9542,6 +9544,7 @@ function calculateTipDistribution(dateKey) {
     revenueFood,
     revenueOther: parseMoneyInput($("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || ""),
     revenueGastro,
+    invoiceTotal,
     totalRevenue,
     tipTotal,
     distributedTipTotal,

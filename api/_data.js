@@ -1051,8 +1051,34 @@ function reportTipTotalForSync(report = {}) {
   const revenueBowling = tipMoneyNumber(report.revenueBowling ?? report.barBowling);
   const revenueGastro = tipMoneyNumber(report.revenueGastro ?? report.barGastro)
     || tipMoneyNumber(report.revenueDrinks) + tipMoneyNumber(report.revenueFood) + tipMoneyNumber(report.revenueOther);
+  const invoiceTotal = reportInvoiceTotalForSync(report);
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
-  return Math.max(0, cashTotal + cashExpenses + ecTotal - totalRevenue);
+  return Math.max(0, cashTotal + cashExpenses + ecTotal + invoiceTotal - totalRevenue);
+}
+
+function reportInvoiceTotalForSync(report = {}) {
+  return (Array.isArray(report.invoiceCustomers) ? report.invoiceCustomers : [])
+    .filter(invoiceIsReadyForSync)
+    .reduce((sum, item) => sum + invoiceTotalForSync(item), 0);
+}
+
+function invoiceTotalForSync(item = {}) {
+  const splitTotal = tipMoneyNumber(item.bowlingAmount) + invoiceGastroSplit(item).total;
+  return splitTotal || tipMoneyNumber(item.amount);
+}
+
+function invoiceIsReadyForSync(item = {}) {
+  if (item?.invoiceReady === true || item?.invoiceReady === "true") return true;
+  if (item?.invoiceReady === false || item?.invoiceReady === "false") return false;
+  return invoiceTotalForSync(item) > 0 && invoiceHasReceiptForSync(item);
+}
+
+function invoiceHasReceiptForSync(item = {}) {
+  return Boolean(
+    item?.receiptData || item?.receiptPath || item?.receiptUrl
+    || item?.bowlingReceiptData || item?.bowlingReceiptPath || item?.bowlingReceiptUrl
+    || item?.gastroReceiptData || item?.gastroReceiptPath || item?.gastroReceiptUrl
+  );
 }
 
 function tipAreaForSync(settings, scheduleDay, report, employee) {
