@@ -3028,6 +3028,20 @@ function reportInvoiceTotal(report = {}) {
   return reportItemsTotal(reportInvoiceCustomers(report));
 }
 
+function normalizedInvoicePaymentMethod(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "überweisung" || text === "ueberweisung") return "ueberweisung";
+  if (text === "ec") return "ec";
+  if (text === "bar") return "bar";
+  return "";
+}
+
+function reportTransferInvoiceTotal(report = {}) {
+  return reportInvoiceCustomers(report)
+    .filter((item) => normalizedInvoicePaymentMethod(item.paymentMethod) === "ueberweisung")
+    .reduce((sum, item) => sum + invoiceTotal(item), 0);
+}
+
 function barTotal(report = {}) {
   if (report.cashTotal !== "" && report.cashTotal != null) return reportMoneyNumber(report.cashTotal);
   return reportMoneyNumber(report.barBowling) + reportMoneyNumber(report.barGastro);
@@ -3075,9 +3089,9 @@ function reportTipTotal(report = {}) {
   if (report.tipTotal !== "" && report.tipTotal != null) return reportMoneyNumber(report.tipTotal);
   const revenueBowling = reportMoneyNumber(report.revenueBowling || report.barBowling);
   const revenueGastro = gastroRevenueTotal(report);
-  const invoiceTotal = reportInvoiceTotal(report);
+  const transferInvoiceTotal = reportTransferInvoiceTotal(report);
   const revenueTotal = Math.max(0, revenueBowling + revenueGastro - reportPersonalConsumptionTotal(report));
-  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) + invoiceTotal - revenueTotal);
+  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) + transferInvoiceTotal - revenueTotal);
 }
 
 function reportChefHandoverTotal(report = {}) {
@@ -9339,7 +9353,7 @@ function renderDailyTipDistribution() {
     <article>
       <span>Trinkgeld gesamt</span>
       <strong>${formatMoney(result.tipTotal)}</strong>
-      <small>Bar + Ausgaben + EC + Rechnung - Umsatz nach Personalverzehr</small>
+      <small>Bar + Ausgaben + EC + Rechnung per Überweisung - Umsatz nach Personalverzehr</small>
     </article>
     <article class="tip-summary-handover">
       <span>Abzugeben an Chef</span>
@@ -9496,9 +9510,9 @@ function calculateTipDistribution(dateKey) {
   const revenueBowling = parseMoneyInput($("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "");
   const revenueFood = parseMoneyInput($("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "");
   const revenueGastro = gastroRevenueFromFormOrReport();
-  const invoiceTotal = reportInvoiceTotal(state.terminalReport || {});
+  const transferInvoiceTotal = reportTransferInvoiceTotal(state.terminalReport || {});
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
-  const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal + invoiceTotal - totalRevenue);
+  const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal + transferInvoiceTotal - totalRevenue);
   const openingTime = tipOpeningTime(dateKey);
   const entries = state.terminalEntries || {};
   const employees = terminalTipEmployeesForDay(dateKey);
@@ -9544,7 +9558,7 @@ function calculateTipDistribution(dateKey) {
     revenueFood,
     revenueOther: parseMoneyInput($("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || ""),
     revenueGastro,
-    invoiceTotal,
+    invoiceTotal: transferInvoiceTotal,
     totalRevenue,
     tipTotal,
     distributedTipTotal,

@@ -1051,14 +1051,23 @@ function reportTipTotalForSync(report = {}) {
   const revenueBowling = tipMoneyNumber(report.revenueBowling ?? report.barBowling);
   const revenueGastro = tipMoneyNumber(report.revenueGastro ?? report.barGastro)
     || tipMoneyNumber(report.revenueDrinks) + tipMoneyNumber(report.revenueFood) + tipMoneyNumber(report.revenueOther);
-  const invoiceTotal = reportInvoiceTotalForSync(report);
+  const invoiceTotal = reportTransferInvoiceTotalForSync(report);
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
   return Math.max(0, cashTotal + cashExpenses + ecTotal + invoiceTotal - totalRevenue);
 }
 
-function reportInvoiceTotalForSync(report = {}) {
+function normalizedInvoicePaymentMethodForSync(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "überweisung" || text === "ueberweisung") return "ueberweisung";
+  if (text === "ec") return "ec";
+  if (text === "bar") return "bar";
+  return "";
+}
+
+function reportTransferInvoiceTotalForSync(report = {}) {
   return (Array.isArray(report.invoiceCustomers) ? report.invoiceCustomers : [])
     .filter(invoiceIsReadyForSync)
+    .filter((item) => normalizedInvoicePaymentMethodForSync(item?.paymentMethod) === "ueberweisung")
     .reduce((sum, item) => sum + invoiceTotalForSync(item), 0);
 }
 
