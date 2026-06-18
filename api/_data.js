@@ -849,6 +849,7 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
   const gastroAmount = gastroSplit.total;
   const totalAmount = tipMoneyNumber(customer.amount) || bowlingAmount + gastroAmount;
   const tipText = String(customer.tip || "").trim() || "-";
+  const paymentMethod = String(customer.paymentMethod || "").trim() || "-";
   const gastroLines = gastroSplit.hasSplit
     ? [
       `Gastro Getränke: ${formatInvoiceMoney(gastroSplit.drinks)}`,
@@ -858,7 +859,7 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
     ]
     : [`Gastro Gesamt: ${formatInvoiceMoney(gastroAmount)}`];
   return [
-    "Kunde auf Rechnung ist in der TeamApp bereit für den Chef",
+    "Bitte eine Rechnung schreiben",
     "",
     `Datum: ${formattedDate}`,
     `Tagesbericht-Zuordnung: ${formattedDate}`,
@@ -867,6 +868,7 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
     `Telefonnummer: ${String(customer.phone || "").trim() || "-"}`,
     `E-Mail für Rechnung: ${String(customer.email || "").trim() || "-"}`,
     `Rechnungsadresse: ${String(customer.address || "").trim() || "-"}`,
+    `Zahlungsart: ${paymentMethod}`,
     `Bowling Betrag: ${formatInvoiceMoney(bowlingAmount)}`,
     ...gastroLines,
     `Gesamtbetrag: ${formatInvoiceMoney(totalAmount)}`,
@@ -916,7 +918,7 @@ async function sendInvoiceNotificationEmail(payload = {}) {
     const info = await transport.sendMail({
       from: String(process.env.EMAIL_FROM || smtpUser).trim(),
       to,
-      subject: String(process.env.INVOICE_EMAIL_SUBJECT || "LA-Bowling - Kunde auf Rechnung bereit für Chef").trim(),
+      subject: String(process.env.INVOICE_EMAIL_SUBJECT || "LA-Bowling - Bitte eine Rechnung schreiben").trim(),
       text: buildInvoiceNotificationText(payload)
     });
     return {

@@ -802,6 +802,7 @@ function customerDirectoryEntry(item = {}) {
     phone: String(item.phone || "").trim().slice(0, 80),
     email: String(item.email || "").trim().slice(0, 180),
     address: String(item.address || "").trim().slice(0, 600),
+    paymentMethod: String(item.paymentMethod || "").trim().slice(0, 40),
     tip: String(item.tip || "").trim().slice(0, 160),
     note: String(item.note || "").trim().slice(0, 600),
     createdAt: String(item.createdAt || new Date().toISOString()),
@@ -8533,6 +8534,7 @@ function customerMasterToInvoice(customer = {}) {
     phone: customer.phone || "",
     email: customer.email || "",
     address: customer.address || "",
+    paymentMethod: customer.paymentMethod || "",
     tip: customer.tip || "",
     note: customer.note || "",
     createdAt: new Date().toISOString(),
@@ -8604,6 +8606,14 @@ function invoiceRowHtml(item = {}) {
         <label>Ansprechpartner<input data-report-field="contact" value="${escapeHtml(item.contact || "")}" placeholder="optional"></label>
         <label>Telefon<input data-report-field="phone" type="tel" value="${escapeHtml(item.phone || "")}" placeholder="optional"></label>
         <label>E-Mail<input data-report-field="email" type="email" value="${escapeHtml(item.email || "")}" placeholder="rechnung@kunde.de"></label>
+        <label>Zahlungsart
+          <select data-report-field="paymentMethod">
+            <option value=""${!item.paymentMethod ? " selected" : ""}>Bitte wählen</option>
+            <option value="Bar"${item.paymentMethod === "Bar" ? " selected" : ""}>Bar</option>
+            <option value="EC"${item.paymentMethod === "EC" ? " selected" : ""}>EC</option>
+            <option value="Überweisung"${item.paymentMethod === "Überweisung" ? " selected" : ""}>Überweisung</option>
+          </select>
+        </label>
         <label>Tipp<input data-report-field="tip" value="${escapeHtml(item.tip || "")}" placeholder="optional"></label>
       </div>
       <div class="report-entry-grid">
