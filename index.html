@@ -154,6 +154,7 @@
             <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
             <button class="terminal-tab" data-terminal-tab="checks" type="button">Kontrollen</button>
             <button class="terminal-tab" data-terminal-tab="assignments" type="button">Einteilung</button>
+            <button class="terminal-tab" data-terminal-tab="tables" type="button">Tischplan</button>
             <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
             <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
             <button class="terminal-tab" data-terminal-tab="tips" type="button">Trinkgeld</button>
@@ -187,6 +188,125 @@
               <button id="saveTerminalAssignments" class="primary" type="button">Einteilung speichern</button>
             </div>
             <div id="terminalAssignmentList" class="terminal-assignment-list"></div>
+          </section>
+          <section id="terminalTablesSection" class="terminal-section hidden">
+            <div class="terminal-section-head">
+              <div>
+                <h3>Tischplan</h3>
+                <p class="hint">Reservierungen direkt im Terminal anlegen, Tische per Drag & Drop zu Tafeln verbinden und den Plan bei Bedarf im Vollbild führen.</p>
+              </div>
+              <div class="table-plan-toolbar">
+                <div class="segmented-control table-plan-view-switch" aria-label="Tischplan-Ansicht">
+                  <button id="tablePlanManageView" class="active" type="button" data-table-plan-view="manage">Verwaltung</button>
+                  <button id="tablePlanWorkView" type="button" data-table-plan-view="work">Arbeitsansicht</button>
+                </div>
+                <div class="table-plan-toolbar-actions">
+                  <label class="table-plan-date-control">Plan-Datum
+                    <input id="tablePlanDate" type="date">
+                  </label>
+                  <button id="loadTablePlanDate" class="secondary" type="button">Datum laden</button>
+                  <button id="loadTodayTablePlan" class="secondary hidden" type="button">Heute öffnen</button>
+                  <button id="toggleTablePlanFullscreen" class="secondary" type="button">Vollbild</button>
+                </div>
+              </div>
+              <div id="tablePlanDateHint" class="hint table-plan-date-hint hidden"></div>
+            </div>
+            <div class="table-plan-shell">
+              <section class="table-plan-board-panel">
+                <div id="tablePlanBoardMeta" class="table-plan-meta"></div>
+                <div id="tablePlanBoard" class="table-plan-board"></div>
+              </section>
+              <aside class="table-plan-sidebar">
+                <section class="table-plan-editor">
+                  <div class="terminal-task-group-head">
+                    <div>
+                      <h4>Reservierung</h4>
+                      <span id="tablePlanSelectionSummary">Tische auswählen</span>
+                    </div>
+                    <button id="resetTablePlanDraft" class="secondary" type="button">Neu</button>
+                  </div>
+                  <div id="tablePlanDraftSummary" class="table-plan-draft-summary"></div>
+                  <div id="tablePlanConflictHint" class="hint"></div>
+                  <section id="tablePlanGroupPanel" class="table-plan-group-panel">
+                    <div class="terminal-task-group-head">
+                      <div>
+                        <h4>Tafel</h4>
+                        <span id="tablePlanGroupSummary">Mindestens 2 benachbarte Tische auswählen</span>
+                      </div>
+                      <button id="resetTablePlanGroupDraft" class="secondary" type="button">Neu</button>
+                    </div>
+                    <div id="tablePlanGroupDraftSummary" class="table-plan-draft-summary"></div>
+                    <div class="form-grid table-plan-group-form">
+                      <label>Tischnummer / Bezeichnung
+                        <input id="tablePlanGroupLabel" data-table-plan-group-field="label" type="text" maxlength="120" placeholder="z. B. T15/16 oder Tafel Rot">
+                      </label>
+                    </div>
+                    <div class="table-plan-editor-actions">
+                      <button id="saveTablePlanGroup" class="primary" type="button">Tafel speichern</button>
+                      <button id="deleteTablePlanGroup" class="secondary danger-lite" type="button">Tafel löschen</button>
+                    </div>
+                    <div id="tablePlanGroupList" class="table-plan-group-list"></div>
+                  </section>
+                  <section class="table-plan-staff-panel">
+                    <div class="terminal-task-group-head">
+                      <div>
+                        <h4>Personalbereiche</h4>
+                        <span id="tablePlanStaffSummary">Noch kein Bereich zugewiesen</span>
+                      </div>
+                      <button id="resetTablePlanStaffDraft" class="secondary" type="button">Neu</button>
+                    </div>
+                    <div class="form-grid table-plan-staff-form">
+                      <label>Mitarbeiter
+                        <select id="tablePlanStaffEmployee" data-table-plan-staff-field="employee"></select>
+                      </label>
+                      <label>Bereich
+                        <select id="tablePlanStaffPreset" data-table-plan-staff-field="presetId"></select>
+                      </label>
+                      <label>Farbe
+                        <input id="tablePlanStaffColor" data-table-plan-staff-field="color" type="color" value="#e1172f">
+                      </label>
+                      <label class="table-plan-note-field">Hinweis
+                        <input id="tablePlanStaffNote" data-table-plan-staff-field="note" type="text" maxlength="240" placeholder="z. B. Springer, Ansprechpartner, Reservierungen">
+                      </label>
+                    </div>
+                    <div class="table-plan-editor-actions">
+                      <button id="saveTablePlanStaff" class="primary" type="button">Bereich speichern</button>
+                      <button id="deleteTablePlanStaff" class="secondary danger-lite" type="button">Bereich löschen</button>
+                    </div>
+                    <div id="tablePlanStaffList" class="table-plan-staff-list"></div>
+                  </section>
+                  <div class="form-grid table-plan-form">
+                    <label>Uhrzeit<input id="tablePlanTime" data-table-plan-field="time" type="time"></label>
+                    <label>Reservierungsname<input id="tablePlanName" data-table-plan-field="name" placeholder="Name / Anlass"></label>
+                    <label>Personen<input id="tablePlanPeople" data-table-plan-field="people" type="number" min="1" step="1" placeholder="0"></label>
+                    <label class="table-plan-note-field">Notiz<textarea id="tablePlanNote" data-table-plan-field="note" rows="3" placeholder="z. B. Kinderstuhl, Geburtstag, zusammen mit T16"></textarea></label>
+                  </div>
+                  <div class="table-plan-editor-actions">
+                    <button id="saveTablePlanReservation" class="primary" type="button">Reservierung speichern</button>
+                    <button id="deleteTablePlanReservation" class="secondary danger-lite" type="button">Reservierung löschen</button>
+                  </div>
+                </section>
+                <section class="table-plan-list-panel">
+                  <div class="terminal-section-head">
+                    <div>
+                      <h3>Druckliste</h3>
+                      <p class="hint">Sortierbar nach Uhrzeit, Tisch oder Bereich.</p>
+                    </div>
+                    <div class="table-plan-list-actions">
+                      <label>Sortierung
+                        <select id="tablePlanSort">
+                          <option value="time">Uhrzeit</option>
+                          <option value="table">Tisch</option>
+                          <option value="area">Bereich</option>
+                        </select>
+                      </label>
+                      <button id="printTablePlanList" class="secondary" type="button">Druckliste drucken</button>
+                    </div>
+                  </div>
+                  <div id="tablePlanPrintArea" class="table-plan-print-area"></div>
+                </section>
+              </aside>
+            </div>
           </section>
           <section id="terminalServiceSection" class="terminal-section hidden">
             <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
@@ -368,12 +488,12 @@
             <details class="report-subsection customer-master-section" open>
               <summary>Kundenstamm</summary>
               <div class="customer-master-tools">
-                <label>Kunde suchen<input id="customerMasterSearch" placeholder="Firma, Ansprechpartner, E-Mail"></label>
+                <label>Kunde suchen<input id="customerMasterSearch" placeholder="Name, Firma, Ansprechpartner"></label>
                 <label>Kunde auswählen<select id="customerMasterSelect"></select></label>
               </div>
               <div id="customerMasterPreview" class="customer-master-preview"></div>
               <div class="day-report-actions">
-                <button id="addCustomerFromMaster" class="primary" type="button">In Tagesbericht übernehmen</button>
+                <button id="addCustomerFromMaster" class="primary" type="button">Neue Rechnung mit diesem Kunden</button>
               </div>
               <p class="hint customer-master-hint">Neue Rechnungskunden werden nach dem Speichern automatisch in diese Kartei übernommen.</p>
             </details>
@@ -462,6 +582,7 @@
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="employees">Mitarbeiter Sicht</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="numbers">Monatszahlen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="floorplan">Grundplan</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="offers">Angebote</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="push">Push</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="correction">Korrekturmodus</button>
@@ -618,13 +739,6 @@
           </div>
         </details>
 
-        <section class="admin-workspace" data-admin-workspace="offers">
-        <details class="settings-box admin-priority" open>
-          <summary>Angebote erstellen</summary>
-          <div id="adminOffers" class="offer-workspace"></div>
-        </details>
-        </section>
-
         <details class="settings-box admin-priority">
           <summary>Popup-Erinnerungen Terminal</summary>
           <div class="admin-task-form">
@@ -650,6 +764,138 @@
         <details class="settings-box admin-priority">
           <summary>Verfügbarkeiten Vorschau</summary>
           <div id="adminAvailabilityPreview" class="availability-preview"></div>
+        </details>
+        </section>
+
+        <section class="admin-workspace" data-admin-workspace="floorplan">
+        <details class="settings-box admin-priority" open>
+          <summary>Tischplan Grundplan</summary>
+          <p class="settings-note">Hier definierst du den festen Grundriss: Tischname, Bereich, Größe, Position und Standard-Personenzahl. Der Terminal-Tischplan nutzt diese Daten später nur noch für den Tagesbetrieb.</p>
+          <div class="table-plan-shell admin-table-plan-shell">
+            <section class="table-plan-board-panel">
+              <div class="table-plan-toolbar">
+                <div>
+                  <h3>Grundriss</h3>
+                  <p class="hint">Tisch im Plan anklicken, dann rechts bearbeiten. Eigene Tische kannst du hier zusätzlich anlegen.</p>
+                </div>
+                <div class="table-plan-toolbar-actions">
+                  <button id="resetAdminTablePlanDraft" class="secondary" type="button">Neuer Tisch</button>
+                </div>
+              </div>
+              <div id="adminTablePlanBoardMeta" class="table-plan-meta"></div>
+              <div id="adminTablePlanBoard" class="table-plan-board"></div>
+            </section>
+            <aside class="table-plan-sidebar">
+              <section class="table-plan-editor">
+                <div class="terminal-task-group-head">
+                  <div>
+                    <h4>Stammdaten</h4>
+                    <span id="adminTablePlanSelectionSummary">Tisch auswählen oder neuen Tisch anlegen</span>
+                  </div>
+                </div>
+                <div id="adminTablePlanDraftSummary" class="table-plan-draft-summary"></div>
+                <div class="form-grid table-plan-custom-form">
+                  <label>Tisch-ID
+                    <input id="adminTablePlanId" data-admin-table-field="id" type="text" maxlength="16" placeholder="z. B. T200">
+                  </label>
+                  <label>Bezeichnung
+                    <input id="adminTablePlanLabel" data-admin-table-field="label" type="text" maxlength="60" placeholder="z. B. T200">
+                  </label>
+                  <label>Bereich
+                    <input id="adminTablePlanArea" data-admin-table-field="area" type="text" maxlength="80" placeholder="z. B. Gastraum">
+                  </label>
+                  <label>Plätze
+                    <input id="adminTablePlanSeats" data-admin-table-field="seats" type="number" min="1" step="1" placeholder="4">
+                  </label>
+                  <label>Form
+                    <select id="adminTablePlanShape" data-admin-table-field="shape">
+                      <option value="table">Tisch</option>
+                      <option value="room">Raum</option>
+                      <option value="lane">Bahn</option>
+                    </select>
+                  </label>
+                  <label>Links (%)
+                    <input id="adminTablePlanX" data-admin-table-field="x" type="number" min="0" max="96" step="0.1" placeholder="20">
+                  </label>
+                  <label>Oben (%)
+                    <input id="adminTablePlanY" data-admin-table-field="y" type="number" min="0" max="96" step="0.1" placeholder="20">
+                  </label>
+                  <label>Breite (%)
+                    <input id="adminTablePlanW" data-admin-table-field="w" type="number" min="2" max="40" step="0.1" placeholder="6">
+                  </label>
+                  <label>Höhe (%)
+                    <input id="adminTablePlanH" data-admin-table-field="h" type="number" min="2" max="30" step="0.1" placeholder="5">
+                  </label>
+                </div>
+                <div class="table-plan-editor-actions">
+                  <button id="duplicateAdminTablePlanEntry" class="secondary" type="button">Kopieren</button>
+                  <button id="saveAdminTablePlanEntry" class="primary" type="button">Grundplan speichern</button>
+                  <button id="deleteAdminTablePlanEntry" class="secondary danger-lite" type="button">Tisch löschen</button>
+                </div>
+                <p id="adminTablePlanStatus" class="action-status"></p>
+                <p class="settings-note">Tisch anklicken und ziehen = verschieben. Rechte untere Ecke ziehen = Größe ändern. Über Kopieren legst du ähnliche Tische schneller an.</p>
+                <div class="terminal-task-group-head">
+                  <div>
+                    <h4>Zusätzliche Tische</h4>
+                    <span>Nur selbst angelegte Tische können gelöscht werden.</span>
+                  </div>
+                </div>
+                <div id="adminTablePlanCustomList" class="table-plan-group-list"></div>
+              </section>
+              <section class="table-plan-editor">
+                <div class="terminal-task-group-head">
+                  <div>
+                    <h4>Bereiche</h4>
+                    <span id="adminTablePlanZoneSelectionSummary">Bereich im Plan anklicken</span>
+                  </div>
+                </div>
+                <div id="adminTablePlanZoneDraftSummary" class="table-plan-draft-summary"></div>
+                <div class="form-grid table-plan-custom-form">
+                  <label>Bereich-ID
+                    <input id="adminTablePlanZoneId" type="text" placeholder="z. B. nz-big">
+                  </label>
+                  <label>Name
+                    <input id="adminTablePlanZoneLabel" data-admin-zone-field="label" type="text" maxlength="60" placeholder="z. B. NZ Groß">
+                  </label>
+                  <label>Darstellung
+                    <select id="adminTablePlanZoneClass" data-admin-zone-field="className">
+                      <option value="is-open">Offener Bereich</option>
+                      <option value="is-room">Raum</option>
+                      <option value="is-lanes">Bahnen</option>
+                    </select>
+                  </label>
+                  <label class="checkbox-inline">Sichtbar im Terminal
+                    <input id="adminTablePlanZoneVisible" data-admin-zone-field="visible" type="checkbox" checked>
+                  </label>
+                  <label>Links (%)
+                    <input id="adminTablePlanZoneX" data-admin-zone-field="x" type="number" min="0" max="98" step="0.1" placeholder="56">
+                  </label>
+                  <label>Oben (%)
+                    <input id="adminTablePlanZoneY" data-admin-zone-field="y" type="number" min="0" max="98" step="0.1" placeholder="4">
+                  </label>
+                  <label>Breite (%)
+                    <input id="adminTablePlanZoneW" data-admin-zone-field="w" type="number" min="4" max="98" step="0.1" placeholder="27">
+                  </label>
+                  <label>Höhe (%)
+                    <input id="adminTablePlanZoneH" data-admin-zone-field="h" type="number" min="4" max="98" step="0.1" placeholder="10">
+                  </label>
+                </div>
+                <div class="table-plan-editor-actions">
+                  <button id="saveAdminTablePlanZone" class="primary" type="button">Bereich speichern</button>
+                  <button id="deleteAdminTablePlanZone" class="secondary danger-lite" type="button">Standard wiederherstellen</button>
+                </div>
+                <p id="adminTablePlanZoneStatus" class="action-status"></p>
+                <p class="settings-note">Bereiche definieren die großen Zonen im Tischplan. Unsichtbare Bereiche bleiben im Grundplan hinterlegt, werden aber im Tagesbetrieb ausgeblendet.</p>
+              </section>
+            </aside>
+          </div>
+        </details>
+        </section>
+
+        <section class="admin-workspace" data-admin-workspace="offers">
+        <details class="settings-box admin-priority" open>
+          <summary>Angebote erstellen</summary>
+          <div id="adminOffers" class="offer-workspace"></div>
         </details>
         </section>
 

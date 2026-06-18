@@ -12,6 +12,26 @@
   writeAppData
 } = require("./_data");
 
+const TABLE_PLAN_BASE_IDS = new Set([
+  ...Array.from({ length: 14 }, (_, index) => String(index + 1)),
+  "T50", "T15", "T16", "T17", "T18", "T19",
+  "T28", "T27", "T26", "T25", "T24",
+  "T30", "T31", "T32", "T33",
+  "T20", "T21", "T22", "T23",
+  "T60", "T70",
+  "T101", "T102", "T103", "T104"
+]);
+const TABLE_PLAN_BASE_ZONE_IDS = new Set([
+  "lanes",
+  "nz-small",
+  "main-left",
+  "dj",
+  "main-bottom",
+  "nz-big",
+  "hut",
+  "billiard"
+]);
+
 module.exports = async function handler(req, res) {
   try {
     if (req.method !== "POST") return sendJson(res, 405, { error: "Methode nicht erlaubt." });
@@ -128,6 +148,158 @@ module.exports = async function handler(req, res) {
         ok: false,
         sent: false,
         error: result?.error || "Test-Mail konnte nicht versendet werden."
+      });
+    }
+
+    if (body.action === "save-table-plan-entry") {
+      const table = cleanTablePlanEntry(body.table || {});
+      if (!table.id || !table.label || !table.area) {
+        return sendJson(res, 400, { error: "Bitte Tisch-ID, Bezeichnung und Bereich eintragen." });
+      }
+      if (!table.seats) {
+        return sendJson(res, 400, { error: "Bitte eine gueltige Personenzahl eintragen." });
+      }
+      appData.tablePlanConfig = normalizeTablePlanConfigSettings(appData.tablePlanConfig);
+      if (table.baseTable) {
+        if (!TABLE_PLAN_BASE_IDS.has(table.id)) {
+          return sendJson(res, 400, { error: "Dieser Grundtisch ist nicht bekannt." });
+        }
+        appData.tablePlanConfig.tableOverrides[table.id] = {
+          label: table.label,
+          area: table.area,
+          seats: table.seats,
+          x: table.x,
+          y: table.y,
+          w: table.w,
+          h: table.h,
+          shape: table.shape
+        };
+        appData.tablePlanConfig.seatsByTable[table.id] = table.seats;
+      } else {
+        if (TABLE_PLAN_BASE_IDS.has(table.id)) {
+          return sendJson(res, 400, { error: "Diese Tisch-ID ist bereits im Grundriss vorhanden." });
+        }
+        const nextCustomTables = (appData.tablePlanConfig.customTables || []).filter((item) => item.id !== table.id);
+        nextCustomTables.push({
+          id: table.id,
+          label: table.label,
+          area: table.area,
+          seats: table.seats,
+          x: table.x,
+          y: table.y,
+          w: table.w,
+          h: table.h,
+          shape: table.shape
+        });
+        appData.tablePlanConfig.customTables = sortTablePlanEntries(nextCustomTables);
+        appData.tablePlanConfig.seatsByTable[table.id] = table.seats;
+      }
+      appData.tablePlanConfig = normalizeTablePlanConfigSettings(appData.tablePlanConfig);
+      await writeAppData(appData);
+      return sendJson(res, 200, {
+        ok: true,
+        message: table.baseTable ? `Grundtisch ${table.id} gespeichert.` : `Tisch ${table.id} gespeichert.`,
+        tablePlanConfig: appData.tablePlanConfig
+      });
+    }
+
+    if (body.action === "delete-table-plan-entry") {
+      const tableId = cleanTablePlanId(body.tableId);
+      if (!tableId) return sendJson(res, 400, { error: "Tisch nicht gefunden." });
+      appData.tablePlanConfig = normalizeTablePlanConfigSettings(appData.tablePlanConfig);
+      const isBaseTable = body.baseTable === true || body.baseTable === "true";
+      if (isBaseTable || TABLE_PLAN_BASE_IDS.has(tableId)) {
+        delete appData.tablePlanConfig.tableOverrides[tableId];
+        delete appData.tablePlanConfig.seatsByTable[tableId];
+        appData.tablePlanConfig = normalizeTablePlanConfigSettings(appData.tablePlanConfig);
+        await writeAppData(appData);
+        return sendJson(res, 200, {
+          ok: true,
+          message: `Standardwerte fuer ${tableId} wiederhergestellt.`,
+          tablePlanConfig: appData.tablePlanConfig
+        });
+      }
+      const exists = (appData.tablePlanConfig.customTables || []).some((item) => item.id === tableId);
+      if (!exists) return sendJson(res, 400, { error: "Nur selbst angelegte Tische koennen geloescht werden." });
+      appData.tablePlanConfig.customTables = (appData.tablePlanConfig.customTables || []).filter((item) => item.id !== tableId);
+      delete appData.tablePlanConfig.seatsByTable[tableId];
+      delete appData.tablePlanConfig.tableOverrides[tableId];
+      appData.dayReports = Object.fromEntries(Object.entries(appData.dayReports || {}).map(([dateKey, report]) => {
+        const tableReservations = Array.isArray(report?.tableReservations) ? report.tableReservations : [];
+        const tableGroups = Array.isArray(report?.tableGroups) ? report.tableGroups : [];
+        const tableStaffAssignments = Array.isArray(report?.tableStaffAssignments) ? report.tableStaffAssignments : [];
+        return [dateKey, {
+          ...report,
+          tableReservations: tableReservations
+            .map((item) => ({
+              ...item,
+              tableIds: [...new Set((Array.isArray(item?.tableIds) ? item.tableIds : []).map(cleanTablePlanId).filter((id) => id && id !== tableId))]
+            }))
+            .filter((item) => item.tableIds.length),
+          tableGroups: tableGroups
+            .map((item) => ({
+              ...item,
+              tableIds: [...new Set((Array.isArray(item?.tableIds) ? item.tableIds : []).map(cleanTablePlanId).filter((id) => id && id !== tableId))]
+            }))
+            .filter((item) => item.tableIds.length >= 2),
+          tableStaffAssignments: tableStaffAssignments
+            .map((item) => ({
+              ...item,
+              presetId: cleanTablePlanId(item?.presetId) === tableId ? "" : cleanTablePlanId(item?.presetId),
+              tableIds: [...new Set((Array.isArray(item?.tableIds) ? item.tableIds : []).map(cleanTablePlanId).filter((id) => id && id !== tableId))]
+            }))
+            .filter((item) => item.presetId || item.tableIds.length)
+        }];
+      }));
+      appData.tablePlanConfig = normalizeTablePlanConfigSettings(appData.tablePlanConfig);
+      await writeAppData(appData);
+      return sendJson(res, 200, {
+        ok: true,
+        message: `Tisch ${tableId} geloescht.`,
+        tablePlanConfig: appData.tablePlanConfig
+      });
+    }
+
+    if (body.action === "save-table-plan-zone") {
+      const zone = cleanTablePlanZoneEntry(body.zone || {});
+      if (!zone.id || !TABLE_PLAN_BASE_ZONE_IDS.has(zone.id)) {
+        return sendJson(res, 400, { error: "Bereich nicht gefunden." });
+      }
+      if (!zone.label) {
+        return sendJson(res, 400, { error: "Bitte Bereichsname eintragen." });
+      }
+      appData.tablePlanConfig = normalizeTablePlanConfigSettings(appData.tablePlanConfig);
+      appData.tablePlanConfig.zoneOverrides[zone.id] = {
+        label: zone.label,
+        x: zone.x,
+        y: zone.y,
+        w: zone.w,
+        h: zone.h,
+        className: zone.className,
+        visible: zone.visible !== false
+      };
+      appData.tablePlanConfig = normalizeTablePlanConfigSettings(appData.tablePlanConfig);
+      await writeAppData(appData);
+      return sendJson(res, 200, {
+        ok: true,
+        message: `Bereich ${zone.label} gespeichert.`,
+        tablePlanConfig: appData.tablePlanConfig
+      });
+    }
+
+    if (body.action === "delete-table-plan-zone") {
+      const zoneId = cleanTablePlanZoneId(body.zoneId);
+      if (!zoneId || !TABLE_PLAN_BASE_ZONE_IDS.has(zoneId)) {
+        return sendJson(res, 400, { error: "Bereich nicht gefunden." });
+      }
+      appData.tablePlanConfig = normalizeTablePlanConfigSettings(appData.tablePlanConfig);
+      delete appData.tablePlanConfig.zoneOverrides[zoneId];
+      appData.tablePlanConfig = normalizeTablePlanConfigSettings(appData.tablePlanConfig);
+      await writeAppData(appData);
+      return sendJson(res, 200, {
+        ok: true,
+        message: "Bereich auf Standard zurückgesetzt.",
+        tablePlanConfig: appData.tablePlanConfig
       });
     }
 
@@ -376,6 +548,142 @@ function cleanEmployeeTipSettings(value = {}, settings = {}) {
     };
   }
   return result;
+}
+
+function normalizeTablePlanConfigSettings(value = {}) {
+  const customTables = sortTablePlanEntries((Array.isArray(value?.customTables) ? value.customTables : [])
+    .map((item) => cleanTablePlanEntry(item))
+    .filter((item) => item.id && !item.baseTable && !TABLE_PLAN_BASE_IDS.has(item.id)));
+  const allowedIds = new Set([...TABLE_PLAN_BASE_IDS, ...customTables.map((item) => item.id)]);
+  const seatsByTable = {};
+  if (value?.seatsByTable && typeof value.seatsByTable === "object" && !Array.isArray(value.seatsByTable)) {
+    for (const [tableId, seats] of Object.entries(value.seatsByTable)) {
+      const cleanId = cleanTablePlanId(tableId);
+      const cleanSeats = cleanTablePlanInteger(seats, 1, 200);
+      if (cleanId && cleanSeats && allowedIds.has(cleanId)) seatsByTable[cleanId] = cleanSeats;
+    }
+  }
+  const tableOverrides = {};
+  if (value?.tableOverrides && typeof value.tableOverrides === "object" && !Array.isArray(value.tableOverrides)) {
+    for (const [tableId, entry] of Object.entries(value.tableOverrides)) {
+      const cleanId = cleanTablePlanId(tableId);
+      if (!cleanId || !TABLE_PLAN_BASE_IDS.has(cleanId)) continue;
+      const cleaned = cleanTablePlanEntry({ ...(entry || {}), id: cleanId, baseTable: true });
+      if (!cleaned.id) continue;
+      tableOverrides[cleanId] = {
+        label: cleaned.label || cleanId,
+        area: cleaned.area || "",
+        seats: cleaned.seats || seatsByTable[cleanId] || 4,
+        x: cleaned.x,
+        y: cleaned.y,
+        w: cleaned.w,
+        h: cleaned.h,
+        shape: cleaned.shape
+      };
+      seatsByTable[cleanId] = tableOverrides[cleanId].seats;
+    }
+  }
+  const zoneOverrides = {};
+  if (value?.zoneOverrides && typeof value.zoneOverrides === "object" && !Array.isArray(value.zoneOverrides)) {
+    for (const [zoneId, entry] of Object.entries(value.zoneOverrides)) {
+      const cleanId = cleanTablePlanZoneId(zoneId);
+      if (!cleanId || !TABLE_PLAN_BASE_ZONE_IDS.has(cleanId)) continue;
+      const cleaned = cleanTablePlanZoneEntry({ ...(entry || {}), id: cleanId });
+      if (!cleaned.id) continue;
+      zoneOverrides[cleanId] = {
+        label: cleaned.label || cleanId,
+        x: cleaned.x,
+        y: cleaned.y,
+        w: cleaned.w,
+        h: cleaned.h,
+        className: cleaned.className,
+        visible: cleaned.visible !== false
+      };
+    }
+  }
+  return { seatsByTable, tableOverrides, customTables, zoneOverrides };
+}
+
+function cleanTablePlanEntry(value = {}) {
+  const id = cleanTablePlanId(value.id || value.originalId);
+  return {
+    id,
+    originalId: cleanTablePlanId(value.originalId || id),
+    baseTable: value.baseTable === true || value.baseTable === "true",
+    label: cleanTablePlanText(value.label, 60),
+    area: cleanTablePlanText(value.area, 80),
+    seats: cleanTablePlanInteger(value.seats, 1, 200),
+    x: cleanTablePlanDecimal(value.x, 0, 96),
+    y: cleanTablePlanDecimal(value.y, 0, 96),
+    w: cleanTablePlanDecimal(value.w, 2, 40),
+    h: cleanTablePlanDecimal(value.h, 2, 30),
+    shape: cleanTablePlanShape(value.shape)
+  };
+}
+
+function cleanTablePlanZoneEntry(value = {}) {
+  const id = cleanTablePlanZoneId(value.id || value.originalId);
+  return {
+    id,
+    originalId: cleanTablePlanZoneId(value.originalId || id),
+    label: cleanTablePlanText(value.label, 60),
+    x: cleanTablePlanDecimal(value.x, 0, 98),
+    y: cleanTablePlanDecimal(value.y, 0, 98),
+    w: cleanTablePlanDecimal(value.w, 4, 98),
+    h: cleanTablePlanDecimal(value.h, 4, 98),
+    className: cleanTablePlanZoneClass(value.className),
+    visible: cleanTablePlanBoolean(value.visible, true)
+  };
+}
+
+function sortTablePlanEntries(entries = []) {
+  return [...(Array.isArray(entries) ? entries : [])]
+    .filter((item) => item?.id)
+    .sort((left, right) => {
+      const topCompare = Number(left.y || 0) - Number(right.y || 0);
+      if (Math.abs(topCompare) > 0.1) return topCompare;
+      const leftCompare = Number(left.x || 0) - Number(right.x || 0);
+      if (Math.abs(leftCompare) > 0.1) return leftCompare;
+      return String(left.id || "").localeCompare(String(right.id || ""), "de", { numeric: true });
+    });
+}
+
+function cleanTablePlanId(value) {
+  return String(value || "").trim().replace(/\s+/g, "").slice(0, 16);
+}
+
+function cleanTablePlanZoneId(value) {
+  return String(value || "").trim().slice(0, 32);
+}
+
+function cleanTablePlanText(value, max = 80) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function cleanTablePlanInteger(value, min, max) {
+  const number = Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(min, Math.min(max, Math.round(number)));
+}
+
+function cleanTablePlanDecimal(value, min, max) {
+  const number = Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(number)) return 0;
+  return Math.round(Math.max(min, Math.min(max, number)) * 10) / 10;
+}
+
+function cleanTablePlanShape(value) {
+  return ["table", "room", "lane"].includes(String(value || "").trim()) ? String(value).trim() : "table";
+}
+
+function cleanTablePlanZoneClass(value) {
+  return ["is-lanes", "is-room", "is-open"].includes(String(value || "").trim()) ? String(value).trim() : "is-open";
+}
+
+function cleanTablePlanBoolean(value, fallback = true) {
+  if (value === true || value === "true" || value === 1 || value === "1") return true;
+  if (value === false || value === "false" || value === 0 || value === "0") return false;
+  return fallback;
 }
 
 function cleanPushSettings(value = {}, fallback = {}) {

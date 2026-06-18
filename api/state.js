@@ -54,7 +54,9 @@ module.exports = async function handler(req, res) {
         dayReports: appData.dayReports || {},
         messages: appData.messages || [],
         terminalMessages: appData.terminalMessages || [],
+        customerDirectory: appData.customerDirectory || [],
         offers: normalizeOffers(appData.offers || []),
+        tablePlanConfig: appData.tablePlanConfig || {},
         pushPublicKey: pushPublicKey(),
         weather,
         taskTemplates: appData.taskTemplates || [],
@@ -620,6 +622,7 @@ function normalizeOffers(value = []) {
 
 function normalizeOffer(offer = {}) {
   const buffet = offer.buffet && typeof offer.buffet === "object" ? offer.buffet : {};
+  const bowling = offer.bowling && typeof offer.bowling === "object" ? offer.bowling : {};
   const costs = Array.isArray(offer.costs) ? offer.costs : [];
   const timeline = Array.isArray(offer.timeline) ? offer.timeline : [];
   return {
@@ -639,18 +642,65 @@ function normalizeOffer(offer = {}) {
     personsAdults: cleanOfferInteger(offer.personsAdults),
     personsChildren: cleanOfferInteger(offer.personsChildren),
     startTime: cleanTime(offer.startTime),
+    mealTime: cleanTime(offer.mealTime),
+    sparklingReceptionTime: cleanTime(offer.sparklingReceptionTime),
     reservedArea: String(offer.reservedArea || "").trim().slice(0, 200),
+    reservedAreaPrice: cleanOfferMoney(offer.reservedAreaPrice),
+    reservedAreaCampfire: offer.reservedAreaCampfire === true,
+    customerDirectoryId: String(offer.customerDirectoryId || "").trim().slice(0, 120),
     additionalInfo: String(offer.additionalInfo || "").trim().slice(0, 2000),
     internalNote: String(offer.internalNote || "").trim().slice(0, 2000),
+    textBlocks: normalizeOfferTextBlocks(offer.textBlocks),
+    bowling: {
+      tournamentPackage: String(bowling.tournamentPackage || "").trim().slice(0, 40),
+      lanes: cleanOfferInteger(bowling.lanes),
+      shoePersons: cleanOfferInteger(bowling.shoePersons),
+      fromTime: cleanTime(bowling.fromTime),
+      toTime: cleanTime(bowling.toTime)
+    },
     buffet: {
       templateKey: String(buffet.templateKey || "").trim().slice(0, 40),
       name: String(buffet.name || "").trim().slice(0, 160),
       pricePerPerson: cleanOfferMoney(buffet.pricePerPerson),
+      sparklingReception: buffet.sparklingReception === true,
       categories: normalizeOfferBuffetCategories(buffet.categories)
     },
     timeline: normalizeOfferTimeline(timeline),
     costs: normalizeOfferCosts(costs)
   };
+}
+
+function normalizeOfferTextBlocks(blocks = {}) {
+  const defaults = {
+    pricingNotice: {
+      label: "Hinweis zur Preisangabe",
+      enabled: true,
+      text: "Der Buffetpreis kann einzeln pro Person abgerechnet werden. Jedoch gilt zu beachten, dass die 36 Stunden vor Veranstaltungsbeginn gemeldete Personenzahl als Berechnungsgrundlage dient und der Veranstalter für eventuelle Ausfälle aufkommen muss."
+    },
+    cancellationTerms: {
+      label: "Stornierung & Rechnungsgrundlage",
+      enabled: true,
+      text: "Eine kostenfreie Stornierung der Veranstaltung ist bis 4 Wochen vor dem Veranstaltungstermin möglich. Bei einer späteren Stornierung berechnen wir 50 % der vereinbarten Auftragssumme.\n\nDie bis spätestens 36 Stunden vor Veranstaltungsbeginn gemeldete Personenzahl gilt als verbindliche Rechnungsgrundlage."
+    },
+    reservationConfirmation: {
+      label: "Reservierungsbestätigung",
+      enabled: true,
+      text: "Dieses Angebot ist ab dem Ausstellungsdatum 14 Tage gültig.\n\nBitte senden Sie mir das Angebot unterschrieben als Reservierungsbestätigung zurück."
+    },
+    vatNotice: {
+      label: "MwSt.-Hinweis",
+      enabled: true,
+      text: "Alle Preise verstehen sich inklusive gesetzlicher Mehrwertsteuer."
+    }
+  };
+  return Object.fromEntries(Object.entries(defaults).map(([key, config]) => {
+    const source = blocks && typeof blocks === "object" ? blocks[key] || {} : {};
+    return [key, {
+      label: config.label,
+      enabled: source.enabled == null ? config.enabled : source.enabled === true,
+      text: String(source.text ?? config.text).trim().slice(0, 4000)
+    }];
+  }));
 }
 
 function normalizeOfferTimeline(items = []) {
@@ -673,8 +723,23 @@ function normalizeOfferCosts(items = []) {
 }
 
 function normalizeOfferBuffetCategories(categories = {}) {
-  const keys = ["vorspeisen", "fleisch", "fisch", "vegetarisch", "suppen", "dessert"];
-  return Object.fromEntries(keys.map((key) => [key, normalizeOfferBuffetItems(categories?.[key] || [])]));
+  const source = categories && typeof categories === "object" ? categories : {};
+  return {
+    vorspeise: normalizeOfferBuffetItems([
+      ...(Array.isArray(source.vorspeise) ? source.vorspeise : []),
+      ...(Array.isArray(source.vorspeisen) ? source.vorspeisen : []),
+      ...(Array.isArray(source.suppen) ? source.suppen : [])
+    ]),
+    hauptgericht: normalizeOfferBuffetItems([
+      ...(Array.isArray(source.hauptgericht) ? source.hauptgericht : []),
+      ...(Array.isArray(source.fleisch) ? source.fleisch : []),
+      ...(Array.isArray(source.fisch) ? source.fisch : []),
+      ...(Array.isArray(source.vegetarisch) ? source.vegetarisch : [])
+    ]),
+    dessert: normalizeOfferBuffetItems([
+      ...(Array.isArray(source.dessert) ? source.dessert : [])
+    ])
+  };
 }
 
 function normalizeOfferBuffetItems(items = []) {

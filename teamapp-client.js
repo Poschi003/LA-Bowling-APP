@@ -30,6 +30,20 @@
   terminalDate: "",
   terminalEntries: {},
   terminalReport: {},
+  terminalTableDraft: null,
+  terminalTableGroupDraft: null,
+  terminalTableCustomDraft: null,
+  adminTablePlanDraft: null,
+  adminTablePlanZoneDraft: null,
+  terminalTableConfig: { seatsByTable: {}, tableOverrides: {}, customTables: [], zoneOverrides: {} },
+  terminalTableInfo: { todayDate: "", todayAvailable: false, todayItems: 0, selectedItems: 0, selectedAvailable: false },
+  terminalTableSort: "time",
+  terminalTableDragId: "",
+  terminalTableStaffDraft: null,
+  terminalTableView: "manage",
+  terminalTableFullscreen: false,
+  adminTablePlanInteraction: null,
+  adminTablePlanSuppressClickUntil: 0,
   tipOverview: { employees: [], totalEarned: "0.00", totalPaid: "0.00", totalOpen: "0.00" },
   terminalSchedule: {},
   terminalTasks: [],
@@ -50,6 +64,7 @@
   offerDraft: null,
   offerDraftId: "",
   offerDraftDirty: false,
+  offerCustomerSearch: "",
   taskTemplates: [],
   cleaningTemplates: [],
   reminderTemplates: [],
@@ -88,6 +103,70 @@ const defaultCleaningTemplates = defaultCleaningPlans.flatMap((group) =>
     createdAt: "2026-05-20T00:00:00.000Z"
   }))
 );
+const TERMINAL_TABLE_ZONES = [
+  { id: "lanes", label: "Bahnen 1-14", x: 1.5, y: 4, w: 13, h: 76, className: "is-lanes" },
+  { id: "nz-small", label: "T50 · NZ Klein", x: 17, y: 4, w: 20, h: 10, className: "is-room" },
+  { id: "main-left", label: "Gastraum", x: 17, y: 16, w: 21, h: 33, className: "is-open" },
+  { id: "dj", label: "DJ-Bereich", x: 42, y: 17, w: 9, h: 31, className: "is-open" },
+  { id: "main-bottom", label: "Gastraum unten", x: 17, y: 54, w: 20, h: 17, className: "is-open" },
+  { id: "nz-big", label: "T60 · NZ Groß", x: 56, y: 4, w: 27, h: 10, className: "is-room" },
+  { id: "hut", label: "Hütte Außen · T70", x: 84.5, y: 4, w: 13, h: 10, className: "is-room" },
+  { id: "billiard", label: "Billardtische", x: 60, y: 26, w: 26, h: 28, className: "is-open" }
+];
+const TERMINAL_TABLE_LAYOUT = [
+  ...Array.from({ length: 14 }, (_, index) => ({
+    id: String(index + 1),
+    label: String(index + 1),
+    area: "Bahn",
+    seats: 6,
+    x: 2,
+    y: 74 - (index * 5.05),
+    w: 11.5,
+    h: 4.7,
+    shape: "lane"
+  })),
+  { id: "T50", label: "T50", area: "Nebenraum klein", seats: 20, x: 18, y: 5, w: 18, h: 8.5, shape: "room" },
+  { id: "T15", label: "T15", area: "Gastraum", seats: 4, x: 20, y: 17.5, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T16", label: "T16", area: "Gastraum", seats: 4, x: 20, y: 25, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T17", label: "T17", area: "Gastraum", seats: 4, x: 20, y: 32.5, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T18", label: "T18", area: "Gastraum", seats: 4, x: 20, y: 40, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T19", label: "T19", area: "Gastraum", seats: 4, x: 20, y: 47.5, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T28", label: "T28", area: "Gastraum", seats: 4, x: 30, y: 17.5, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T27", label: "T27", area: "Gastraum", seats: 4, x: 30, y: 25, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T26", label: "T26", area: "Gastraum", seats: 4, x: 30, y: 32.5, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T25", label: "T25", area: "Gastraum", seats: 4, x: 30, y: 40, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T24", label: "T24", area: "Gastraum", seats: 4, x: 30, y: 47.5, w: 6.4, h: 5.4, shape: "table" },
+  { id: "T30", label: "T30", area: "DJ-Bereich", seats: 4, x: 41.5, y: 19.5, w: 6.6, h: 5.4, shape: "table" },
+  { id: "T31", label: "T31", area: "DJ-Bereich", seats: 4, x: 41.5, y: 27.5, w: 6.6, h: 5.4, shape: "table" },
+  { id: "T32", label: "T32", area: "DJ-Bereich", seats: 4, x: 41.5, y: 35.5, w: 6.6, h: 5.4, shape: "table" },
+  { id: "T33", label: "T33", area: "DJ-Bereich", seats: 4, x: 41.5, y: 43.5, w: 6.6, h: 5.4, shape: "table" },
+  { id: "T20", label: "T20", area: "Gastraum", seats: 4, x: 20.5, y: 56.5, w: 6.2, h: 5.6, shape: "table" },
+  { id: "T21", label: "T21", area: "Gastraum", seats: 4, x: 20.5, y: 64.5, w: 6.2, h: 5.6, shape: "table" },
+  { id: "T23", label: "T23", area: "Gastraum", seats: 4, x: 29.5, y: 56.5, w: 6.2, h: 5.6, shape: "table" },
+  { id: "T22", label: "T22", area: "Gastraum", seats: 4, x: 29.5, y: 64.5, w: 6.2, h: 5.6, shape: "table" },
+  { id: "T60", label: "T60", area: "Nebenraum groß", seats: 32, x: 57.5, y: 5.5, w: 24, h: 8.5, shape: "room" },
+  { id: "T70", label: "T70", area: "Hütte außen", seats: 18, x: 86, y: 5.5, w: 10.5, h: 8.5, shape: "room" },
+  { id: "T104", label: "T104", area: "Billard", seats: 4, x: 63.5, y: 29, w: 8.7, h: 6.1, shape: "table" },
+  { id: "T101", label: "T101", area: "Billard", seats: 4, x: 77.5, y: 29, w: 8.7, h: 6.1, shape: "table" },
+  { id: "T103", label: "T103", area: "Billard", seats: 4, x: 63.5, y: 43.5, w: 8.7, h: 6.1, shape: "table" },
+  { id: "T102", label: "T102", area: "Billard", seats: 4, x: 77.5, y: 43.5, w: 8.7, h: 6.1, shape: "table" }
+];
+const TERMINAL_TABLE_LOOKUP = Object.fromEntries(TERMINAL_TABLE_LAYOUT.map((table) => [table.id, table]));
+const TERMINAL_TABLE_ZONE_LOOKUP = Object.fromEntries(TERMINAL_TABLE_ZONES.map((zone) => [zone.id, zone]));
+const TERMINAL_TABLE_ADJACENCY_TOLERANCE = 2.4;
+const TERMINAL_TABLE_STAFF_COLOR_PRESETS = ["#e1172f", "#0f766e", "#2563eb", "#7c3aed", "#ea580c", "#4f46e5", "#be123c", "#15803d"];
+const TERMINAL_TABLE_STAFF_PRESETS = [
+  { id: "lanes-1-7", label: "Bahn 1 bis 7", tableIds: Array.from({ length: 7 }, (_, index) => String(index + 1)) },
+  { id: "lanes-8-14", label: "Bahn 8 bis 14", tableIds: Array.from({ length: 7 }, (_, index) => String(index + 8)) },
+  { id: "gastraum-links", label: "Gastraum links", tableIds: ["T15", "T16", "T17", "T18", "T19", "T20", "T21"] },
+  { id: "gastraum-rechts", label: "Gastraum rechts", tableIds: ["T28", "T27", "T26", "T25", "T24", "T23", "T22"] },
+  { id: "dj-bereich", label: "DJ-Bereich", tableIds: ["T30", "T31", "T32", "T33"] },
+  { id: "nz-klein", label: "Nebenraum klein · T50", tableIds: ["T50"] },
+  { id: "nz-gross", label: "Nebenraum groß · T60", tableIds: ["T60"] },
+  { id: "huette-aussen", label: "Hütte außen · T70", tableIds: ["T70"] },
+  { id: "billard", label: "Billardtische", tableIds: ["T101", "T102", "T103", "T104"] }
+];
+const TERMINAL_TABLE_STAFF_PRESET_LOOKUP = Object.fromEntries(TERMINAL_TABLE_STAFF_PRESETS.map((preset) => [preset.id, preset]));
 const motivationQuotes = [
   "Gemeinsam wird der Tag leichter.",
   "Ein gutes Team merkt man im laufenden Betrieb.",
@@ -483,6 +562,7 @@ async function loadState() {
   state.dayReports = data.dayReports || {};
   state.assignmentTimes = normalizeAssignmentTimes(data.assignmentTimes || {});
   state.assignmentSchedules = data.assignmentSchedules || {};
+  state.terminalTableConfig = normalizeTerminalTableConfig(data.tablePlanConfig || state.terminalTableConfig || {});
   state.weather = data.weather || state.weather;
   state.isChef = Boolean(data.isChef);
   state.missingAvailability = data.missingAvailability || [];
@@ -751,52 +831,37 @@ function cleanCleaningTemplateClient(task = {}) {
 const OFFER_BUFFET_TEMPLATES = {
   tradition: {
     name: "Tradition",
-    pricePerPerson: 35.9,
+    pricePerPerson: 39.9,
     categories: {
-      vorspeisen: [
-        { name: "Gegrillte Antipasti von Zucchini, Paprika und Aubergine" },
-        { name: "Tomate-Mozzarella mit frischem Basilikum" },
-        { name: "Rucola mit Parmesanspänen & Balsamico" },
-        { name: "Ciabatta" }
+      vorspeise: [
+        { name: "Obazda-Creme im Weckglas mit Laugen-Crunch" },
+        { name: "Frischer Endiviensalat mit Birnenspalten, Walnüssen und Balsamico-Walnuss-Dressing" }
       ],
-      fleisch: [
-        { name: "Zürcher Geschnetzeltes von der Pute mit Champignons und Rahmsauce" }
-      ],
-      fisch: [
-        { name: "Tagliatelle mit zartem Lachs in leichter Sauce" }
-      ],
-      vegetarisch: [
-        { name: "Spinatknödel mit brauner Butter" }
-      ],
-      suppen: [
-        { name: "Suppe nach Tagesempfehlung" }
+      hauptgericht: [
+        { name: "Langsam geschmorter Schweinebraten von Wammerl und Hals in kräftiger Dunkelbiersauce" },
+        { name: "Rahmschwammerl aus frischen Waldpilzen in feiner Kräuterrahmsoße mit hausgemachtem Semmelknödel" },
+        { name: "Sous-vide gegarte Schweinefiletmedaillons in kräftiger Portwein-Schalottenjus mit Butter-Kartoffelstampf" }
       ],
       dessert: [
-        { name: "Classic New York Cheesecake mit fruchtigem Himbeer-Coulis" }
+        { name: "Frisch gebackener Kaiserschmarrn mit Apfelmus" },
+        { name: "Mousse Duo von dunkler und weißer Schokolade mit frischen Beeren" }
       ]
     }
   },
   elegant: {
     name: "Elegant",
-    pricePerPerson: 39.9,
+    pricePerPerson: 36.9,
     categories: {
-      vorspeisen: [
+      vorspeise: [
         { name: "Feine Antipasti-Auswahl" },
         { name: "Räucherlachs mit Zitronencreme" },
         { name: "Blattsalat mit Balsamico-Dressing" }
       ],
-      fleisch: [
+      hauptgericht: [
         { name: "Kalbsrahmgeschnetzeltes mit feinen Champignons" },
-        { name: "Hähnchenbrust mit Kräutersauce" }
-      ],
-      fisch: [
-        { name: "Gebratener Lachs auf Gemüsebett" }
-      ],
-      vegetarisch: [
+        { name: "Hähnchenbrust mit Kräutersauce" },
+        { name: "Gebratener Lachs auf Gemüsebett" },
         { name: "Gemüsegratin mit Kräuterkruste" }
-      ],
-      suppen: [
-        { name: "Cremige Gemüsesuppe" }
       ],
       dessert: [
         { name: "Panna Cotta mit Beerenragout" }
@@ -807,22 +872,15 @@ const OFFER_BUFFET_TEMPLATES = {
     name: "Festlich",
     pricePerPerson: 44.9,
     categories: {
-      vorspeisen: [
+      vorspeise: [
         { name: "Carpaccio vom Rind mit Parmesan" },
         { name: "Antipasti und Brotvariation" }
       ],
-      fleisch: [
+      hauptgericht: [
         { name: "Rinderbraten mit Portweinsauce" },
-        { name: "Putenbraten mit feiner Rahmsauce" }
-      ],
-      fisch: [
-        { name: "Lachsfilet mit Kräuterkruste" }
-      ],
-      vegetarisch: [
+        { name: "Putenbraten mit feiner Rahmsauce" },
+        { name: "Lachsfilet mit Kräuterkruste" },
         { name: "Mediterrane Gemüsevariation" }
-      ],
-      suppen: [
-        { name: "Tomaten-Basilikum-Suppe" }
       ],
       dessert: [
         { name: "Schokoladenmousse mit frischer Frucht" }
@@ -833,38 +891,134 @@ const OFFER_BUFFET_TEMPLATES = {
     name: "Modern",
     pricePerPerson: 37.9,
     categories: {
-      vorspeisen: [
+      vorspeise: [
         { name: "Bunte Salatbar" },
         { name: "Fingerfood mit Dips" }
       ],
-      fleisch: [
-        { name: "Pulled Chicken mit BBQ-Sauce" },
-        { name: "Rinderschmorbraten mit Jus" }
-      ],
-      fisch: [
-        { name: "Lachs mit Zitronen-Kräuter-Kruste" }
-      ],
-      vegetarisch: [
-        { name: "Cremiges Risotto mit Gemüse" }
-      ],
-      suppen: [
-        { name: "Suppe des Tages" }
+      hauptgericht: [
+        { name: "Zürcher Geschnetzeltes von der Pute in feiner Conjac-Rahmsoße mit frischen Champignons" },
+        { name: "Spinatknödel in brauner Butter geschwenkt mit gehobeltem Parmesan" },
+        { name: "Tagliatelle mit zartem Lachs in feinem Zitronen-Dill-Öl, veredelt mit frischen Kräutern" }
       ],
       dessert: [
-        { name: "Mousse au Chocolat" },
-        { name: "Obstsalat" }
+        { name: "Classic New York Cheesecake mit fruchtigem Himbeer-Coulis" }
       ]
     }
   }
 };
-const OFFER_CATEGORY_ORDER = ["vorspeisen", "fleisch", "fisch", "vegetarisch", "suppen", "dessert"];
+const OFFER_CATEGORY_ORDER = ["vorspeise", "hauptgericht", "dessert"];
 const OFFER_CATEGORY_LABELS = {
-  vorspeisen: "Vorspeisen",
-  fleisch: "Fleisch",
-  fisch: "Fisch",
-  vegetarisch: "Vegetarisch",
-  suppen: "Suppen",
+  vorspeise: "Vorspeise",
+  hauptgericht: "Hauptgerichte",
   dessert: "Dessert"
+};
+const OFFER_DISH_ASSORTMENT = {
+  vorspeise: [
+    { group: "Vorspeise", name: "Italienische Vorspeisen Variation (Vitello Tonnato, Antipasti, Bruschetta)" },
+    { group: "Vorspeise", name: "Knödel Carpaccio in Honig-Senf-Marinade mit Balsamico-Pilzen und Rucola" },
+    { group: "Vorspeise", name: "Kürbis Bruschetta" },
+    { group: "Vorspeise", name: "Tomaten Carpaccio mit Büffelmozzarella an Basilikumpesto" },
+    { group: "Vorspeise", name: "Geräucherter Lachs an Senf-Dillsoße" },
+    { group: "Vorspeise", name: "Dreierlei bayerische Aufstriche mit Laugengebäck" },
+    { group: "Vorspeise", name: "Salatbar mit buntem Blattsalat der Saison, Tomaten, Karotten, Gurken, Paprika und Croûtons" },
+    { group: "Suppe", name: "Kartoffel-Lauchcremesuppe mit Kräuterschmand" },
+    { group: "Suppe", name: "Süßkartoffel-Curry-Suppe" },
+    { group: "Suppe", name: "Getrüffelte Maronencremesuppe" },
+    { group: "Suppe", name: "Kürbis-Ingwercremesuppe" },
+    { group: "Suppe", name: "Rinderkraftbrühe mit Leberspätzle und Schnittlauch" },
+    { group: "Suppe", name: "Kokos-Curry-Suppe mit Champignons und Garnelen" },
+    { group: "Suppe", name: "Knoblauch-Kräutersuppe mit Frischkäse" },
+    { group: "Suppe", name: "Gazpacho - kalte spanische Gemüsesuppe" },
+    { group: "Suppe", name: "Waldpilzcremesuppe mit Croutons" }
+  ],
+  hauptgericht: [
+    { group: "Fleisch", name: "Souvide gegartes Schweinefiletmedaillons in kräftiger Portwein-Schalottenjus mit cremigem Butter-Kartoffelstampf und glaciertem Wurzelgemüse" },
+    { group: "Fleisch", name: "Langsam geschmorter Schweinebraten von Wammerl und Hals in kräftiger Dunkelbiersoße mit bayerischem Sauerkraut, Kartoffelknödel und hausgemachtem Kartoffelsalat" },
+    { group: "Fleisch", name: "Klassisches Wildgulasch vom heimischen Hirsch in aromatischer Wacholder-Rotweinsoße mit hausgemachten Brezenknödeln und Blaukraut" },
+    { group: "Fleisch", name: "Knusprig zarte Hähnchenbrust an Knoblauch-Parmesan-Soße dazu Rosmarin-Ofenkartoffeln" },
+    { group: "Fleisch", name: "Sauerbraten mit hausgemachten Eierspätzle, Blaukraut und Preiselbeeren" },
+    { group: "Fleisch", name: "Schnitzel Wiener Art mit hausgemachtem Kartoffel-Gurkensalat und Preiselbeeren (Schwein oder Pute)" },
+    { group: "Fleisch", name: "Knusprige Entenbrust auf Orangensoße mit Kartoffelknödel und Apfelblaukraut" },
+    { group: "Fleisch", name: "Piccatta Milanese von der Hähnchenbrust in Parmesan-Ei-Hülle mit Tomaten-Sahne-Nudeln" },
+    { group: "Fleisch", name: "Gelbes Kokos-Curry von der Putenbrust mit Wokgemüse und Jasminreis" },
+    { group: "Fleisch", name: "Saltimbocca von der Hähnchenbrust auf Tomatenrisotto" },
+    { group: "Fleisch", name: "Hausgemachte Lasagne Bolognese" },
+    { group: "Fleisch", name: "Pfannengyros mit Djuvecreis, Krautsalat und Tzatziki" },
+    { group: "Fisch", name: "Lachsfilet mit Zitronen-Kräuterkruste auf jungem Blattspinat dazu Rosmarin-Ofenkartoffeln" },
+    { group: "Fisch", name: "Linguine in hausgemachtem Basilikumpesto mit geschmolzenen Kirschtomaten und gebratenen Riesengarnelen" },
+    { group: "Fisch", name: "Souvide gegartes Lachsfilet mit Kräuter-Gnocchi und wildem Brokkoli" },
+    { group: "Fisch", name: "Gebratenes Zanderfilet mit Zitronen-Thymianreis und Rieslingsoße" },
+    { group: "Fisch", name: "Spaghetti in Limetten-Dillcreme, Kirschtomaten, Frühlingslauch und Räucherlachs" },
+    { group: "Fisch", name: "Fisch-Curry von Lachs und Garnelen mit Wokgemüse und Duftreis" },
+    { group: "Vegetarisch", name: "Ofengeröstetes Blumenkohlsteak mit feinem Kräuteröl und Joghurt-Knoblauch-Dip" },
+    { group: "Vegetarisch", name: "Rahmschwammerl aus frischen Waldpilzen in feiner Kräuterrahmsoße mit hausgemachtem Semmelknödel" },
+    { group: "Vegetarisch", name: "Pasta mit gebratenen Kräuterseitlingen in feinem Olivenöl, frischer Petersilie und gehobeltem Parmesan" },
+    { group: "Vegetarisch", name: "Cannelloni mit Spinat-Ricotta-Füllung auf Kirschtomaten-Sugo" },
+    { group: "Vegetarisch", name: "Spinatknödel mit brauner Butter, geschmolzenen Kirschtomaten und Parmesan" },
+    { group: "Vegetarisch", name: "Linguine mit Champignons und Zucchini in Parmesan-Sahnesoße, verfeinert mit Trüffelöl" },
+    { group: "Vegetarisch", name: "Gnocchi in fruchtiger Tomatensoße mit Kirschtomaten, Spinat und Babymozzarella" },
+    { group: "Vegetarisch", name: "Caesar Salat mit gebratenen Gnocchi, Spinat und geschmolzenen Kirschtomaten" }
+  ],
+  dessert: [
+    { group: "Dessert", name: "Frisch gebackener Kaiserschmarrn mit Apfelmus" },
+    { group: "Dessert", name: "Mousse Duo von dunkler und weißer Schokolade, im Glas serviert, mit frischen Beeren" },
+    { group: "Dessert", name: "Classic New York Cheesecake mit fruchtigem Himbeer-Coulis" },
+    { group: "Dessert", name: "Panna Cotta mit Beerenragout" },
+    { group: "Dessert", name: "Schokoladenmousse mit frischer Frucht" },
+    { group: "Dessert", name: "Lebkuchenmousse mit fruchtigem Kirschragout" },
+    { group: "Dessert", name: "Mousse au Chocolat" },
+    { group: "Dessert", name: "Obstsalat" }
+  ]
+};
+const OFFER_BOWLING_PRICE_URL = "https://www.la-bowling.de/%C3%B6ffnungszeiten";
+const OFFER_BOWLING_SHOE_PRICE = 2.5;
+const OFFER_SPARKLING_RECEPTION_PRICE = 2.5;
+const OFFER_CAMPFIRE_PRICE = 50;
+const OFFER_HUT_RENT_PRICE = 250;
+const OFFER_LARGE_ROOM_ONLY_PRICE = 100;
+const OFFER_CHILD_DISCOUNT_FACTOR = 0.5;
+const OFFER_BOWLING_WEEKDAY_LABELS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+const OFFER_RESERVED_AREA_OPTIONS = [
+  { value: "", label: "Keine feste Bereichsauswahl" },
+  { value: "kleines-nebenzimmer", label: "Unser kleines Nebenzimmer" },
+  { value: "grosses-nebenzimmer", label: "Unser großes Nebenzimmer" },
+  { value: "huette", label: "LA-Bowling Hütte" },
+  { value: "komplettes-center", label: "Komplettes Center (geschlossene Gesellschaft)" }
+];
+const OFFER_RESERVED_AREA_LABELS = Object.fromEntries(OFFER_RESERVED_AREA_OPTIONS.map((item) => [item.value, item.label]));
+const OFFER_TOURNAMENT_PACKAGES = {
+  standard: {
+    label: "Turnier Paket",
+    description: "Pokale für Platz 1 bis 3, Turnierbegleitung und Ergebnisauswertung",
+    price: 200
+  },
+  extended: {
+    label: "Turnier Paket erweitert",
+    description: "5 Pokale inklusive bester Einzelspieler männlich / weiblich",
+    price: 250
+  }
+};
+const OFFER_TEXT_BLOCK_DEFAULTS = {
+  pricingNotice: {
+    label: "Hinweis zur Preisangabe",
+    enabled: true,
+    text: "Der Buffetpreis kann einzeln pro Person abgerechnet werden. Jedoch gilt zu beachten, dass die 36 Stunden vor Veranstaltungsbeginn gemeldete Personenzahl als Berechnungsgrundlage dient und der Veranstalter für eventuelle Ausfälle aufkommen muss."
+  },
+  cancellationTerms: {
+    label: "Stornierung & Rechnungsgrundlage",
+    enabled: true,
+    text: "Eine kostenfreie Stornierung der Veranstaltung ist bis 4 Wochen vor dem Veranstaltungstermin möglich. Bei einer späteren Stornierung berechnen wir 50 % der vereinbarten Auftragssumme.\n\nDie bis spätestens 36 Stunden vor Veranstaltungsbeginn gemeldete Personenzahl gilt als verbindliche Rechnungsgrundlage."
+  },
+  reservationConfirmation: {
+    label: "Reservierungsbestätigung",
+    enabled: true,
+    text: "Dieses Angebot ist ab dem Ausstellungsdatum 14 Tage gültig.\n\nBitte senden Sie mir das Angebot unterschrieben als Reservierungsbestätigung zurück."
+  },
+  vatNotice: {
+    label: "MwSt.-Hinweis",
+    enabled: true,
+    text: "Alle Preise verstehen sich inklusive gesetzlicher Mehrwertsteuer."
+  }
 };
 
 function normalizeOffersClient(offers = []) {
@@ -898,13 +1052,21 @@ function normalizeOfferClient(offer = {}) {
     personsAdults: cleanOfferIntegerValue(offer.personsAdults),
     personsChildren: cleanOfferIntegerValue(offer.personsChildren),
     startTime: cleanOfferTimeValue(offer.startTime),
+    mealTime: cleanOfferTimeValue(offer.mealTime),
+    sparklingReceptionTime: cleanOfferTimeValue(offer.sparklingReceptionTime),
     reservedArea: String(offer.reservedArea || "").trim().slice(0, 200),
+    reservedAreaPrice: cleanOfferMoneyValue(offer.reservedAreaPrice),
+    reservedAreaCampfire: offer.reservedAreaCampfire === true,
+    customerDirectoryId: String(offer.customerDirectoryId || "").trim().slice(0, 120),
     additionalInfo: String(offer.additionalInfo || "").trim().slice(0, 2000),
     internalNote: String(offer.internalNote || "").trim().slice(0, 2000),
+    textBlocks: normalizeOfferTextBlocksClient(offer.textBlocks),
+    bowling: normalizeOfferBowlingClient(offer.bowling),
     buffet: {
       templateKey: String(buffet.templateKey || "").trim().slice(0, 40),
       name: String(buffet.name || "").trim().slice(0, 160),
       pricePerPerson: cleanOfferMoneyValue(buffet.pricePerPerson),
+      sparklingReception: buffet.sparklingReception === true,
       categories: normalizeOfferBuffetCategoriesClient(buffet.categories)
     },
     timeline: normalizeOfferTimelineClient(offer.timeline),
@@ -936,7 +1098,23 @@ function normalizeOfferCostsClient(items = []) {
 }
 
 function normalizeOfferBuffetCategoriesClient(categories = {}) {
-  return Object.fromEntries(OFFER_CATEGORY_ORDER.map((key) => [key, normalizeOfferBuffetItemsClient(categories?.[key] || [])]));
+  const source = categories && typeof categories === "object" ? categories : {};
+  return {
+    vorspeise: normalizeOfferBuffetItemsClient([
+      ...(Array.isArray(source.vorspeise) ? source.vorspeise : []),
+      ...(Array.isArray(source.vorspeisen) ? source.vorspeisen : []),
+      ...(Array.isArray(source.suppen) ? source.suppen : [])
+    ]),
+    hauptgericht: normalizeOfferBuffetItemsClient([
+      ...(Array.isArray(source.hauptgericht) ? source.hauptgericht : []),
+      ...(Array.isArray(source.fleisch) ? source.fleisch : []),
+      ...(Array.isArray(source.fisch) ? source.fisch : []),
+      ...(Array.isArray(source.vegetarisch) ? source.vegetarisch : [])
+    ]),
+    dessert: normalizeOfferBuffetItemsClient([
+      ...(Array.isArray(source.dessert) ? source.dessert : [])
+    ])
+  };
 }
 
 function normalizeOfferBuffetItemsClient(items = []) {
@@ -947,6 +1125,27 @@ function normalizeOfferBuffetItemsClient(items = []) {
       note: String(item?.note || "").trim().slice(0, 240)
     }))
     .filter((item) => item.name || item.note);
+}
+
+function normalizeOfferBowlingClient(bowling = {}) {
+  return {
+    tournamentPackage: String(bowling?.tournamentPackage || "").trim().slice(0, 40),
+    lanes: cleanOfferIntegerValue(bowling?.lanes),
+    shoePersons: cleanOfferIntegerValue(bowling?.shoePersons),
+    fromTime: cleanOfferTimeValue(bowling?.fromTime),
+    toTime: cleanOfferTimeValue(bowling?.toTime)
+  };
+}
+
+function normalizeOfferTextBlocksClient(blocks = {}) {
+  return Object.fromEntries(Object.entries(OFFER_TEXT_BLOCK_DEFAULTS).map(([key, config]) => {
+    const source = blocks && typeof blocks === "object" ? blocks[key] || {} : {};
+    return [key, {
+      label: config.label,
+      enabled: source.enabled == null ? config.enabled : source.enabled === true,
+      text: String(source.text ?? config.text).trim().slice(0, 4000)
+    }];
+  }));
 }
 
 function cleanOfferDateValue(value) {
@@ -983,13 +1182,26 @@ function createBlankOfferDraft() {
     personsAdults: 0,
     personsChildren: 0,
     startTime: "",
+    mealTime: "",
+    sparklingReceptionTime: "",
     reservedArea: "",
+    reservedAreaPrice: 0,
+    reservedAreaCampfire: false,
+    customerDirectoryId: "",
     additionalInfo: "",
     internalNote: "",
+    bowling: {
+      tournamentPackage: "",
+      lanes: 0,
+      shoePersons: 0,
+      fromTime: "",
+      toTime: ""
+    },
     buffet: {
       templateKey: "",
       name: "",
       pricePerPerson: 0,
+      sparklingReception: false,
       categories: normalizeOfferBuffetCategoriesClient({})
     },
     timeline: [],
@@ -1031,14 +1243,28 @@ function currentOfferDraftFromDom() {
     personsAdults: cleanOfferIntegerValue(field("personsAdults")?.value),
     personsChildren: cleanOfferIntegerValue(field("personsChildren")?.value),
     startTime: cleanOfferTimeValue(field("startTime")?.value),
+    mealTime: cleanOfferTimeValue(field("mealTime")?.value),
+    sparklingReceptionTime: cleanOfferTimeValue(field("sparklingReceptionTime")?.value),
     reservedArea: simpleText("reservedArea"),
+    reservedAreaPrice: cleanOfferMoneyValue(field("reservedAreaPrice")?.value),
+    reservedAreaCampfire: field("reservedAreaCampfire")?.checked === true,
+    customerDirectoryId: simpleText("customerDirectoryId"),
     additionalInfo: String(field("additionalInfo")?.value || "").trim(),
     internalNote: String(field("internalNote")?.value || "").trim(),
+    textBlocks: {},
+    bowling: {
+      tournamentPackage: String(field("bowlingTournamentPackage")?.value || "").trim(),
+      lanes: cleanOfferIntegerValue(field("bowlingLanes")?.value),
+      shoePersons: cleanOfferIntegerValue(field("bowlingShoePersons")?.value),
+      fromTime: cleanOfferTimeValue(field("bowlingFromTime")?.value),
+      toTime: cleanOfferTimeValue(field("bowlingToTime")?.value)
+    },
     buffet: {
       ...base.buffet,
       templateKey: String(field("buffetTemplateKey")?.value || "").trim(),
       name: String(field("buffetName")?.value || "").trim(),
       pricePerPerson: cleanOfferMoneyValue(field("buffetPricePerPerson")?.value),
+      sparklingReception: field("buffetSparklingReception")?.checked === true,
       categories: {}
     },
     timeline: [],
@@ -1064,6 +1290,13 @@ function currentOfferDraftFromDom() {
     unitPrice: cleanOfferMoneyValue(row.querySelector("[data-offer-cost-unit]")?.value),
     note: String(row.querySelector("[data-offer-cost-note]")?.value || "").trim()
   })).filter((item) => item.label || item.quantity || item.unitPrice || item.note);
+  Object.keys(OFFER_TEXT_BLOCK_DEFAULTS).forEach((key) => {
+    draft.textBlocks[key] = {
+      label: OFFER_TEXT_BLOCK_DEFAULTS[key].label,
+      enabled: field(`textBlockEnabled-${key}`)?.checked === true,
+      text: String(field(`textBlockText-${key}`)?.value || "").trim()
+    };
+  });
   return normalizeOfferClient(draft);
 }
 
@@ -1087,22 +1320,349 @@ function offerPersonCount(offer) {
   return cleanOfferIntegerValue(offer?.personsAdults) + cleanOfferIntegerValue(offer?.personsChildren);
 }
 
+function offerChargedPersonUnits(offer, childFactor = OFFER_CHILD_DISCOUNT_FACTOR) {
+  const adults = cleanOfferIntegerValue(offer?.personsAdults);
+  const children = cleanOfferIntegerValue(offer?.personsChildren);
+  return adults + (children * childFactor);
+}
+
+function offerHasBuffet(offer) {
+  const draft = normalizeOfferClient(offer || {});
+  if (cleanOfferMoneyValue(draft.buffet?.pricePerPerson) > 0) return true;
+  if (draft.buffet?.name || draft.buffet?.templateKey) return true;
+  return OFFER_CATEGORY_ORDER.some((category) => (draft.buffet?.categories?.[category] || []).length > 0);
+}
+
+function offerHasBowlingBooking(offer) {
+  const bowling = normalizeOfferBowlingClient(offer?.bowling);
+  return Boolean(
+    bowling.tournamentPackage ||
+    bowling.lanes ||
+    bowling.shoePersons ||
+    bowling.fromTime ||
+    bowling.toTime
+  );
+}
+
+function offerBuffetPricing(offer) {
+  const draft = normalizeOfferClient(offer || {});
+  const adults = cleanOfferIntegerValue(draft.personsAdults);
+  const children = cleanOfferIntegerValue(draft.personsChildren);
+  const pricePerPerson = cleanOfferMoneyValue(draft.buffet?.pricePerPerson);
+  const chargedUnits = offerChargedPersonUnits(draft);
+  const buffetBaseTotal = Math.round(chargedUnits * pricePerPerson * 100) / 100;
+  const sparklingReceptionTotal = draft.buffet?.sparklingReception
+    ? Math.round(chargedUnits * OFFER_SPARKLING_RECEPTION_PRICE * 100) / 100
+    : 0;
+  return {
+    adults,
+    children,
+    chargedUnits,
+    pricePerPerson,
+    sparklingReception: draft.buffet?.sparklingReception === true,
+    buffetBaseTotal,
+    sparklingReceptionTotal,
+    total: Math.round((buffetBaseTotal + sparklingReceptionTotal) * 100) / 100,
+    hasBuffet: offerHasBuffet(draft)
+  };
+}
+
+function offerTimeMinutesValue(value) {
+  const text = cleanOfferTimeValue(value);
+  if (!text) return null;
+  const [hours, minutes] = text.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function offerDurationLabel(minutes) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "-";
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest} Min`;
+  if (!rest) return `${hours} Std`;
+  return `${hours} Std ${rest} Min`;
+}
+
+function offerBowlingPricingPlan(dateKey) {
+  if (!dateKey) {
+    return {
+      dayLabel: "",
+      openingHours: "",
+      warning: "Bitte Veranstaltungsdatum wählen, damit der Bowlingpreis berechnet werden kann.",
+      segments: []
+    };
+  }
+  const date = new Date(`${dateKey}T12:00:00`);
+  const day = date.getDay();
+  const info = holidayInfo(dateKey);
+  const openingHours = openingHoursFor(dateKey);
+  if (info.className === "holiday") {
+    return {
+      dayLabel: info.label || "Feiertag",
+      openingHours,
+      warning: "Feiertag: Laut Website bitte Tarif anfragen, daher keine automatische Preisberechnung.",
+      segments: []
+    };
+  }
+  if (day === 2) {
+    return {
+      dayLabel: "Dienstag",
+      openingHours: "geschlossen",
+      warning: "Dienstag ist laut Website Ruhetag.",
+      segments: []
+    };
+  }
+  if (info.className === "preholiday" || day === 6) {
+    return {
+      dayLabel: info.className === "preholiday" ? "Vorfeiertag" : "Samstag",
+      openingHours,
+      segments: [
+        { start: 14 * 60, end: 19 * 60, rate: 30, label: "14:00 bis 19:00" },
+        { start: 19 * 60, end: 26 * 60, rate: 37, label: "19:00 bis 02:00" }
+      ],
+      warning: ""
+    };
+  }
+  if (day === 5) {
+    return {
+      dayLabel: "Freitag",
+      openingHours,
+      segments: [
+        { start: 15 * 60, end: 19 * 60, rate: 30, label: "15:00 bis 19:00" },
+        { start: 19 * 60, end: 26 * 60, rate: 35, label: "19:00 bis 02:00" }
+      ],
+      warning: ""
+    };
+  }
+  if (day === 0) {
+    return {
+      dayLabel: "Sonntag",
+      openingHours,
+      segments: [
+        { start: 14 * 60, end: 23 * 60, rate: 29, label: "14:00 bis 23:00" }
+      ],
+      warning: ""
+    };
+  }
+  return {
+    dayLabel: OFFER_BOWLING_WEEKDAY_LABELS[day] || "Wochentag",
+    openingHours,
+    segments: [
+      { start: 16 * 60, end: 24 * 60, rate: 27, label: "16:00 bis 00:00" }
+    ],
+    warning: ""
+  };
+}
+
+function offerBowlingPricing(dateKey, bowling = {}) {
+  const normalized = normalizeOfferBowlingClient(bowling);
+  const tournamentPackage = OFFER_TOURNAMENT_PACKAGES[normalized.tournamentPackage] || null;
+  const plan = offerBowlingPricingPlan(dateKey);
+  const fromMinutes = offerTimeMinutesValue(normalized.fromTime);
+  const toMinutesRaw = offerTimeMinutesValue(normalized.toTime);
+  const hasPartialTime = (fromMinutes == null) !== (toMinutesRaw == null);
+  let durationMinutes = 0;
+  let coveredMinutes = 0;
+  let laneCostPerLane = 0;
+  if (fromMinutes != null && toMinutesRaw != null) {
+    let toMinutes = toMinutesRaw;
+    if (toMinutes <= fromMinutes) toMinutes += 24 * 60;
+    durationMinutes = toMinutes - fromMinutes;
+    for (const segment of plan.segments) {
+      const overlapStart = Math.max(fromMinutes, segment.start);
+      const overlapEnd = Math.min(toMinutes, segment.end);
+      const overlap = Math.max(0, overlapEnd - overlapStart);
+      if (!overlap) continue;
+      coveredMinutes += overlap;
+      laneCostPerLane += (overlap / 60) * segment.rate;
+    }
+  }
+  const laneCost = Math.round(laneCostPerLane * normalized.lanes * 100) / 100;
+  const shoeCost = Math.round(normalized.shoePersons * OFFER_BOWLING_SHOE_PRICE * 100) / 100;
+  const tournamentCost = cleanOfferMoneyValue(tournamentPackage?.price || 0);
+  const gameTotal = Math.round((laneCost + shoeCost) * 100) / 100;
+  const total = Math.round((gameTotal + tournamentCost) * 100) / 100;
+  const rateLabel = plan.segments.length
+    ? plan.segments.map((segment) => `${segment.label}: ${formatMoney(segment.rate)}/Std pro Bahn`).join(" · ")
+    : "Tarif auf Anfrage";
+  let warning = plan.warning || "";
+  if (hasPartialTime) {
+    warning = [warning, "Bitte Bowling von und bis vollständig eintragen."].filter(Boolean).join(" ");
+  } else if (durationMinutes > 0 && coveredMinutes < durationMinutes && plan.segments.length) {
+    warning = [warning, "Die eingetragene Spielzeit liegt teilweise außerhalb der regulären Öffnungszeit."].filter(Boolean).join(" ");
+  }
+  return {
+    ...normalized,
+    dayLabel: plan.dayLabel,
+    openingHours: plan.openingHours,
+    rateLabel,
+    warning,
+    durationMinutes,
+    durationLabel: offerDurationLabel(durationMinutes),
+    tournamentPackageLabel: tournamentPackage?.label || "",
+    tournamentPackageDescription: tournamentPackage?.description || "",
+    tournamentCost,
+    laneCost,
+    shoeCost,
+    gameTotal,
+    total
+  };
+}
+
+function offerReservedAreaPricing(offer) {
+  const draft = normalizeOfferClient(offer || {});
+  const reservedArea = String(draft.reservedArea || "").trim();
+  const buffetPricing = offerBuffetPricing(draft);
+  const hasBowling = offerHasBowlingBooking(draft);
+  let roomFee = 0;
+  let roomFeeLabel = "";
+  let warning = "";
+  if (reservedArea === "huette") {
+    roomFee = OFFER_HUT_RENT_PRICE;
+    roomFeeLabel = "Raummiete LA-Bowling Hütte";
+  } else if (reservedArea === "komplettes-center") {
+    roomFee = cleanOfferMoneyValue(draft.reservedAreaPrice);
+    roomFeeLabel = "Komplettes Center (geschlossene Gesellschaft)";
+    if (roomFee <= 0) warning = "Bitte einen Preis für das komplette Center eintragen.";
+  } else if (reservedArea === "grosses-nebenzimmer" && !buffetPricing.hasBuffet && !hasBowling) {
+    roomFee = OFFER_LARGE_ROOM_ONLY_PRICE;
+    roomFeeLabel = "Raummiete großes Nebenzimmer";
+  }
+  const campfireFee = draft.reservedAreaCampfire ? OFFER_CAMPFIRE_PRICE : 0;
+  return {
+    reservedArea,
+    reservedAreaLabel: OFFER_RESERVED_AREA_LABELS[reservedArea] || reservedArea || "",
+    campfireSelected: draft.reservedAreaCampfire === true,
+    roomFee,
+    roomFeeLabel,
+    campfireFee,
+    warning,
+    total: Math.round((roomFee + campfireFee) * 100) / 100
+  };
+}
+
 function offerTotals(offer) {
   const draft = normalizeOfferClient(offer || {});
   const personCount = offerPersonCount(draft);
-  const buffetTotal = personCount * cleanOfferMoneyValue(draft.buffet?.pricePerPerson || 0);
+  const buffetPricing = offerBuffetPricing(draft);
+  const bowlingPricing = offerBowlingPricing(draft.eventDate, draft.bowling);
+  const reservedAreaPricing = offerReservedAreaPricing(draft);
   const extraRows = (draft.costs || []).reduce((sum, row) => sum + (cleanOfferMoneyValue(row.quantity) * cleanOfferMoneyValue(row.unitPrice)), 0);
-  const total = buffetTotal + extraRows;
+  const total = buffetPricing.total + bowlingPricing.total + reservedAreaPricing.total + extraRows;
   return {
+    adults: buffetPricing.adults,
+    children: buffetPricing.children,
     personCount,
-    buffetTotal,
+    chargedUnits: buffetPricing.chargedUnits,
+    buffetBaseTotal: buffetPricing.buffetBaseTotal,
+    sparklingReceptionTotal: buffetPricing.sparklingReceptionTotal,
+    buffetTotal: buffetPricing.total,
+    bowlingGameTotal: bowlingPricing.gameTotal,
+    tournamentTotal: bowlingPricing.tournamentCost,
+    bowlingTotal: bowlingPricing.total,
+    reservedAreaTotal: reservedAreaPricing.total,
+    roomFee: reservedAreaPricing.roomFee,
+    roomFeeLabel: reservedAreaPricing.roomFeeLabel,
+    campfireFee: reservedAreaPricing.campfireFee,
     extraRows,
     total
   };
 }
 
+function formatOfferUnits(value) {
+  const numeric = Math.round(Number(value || 0) * 100) / 100;
+  return Number.isInteger(numeric) ? String(numeric) : String(numeric).replace(".", ",");
+}
+
+function offerTimelineEvents(offer) {
+  const draft = normalizeOfferClient(offer || {});
+  const events = [];
+  const push = (time, title, note = "", sortOrder = 50) => {
+    const clean = cleanOfferTimeValue(time);
+    if (!clean) return;
+    events.push({ id: cryptoId(), time: clean, title, note, sortOrder });
+  };
+  push(draft.startTime, "Eintreffen", "", 10);
+  if (draft.buffet?.sparklingReception) {
+    push(draft.sparklingReceptionTime, "Sektempfang", "Optional zum Buffet gebucht", 20);
+  }
+  push(draft.bowling?.fromTime, "Bowling Beginn", "", 30);
+  push(draft.bowling?.toTime, "Bowling Ende", "", 35);
+  push(draft.mealTime, "Essen / Buffet", draft.buffet?.name || "", 40);
+  (draft.timeline || []).forEach((item, index) => {
+    if (!item.time && !item.title && !item.note) return;
+    events.push({
+      id: item.id || cryptoId(),
+      time: cleanOfferTimeValue(item.time),
+      title: String(item.title || "").trim() || "Ereignis",
+      note: String(item.note || "").trim(),
+      sortOrder: 60 + index
+    });
+  });
+  return events
+    .filter((item) => item.time || item.title || item.note)
+    .sort((a, b) => {
+      const aMinutes = offerTimeMinutesValue(a.time);
+      const bMinutes = offerTimeMinutesValue(b.time);
+      if (aMinutes == null && bMinutes == null) return a.sortOrder - b.sortOrder;
+      if (aMinutes == null) return 1;
+      if (bMinutes == null) return -1;
+      if (aMinutes !== bMinutes) return aMinutes - bMinutes;
+      return a.sortOrder - b.sortOrder;
+    });
+}
+
+function offerReservedAreaOptions(selectedValue = "") {
+  const options = OFFER_RESERVED_AREA_OPTIONS.slice();
+  if (selectedValue && !options.some((item) => item.value === selectedValue)) {
+    options.push({ value: selectedValue, label: selectedValue });
+  }
+  return options.map((item) => `<option value="${escapeHtml(item.value)}" ${item.value === selectedValue ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("");
+}
+
+function offerTournamentPackageOptions(selectedValue = "") {
+  const options = [{ value: "", label: "Kein Turnierpaket" }, ...Object.entries(OFFER_TOURNAMENT_PACKAGES).map(([value, item]) => ({ value, label: item.label }))];
+  return options.map((item) => `<option value="${escapeHtml(item.value)}" ${item.value === selectedValue ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("");
+}
+
+function offerCustomerDirectoryMatches(customer, query = "") {
+  const lowered = String(query || "").trim().toLowerCase();
+  if (!lowered) return true;
+  return [
+    customer.name,
+    customer.contact,
+    customer.email,
+    customer.phone,
+    customer.address
+  ].some((value) => String(value || "").toLowerCase().includes(lowered));
+}
+
+function offerCustomerDirectoryOptions(customers = [], selectedId = "") {
+  const options = customers.slice();
+  if (selectedId && !options.some((customer) => customer.id === selectedId)) {
+    const selected = normalizeCustomerDirectory(state.customerDirectory).find((customer) => customer.id === selectedId);
+    if (selected) options.unshift(selected);
+  }
+  return options.length
+    ? options.map((customer) => `<option value="${escapeHtml(customer.id)}" ${customer.id === selectedId ? "selected" : ""}>${escapeHtml(customer.name)}${customer.contact ? ` - ${escapeHtml(customer.contact)}` : ""}</option>`).join("")
+    : `<option value="">Kein Kunde gefunden</option>`;
+}
+
 function offerTemplateOptions(selectedKey = "") {
   return Object.entries(OFFER_BUFFET_TEMPLATES).map(([key, template]) => `<option value="${escapeHtml(key)}" ${key === selectedKey ? "selected" : ""}>${escapeHtml(template.name)}</option>`).join("");
+}
+
+function offerDishAssortmentForCategory(category = "") {
+  return Array.isArray(OFFER_DISH_ASSORTMENT[category]) ? OFFER_DISH_ASSORTMENT[category] : [];
+}
+
+function offerDishAssortmentOptions(category = "") {
+  const items = offerDishAssortmentForCategory(category);
+  if (!items.length) return `<option value="">Kein Sortiment hinterlegt</option>`;
+  return `
+    <option value="">Gericht aus Sortiment wählen</option>
+    ${items.map((item, index) => `<option value="${index}">${escapeHtml(item.group ? `${item.group}: ${item.name}` : item.name)}</option>`).join("")}
+  `;
 }
 
 function renderAll() {
@@ -1136,6 +1696,7 @@ function renderAll() {
   renderAdminCleaningTasks();
   renderAdminReminders();
   renderAdminAvailabilityPreview();
+  renderAdminTablePlan();
   renderAdminCorrection();
   renderWeather();
   renderTerminal();
@@ -3614,6 +4175,7 @@ function renderAdminOffers() {
   const container = $("#adminOffers");
   if (!container) return;
   if (state.offerDraftDirty && container.querySelector("[data-offer-field]")) {
+    state.offerCustomerSearch = container.querySelector("#offerCustomerSearch")?.value || state.offerCustomerSearch || "";
     state.offerDraft = currentOfferDraftFromDom();
     state.offerDraftId = state.offerDraft.id;
   }
@@ -3623,6 +4185,12 @@ function renderAdminOffers() {
   }
   const draft = ensureOfferDraft();
   const totals = offerTotals(draft);
+  const bowling = offerBowlingPricing(draft.eventDate, draft.bowling);
+  const buffetPricing = offerBuffetPricing(draft);
+  const reservedAreaPricing = offerReservedAreaPricing(draft);
+  const timelineEvents = offerTimelineEvents(draft);
+  const customerQuery = String(state.offerCustomerSearch || "").trim();
+  const customerOptions = normalizeCustomerDirectory(state.customerDirectory).filter((customer) => offerCustomerDirectoryMatches(customer, customerQuery));
   const offers = normalizeOffersClient(state.offers || []);
   const activeId = state.offerDraft?.id || draft.id;
   const listHtml = offers.length ? offers.map((offer) => renderOfferListItem(offer, activeId)).join("") : `<p class="hint">Noch keine Angebote angelegt.</p>`;
@@ -3639,6 +4207,8 @@ function renderAdminOffers() {
       <div class="offer-toolbar-stats">
         <span class="offer-stat"><small>Personen</small><strong>${totals.personCount}</strong></span>
         <span class="offer-stat"><small>Buffet</small><strong>${formatMoney(totals.buffetTotal)}</strong></span>
+        <span class="offer-stat"><small>Bowling</small><strong>${formatMoney(totals.bowlingTotal)}</strong></span>
+        <span class="offer-stat"><small>Bereich</small><strong>${formatMoney(totals.reservedAreaTotal)}</strong></span>
         <span class="offer-stat"><small>Zusatz</small><strong>${formatMoney(totals.extraRows)}</strong></span>
         <span class="offer-stat offer-stat-total"><small>Gesamt</small><strong>${formatMoney(totals.total)}</strong></span>
       </div>
@@ -3670,9 +4240,28 @@ function renderAdminOffers() {
           <label>Anlass<input data-offer-field="occasion" value="${escapeHtml(draft.occasion)}" placeholder="z.B. Hochzeitsfeier"></label>
           <label>Erwachsene<input data-offer-field="personsAdults" type="number" min="0" step="1" value="${escapeHtml(draft.personsAdults)}"></label>
           <label>Kinder<input data-offer-field="personsChildren" type="number" min="0" step="1" value="${escapeHtml(draft.personsChildren)}"></label>
-          <label>Uhrzeit<input data-offer-field="startTime" type="time" value="${escapeHtml(draft.startTime)}"></label>
-          <label>Reservierter Bereich<input data-offer-field="reservedArea" value="${escapeHtml(draft.reservedArea)}" placeholder="z.B. Unser großes Nebenzimmer"></label>
+          <label>Eintreffen<input data-offer-field="startTime" type="time" value="${escapeHtml(draft.startTime)}"></label>
         </div>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Kunde aus Kundenstamm</strong>
+              <span>Bestehende Rechnungskunden aus der Kartei übernehmen und als Angebotsbasis verwenden.</span>
+            </div>
+          </div>
+          <div class="offer-grid offer-grid-two">
+            <label>Kundenstamm durchsuchen<input id="offerCustomerSearch" value="${escapeHtml(customerQuery)}" placeholder="Name, Firma, Ansprechpartner"></label>
+            <label>Kunde auswählen
+              <select data-offer-field="customerDirectoryId">
+                ${offerCustomerDirectoryOptions(customerOptions, draft.customerDirectoryId)}
+              </select>
+            </label>
+          </div>
+          <div class="day-report-actions">
+            <button class="secondary" type="button" data-offer-apply-customer>Stammdaten übernehmen</button>
+          </div>
+        </section>
 
         <div class="offer-grid offer-grid-two">
           <label>Kunde / Firma<input data-offer-field="customerName" value="${escapeHtml(draft.customerName)}" placeholder="Firma oder Name"></label>
@@ -3681,6 +4270,69 @@ function renderAdminOffers() {
           <label>Telefon<input data-offer-field="customerPhone" value="${escapeHtml(draft.customerPhone)}" placeholder="Telefonnummer"></label>
           <label class="offer-grid-wide">Rechnungsadresse<textarea data-offer-field="customerAddress" rows="3" placeholder="Adresse">${escapeHtml(draft.customerAddress)}</textarea></label>
         </div>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Bereich & Zusatzoptionen</strong>
+              <span>Raummiete wird automatisch ergänzt. Großes Nebenzimmer ohne Buffet und ohne Bowling = 100,00 Euro. LA-Bowling Hütte = 250,00 Euro.</span>
+            </div>
+          </div>
+          <div class="offer-grid offer-grid-two">
+            <label>Reservierter Bereich
+              <select data-offer-field="reservedArea">
+                ${offerReservedAreaOptions(draft.reservedArea)}
+              </select>
+            </label>
+            <label>Preis komplettes Center
+              <input data-offer-field="reservedAreaPrice" type="number" min="0" step="0.01" value="${escapeHtml(draft.reservedAreaPrice)}" placeholder="frei eingeben">
+            </label>
+            <label class="offer-toggle-row">
+              <span>Lagerfeuerstelle mit Feuerholz</span>
+              <input data-offer-field="reservedAreaCampfire" type="checkbox" ${draft.reservedAreaCampfire ? "checked" : ""}>
+            </label>
+          </div>
+          <div class="offer-bowling-summary">
+            <span class="offer-stat"><small>Bereich</small><strong>${escapeHtml(reservedAreaPricing.reservedAreaLabel || "-")}</strong></span>
+            <span class="offer-stat"><small>Raummiete</small><strong>${formatMoney(reservedAreaPricing.roomFee)}</strong></span>
+            <span class="offer-stat"><small>Lagerfeuer</small><strong>${formatMoney(reservedAreaPricing.campfireFee)}</strong></span>
+            <span class="offer-stat offer-stat-total"><small>Bereich gesamt</small><strong>${formatMoney(reservedAreaPricing.total)}</strong></span>
+          </div>
+          ${reservedAreaPricing.warning ? `<p class="offer-warning">${escapeHtml(reservedAreaPricing.warning)}</p>` : ""}
+        </section>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Bowling</strong>
+              <span>Bahnen, Leihschuhe und Spielzeit werden automatisch anhand der Website-Preise berechnet.</span>
+            </div>
+            <a class="secondary" href="${OFFER_BOWLING_PRICE_URL}" target="_blank" rel="noreferrer">Preise öffnen</a>
+          </div>
+          <div class="offer-grid">
+            <label>Turnierpaket
+              <select data-offer-field="bowlingTournamentPackage">
+                ${offerTournamentPackageOptions(draft.bowling?.tournamentPackage || "")}
+              </select>
+            </label>
+            <label>Bahnen Anzahl<input data-offer-field="bowlingLanes" type="number" min="0" step="1" value="${escapeHtml(draft.bowling?.lanes)}"></label>
+            <label>Leihschuhe Personen<input data-offer-field="bowlingShoePersons" type="number" min="0" step="1" value="${escapeHtml(draft.bowling?.shoePersons)}"></label>
+            <label>Bowling von<input data-offer-field="bowlingFromTime" type="time" value="${escapeHtml(draft.bowling?.fromTime)}"></label>
+            <label>Bowling bis<input data-offer-field="bowlingToTime" type="time" value="${escapeHtml(draft.bowling?.toTime)}"></label>
+          </div>
+          <div class="offer-bowling-summary">
+            <span class="offer-stat"><small>Tag</small><strong>${escapeHtml(bowling.dayLabel || (draft.eventDate ? formatDate(draft.eventDate) : "-"))}</strong></span>
+            <span class="offer-stat"><small>Öffnungszeit</small><strong>${escapeHtml(bowling.openingHours || "-")}</strong></span>
+            <span class="offer-stat"><small>Spieldauer</small><strong>${escapeHtml(bowling.durationLabel)}</strong></span>
+            <span class="offer-stat"><small>Bahnkosten</small><strong>${formatMoney(bowling.laneCost)}</strong></span>
+            <span class="offer-stat"><small>Leihschuhe</small><strong>${formatMoney(bowling.shoeCost)}</strong></span>
+            <span class="offer-stat"><small>Turnierpaket</small><strong>${formatMoney(bowling.tournamentCost)}</strong></span>
+            <span class="offer-stat offer-stat-total"><small>Bowling gesamt</small><strong>${formatMoney(bowling.total)}</strong></span>
+          </div>
+          ${bowling.tournamentPackageLabel ? `<p class="offer-pricing-note"><strong>${escapeHtml(bowling.tournamentPackageLabel)}</strong>: ${escapeHtml(bowling.tournamentPackageDescription)}</p>` : ""}
+          <p class="offer-pricing-note">${escapeHtml(bowling.rateLabel)}</p>
+          ${bowling.warning ? `<p class="offer-warning">${escapeHtml(bowling.warning)}</p>` : ""}
+        </section>
 
         <section class="offer-section">
           <div class="offer-section-head">
@@ -3699,7 +4351,22 @@ function renderAdminOffers() {
           <div class="offer-grid offer-grid-two">
             <label>Buffetname<input data-offer-field="buffetName" value="${escapeHtml(draft.buffet?.name)}" placeholder="Buffetname"></label>
             <label>Preis pro Person<input data-offer-field="buffetPricePerPerson" type="number" min="0" step="0.01" value="${escapeHtml(draft.buffet?.pricePerPerson)}"></label>
+            <label class="offer-toggle-row">
+              <span>Sektempfang dazubuchen</span>
+              <input data-offer-field="buffetSparklingReception" type="checkbox" ${draft.buffet?.sparklingReception ? "checked" : ""}>
+            </label>
+            <label>Sektempfang Uhrzeit<input data-offer-field="sparklingReceptionTime" type="time" value="${escapeHtml(draft.sparklingReceptionTime)}"></label>
+            <label>Essenszeit<input data-offer-field="mealTime" type="time" value="${escapeHtml(draft.mealTime)}"></label>
           </div>
+          <div class="offer-bowling-summary">
+            <span class="offer-stat"><small>Erwachsene</small><strong>${escapeHtml(String(totals.adults))}</strong></span>
+            <span class="offer-stat"><small>Kinder unter 12</small><strong>${escapeHtml(String(totals.children))}</strong></span>
+            <span class="offer-stat"><small>Berechnete Personen</small><strong>${escapeHtml(formatOfferUnits(totals.chargedUnits))}</strong></span>
+            <span class="offer-stat"><small>Buffet</small><strong>${formatMoney(totals.buffetBaseTotal)}</strong></span>
+            <span class="offer-stat"><small>Sektempfang</small><strong>${formatMoney(totals.sparklingReceptionTotal)}</strong></span>
+            <span class="offer-stat offer-stat-total"><small>Buffet gesamt</small><strong>${formatMoney(totals.buffetTotal)}</strong></span>
+          </div>
+          <p class="offer-pricing-note">Kinder bis 12 Jahre werden beim Buffet und beim optionalen Sektempfang automatisch zum halben Preis berechnet.</p>
           <div class="offer-buffet-categories">
             ${OFFER_CATEGORY_ORDER.map((category) => renderOfferBuffetCategory(category, draft)).join("")}
           </div>
@@ -3709,9 +4376,20 @@ function renderAdminOffers() {
           <div class="offer-section-head">
             <div>
               <strong>Ablauf</strong>
-              <span>Timeline für Aufbau, Sektempfang, Buffet und weitere Schritte.</span>
+              <span>Feste Zeiten und freie Ereignisse werden für den Kunden in einer klaren Reihenfolge dargestellt.</span>
             </div>
-            <button class="secondary" type="button" data-offer-add-timeline>+ Zeit hinzufügen</button>
+            <button class="secondary" type="button" data-offer-add-timeline>+ Ereignis hinzufügen</button>
+          </div>
+          <div class="offer-timeline-visual">
+            ${timelineEvents.length ? timelineEvents.map((item) => `
+              <article class="offer-timeline-card">
+                <div class="offer-timeline-time">${escapeHtml(item.time || "--:--")}</div>
+                <div class="offer-timeline-copy">
+                  <strong>${escapeHtml(item.title || "Ereignis")}</strong>
+                  ${item.note ? `<span>${escapeHtml(item.note)}</span>` : ""}
+                </div>
+              </article>
+            `).join("") : `<p class="hint">Noch keine Ablaufpunkte hinterlegt.</p>`}
           </div>
           <div class="offer-row-list">
             ${(draft.timeline || []).length ? (draft.timeline || []).map((item, index) => renderOfferTimelineRow(item, index)).join("") : `<p class="hint">Noch keine Zeiten eingetragen.</p>`}
@@ -3722,12 +4400,24 @@ function renderAdminOffers() {
           <div class="offer-section-head">
             <div>
               <strong>Kostenübersicht</strong>
-              <span>Freie Positionen wie Bowling, Sektempfang, Raummiete oder Sonstiges.</span>
+              <span>Zusätzliche Positionen wie Sektempfang, Raummiete, Getränke oder Sonstiges.</span>
             </div>
             <button class="secondary" type="button" data-offer-add-cost>+ Position hinzufügen</button>
           </div>
           <div class="offer-row-list">
             ${(draft.costs || []).length ? (draft.costs || []).map((item, index) => renderOfferCostRow(item, index)).join("") : `<p class="hint">Noch keine Positionen angelegt.</p>`}
+          </div>
+        </section>
+
+        <section class="offer-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Zusatztexte für das Angebot</strong>
+              <span>Standardtexte wie Preisangabe, Stornofrist und Reservierungsbestätigung können pro Angebot ein- oder ausgeblendet werden.</span>
+            </div>
+          </div>
+          <div class="offer-row-list">
+            ${Object.entries(draft.textBlocks || {}).map(([key, block]) => renderOfferTextBlockEditor(key, block)).join("")}
           </div>
         </section>
 
@@ -3756,10 +4446,16 @@ function renderOfferListItem(offer, activeId) {
 function renderOfferBuffetCategory(category, draft) {
   const items = draft.buffet?.categories?.[category] || [];
   return `
-    <section class="offer-category">
+    <section class="offer-category" data-offer-category="${escapeHtml(category)}">
       <div class="offer-category-head">
         <strong>${escapeHtml(OFFER_CATEGORY_LABELS[category] || category)}</strong>
-        <button class="secondary" type="button" data-offer-add-dish="${escapeHtml(category)}">+ Gericht</button>
+        <div class="offer-inline-tools">
+          <select data-offer-assortment-select="${escapeHtml(category)}">
+            ${offerDishAssortmentOptions(category)}
+          </select>
+          <button class="secondary" type="button" data-offer-insert-assortment="${escapeHtml(category)}">Aus Sortiment</button>
+          <button class="secondary" type="button" data-offer-add-dish="${escapeHtml(category)}">+ Leer</button>
+        </div>
       </div>
       <div class="offer-row-list">
         ${items.length ? items.map((item) => renderOfferDishRow(category, item)).join("") : `<p class="hint">Noch keine Gerichte hinterlegt.</p>`}
@@ -3811,6 +4507,62 @@ function renderOfferCostRow(item) {
       </div>
     </div>
   `;
+}
+
+function renderOfferTextBlockEditor(key, block) {
+  return `
+    <article class="offer-text-block">
+      <label class="offer-toggle-row">
+        <span>${escapeHtml(block.label)}</span>
+        <input data-offer-field="textBlockEnabled-${key}" type="checkbox" ${block.enabled ? "checked" : ""}>
+      </label>
+      <textarea data-offer-field="textBlockText-${key}" rows="4" placeholder="${escapeHtml(block.label)}">${escapeHtml(block.text || "")}</textarea>
+    </article>
+  `;
+}
+
+function offerFieldNeedsLiveRefresh(target) {
+  if (!target) return false;
+  const liveFields = new Set([
+    "eventDate",
+    "personsAdults",
+    "personsChildren",
+    "startTime",
+    "mealTime",
+    "sparklingReceptionTime",
+    "reservedArea",
+    "reservedAreaPrice",
+    "reservedAreaCampfire",
+    "customerDirectoryId",
+    "bowlingTournamentPackage",
+    "bowlingLanes",
+    "bowlingShoePersons",
+    "bowlingFromTime",
+    "bowlingToTime",
+    "buffetName",
+    "buffetPricePerPerson",
+    "buffetSparklingReception"
+  ]);
+  const fieldName = target.dataset?.offerField || "";
+  if (liveFields.has(fieldName)) return true;
+  return Boolean(
+    target.closest("[data-offer-timeline-row]") ||
+    target.closest("[data-offer-cost-row]")
+  );
+}
+
+function refreshOfferEditorComputedView(focusSelector = "") {
+  const container = $("#adminOffers");
+  if (container?.querySelector("[data-offer-field]")) {
+    state.offerCustomerSearch = container.querySelector("#offerCustomerSearch")?.value || state.offerCustomerSearch || "";
+    state.offerDraft = currentOfferDraftFromDom();
+    state.offerDraftId = state.offerDraft.id;
+  }
+  renderAdminOffers();
+  if (focusSelector) {
+    const focusTarget = $("#adminOffers")?.querySelector(focusSelector);
+    focusTarget?.focus();
+  }
 }
 
 async function saveCurrentOffer(button) {
@@ -3920,9 +4672,53 @@ function moveOfferRow(list, rowId, direction) {
   return copy;
 }
 
+function offerTemplateBadgeLabel(offer) {
+  const templateName = OFFER_BUFFET_TEMPLATES[offer?.buffet?.templateKey || ""]?.name || "";
+  return (templateName || offer?.buffet?.name || "").trim().toUpperCase();
+}
+
+function offerTimelineScaleMarkup(events = []) {
+  const timed = (Array.isArray(events) ? events : []).filter((item) => cleanOfferTimeValue(item.time));
+  if (!timed.length) return "";
+  const minutes = timed.map((item) => offerTimeMinutesValue(item.time)).filter((value) => value != null);
+  const minMinutes = Math.min(...minutes);
+  const maxMinutes = Math.max(...minutes);
+  const span = Math.max(60, maxMinutes - minMinutes);
+  const points = timed.map((item, index) => {
+    const value = offerTimeMinutesValue(item.time) ?? minMinutes;
+    const left = timed.length === 1 ? 50 : Math.max(3, Math.min(97, ((value - minMinutes) / span) * 100));
+    const palette = index % 3 === 1 ? "gold" : index % 3 === 2 ? "dark" : "red";
+    return `
+      <div class="scale-point" style="left:${left}%">
+        <div class="scale-time">${escapeHtml(item.time)}</div>
+        <div class="scale-dot is-${palette}"></div>
+        <div class="scale-label">${escapeHtml(item.title || "Ereignis")}</div>
+        ${item.note ? `<div class="scale-note">${escapeHtml(item.note)}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+  return `
+    <div class="scale-wrap">
+      <div class="scale-line"></div>
+      ${points}
+    </div>
+  `;
+}
+
 function printOfferDraft() {
   const draft = currentOfferDraftFromDom();
   const totals = offerTotals(draft);
+  const bowling = offerBowlingPricing(draft.eventDate, draft.bowling);
+  const buffetPricing = offerBuffetPricing(draft);
+  const reservedAreaPricing = offerReservedAreaPricing(draft);
+  const timelineEvents = offerTimelineEvents(draft);
+  const timelineScale = offerTimelineScaleMarkup(timelineEvents);
+  const templateBadge = offerTemplateBadgeLabel(draft);
+  const includedTextBlocks = draft.textBlocks || {};
+  const pricingNoticeText = includedTextBlocks.pricingNotice?.enabled ? includedTextBlocks.pricingNotice.text : "";
+  const cancellationText = includedTextBlocks.cancellationTerms?.enabled ? includedTextBlocks.cancellationTerms.text : "";
+  const reservationText = includedTextBlocks.reservationConfirmation?.enabled ? includedTextBlocks.reservationConfirmation.text : "";
+  const vatNoticeText = includedTextBlocks.vatNotice?.enabled ? includedTextBlocks.vatNotice.text : "";
   const win = window.open("", "_blank", "width=1100,height=1400");
   if (!win) {
     showToast("Popup wurde blockiert. Bitte Popups erlauben.");
@@ -3938,7 +4734,7 @@ function printOfferDraft() {
       </div>
     `;
   }).filter(Boolean).join("");
-  const timeline = (draft.timeline || []).map((item) => `
+  const timeline = timelineEvents.map((item) => `
     <tr>
       <td>${escapeHtml(item.time || "—")}</td>
       <td>${escapeHtml(item.title || "—")}</td>
@@ -3953,6 +4749,46 @@ function printOfferDraft() {
       <td>${formatMoney((cleanOfferMoneyValue(item.quantity) * cleanOfferMoneyValue(item.unitPrice)))}</td>
     </tr>
   `).join("");
+  const bowlingBox = (draft.bowling?.tournamentPackage || draft.bowling?.lanes || draft.bowling?.shoePersons || draft.bowling?.fromTime || draft.bowling?.toTime)
+    ? `<div class="box">
+          <h2>Bowling</h2>
+          <div class="grid">
+            <div class="kv"><strong>Turnierpaket</strong>${escapeHtml(bowling.tournamentPackageLabel || "-")}</div>
+            <div class="kv"><strong>Bahnen</strong>${escapeHtml(String(draft.bowling?.lanes || 0))}</div>
+            <div class="kv"><strong>Leihschuhe Personen</strong>${escapeHtml(String(draft.bowling?.shoePersons || 0))}</div>
+            <div class="kv"><strong>Spielzeit</strong>${escapeHtml(draft.bowling?.fromTime || "-")} bis ${escapeHtml(draft.bowling?.toTime || "-")}</div>
+            <div class="kv"><strong>Spieldauer</strong>${escapeHtml(bowling.durationLabel)}</div>
+            <div class="kv"><strong>Öffnungszeit</strong>${escapeHtml(bowling.openingHours || "-")}</div>
+            <div class="kv"><strong>Bowling gesamt</strong>${formatMoney(bowling.total)}</div>
+          </div>
+          ${bowling.tournamentPackageDescription ? `<p class="muted">${escapeHtml(bowling.tournamentPackageDescription)}</p>` : ""}
+          <p class="muted">${escapeHtml(bowling.rateLabel)}</p>
+          ${bowling.warning ? `<p class="muted">${escapeHtml(bowling.warning)}</p>` : ""}
+        </div>`
+    : "";
+  const bowlingCostRows = bowling.laneCost > 0 || bowling.shoeCost > 0 || bowling.tournamentCost > 0
+    ? `
+      ${bowling.laneCost > 0 ? `<tr><td>Bowling Bahnen</td><td>${escapeHtml(`${draft.bowling?.lanes || 0} Bahn(en) · ${bowling.durationLabel}`)}</td><td>laut Tarif</td><td>${formatMoney(bowling.laneCost)}</td></tr>` : ""}
+      ${bowling.shoeCost > 0 ? `<tr><td>Leihschuhe</td><td>${escapeHtml(String(draft.bowling?.shoePersons || 0))}</td><td>${formatMoney(OFFER_BOWLING_SHOE_PRICE)}</td><td>${formatMoney(bowling.shoeCost)}</td></tr>` : ""}
+      ${bowling.tournamentCost > 0 ? `<tr><td>${escapeHtml(bowling.tournamentPackageLabel || "Turnierpaket")}</td><td>${escapeHtml(bowling.tournamentPackageDescription || "Zusatzpaket")}</td><td>pauschal</td><td>${formatMoney(bowling.tournamentCost)}</td></tr>` : ""}
+    `
+    : "";
+  const buffetCostRows = buffetPricing.buffetBaseTotal > 0 || buffetPricing.sparklingReceptionTotal > 0
+    ? `
+      ${buffetPricing.adults > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td>Buffet Erwachsene</td><td>${escapeHtml(String(buffetPricing.adults))}</td><td>${formatMoney(buffetPricing.pricePerPerson)}</td><td>${formatMoney(buffetPricing.adults * buffetPricing.pricePerPerson)}</td></tr>` : ""}
+      ${buffetPricing.children > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td>Buffet Kinder unter 12</td><td>${escapeHtml(String(buffetPricing.children))}</td><td>${formatMoney(buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
+      ${draft.buffet?.sparklingReception && buffetPricing.adults > 0 ? `<tr><td>Sektempfang Erwachsene</td><td>${escapeHtml(String(buffetPricing.adults))}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE)}</td><td>${formatMoney(buffetPricing.adults * OFFER_SPARKLING_RECEPTION_PRICE)}</td></tr>` : ""}
+      ${draft.buffet?.sparklingReception && buffetPricing.children > 0 ? `<tr><td>Sektempfang Kinder unter 12</td><td>${escapeHtml(String(buffetPricing.children))}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
+    `
+    : "";
+  const reservedAreaCostRows = reservedAreaPricing.roomFee > 0 || reservedAreaPricing.campfireFee > 0
+    ? `
+      ${reservedAreaPricing.roomFee > 0 ? `<tr><td>${escapeHtml(reservedAreaPricing.roomFeeLabel || "Raummiete")}</td><td>1</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td></tr>` : ""}
+      ${reservedAreaPricing.campfireFee > 0 ? `<tr><td>Lagerfeuerstelle mit Feuerholz</td><td>1</td><td>${formatMoney(OFFER_CAMPFIRE_PRICE)}</td><td>${formatMoney(reservedAreaPricing.campfireFee)}</td></tr>` : ""}
+    `
+    : "";
+  const personsSummary = totals.children ? `${totals.adults} + ${totals.children} Kinder` : `${totals.personCount || 0}`;
+  const venueInfo = [reservedAreaPricing.reservedAreaLabel, draft.additionalInfo].filter(Boolean).join("\n\n");
   win.document.write(`
     <!doctype html>
     <html lang="de">
@@ -3961,85 +4797,185 @@ function printOfferDraft() {
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Angebot ${escapeHtml(draft.customerName || draft.title || "")}</title>
         <style>
-          @page { size: A4; margin: 14mm; }
+          @page { size: A4 portrait; margin: 0; }
           * { box-sizing: border-box; }
-          body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; }
-          .sheet { width: 100%; }
+          html, body { margin: 0; padding: 0; }
+          body { font-family: Arial, Helvetica, sans-serif; color: #161616; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .sheet { width: 210mm; min-height: 297mm; height: 297mm; padding: 0 11mm 8mm; position: relative; background: #fff; display: flex; flex-direction: column; gap: 4.5mm; overflow: hidden; }
           .sheet + .sheet { page-break-before: always; margin-top: 0; }
-          .top { display:flex; justify-content:space-between; align-items:flex-start; gap: 20px; margin-bottom: 20px; }
-          .logo { width: 220px; height:auto; object-fit: contain; }
-          .meta { text-align:right; font-size: 12px; line-height: 1.4; }
-          h1 { margin: 0 0 10px; font-size: 28px; letter-spacing: 0; }
-          h2 { margin: 0 0 8px; font-size: 18px; }
-          h3 { margin: 0 0 6px; font-size: 14px; }
-          p { margin: 0 0 8px; }
-          .muted { color: #666; }
-          .box { border-top: 1px solid #d3d7dd; padding-top: 10px; margin-top: 10px; }
-          .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-          .kv { font-size: 12px; }
-          .kv strong { display:block; margin-bottom: 2px; }
-          .timeline, .costs { width:100%; border-collapse: collapse; margin-top: 8px; }
-          .timeline th, .timeline td, .costs th, .costs td { border-bottom: 1px solid #e5e7eb; padding: 6px 4px; text-align:left; font-size: 12px; vertical-align: top; }
-          .timeline th, .costs th { font-size: 11px; text-transform: uppercase; color: #666; }
-          .totals { margin-top: 10px; padding: 10px 12px; background: #f6f7f9; border: 1px solid #d7dce3; display:flex; justify-content:space-between; font-weight:700; }
-          .signature { margin-top: 26px; display:grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-          .signature .line { border-top: 1px solid #999; padding-top: 8px; min-height: 42px; }
-          .offer-print-buffet-group + .offer-print-buffet-group { margin-top: 10px; }
-          .offer-print-buffet-group ul { margin: 4px 0 0 18px; padding: 0; }
-          .offer-print-buffet-group li { margin-bottom: 4px; }
-          .offer-print-buffet-group span { display:block; color:#666; font-size:11px; margin-left: 2px; }
+          .header { margin: 0 -11mm 6mm; height: 43mm; display: grid; grid-template-columns: 1.42fr 0.88fr; overflow: hidden; }
+          .header-left { position: relative; background: linear-gradient(135deg, #111 0%, #1f1f1f 60%, #151515 100%); color: #fff; padding: 9mm 9mm 6mm 11mm; }
+          .header-left::before { content: ""; position: absolute; inset: 0; background:
+            linear-gradient(130deg, transparent 0 42%, rgba(168,136,72,0.22) 42% 49%, transparent 49% 100%),
+            repeating-linear-gradient(130deg, transparent 0 18px, rgba(255,255,255,0.08) 18px 20px, transparent 20px 60px); pointer-events: none; }
+          .header-left > * { position: relative; z-index: 1; }
+          .header-right { position: relative; background: #b8202c; color: #fff; padding: 9mm 11mm 6mm 8mm; clip-path: polygon(16% 0, 100% 0, 100% 100%, 0 100%); display: flex; flex-direction: column; justify-content: flex-start; }
+          .header-logo { width: 74mm; max-width: 100%; filter: brightness(0) invert(1); }
+          .header-contact { margin-top: 6mm; font-size: 10px; letter-spacing: 0.02em; }
+          .header-offer-title { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+          .header-offer-date { margin-top: 4mm; font-size: 10px; }
+          .page-title { margin: 0 0 2mm; font-size: 22px; font-weight: 700; }
+          .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 4.5mm; }
+          .template-card { border: 1px solid #ddd3c8; border-radius: 6mm; padding: 4.5mm 5mm; background: #fff; page-break-inside: avoid; }
+          .template-card + .template-card { margin-top: 4.5mm; }
+          .section-title { display: flex; align-items: center; gap: 8px; margin: 0 0 3mm; font-size: 14px; font-weight: 700; }
+          .section-title::before { content: ""; width: 6px; height: 24px; border-radius: 4px; background: linear-gradient(180deg, #ef4d59 0%, #be1d2b 100%); display: inline-block; flex: none; }
+          .muted { color: #6d6b68; }
+          .event-grid { display: grid; grid-template-columns: 100px 1fr; row-gap: 4px; column-gap: 10px; font-size: 11px; }
+          .event-grid strong { color: #77716a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
+          .scale-wrap { position: relative; margin-top: 3mm; min-height: 42mm; padding: 7mm 3mm 0; }
+          .scale-line { position: absolute; left: 4%; right: 4%; top: 20mm; height: 2px; background: #c8a764; }
+          .scale-point { position: absolute; top: 0; transform: translateX(-50%); width: 27mm; text-align: center; }
+          .scale-time { font-size: 10px; font-weight: 700; margin-bottom: 7mm; }
+          .scale-dot { width: 8mm; height: 8mm; border-radius: 999px; margin: 0 auto 5mm; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
+          .scale-dot.is-red { background: #be1d2b; }
+          .scale-dot.is-gold { background: #c8a764; }
+          .scale-dot.is-dark { background: #111; }
+          .scale-label { font-size: 10px; font-weight: 700; }
+          .scale-note { margin-top: 2px; font-size: 9px; color: #6d6b68; line-height: 1.3; }
+          .buffet-layout { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4mm; align-items: start; }
+          .buffet-col h4 { margin: 0 0 2mm; font-size: 12px; text-align: center; }
+          .buffet-col ul { list-style: none; margin: 0; padding: 0; font-size: 10px; line-height: 1.45; text-align: center; }
+          .buffet-col li + li { margin-top: 2.5mm; }
+          .buffet-col span { display: block; font-size: 9px; color: #6d6b68; }
+          .buffet-meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 3mm; }
+          .buffet-badge { padding: 2.5mm 8mm; border-radius: 999px; background: #efe7da; color: #7c6962; font-size: 10px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; }
+          .price-pill { margin-top: 4mm; text-align: right; font-size: 10px; font-weight: 700; }
+          .price-pill small { display: block; font-size: 9px; color: #6d6b68; font-weight: 400; }
+          .details-copy { white-space: pre-line; font-size: 10px; line-height: 1.45; }
+          .footer { margin-top: auto; padding-top: 3mm; border-top: 1px solid #ddd3c8; display: flex; justify-content: space-between; font-size: 9px; color: #6d6b68; }
+          .cost-card { margin-top: 0; }
+          .cost-table { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 11px; }
+          .cost-table th { text-align: left; font-size: 10px; text-transform: uppercase; color: #77716a; padding: 0 0 2.5mm; }
+          .cost-table td { padding: 1.5mm 0; vertical-align: top; border-bottom: 1px solid #f0ebe3; }
+          .cost-table td:last-child, .cost-table th:last-child { text-align: right; }
+          .cost-table td:nth-child(2), .cost-table th:nth-child(2),
+          .cost-table td:nth-child(3), .cost-table th:nth-child(3) { text-align: center; }
+          .cost-note { margin-top: 3mm; font-size: 9px; color: #6d6b68; }
+          .total-line { margin-top: 5mm; display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 700; }
+          .big-heading { margin: 1mm 0 3mm; font-size: 22px; font-weight: 700; }
+          .summary-strip { width: 100%; margin: 0 0 4mm; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #ddd3c8; border-radius: 5mm; overflow: hidden; }
+          .summary-strip > div { padding: 3mm 4mm; text-align: center; }
+          .summary-strip > div + div { border-left: 1px solid #e7ded2; }
+          .summary-strip small { display: block; font-size: 9px; color: #77716a; text-transform: uppercase; margin-bottom: 1.5mm; }
+          .summary-strip strong { font-size: 10px; }
+          .info-card { border: 1px solid #ddd3c8; border-radius: 5mm; padding: 4mm 5mm; margin: 0 0 4mm; width: 100%; }
+          .info-card p { margin: 0; white-space: pre-line; font-size: 10px; line-height: 1.45; }
+          .signature-card { width: 100%; margin: 0 0 4mm; border: 1px solid #ddd3c8; border-radius: 5mm; padding: 4mm 5mm 6mm; }
+          .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin-top: 8mm; }
+          .signature-line { border-top: 1px solid #9f9b96; padding-top: 2mm; font-size: 9px; color: #6d6b68; min-height: 13mm; }
+          .closing { width: 100%; margin: 2mm 0 0; font-size: 10px; }
+          .closing strong { display: block; margin-top: 2mm; font-size: 13px; color: #161616; }
         </style>
       </head>
       <body>
         <div class="sheet">
-          <div class="top">
-            <img class="logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
-            <div class="meta">
-              <div><strong>ANGEBOT</strong></div>
-              <div>${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "")}</div>
-              <div>${escapeHtml(draft.customerName || "")}</div>
+          <div class="header">
+            <div class="header-left">
+              <img class="header-logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
+              <div class="header-contact">LA-Bowling · Röntgenstr. 12 · 84030 Landshut</div>
+            </div>
+            <div class="header-right">
+              <h1 class="header-offer-title">Angebot</h1>
+              <div class="header-offer-date">Angebotsdatum: ${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "-")}</div>
             </div>
           </div>
-          <h1>Angebot</h1>
-          <p class="muted">${escapeHtml(draft.occasion || "")}</p>
-          <div class="grid box">
-            <div class="kv"><strong>Kunde / Firma</strong>${escapeHtml(draft.customerName || "-")}</div>
-            <div class="kv"><strong>Ansprechpartner</strong>${escapeHtml(draft.customerContact || "-")}</div>
-            <div class="kv"><strong>E-Mail</strong>${escapeHtml(draft.customerEmail || "-")}</div>
-            <div class="kv"><strong>Telefon</strong>${escapeHtml(draft.customerPhone || "-")}</div>
-            <div class="kv"><strong>Veranstaltungsdatum</strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</div>
-            <div class="kv"><strong>Personen</strong>${escapeHtml(String(totals.personCount || 0))}</div>
-            <div class="kv"><strong>Uhrzeit</strong>${escapeHtml(draft.startTime || "-")}</div>
-            <div class="kv"><strong>Reservierter Bereich</strong>${escapeHtml(draft.reservedArea || "-")}</div>
+          <h2 class="page-title">Angebot</h2>
+          <div class="grid-two">
+            <section class="template-card">
+              <h3 class="section-title">Kunde</h3>
+              <div class="details-copy">${escapeHtml(draft.customerName || "-")}${draft.customerContact ? `\n${escapeHtml(draft.customerContact)}` : ""}${draft.customerEmail ? `\n${escapeHtml(draft.customerEmail)}` : ""}${draft.customerPhone ? `\n${escapeHtml(draft.customerPhone)}` : ""}</div>
+            </section>
+            <section class="template-card">
+              <h3 class="section-title">Veranstaltung</h3>
+              <div class="event-grid">
+                <strong>Datum</strong><span>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</span>
+                <strong>Anlass</strong><span>${escapeHtml(draft.occasion || "-")}</span>
+                <strong>Personen</strong><span>${escapeHtml(personsSummary)}</span>
+                <strong>Bowling</strong><span>${escapeHtml(draft.bowling?.fromTime || "-")}${draft.bowling?.toTime ? ` - ${escapeHtml(draft.bowling?.toTime)}` : ""}</span>
+                <strong>Essen</strong><span>${escapeHtml(draft.mealTime || "offen")}</span>
+              </div>
+            </section>
           </div>
-          ${draft.additionalInfo ? `<div class="box"><h2>Zusätzliche Informationen</h2><p>${escapeHtml(draft.additionalInfo)}</p></div>` : ""}
-          <div class="box">
-            <h2>Buffet ${escapeHtml(draft.buffet?.name || "")}</h2>
-            <p class="muted">${formatMoney(draft.buffet?.pricePerPerson || 0)} pro Person</p>
-            ${buffetSections}
+          ${timelineScale ? `<section class="template-card"><h3 class="section-title">Ablauf</h3>${timelineScale}</section>` : ""}
+          <section class="template-card">
+            <div class="buffet-meta">
+              <h3 class="section-title">Buffet</h3>
+              ${templateBadge ? `<span class="buffet-badge">${escapeHtml(templateBadge)}</span>` : ""}
+            </div>
+            ${draft.buffet?.name ? `<p class="muted">${escapeHtml(draft.buffet.name)}</p>` : ""}
+            <div class="buffet-layout">
+              ${OFFER_CATEGORY_ORDER.map((category) => {
+                const items = draft.buffet?.categories?.[category] || [];
+                if (!items.length) return "";
+                return `
+                  <div class="buffet-col">
+                    <h4>${escapeHtml(OFFER_CATEGORY_LABELS[category] || category)}</h4>
+                    <ul>${items.map((item) => `<li>${escapeHtml(item.name)}${item.note ? `<span>${escapeHtml(item.note)}</span>` : ""}</li>`).join("")}</ul>
+                  </div>
+                `;
+              }).filter(Boolean).join("")}
+            </div>
+            <div class="price-pill">${formatMoney(draft.buffet?.pricePerPerson || 0)}<small>pro Person</small></div>
+          </section>
+          <section class="template-card">
+            <h3 class="section-title">Exklusiv für Sie reserviert</h3>
+            <div class="details-copy">${escapeHtml(venueInfo || "-")}</div>
+            ${draft.reservedAreaCampfire ? `<p class="muted" style="margin-top:4mm;">Lagerfeuerstelle mit Feuerholz ist zusätzlich gebucht.</p>` : ""}
+          </section>
+          <div class="footer">
+            <span>LA Bowling · Röntgenstr. 12 · 84030 Landshut</span>
+            <span>Seite 1 von 2</span>
           </div>
-          ${timeline ? `<div class="box"><h2>Ablauf</h2><table class="timeline"><thead><tr><th>Zeit</th><th>Punkt</th><th>Notiz</th></tr></thead><tbody>${timeline}</tbody></table></div>` : ""}
         </div>
         <div class="sheet">
-          <div class="box">
-            <h2>Kostenübersicht</h2>
-            <table class="costs">
-              <thead><tr><th>Bezeichnung</th><th>Menge</th><th>Einzelpreis</th><th>Gesamt</th></tr></thead>
+          <div class="header">
+            <div class="header-left">
+              <img class="header-logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
+              <div class="header-contact">LA-Bowling · Röntgenstr. 12 · 84030 Landshut</div>
+            </div>
+            <div class="header-right">
+              <h1 class="header-offer-title">Angebot</h1>
+            </div>
+          </div>
+          <section class="template-card cost-card">
+            <h3 class="section-title">Kostenübersicht</h3>
+            <table class="cost-table">
+              <thead><tr><th>Position</th><th>Menge</th><th>Einzel</th><th>Gesamt</th></tr></thead>
               <tbody>
-                <tr><td>Buffet</td><td>${escapeHtml(String(totals.personCount || 0))}</td><td>${formatMoney(draft.buffet?.pricePerPerson || 0)}</td><td>${formatMoney(totals.buffetTotal)}</td></tr>
+                ${buffetCostRows}
+                ${bowlingCostRows}
+                ${reservedAreaCostRows}
                 ${costs}
               </tbody>
             </table>
-            <div class="totals"><span>Gesamtsumme</span><span>${formatMoney(totals.total)}</span></div>
+            ${vatNoticeText ? `<div class="cost-note">${escapeHtml(vatNoticeText)}</div>` : ""}
+            <div class="total-line"><span>Gesamt:</span><span>${formatMoney(totals.total)}</span></div>
+          </section>
+          <h2 class="big-heading">Hinweise & Reservierungsbestätigung</h2>
+          <div class="summary-strip">
+            <div><small>Datum</small><strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</strong></div>
+            <div><small>Personen</small><strong>${escapeHtml(personsSummary)}</strong></div>
+            <div><small>Gesamtsumme</small><strong>${formatMoney(totals.total)}</strong></div>
           </div>
-          <div class="box">
-            <h2>Hinweise & Reservierungsbestätigung</h2>
-            <p>Dieses Angebot ist ab dem Ausstellungsdatum 14 Tage gültig.</p>
-            <p>${escapeHtml(draft.internalNote || draft.additionalInfo || "Reservierung vorbehaltlich Verfügbarkeit.")}</p>
+          ${pricingNoticeText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.pricingNotice.label)}</h3><p>${escapeHtml(pricingNoticeText)}</p></section>` : ""}
+          ${cancellationText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.cancellationTerms.label)}</h3><p>${escapeHtml(cancellationText)}</p></section>` : ""}
+          ${reservationText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.reservationConfirmation.label)}</h3><p>${escapeHtml(reservationText)}</p></section>` : ""}
+          <section class="signature-card">
+            <h3 class="section-title">Bestätigung</h3>
+            <div class="signature-grid">
+              <div class="signature-line">Ort, Datum</div>
+              <div class="signature-line">Unterschrift / Firmenstempel</div>
+            </div>
+          </section>
+          <div class="closing">
+            <div>Mit freundlichen Grüßen</div>
+            <strong>Christian Poschenrieder</strong>
+            <div class="muted">Geschäftsleitung</div>
           </div>
-          <div class="signature">
-            <div class="line"><strong>Ort, Datum</strong><br>Landshut, ${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "")}</div>
-            <div class="line"><strong>Unterschrift / Firmenstempel</strong><br>________________________</div>
+          <div class="footer">
+            <span>LA Bowling · Röntgenstr. 12 · 84030 Landshut</span>
+            <span>Seite 2 von 2</span>
           </div>
         </div>
       </body>
@@ -4434,6 +5370,7 @@ function renderTerminal() {
   renderToiletStatus(report);
   renderTerminalChecks(report);
   renderTerminalAssignments(dateKey);
+  renderTerminalTablePlan(dateKey, report, reportClosed);
   checkTerminalReminders(report, reportClosed);
   renderTerminalCosts(dateKey, employees);
   renderTipDistribution();
@@ -4548,10 +5485,2292 @@ function renderTerminalTabs() {
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "tasks");
   $("#terminalChecksSection")?.classList.toggle("hidden", active !== "checks");
   $("#terminalAssignmentsSection")?.classList.toggle("hidden", active !== "assignments");
+  $("#terminalTablesSection")?.classList.toggle("hidden", active !== "tables");
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "service");
   $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "finance");
   $("#terminalTipsSection")?.classList.toggle("hidden", active !== "tips");
   $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "report");
+}
+
+function normalizeTerminalTableConfig(value = {}) {
+  const customTables = (Array.isArray(value?.customTables) ? value.customTables : [])
+    .map((item) => normalizeTerminalTableCustom(item))
+    .filter((item) => item.id);
+  const allowedIds = new Set([...Object.keys(TERMINAL_TABLE_LOOKUP), ...customTables.map((item) => item.id)]);
+  const seatsByTable = {};
+  const tableOverrides = {};
+  const zoneOverrides = {};
+  if (value?.tableOverrides && typeof value.tableOverrides === "object" && !Array.isArray(value.tableOverrides)) {
+    Object.entries(value.tableOverrides).forEach(([tableId, entry]) => {
+      const id = cleanTerminalRawTableId(tableId);
+      if (!id || !Object.prototype.hasOwnProperty.call(TERMINAL_TABLE_LOOKUP, id)) return;
+      const normalized = normalizeTerminalTableCustom({ id, ...(entry || {}) });
+      if (!normalized.id) return;
+      tableOverrides[id] = normalized;
+    });
+  }
+  if (value?.seatsByTable && typeof value.seatsByTable === "object" && !Array.isArray(value.seatsByTable)) {
+    Object.entries(value.seatsByTable).forEach(([tableId, seats]) => {
+      const id = cleanTerminalRawTableId(tableId);
+      const people = cleanTerminalTablePeople(seats);
+      if (id && people && allowedIds.has(id)) seatsByTable[id] = people;
+    });
+  }
+  if (value?.zoneOverrides && typeof value.zoneOverrides === "object" && !Array.isArray(value.zoneOverrides)) {
+    Object.entries(value.zoneOverrides).forEach(([zoneId, entry]) => {
+      const id = cleanTerminalTableZoneId(zoneId);
+      if (!id || !Object.prototype.hasOwnProperty.call(TERMINAL_TABLE_ZONE_LOOKUP, id)) return;
+      const normalized = normalizeTerminalTableZone({ id, ...(entry || {}) });
+      if (!normalized.id) return;
+      zoneOverrides[id] = normalized;
+    });
+  }
+  return { seatsByTable, tableOverrides, customTables, zoneOverrides };
+}
+
+function cleanTerminalRawTableId(value) {
+  const id = String(value || "").trim().toUpperCase();
+  return /^[A-Z0-9][A-Z0-9_-]{0,15}$/.test(id) ? id : "";
+}
+
+function cleanTerminalPercent(value, min = 0, max = 100) {
+  const number = Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(number)) return min;
+  return Math.max(min, Math.min(max, Math.round(number * 10) / 10));
+}
+
+function normalizeTerminalTableCustom(value = {}) {
+  const id = cleanTerminalRawTableId(value.id);
+  return {
+    id,
+    label: String(value.label || "").trim().slice(0, 60) || id,
+    area: String(value.area || "").trim().slice(0, 80),
+    seats: cleanTerminalTablePeople(value.seats),
+    x: cleanTerminalPercent(value.x, 0, 96),
+    y: cleanTerminalPercent(value.y, 0, 96),
+    w: cleanTerminalPercent(value.w, 2, 40),
+    h: cleanTerminalPercent(value.h, 2, 30),
+    shape: ["table", "room", "lane"].includes(String(value.shape || "").trim()) ? String(value.shape).trim() : "table"
+  };
+}
+
+function cleanTerminalTableZoneId(value) {
+  return String(value || "").trim().slice(0, 32);
+}
+
+function cleanTerminalTableZoneClass(value) {
+  return ["is-lanes", "is-room", "is-open"].includes(String(value || "").trim()) ? String(value).trim() : "is-open";
+}
+
+function cleanTerminalTableBoolean(value, fallback = true) {
+  if (value === true || value === "true" || value === 1 || value === "1") return true;
+  if (value === false || value === "false" || value === 0 || value === "0") return false;
+  return fallback;
+}
+
+function normalizeTerminalTableZone(value = {}) {
+  const id = cleanTerminalTableZoneId(value.id);
+  return {
+    id,
+    label: String(value.label || "").trim().slice(0, 60) || id,
+    x: cleanTerminalPercent(value.x, 0, 98),
+    y: cleanTerminalPercent(value.y, 0, 98),
+    w: cleanTerminalPercent(value.w, 4, 98),
+    h: cleanTerminalPercent(value.h, 4, 98),
+    className: cleanTerminalTableZoneClass(value.className),
+    visible: cleanTerminalTableBoolean(value.visible, true)
+  };
+}
+
+function terminalVisibleTableLayout(config = state.terminalTableConfig) {
+  const tableOverrides = config?.tableOverrides || {};
+  const customTables = Array.isArray(config?.customTables) ? config.customTables : [];
+  return [...TERMINAL_TABLE_LAYOUT.map((table) => ({ ...table, ...(tableOverrides[table.id] || {}) })), ...customTables]
+    .map((table) => ({
+      ...table,
+      x: cleanTerminalPercent(table.x, 0, 96),
+      y: cleanTerminalPercent(table.y, 0, 96),
+      w: cleanTerminalPercent(table.w, 2, 40),
+      h: cleanTerminalPercent(table.h, 2, 30)
+    }))
+    .sort((left, right) => {
+      const topCompare = Number(left.y || 0) - Number(right.y || 0);
+      if (Math.abs(topCompare) > 0.1) return topCompare;
+      const leftCompare = Number(left.x || 0) - Number(right.x || 0);
+      if (Math.abs(leftCompare) > 0.1) return leftCompare;
+      return String(left.id || "").localeCompare(String(right.id || ""), "de", { numeric: true });
+    });
+}
+
+function terminalVisibleZones(config = state.terminalTableConfig, options = {}) {
+  const zoneOverrides = config?.zoneOverrides || {};
+  const includeHidden = options.includeHidden === true;
+  return TERMINAL_TABLE_ZONES
+    .map((zone) => ({ ...zone, ...(zoneOverrides[zone.id] || {}) }))
+    .filter((zone) => includeHidden || zone.visible !== false);
+}
+
+function terminalTableLookup(config = state.terminalTableConfig) {
+  return Object.fromEntries(terminalVisibleTableLayout(config).map((table) => [table.id, table]));
+}
+
+function terminalTableSeats(id) {
+  const tableId = cleanTerminalTableId(id);
+  const overrideSeats = Number(state.terminalTableConfig?.tableOverrides?.[tableId]?.seats || 0);
+  if (overrideSeats > 0) return overrideSeats;
+  const configured = Number(state.terminalTableConfig?.seatsByTable?.[tableId] || 0);
+  if (configured > 0) return configured;
+  return Number(terminalTableLookup()[tableId]?.seats || 0);
+}
+
+function cleanTerminalColor(value) {
+  const color = String(value || "").trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(color) ? color : TERMINAL_TABLE_STAFF_COLOR_PRESETS[0];
+}
+
+function terminalColorToRgba(color, alpha = 1) {
+  const clean = cleanTerminalColor(color).slice(1);
+  const red = Number.parseInt(clean.slice(0, 2), 16);
+  const green = Number.parseInt(clean.slice(2, 4), 16);
+  const blue = Number.parseInt(clean.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${Math.max(0, Math.min(1, alpha))})`;
+}
+
+function terminalTableStaffPreset(id) {
+  return TERMINAL_TABLE_STAFF_PRESET_LOOKUP[String(id || "").trim()] || null;
+}
+
+function terminalTableStaffPresetTableIds(presetId) {
+  return sortTerminalTableIds(terminalTableStaffPreset(presetId)?.tableIds || []);
+}
+
+function terminalTableStaffPresetRect(presetId) {
+  const tableIds = terminalTableStaffPresetTableIds(presetId);
+  if (!tableIds.length) return null;
+  const rects = tableIds.map((tableId) => terminalTableRect(tableId)).filter(Boolean);
+  if (!rects.length) return null;
+  const padding = tableIds.length === 1 ? 1.3 : 1.8;
+  const left = Math.max(0.5, Math.min(...rects.map((rect) => rect.left)) - padding);
+  const top = Math.max(0.5, Math.min(...rects.map((rect) => rect.top)) - padding);
+  const right = Math.min(99, Math.max(...rects.map((rect) => rect.right)) + padding);
+  const bottom = Math.min(99, Math.max(...rects.map((rect) => rect.bottom)) + padding);
+  return {
+    left,
+    top,
+    width: Math.max(3, right - left),
+    height: Math.max(3, bottom - top)
+  };
+}
+
+function emptyTerminalTableStaffDraft(value = {}) {
+  const assignment = normalizeTerminalTableStaffAssignment(value);
+  return {
+    id: assignment.id || "",
+    employee: assignment.employee || "",
+    presetId: assignment.presetId || "",
+    color: assignment.color || TERMINAL_TABLE_STAFF_COLOR_PRESETS[0],
+    note: assignment.note || "",
+    createdAt: assignment.createdAt || "",
+    updatedAt: assignment.updatedAt || ""
+  };
+}
+
+function normalizeTerminalTableStaffAssignment(value = {}) {
+  return {
+    id: String(value.id || "").trim(),
+    employee: String(value.employee || "").trim().slice(0, 160),
+    presetId: String(value.presetId || "").trim().slice(0, 120),
+    color: cleanTerminalColor(value.color),
+    note: String(value.note || "").trim().slice(0, 240),
+    createdAt: String(value.createdAt || "").trim(),
+    updatedAt: String(value.updatedAt || "").trim()
+  };
+}
+
+function normalizeTerminalTableStaffAssignments(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => normalizeTerminalTableStaffAssignment(item))
+    .filter((item) => item.employee && terminalTableStaffPreset(item.presetId));
+}
+
+function terminalTableStaffAssignments(report = state.terminalReport) {
+  return normalizeTerminalTableStaffAssignments(report?.tableStaffAssignments || []);
+}
+
+function terminalTableStaffAssignmentsByTable(assignments = []) {
+  const map = new Map();
+  normalizeTerminalTableStaffAssignments(assignments).forEach((assignment) => {
+    terminalTableStaffPresetTableIds(assignment.presetId).forEach((tableId) => {
+      const list = map.get(tableId) || [];
+      list.push(assignment);
+      map.set(tableId, list);
+    });
+  });
+  return map;
+}
+
+function sortTerminalTableStaffAssignments(value = []) {
+  return [...normalizeTerminalTableStaffAssignments(value)].sort((left, right) => {
+    const presetCompare = String(terminalTableStaffPreset(left.presetId)?.label || left.presetId || "").localeCompare(
+      String(terminalTableStaffPreset(right.presetId)?.label || right.presetId || ""),
+      "de",
+      { numeric: true }
+    );
+    if (presetCompare) return presetCompare;
+    return String(left.employee || "").localeCompare(String(right.employee || ""), "de");
+  });
+}
+
+function terminalTableEmployeeMeta(dateKey) {
+  const byEmployee = new Map();
+  assignmentEmployeeRowsForDate(dateKey).forEach((row) => {
+    byEmployee.set(row.employee, {
+      employee: row.employee,
+      positions: [...(row.positions || [])],
+      time: row.time || assignmentTimeForEmployee(dateKey, row.employee, assignmentScheduleForDate(dateKey))
+    });
+  });
+  Object.entries(assignmentScheduleForDate(dateKey) || {}).forEach(([position, employee]) => {
+    if (!employee || position.includes("__")) return;
+    const current = byEmployee.get(employee) || {
+      employee,
+      positions: [],
+      time: assignmentTimeForEmployee(dateKey, employee, assignmentScheduleForDate(dateKey))
+    };
+    if (!current.positions.includes(position)) current.positions.push(position);
+    byEmployee.set(employee, current);
+  });
+  terminalEmployeesForDay(dateKey).forEach((employee) => {
+    if (!byEmployee.has(employee)) {
+      byEmployee.set(employee, {
+        employee,
+        positions: [],
+        time: assignmentTimeForEmployee(dateKey, employee, assignmentScheduleForDate(dateKey))
+      });
+    }
+  });
+  return new Map([...byEmployee.entries()].sort((left, right) => left[0].localeCompare(right[0], "de")));
+}
+
+function terminalTableEmployeeOptionLabel(meta = {}) {
+  const positions = Array.isArray(meta.positions) && meta.positions.length ? meta.positions.join(", ") : "ohne Bereich";
+  const from = meta.time?.from ? `ab ${meta.time.from}` : "Start offen";
+  return `${meta.employee} · ${positions} · ${from}`;
+}
+
+function syncTerminalTableStaffDraftFromReport(report = state.terminalReport) {
+  const assignments = terminalTableStaffAssignments(report);
+  if (!state.terminalTableStaffDraft) {
+    state.terminalTableStaffDraft = emptyTerminalTableStaffDraft();
+    return;
+  }
+  const draft = emptyTerminalTableStaffDraft(state.terminalTableStaffDraft);
+  if (!draft.id) {
+    state.terminalTableStaffDraft = draft;
+    return;
+  }
+  const match = assignments.find((item) => item.id === draft.id);
+  state.terminalTableStaffDraft = match ? emptyTerminalTableStaffDraft(match) : emptyTerminalTableStaffDraft();
+}
+
+function resetTerminalTableStaffDraft() {
+  state.terminalTableStaffDraft = emptyTerminalTableStaffDraft();
+}
+
+function loadTerminalTableStaffDraft(id) {
+  const assignment = terminalTableStaffAssignments().find((item) => item.id === id);
+  state.terminalTableStaffDraft = assignment ? emptyTerminalTableStaffDraft(assignment) : emptyTerminalTableStaffDraft();
+}
+
+function updateTerminalTableStaffField(field, value) {
+  const draft = emptyTerminalTableStaffDraft(state.terminalTableStaffDraft || {});
+  draft[field] = field === "color" ? cleanTerminalColor(value) : String(value || "");
+  state.terminalTableStaffDraft = emptyTerminalTableStaffDraft(draft);
+}
+
+function currentTerminalTableStaffPayload() {
+  const draft = emptyTerminalTableStaffDraft(state.terminalTableStaffDraft || {});
+  return {
+    ...draft,
+    color: cleanTerminalColor(draft.color)
+  };
+}
+
+function terminalTableDef(id) {
+  const tableId = cleanTerminalTableId(id);
+  const base = terminalTableLookup()[tableId];
+  if (!base) return null;
+  return { ...base, seats: terminalTableSeats(tableId) };
+}
+
+function terminalCustomTableById(id) {
+  const tableId = cleanTerminalRawTableId(id);
+  return (state.terminalTableConfig?.customTables || []).find((item) => item.id === tableId) || null;
+}
+
+function baseTerminalTableById(id) {
+  const tableId = cleanTerminalRawTableId(id);
+  return TERMINAL_TABLE_LOOKUP[tableId] || null;
+}
+
+function terminalZoneDef(id, config = state.terminalTableConfig) {
+  const zoneId = cleanTerminalTableZoneId(id);
+  if (!zoneId || !Object.prototype.hasOwnProperty.call(TERMINAL_TABLE_ZONE_LOOKUP, zoneId)) return null;
+  return { ...TERMINAL_TABLE_ZONE_LOOKUP[zoneId], ...(config?.zoneOverrides?.[zoneId] || {}) };
+}
+
+function adminTablePlanHasOverride(id) {
+  const tableId = cleanTerminalRawTableId(id);
+  return Boolean(tableId && state.terminalTableConfig?.tableOverrides?.[tableId]);
+}
+
+function adminTablePlanZoneHasOverride(id) {
+  const zoneId = cleanTerminalTableZoneId(id);
+  return Boolean(zoneId && state.terminalTableConfig?.zoneOverrides?.[zoneId]);
+}
+
+function emptyAdminTablePlanDraft(value = {}) {
+  const table = normalizeTerminalTableCustom(value);
+  const originalId = cleanTerminalRawTableId(value.originalId || table.id || "");
+  const customTable = terminalCustomTableById(originalId || table.id || "");
+  const baseTable = Boolean(value.baseTable ?? (baseTerminalTableById(originalId || table.id || "") && !customTable));
+  return {
+    originalId,
+    baseTable,
+    id: table.id || "",
+    label: table.label || "",
+    area: table.area || "",
+    seats: table.seats ? String(table.seats) : "",
+    shape: table.shape || "table",
+    x: Number.isFinite(Number(table.x)) ? String(table.x) : "",
+    y: Number.isFinite(Number(table.y)) ? String(table.y) : "",
+    w: Number.isFinite(Number(table.w)) ? String(table.w) : "",
+    h: Number.isFinite(Number(table.h)) ? String(table.h) : ""
+  };
+}
+
+function resetAdminTablePlanDraft() {
+  state.adminTablePlanDraft = emptyAdminTablePlanDraft();
+}
+
+function emptyAdminTablePlanZoneDraft(value = {}) {
+  const zone = normalizeTerminalTableZone(value);
+  const originalId = cleanTerminalTableZoneId(value.originalId || zone.id || "");
+  return {
+    originalId,
+    id: zone.id || "",
+    label: zone.label || "",
+    x: Number.isFinite(Number(zone.x)) ? String(zone.x) : "",
+    y: Number.isFinite(Number(zone.y)) ? String(zone.y) : "",
+    w: Number.isFinite(Number(zone.w)) ? String(zone.w) : "",
+    h: Number.isFinite(Number(zone.h)) ? String(zone.h) : "",
+    className: zone.className || "is-open",
+    visible: zone.visible !== false
+  };
+}
+
+function resetAdminTablePlanZoneDraft() {
+  state.adminTablePlanZoneDraft = emptyAdminTablePlanZoneDraft();
+}
+
+function loadAdminTablePlanDraft(id) {
+  const tableId = cleanTerminalRawTableId(id);
+  const merged = terminalTableDef(tableId);
+  const custom = terminalCustomTableById(tableId);
+  const base = baseTerminalTableById(tableId);
+  state.adminTablePlanDraft = merged
+    ? emptyAdminTablePlanDraft({ ...merged, originalId: tableId, baseTable: Boolean(base && !custom) })
+    : emptyAdminTablePlanDraft();
+}
+
+function loadAdminTablePlanZoneDraft(id) {
+  const zoneId = cleanTerminalTableZoneId(id);
+  const zone = terminalZoneDef(zoneId);
+  state.adminTablePlanZoneDraft = zone
+    ? emptyAdminTablePlanZoneDraft({ ...zone, originalId: zoneId })
+    : emptyAdminTablePlanZoneDraft();
+}
+
+function updateAdminTablePlanField(field, value) {
+  const draft = emptyAdminTablePlanDraft(state.adminTablePlanDraft || {});
+  draft[field] = String(value || "");
+  state.adminTablePlanDraft = emptyAdminTablePlanDraft(draft);
+}
+
+function updateAdminTablePlanZoneField(field, value) {
+  const draft = emptyAdminTablePlanZoneDraft(state.adminTablePlanZoneDraft || {});
+  draft[field] = field === "visible" ? cleanTerminalTableBoolean(value, true) : String(value || "");
+  state.adminTablePlanZoneDraft = emptyAdminTablePlanZoneDraft(draft);
+}
+
+function adminTablePlanDraftPayload() {
+  const draft = emptyAdminTablePlanDraft(state.adminTablePlanDraft || {});
+  return {
+    originalId: draft.originalId || draft.id || "",
+    baseTable: Boolean(draft.baseTable),
+    id: cleanTerminalRawTableId(draft.id),
+    label: String(draft.label || "").trim(),
+    area: String(draft.area || "").trim(),
+    seats: cleanTerminalTablePeople(draft.seats),
+    shape: ["table", "room", "lane"].includes(String(draft.shape || "").trim()) ? String(draft.shape).trim() : "table",
+    x: cleanTerminalPercent(draft.x, 0, 96),
+    y: cleanTerminalPercent(draft.y, 0, 96),
+    w: cleanTerminalPercent(draft.w, 2, 40),
+    h: cleanTerminalPercent(draft.h, 2, 30)
+  };
+}
+
+function adminTablePlanZonePayload(draft = state.adminTablePlanZoneDraft || {}) {
+  const current = emptyAdminTablePlanZoneDraft(draft);
+  return {
+    originalId: current.originalId || current.id || "",
+    id: cleanTerminalTableZoneId(current.id || current.originalId),
+    label: String(current.label || "").trim(),
+    x: cleanTerminalPercent(current.x, 0, 98),
+    y: cleanTerminalPercent(current.y, 0, 98),
+    w: cleanTerminalPercent(current.w, 4, 98),
+    h: cleanTerminalPercent(current.h, 4, 98),
+    className: cleanTerminalTableZoneClass(current.className),
+    visible: cleanTerminalTableBoolean(current.visible, true)
+  };
+}
+
+function adminTablePlanPreviewTable(draft = state.adminTablePlanDraft || {}) {
+  const current = emptyAdminTablePlanDraft(draft);
+  const payload = adminTablePlanDraftPayload();
+  if (!payload.id) return null;
+  return {
+    id: payload.id,
+    originalId: current.originalId || "",
+    baseTable: Boolean(current.baseTable),
+    label: payload.label || payload.id,
+    area: payload.area || "",
+    seats: payload.seats || 0,
+    x: payload.x,
+    y: payload.y,
+    w: payload.w,
+    h: payload.h,
+    shape: payload.shape || "table"
+  };
+}
+
+function adminTablePlanVisibleLayout(draft = state.adminTablePlanDraft || {}) {
+  const preview = adminTablePlanPreviewTable(draft);
+  const layout = terminalVisibleTableLayout().map((table) => ({ ...table }));
+  if (!preview) return layout;
+  const replaceId = cleanTerminalRawTableId(preview.originalId || preview.id);
+  let replaced = false;
+  const next = layout.map((table) => {
+    if (table.id !== replaceId && table.id !== preview.id) return table;
+    replaced = true;
+    return {
+      ...table,
+      ...preview,
+      id: preview.id,
+      label: preview.label,
+      area: preview.area,
+      seats: preview.seats,
+      x: preview.x,
+      y: preview.y,
+      w: preview.w,
+      h: preview.h,
+      shape: preview.shape
+    };
+  });
+  if (!replaced) {
+    next.push({
+      id: preview.id,
+      label: preview.label,
+      area: preview.area,
+      seats: preview.seats,
+      x: preview.x,
+      y: preview.y,
+      w: preview.w,
+      h: preview.h,
+      shape: preview.shape
+    });
+  }
+  return next.sort((left, right) => {
+    const topCompare = Number(left.y || 0) - Number(right.y || 0);
+    if (Math.abs(topCompare) > 0.1) return topCompare;
+    const leftCompare = Number(left.x || 0) - Number(right.x || 0);
+    if (Math.abs(leftCompare) > 0.1) return leftCompare;
+    return String(left.id || "").localeCompare(String(right.id || ""), "de", { numeric: true });
+  });
+}
+
+function adminTablePlanVisibleZones(draft = state.adminTablePlanZoneDraft || {}) {
+  const preview = adminTablePlanZonePayload(draft);
+  return TERMINAL_TABLE_ZONES.map((baseZone) => {
+    const merged = terminalZoneDef(baseZone.id) || baseZone;
+    return preview.id === baseZone.id ? { ...merged, ...preview } : merged;
+  });
+}
+
+function nextAdminTablePlanCopyId(sourceId = "") {
+  const baseId = cleanTerminalRawTableId(sourceId) || "TISCH";
+  const existingIds = new Set(terminalVisibleTableLayout().map((table) => table.id));
+  for (let index = 1; index <= 99; index += 1) {
+    const candidate = cleanTerminalRawTableId(`${baseId}-K${index}`);
+    if (candidate && !existingIds.has(candidate)) return candidate;
+  }
+  return cleanTerminalRawTableId(`${baseId}-${Date.now().toString().slice(-4)}`) || "";
+}
+
+function duplicateAdminTablePlanDraft() {
+  const currentId = cleanTerminalRawTableId(state.adminTablePlanDraft?.originalId || state.adminTablePlanDraft?.id || "");
+  const source = terminalTableDef(currentId) || adminTablePlanDraftPayload();
+  if (!source?.id && !source?.label) {
+    showToast("Bitte zuerst einen Tisch auswählen.");
+    return;
+  }
+  const copyId = nextAdminTablePlanCopyId(source.id || currentId || "TISCH");
+  state.adminTablePlanDraft = emptyAdminTablePlanDraft({
+    ...source,
+    originalId: "",
+    baseTable: false,
+    id: copyId,
+    label: `${String(source.label || copyId).trim()} Kopie`.slice(0, 60),
+    x: cleanTerminalPercent(Number(source.x || 0) + 1.2, 0, 96),
+    y: cleanTerminalPercent(Number(source.y || 0) + 1.2, 0, 96)
+  });
+  renderAdminTablePlan();
+  showToast("Tisch kopiert. Jetzt neue ID prüfen und bei Bedarf Größe ziehen.");
+}
+
+function beginAdminTablePlanInteraction(event, mode = "drag", tableId = "") {
+  if (!state.adminUnlocked) return;
+  const id = cleanTerminalRawTableId(tableId);
+  const source = terminalTableDef(id);
+  const canvas = $("#adminTablePlanBoard .table-plan-canvas");
+  if (!id || !source || !canvas) return;
+  const customTable = terminalCustomTableById(id);
+  const baseTable = Boolean(baseTerminalTableById(id) && !customTable);
+  state.adminTablePlanDraft = emptyAdminTablePlanDraft({ ...source, originalId: id, baseTable });
+  const origin = adminTablePlanDraftPayload();
+  const canvasRect = canvas.getBoundingClientRect();
+  state.adminTablePlanInteraction = {
+    mode,
+    tableId: id,
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    canvasWidth: Math.max(1, canvasRect.width || 1),
+    canvasHeight: Math.max(1, canvasRect.height || 1),
+    origin,
+    moved: false
+  };
+  event.preventDefault();
+}
+
+function updateAdminTablePlanInteraction(event) {
+  const interaction = state.adminTablePlanInteraction;
+  if (!interaction || interaction.pointerId !== event.pointerId) return;
+  const deltaX = ((event.clientX - interaction.startClientX) / interaction.canvasWidth) * 100;
+  const deltaY = ((event.clientY - interaction.startClientY) / interaction.canvasHeight) * 100;
+  if (!interaction.moved && (Math.abs(event.clientX - interaction.startClientX) > 3 || Math.abs(event.clientY - interaction.startClientY) > 3)) {
+    interaction.moved = true;
+  }
+  const next = { ...interaction.origin };
+  if (interaction.mode === "resize") {
+    next.w = cleanTerminalPercent(Number(interaction.origin.w || 0) + deltaX, 2, 40);
+    next.h = cleanTerminalPercent(Number(interaction.origin.h || 0) + deltaY, 2, 30);
+    next.w = Math.min(next.w, Math.max(2, 98 - Number(interaction.origin.x || 0)));
+    next.h = Math.min(next.h, Math.max(2, 98 - Number(interaction.origin.y || 0)));
+  } else {
+    next.x = cleanTerminalPercent(Number(interaction.origin.x || 0) + deltaX, 0, 96);
+    next.y = cleanTerminalPercent(Number(interaction.origin.y || 0) + deltaY, 0, 96);
+    next.x = Math.min(next.x, Math.max(0, 98 - Number(interaction.origin.w || 0)));
+    next.y = Math.min(next.y, Math.max(0, 98 - Number(interaction.origin.h || 0)));
+  }
+  state.adminTablePlanDraft = emptyAdminTablePlanDraft(next);
+  renderAdminTablePlan();
+}
+
+function endAdminTablePlanInteraction(event) {
+  const interaction = state.adminTablePlanInteraction;
+  if (!interaction || (event && interaction.pointerId !== event.pointerId)) return;
+  if (interaction.moved) state.adminTablePlanSuppressClickUntil = Date.now() + 250;
+  state.adminTablePlanInteraction = null;
+}
+
+function adminTablePlanSummaryText(draft = state.adminTablePlanDraft || {}) {
+  const current = emptyAdminTablePlanDraft(draft);
+  if (current.originalId && current.baseTable) return `Grundtisch ${current.originalId} bearbeiten`;
+  if (current.originalId) return `Eigener Tisch ${current.originalId} bearbeiten`;
+  if (current.id) return `Neuen Tisch ${current.id} anlegen`;
+  return "Tisch auswählen oder neuen Tisch anlegen";
+}
+
+function adminTablePlanDraftSummaryHtml(draft = state.adminTablePlanDraft || {}) {
+  const current = emptyAdminTablePlanDraft(draft);
+  if (!current.id && !current.originalId) {
+    return `<p class="hint">Klicke links auf einen Tisch, um Name, Bereich, Größe und Plätze zu bearbeiten. Für neue Tische einfach rechts die Felder ausfüllen.</p>`;
+  }
+  const effective = adminTablePlanPreviewTable(current) || terminalTableDef(current.id || current.originalId) || current;
+  return `
+    <article>
+      <small>Typ</small>
+      <strong>${current.baseTable ? "Grundtisch" : current.originalId ? "Eigener Tisch" : "Neuer Tisch"}</strong>
+    </article>
+    <article>
+      <small>Bereich</small>
+      <strong>${escapeHtml(effective.area || "-")}</strong>
+    </article>
+    <article>
+      <small>Plätze</small>
+      <strong>${escapeHtml(String(effective.seats || 0))}</strong>
+    </article>
+  `;
+}
+
+function adminTablePlanZoneSummaryText(draft = state.adminTablePlanZoneDraft || {}) {
+  const current = emptyAdminTablePlanZoneDraft(draft);
+  if (current.originalId) return `Bereich ${current.originalId} bearbeiten`;
+  if (current.id) return `Bereich ${current.id} bearbeiten`;
+  return "Bereich im Plan anklicken";
+}
+
+function adminTablePlanZoneSummaryHtml(draft = state.adminTablePlanZoneDraft || {}) {
+  const current = emptyAdminTablePlanZoneDraft(draft);
+  if (!current.id && !current.originalId) {
+    return `<p class="hint">Hier bearbeitest du die großen Bereiche wie Gastraum, DJ, NZ Groß oder Hütte. Sichtbarkeit steuert, ob der Bereich im Tages-Tischplan erscheint.</p>`;
+  }
+  const effective = terminalZoneDef(current.id || current.originalId) || current;
+  const preview = adminTablePlanZonePayload(current);
+  return `
+    <article>
+      <small>Typ</small>
+      <strong>${escapeHtml(preview.className === "is-lanes" ? "Bahnen" : preview.className === "is-room" ? "Raum" : "Offener Bereich")}</strong>
+    </article>
+    <article>
+      <small>Sichtbar</small>
+      <strong>${preview.visible ? "Ja" : "Nein"}</strong>
+    </article>
+    <article>
+      <small>Name</small>
+      <strong>${escapeHtml(preview.label || effective.label || "-")}</strong>
+    </article>
+  `;
+}
+
+function adminTablePlanCustomListHtml(customTables = []) {
+  if (!customTables.length) return `<p class="hint">Noch keine zusätzlichen Tische angelegt.</p>`;
+  return `
+    <div class="table-plan-group-cards">
+      ${customTables.map((table) => `
+        <article class="table-plan-group-card ${state.adminTablePlanDraft?.originalId === table.id ? "is-active" : ""}">
+          <div class="table-plan-group-card-head">
+            <div>
+              <strong>${escapeHtml(table.label)}</strong>
+              <span>${escapeHtml(table.id)} · ${escapeHtml(table.area)}</span>
+            </div>
+            <small>${escapeHtml(String(table.seats || 0))} P</small>
+          </div>
+          <div class="table-plan-group-card-actions">
+            <button class="secondary" type="button" data-admin-table-edit="${escapeHtml(table.id)}">Bearbeiten</button>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function adminTablePlanBoardHtml(draft = state.adminTablePlanDraft || {}) {
+  const selectedId = cleanTerminalRawTableId(draft.originalId || draft.id || "");
+  const selectedZoneId = cleanTerminalTableZoneId(state.adminTablePlanZoneDraft?.originalId || state.adminTablePlanZoneDraft?.id || "");
+  const customIds = new Set((state.terminalTableConfig?.customTables || []).map((item) => item.id));
+  const preview = adminTablePlanPreviewTable(draft);
+  const visibleTables = adminTablePlanVisibleLayout(draft);
+  const visibleZones = adminTablePlanVisibleZones(state.adminTablePlanZoneDraft || {});
+  return `
+    <div class="table-plan-canvas admin-table-plan-canvas">
+      ${visibleZones.map((zone) => `
+        <button class="table-plan-zone admin-table-plan-zone ${escapeHtml(zone.className || "")} ${selectedZoneId === zone.id ? "is-selected" : ""} ${zone.visible === false ? "is-hidden" : ""}" type="button" data-admin-zone-select="${escapeHtml(zone.id)}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;">
+          <span>${escapeHtml(zone.label)}</span>
+        </button>
+      `).join("")}
+      ${visibleTables.map((table) => {
+        const classes = [
+          "table-plan-table",
+          `is-${table.shape || "table"}`,
+          selectedId === table.id ? "is-selected" : "",
+          customIds.has(table.id) ? "is-connected" : "",
+          preview && preview.id === table.id ? "is-preview" : ""
+        ].filter(Boolean).join(" ");
+        return `
+          <button class="${classes}" type="button" data-admin-table-select="${escapeHtml(table.id)}" style="left:${table.x}%;top:${table.y}%;width:${table.w}%;height:${table.h}%;">
+            <div class="table-plan-table-head">
+              <strong>${escapeHtml(table.label)}</strong>
+              <span>${escapeHtml(String(table.seats || terminalTableSeats(table.id) || 0))} P</span>
+            </div>
+            <small>${escapeHtml(table.area || "")}</small>
+            <span class="admin-table-plan-resize-handle" data-admin-table-resize="${escapeHtml(table.id)}" aria-hidden="true"></span>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderAdminTablePlan() {
+  const board = $("#adminTablePlanBoard");
+  if (!board) return;
+  if (!state.adminUnlocked) {
+    board.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  const draft = emptyAdminTablePlanDraft(state.adminTablePlanDraft || {});
+  const zoneDraft = emptyAdminTablePlanZoneDraft(state.adminTablePlanZoneDraft || {});
+  const currentId = cleanTerminalRawTableId(draft.originalId || draft.id || "");
+  const currentZoneId = cleanTerminalTableZoneId(zoneDraft.originalId || zoneDraft.id || "");
+  const preview = adminTablePlanPreviewTable(draft);
+  const customTable = terminalCustomTableById(currentId);
+  const isBaseTable = Boolean(currentId && baseTerminalTableById(currentId) && !customTable);
+  const meta = $("#adminTablePlanBoardMeta");
+  if (meta) {
+    meta.innerHTML = `
+      <article><small>Grundtische</small><strong>${Object.keys(TERMINAL_TABLE_LOOKUP).length}</strong></article>
+      <article><small>Bereiche</small><strong>${terminalVisibleZones(state.terminalTableConfig, { includeHidden: true }).length}</strong></article>
+      <article><small>Eigene Tische</small><strong>${(state.terminalTableConfig?.customTables || []).length}</strong></article>
+      <article><small>Gewählt</small><strong>${escapeHtml(currentId || "-")}</strong></article>
+      <article><small>Plätze</small><strong>${escapeHtml(String(preview?.seats || (currentId ? (terminalTableSeats(currentId) || 0) : 0)))}</strong></article>
+    `;
+  }
+  board.innerHTML = adminTablePlanBoardHtml(draft);
+  if ($("#adminTablePlanSelectionSummary")) $("#adminTablePlanSelectionSummary").textContent = adminTablePlanSummaryText(draft);
+  const summary = $("#adminTablePlanDraftSummary");
+  if (summary) summary.innerHTML = adminTablePlanDraftSummaryHtml(draft);
+  if ($("#adminTablePlanId")) $("#adminTablePlanId").value = draft.id || "";
+  if ($("#adminTablePlanId")) $("#adminTablePlanId").disabled = Boolean(draft.originalId);
+  if ($("#adminTablePlanLabel")) $("#adminTablePlanLabel").value = draft.label || "";
+  if ($("#adminTablePlanArea")) $("#adminTablePlanArea").value = draft.area || "";
+  if ($("#adminTablePlanSeats")) $("#adminTablePlanSeats").value = draft.seats || "";
+  if ($("#adminTablePlanShape")) $("#adminTablePlanShape").value = draft.shape || "table";
+  if ($("#adminTablePlanX")) $("#adminTablePlanX").value = draft.x || "";
+  if ($("#adminTablePlanY")) $("#adminTablePlanY").value = draft.y || "";
+  if ($("#adminTablePlanW")) $("#adminTablePlanW").value = draft.w || "";
+  if ($("#adminTablePlanH")) $("#adminTablePlanH").value = draft.h || "";
+  const duplicateButton = $("#duplicateAdminTablePlanEntry");
+  if (duplicateButton) duplicateButton.disabled = !currentId;
+  const deleteButton = $("#deleteAdminTablePlanEntry");
+  if (deleteButton) {
+    deleteButton.disabled = !draft.originalId;
+    deleteButton.textContent = isBaseTable
+      ? (adminTablePlanHasOverride(currentId) ? "Standard wiederherstellen" : "Grundtisch auswählen")
+      : "Tisch löschen";
+    if (isBaseTable && !adminTablePlanHasOverride(currentId)) deleteButton.disabled = true;
+  }
+  const customList = $("#adminTablePlanCustomList");
+  if (customList) customList.innerHTML = adminTablePlanCustomListHtml(state.terminalTableConfig?.customTables || []);
+  if ($("#adminTablePlanZoneSelectionSummary")) $("#adminTablePlanZoneSelectionSummary").textContent = adminTablePlanZoneSummaryText(zoneDraft);
+  const zoneSummary = $("#adminTablePlanZoneDraftSummary");
+  if (zoneSummary) zoneSummary.innerHTML = adminTablePlanZoneSummaryHtml(zoneDraft);
+  if ($("#adminTablePlanZoneId")) $("#adminTablePlanZoneId").value = zoneDraft.id || "";
+  if ($("#adminTablePlanZoneId")) $("#adminTablePlanZoneId").disabled = true;
+  if ($("#adminTablePlanZoneLabel")) $("#adminTablePlanZoneLabel").value = zoneDraft.label || "";
+  if ($("#adminTablePlanZoneClass")) $("#adminTablePlanZoneClass").value = zoneDraft.className || "is-open";
+  if ($("#adminTablePlanZoneVisible")) $("#adminTablePlanZoneVisible").checked = zoneDraft.visible !== false;
+  if ($("#adminTablePlanZoneX")) $("#adminTablePlanZoneX").value = zoneDraft.x || "";
+  if ($("#adminTablePlanZoneY")) $("#adminTablePlanZoneY").value = zoneDraft.y || "";
+  if ($("#adminTablePlanZoneW")) $("#adminTablePlanZoneW").value = zoneDraft.w || "";
+  if ($("#adminTablePlanZoneH")) $("#adminTablePlanZoneH").value = zoneDraft.h || "";
+  const zoneDeleteButton = $("#deleteAdminTablePlanZone");
+  if (zoneDeleteButton) zoneDeleteButton.disabled = !currentZoneId || !adminTablePlanZoneHasOverride(currentZoneId);
+}
+
+function emptyTerminalTableCustomDraft(value = {}) {
+  const table = normalizeTerminalTableCustom(value);
+  return {
+    originalId: cleanTerminalRawTableId(value.originalId || table.id || ""),
+    id: table.id || "",
+    label: table.label || "",
+    area: table.area || "",
+    seats: table.seats ? String(table.seats) : "",
+    shape: table.shape || "table",
+    x: Number.isFinite(Number(table.x)) ? String(table.x) : "",
+    y: Number.isFinite(Number(table.y)) ? String(table.y) : "",
+    w: Number.isFinite(Number(table.w)) ? String(table.w) : "",
+    h: Number.isFinite(Number(table.h)) ? String(table.h) : ""
+  };
+}
+
+function terminalTableCustomDraftPayload() {
+  const draft = emptyTerminalTableCustomDraft(state.terminalTableCustomDraft || {});
+  return {
+    originalId: draft.originalId || draft.id || "",
+    id: cleanTerminalRawTableId(draft.id),
+    label: String(draft.label || "").trim(),
+    area: String(draft.area || "").trim(),
+    seats: cleanTerminalTablePeople(draft.seats),
+    shape: ["table", "room", "lane"].includes(String(draft.shape || "").trim()) ? String(draft.shape).trim() : "table",
+    x: cleanTerminalPercent(draft.x, 0, 96),
+    y: cleanTerminalPercent(draft.y, 0, 96),
+    w: cleanTerminalPercent(draft.w, 2, 40),
+    h: cleanTerminalPercent(draft.h, 2, 30)
+  };
+}
+
+function resetTerminalTableCustomDraft() {
+  state.terminalTableCustomDraft = emptyTerminalTableCustomDraft();
+}
+
+function loadTerminalTableCustomDraft(id) {
+  const table = terminalCustomTableById(id) || terminalTableDef(id);
+  state.terminalTableCustomDraft = table ? emptyTerminalTableCustomDraft({ ...table, originalId: table.id }) : emptyTerminalTableCustomDraft();
+}
+
+function updateTerminalTableCustomField(field, value) {
+  const draft = emptyTerminalTableCustomDraft(state.terminalTableCustomDraft || {});
+  draft[field] = String(value || "");
+  state.terminalTableCustomDraft = emptyTerminalTableCustomDraft(draft);
+}
+
+function terminalTableUseSelectionForCustomDraft() {
+  const tableId = singleSelectedTerminalTableId();
+  const table = terminalTableDef(tableId);
+  if (!table) {
+    showToast("Bitte zuerst einen einzelnen Tisch im Plan auswählen.");
+    return false;
+  }
+  state.terminalTableCustomDraft = emptyTerminalTableCustomDraft({
+    id: terminalCustomTableById(table.id)?.id || "",
+    originalId: terminalCustomTableById(table.id)?.id || "",
+    label: table.label || "",
+    area: table.area || "",
+    seats: table.seats || "",
+    shape: table.shape || "table",
+    x: table.x,
+    y: table.y,
+    w: table.w,
+    h: table.h
+  });
+  return true;
+}
+
+function emptyTerminalTableDraft(value = {}) {
+  const reservation = normalizeTerminalTableReservation(value);
+  return {
+    id: reservation.id || "",
+    tableIds: reservation.tableIds || [],
+    time: reservation.time || "",
+    name: reservation.name || "",
+    people: reservation.people ? String(reservation.people) : "",
+    note: reservation.note || "",
+    createdAt: reservation.createdAt || "",
+    updatedAt: reservation.updatedAt || ""
+  };
+}
+
+function normalizeTerminalTableDraft(value = {}) {
+  const draft = emptyTerminalTableDraft(value);
+  draft.tableIds = sortTerminalTableIds(draft.tableIds);
+  draft.people = cleanTerminalTablePeople(draft.people) ? String(cleanTerminalTablePeople(draft.people)) : "";
+  return draft;
+}
+
+function normalizeTerminalTableReservation(value = {}) {
+  return {
+    id: String(value.id || "").trim(),
+    tableIds: sortTerminalTableIds(value.tableIds),
+    time: String(value.time || "").trim().slice(0, 5),
+    name: String(value.name || "").trim().slice(0, 160),
+    people: cleanTerminalTablePeople(value.people),
+    note: String(value.note || "").trim().slice(0, 500),
+    createdAt: String(value.createdAt || "").trim(),
+    updatedAt: String(value.updatedAt || "").trim()
+  };
+}
+
+function normalizeTerminalTableReservations(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => normalizeTerminalTableReservation(item))
+    .filter((item) => item.tableIds.length && (item.time || item.name || item.people || item.note));
+}
+
+function normalizeTerminalTableGroup(value = {}) {
+  return {
+    id: String(value.id || "").trim(),
+    label: String(value.label || "").trim().slice(0, 120),
+    tableIds: sortTerminalTableIds(value.tableIds),
+    createdAt: String(value.createdAt || "").trim(),
+    updatedAt: String(value.updatedAt || "").trim()
+  };
+}
+
+function normalizeTerminalTableGroups(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => normalizeTerminalTableGroup(item))
+    .filter((item) => item.label && item.tableIds.length >= 2);
+}
+
+function cleanTerminalTableId(value) {
+  const id = cleanTerminalRawTableId(value);
+  return terminalTableLookup()[id] ? id : "";
+}
+
+function sortTerminalTableIds(value = []) {
+  return [...new Set((Array.isArray(value) ? value : []).map(cleanTerminalTableId).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, "de", { numeric: true }));
+}
+
+function terminalTableSetKey(value = []) {
+  return sortTerminalTableIds(value).join("|");
+}
+
+function terminalTableIdsFromValue(value) {
+  if (Array.isArray(value)) return sortTerminalTableIds(value);
+  return sortTerminalTableIds(String(value || "").split(","));
+}
+
+function cleanTerminalTablePeople(value) {
+  const number = Number(String(value ?? "").replace(",", "."));
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+}
+
+function terminalTableGroups(report = state.terminalReport) {
+  return normalizeTerminalTableGroups(report?.tableGroups || []);
+}
+
+function terminalTableGroupedIds(groups = terminalTableGroups()) {
+  return new Set(groups.flatMap((group) => group.tableIds));
+}
+
+function terminalTableGroupForTableIds(tableIds = [], groups = terminalTableGroups()) {
+  const key = terminalTableSetKey(tableIds);
+  return groups.find((group) => terminalTableSetKey(group.tableIds) === key) || null;
+}
+
+function terminalTableGroupRect(group = {}) {
+  const rects = sortTerminalTableIds(group.tableIds).map((tableId) => terminalTableRect(tableId)).filter(Boolean);
+  if (!rects.length) return null;
+  const padding = 0.7;
+  const left = Math.max(0.2, Math.min(...rects.map((rect) => rect.left)) - padding);
+  const top = Math.max(0.2, Math.min(...rects.map((rect) => rect.top)) - padding);
+  const right = Math.min(99.4, Math.max(...rects.map((rect) => rect.right)) + padding);
+  const bottom = Math.min(99.4, Math.max(...rects.map((rect) => rect.bottom)) + padding);
+  return {
+    left,
+    top,
+    width: Math.max(3, right - left),
+    height: Math.max(3, bottom - top)
+  };
+}
+
+function terminalTableGroupShape(group = {}) {
+  const rect = terminalTableGroupRect(group);
+  if (!rect) return "table";
+  if (rect.height > rect.width * 1.2) return "table-vertical";
+  if (rect.width > rect.height * 1.35) return "table-horizontal";
+  return "table";
+}
+
+function emptyTerminalTableGroupDraft(value = {}) {
+  const group = normalizeTerminalTableGroup(value);
+  return {
+    id: group.id || "",
+    label: group.label || "",
+    tableIds: group.tableIds || [],
+    createdAt: group.createdAt || "",
+    updatedAt: group.updatedAt || ""
+  };
+}
+
+function activeTerminalTableGroupDraft(draft = state.terminalTableGroupDraft, selection = state.terminalTableDraft?.tableIds || []) {
+  const next = emptyTerminalTableGroupDraft(draft || {});
+  if (!next.id) next.tableIds = sortTerminalTableIds(selection);
+  return next;
+}
+
+function syncTerminalTableGroupDraftFromReport(report = state.terminalReport) {
+  const groups = terminalTableGroups(report);
+  if (!state.terminalTableGroupDraft) {
+    state.terminalTableGroupDraft = emptyTerminalTableGroupDraft();
+    return;
+  }
+  const draft = emptyTerminalTableGroupDraft(state.terminalTableGroupDraft);
+  if (!draft.id) {
+    state.terminalTableGroupDraft = activeTerminalTableGroupDraft(draft);
+    return;
+  }
+  const match = groups.find((item) => item.id === draft.id);
+  state.terminalTableGroupDraft = match ? emptyTerminalTableGroupDraft(match) : emptyTerminalTableGroupDraft();
+}
+
+function resetTerminalTableGroupDraft() {
+  state.terminalTableGroupDraft = emptyTerminalTableGroupDraft();
+}
+
+function loadTerminalTableGroupDraft(id) {
+  const group = terminalTableGroups().find((item) => item.id === id);
+  state.terminalTableGroupDraft = group ? emptyTerminalTableGroupDraft(group) : emptyTerminalTableGroupDraft();
+  if (!group) return;
+  const reservationDraft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  reservationDraft.tableIds = sortTerminalTableIds(group.tableIds);
+  state.terminalTableDraft = normalizeTerminalTableDraft(reservationDraft);
+}
+
+function updateTerminalTableGroupField(field, value) {
+  const draft = activeTerminalTableGroupDraft(state.terminalTableGroupDraft || {});
+  draft[field] = String(value || "").trim();
+  state.terminalTableGroupDraft = emptyTerminalTableGroupDraft(draft);
+}
+
+function currentTerminalTableGroupPayload() {
+  const draft = activeTerminalTableGroupDraft(state.terminalTableGroupDraft || {});
+  return {
+    ...draft,
+    tableIds: sortTerminalTableIds(draft.tableIds)
+  };
+}
+
+function terminalTableReservations(report = state.terminalReport) {
+  return normalizeTerminalTableReservations(report?.tableReservations || []);
+}
+
+function terminalTableSeatCount(tableIds = []) {
+  return sortTerminalTableIds(tableIds).reduce((sum, id) => sum + terminalTableSeats(id), 0);
+}
+
+function terminalTableLabels(tableIds = []) {
+  return sortTerminalTableIds(tableIds).map((id) => terminalTableDef(id)?.label || id);
+}
+
+function terminalTableLabelText(tableIds = [], groups = terminalTableGroups()) {
+  const match = terminalTableGroupForTableIds(tableIds, groups);
+  if (match?.label) return match.label;
+  const labels = terminalTableLabels(tableIds);
+  return labels.length ? labels.join(" + ") : "Keine Tische ausgewählt";
+}
+
+function terminalTableAreas(tableIds = []) {
+  return [...new Set(sortTerminalTableIds(tableIds).map((id) => terminalTableDef(id)?.area || "").filter(Boolean))];
+}
+
+function terminalTableAreaText(tableIds = [], groups = terminalTableGroups()) {
+  const match = terminalTableGroupForTableIds(tableIds, groups);
+  if (match) {
+    const groupedAreas = terminalTableAreas(match.tableIds);
+    if (groupedAreas.length) return groupedAreas.join(" · ");
+  }
+  const areas = terminalTableAreas(tableIds);
+  return areas.length ? areas.join(" · ") : "Kein Bereich";
+}
+
+function terminalTableRect(id) {
+  const table = terminalTableDef(id);
+  if (!table) return null;
+  return { left: table.x, top: table.y, right: table.x + table.w, bottom: table.y + table.h };
+}
+
+function terminalRangesNear(aStart, aEnd, bStart, bEnd, tolerance = TERMINAL_TABLE_ADJACENCY_TOLERANCE) {
+  return Math.min(aEnd, bEnd) - Math.max(aStart, bStart) >= -tolerance;
+}
+
+function terminalTablesAreAdjacent(leftId, rightId) {
+  const left = terminalTableDef(leftId);
+  const right = terminalTableDef(rightId);
+  if (!left || !right || left.id === right.id) return false;
+  if (left.area !== right.area) return false;
+  const a = terminalTableRect(left.id);
+  const b = terminalTableRect(right.id);
+  if (!a || !b) return false;
+  const touchesHorizontally = Math.abs(a.right - b.left) <= TERMINAL_TABLE_ADJACENCY_TOLERANCE || Math.abs(b.right - a.left) <= TERMINAL_TABLE_ADJACENCY_TOLERANCE;
+  const touchesVertically = Math.abs(a.bottom - b.top) <= TERMINAL_TABLE_ADJACENCY_TOLERANCE || Math.abs(b.bottom - a.top) <= TERMINAL_TABLE_ADJACENCY_TOLERANCE;
+  const verticalOverlap = terminalRangesNear(a.top, a.bottom, b.top, b.bottom);
+  const horizontalOverlap = terminalRangesNear(a.left, a.right, b.left, b.right);
+  return (touchesHorizontally && verticalOverlap) || (touchesVertically && horizontalOverlap);
+}
+
+function singleSelectedTerminalTableId(draft = state.terminalTableDraft) {
+  const ids = sortTerminalTableIds(draft?.tableIds || []);
+  return ids.length === 1 ? ids[0] : "";
+}
+
+function terminalTableOccupancyMap(reservations = []) {
+  const map = new Map();
+  sortTerminalTableReservations(reservations, "time").forEach((reservation) => {
+    reservation.tableIds.forEach((id) => {
+      const list = map.get(id) || [];
+      list.push(reservation);
+      map.set(id, list);
+    });
+  });
+  return map;
+}
+
+function terminalTableFirstId(tableIds = []) {
+  return sortTerminalTableIds(tableIds)[0] || "";
+}
+
+function sortTerminalTableReservations(value = [], sortBy = "time") {
+  const reservations = normalizeTerminalTableReservations(value);
+  return [...reservations].sort((left, right) => {
+    const leftArea = terminalTableAreaText(left.tableIds);
+    const rightArea = terminalTableAreaText(right.tableIds);
+    const leftTable = terminalTableFirstId(left.tableIds);
+    const rightTable = terminalTableFirstId(right.tableIds);
+    const leftTime = left.time || "99:99";
+    const rightTime = right.time || "99:99";
+    if (sortBy === "table") {
+      const tableCompare = leftTable.localeCompare(rightTable, "de", { numeric: true });
+      if (tableCompare) return tableCompare;
+      const timeCompare = leftTime.localeCompare(rightTime);
+      if (timeCompare) return timeCompare;
+    } else if (sortBy === "area") {
+      const areaCompare = leftArea.localeCompare(rightArea, "de", { numeric: true });
+      if (areaCompare) return areaCompare;
+      const timeCompare = leftTime.localeCompare(rightTime);
+      if (timeCompare) return timeCompare;
+    } else {
+      const timeCompare = leftTime.localeCompare(rightTime);
+      if (timeCompare) return timeCompare;
+      const tableCompare = leftTable.localeCompare(rightTable, "de", { numeric: true });
+      if (tableCompare) return tableCompare;
+    }
+    return String(left.name || "").localeCompare(String(right.name || ""), "de");
+  });
+}
+
+function syncTerminalTableDraftFromReport(report = state.terminalReport) {
+  const reservations = terminalTableReservations(report);
+  if (!state.terminalTableDraft) {
+    state.terminalTableDraft = emptyTerminalTableDraft();
+    return;
+  }
+  const draft = normalizeTerminalTableDraft(state.terminalTableDraft);
+  if (!draft.id) {
+    state.terminalTableDraft = draft;
+    return;
+  }
+  const match = reservations.find((item) => item.id === draft.id);
+  state.terminalTableDraft = match ? emptyTerminalTableDraft(match) : emptyTerminalTableDraft();
+}
+
+function resetTerminalTableDraft() {
+  state.terminalTableDraft = emptyTerminalTableDraft();
+}
+
+function updateTerminalTableDraftField(field, value) {
+  const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  draft[field] = field === "people" ? String(value || "").trim() : String(value || "");
+  state.terminalTableDraft = normalizeTerminalTableDraft(draft);
+}
+
+function syncTerminalTableGroupDraftSelection(tableIds = []) {
+  const ids = sortTerminalTableIds(tableIds);
+  const draft = emptyTerminalTableGroupDraft(state.terminalTableGroupDraft || {});
+  if (draft.id) {
+    draft.tableIds = ids;
+    state.terminalTableGroupDraft = emptyTerminalTableGroupDraft(draft);
+    return;
+  }
+  state.terminalTableGroupDraft = activeTerminalTableGroupDraft(draft, ids);
+}
+
+function toggleTerminalTableSelection(value) {
+  const tableIds = terminalTableIdsFromValue(value);
+  if (!tableIds.length) return;
+  const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  const selected = new Set(draft.tableIds);
+  const isCompleteSelection = tableIds.every((tableId) => selected.has(tableId));
+  if (isCompleteSelection) tableIds.forEach((tableId) => selected.delete(tableId));
+  else tableIds.forEach((tableId) => selected.add(tableId));
+  draft.tableIds = [...selected];
+  state.terminalTableDraft = normalizeTerminalTableDraft(draft);
+  syncTerminalTableGroupDraftSelection(draft.tableIds);
+}
+
+function beginTerminalTableDrag(id) {
+  const tableIds = terminalTableIdsFromValue(id);
+  if (!tableIds.length) return;
+  state.terminalTableDragId = tableIds.join(",");
+}
+
+function endTerminalTableDrag() {
+  state.terminalTableDragId = "";
+}
+
+function terminalTableSetsAreAdjacent(leftValue, rightValue) {
+  const left = terminalTableIdsFromValue(leftValue);
+  const right = terminalTableIdsFromValue(rightValue);
+  if (!left.length || !right.length) return false;
+  if (left.some((tableId) => right.includes(tableId))) return false;
+  return left.some((leftId) => right.some((rightId) => terminalTablesAreAdjacent(leftId, rightId)));
+}
+
+function connectTerminalTablesByDrag(sourceId, targetId) {
+  const source = terminalTableIdsFromValue(sourceId);
+  const target = terminalTableIdsFromValue(targetId);
+  if (!source.length || !target.length) return false;
+  if (!terminalTableSetsAreAdjacent(source, target)) return false;
+  const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  const selected = new Set(draft.tableIds);
+  source.concat(target).forEach((tableId) => selected.add(tableId));
+  draft.tableIds = [...selected];
+  state.terminalTableDraft = normalizeTerminalTableDraft(draft);
+  syncTerminalTableGroupDraftSelection(draft.tableIds);
+  return true;
+}
+
+function loadTerminalTableDraft(id) {
+  const reservation = terminalTableReservations().find((item) => item.id === id);
+  state.terminalTableDraft = reservation ? emptyTerminalTableDraft(reservation) : emptyTerminalTableDraft();
+}
+
+function currentTerminalTablePayload() {
+  const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  return {
+    ...draft,
+    people: cleanTerminalTablePeople(draft.people)
+  };
+}
+
+function currentTerminalTableConfigPayload() {
+  const tableId = singleSelectedTerminalTableId();
+  return {
+    tableId,
+    seats: cleanTerminalTablePeople($("#tablePlanDefaultSeats")?.value || "")
+  };
+}
+
+function terminalTableInsetRect(rect, inset = 0) {
+  return {
+    left: rect.left + inset,
+    top: rect.top + inset,
+    width: Math.max(2, rect.width - (inset * 2)),
+    height: Math.max(2, rect.height - (inset * 2))
+  };
+}
+
+function terminalTableGroupSummaryText(draft = {}) {
+  if (draft?.id) return `Bearbeiten · ${draft.label || "Tafel"}`;
+  if ((draft?.tableIds || []).length >= 2) return `${draft.tableIds.length} Tische für neue Tafel ausgewählt`;
+  return "Mindestens 2 benachbarte Tische auswählen";
+}
+
+function terminalTableGroupDraftSummaryHtml(draft = {}) {
+  if ((draft?.tableIds || []).length < 2) {
+    return `<p class="hint">Tische im Plan auswählen oder per Drag & Drop verbinden. Danach eine Tischnummer für die gemeinsame Tafel vergeben.</p>`;
+  }
+  return `
+    <article>
+      <small>Tische</small>
+      <strong>${escapeHtml(terminalTableLabels(draft.tableIds).join(" + "))}</strong>
+    </article>
+    <article>
+      <small>Bereich</small>
+      <strong>${escapeHtml(terminalTableAreaText(draft.tableIds))}</strong>
+    </article>
+    <article>
+      <small>Plätze gesamt</small>
+      <strong>${escapeHtml(String(terminalTableSeatCount(draft.tableIds) || 0))}</strong>
+    </article>
+  `;
+}
+
+function terminalTableGroupListHtml(groups = []) {
+  if (!groups.length) return `<p class="hint">Noch keine Tafeln gespeichert.</p>`;
+  return `
+    <div class="table-plan-group-cards">
+      ${groups.map((group) => `
+        <article class="table-plan-group-card ${state.terminalTableGroupDraft?.id === group.id ? "is-active" : ""}">
+          <div class="table-plan-group-card-head">
+            <div>
+              <strong>${escapeHtml(group.label)}</strong>
+              <span>${escapeHtml(terminalTableLabels(group.tableIds).join(" + "))}</span>
+            </div>
+            <small>${escapeHtml(String(terminalTableSeatCount(group.tableIds) || 0))} P</small>
+          </div>
+          <div class="table-plan-group-card-actions">
+            <button class="secondary" type="button" data-table-plan-group-edit="${escapeHtml(group.id)}">Bearbeiten</button>
+            <button class="secondary danger-lite" type="button" data-table-plan-group-delete="${escapeHtml(group.id)}">Löschen</button>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function terminalTableCustomListHtml(customTables = []) {
+  if (!customTables.length) return `<p class="hint">Noch keine zusätzlichen Tische angelegt.</p>`;
+  return `
+    <div class="table-plan-group-cards">
+      ${customTables.map((table) => `
+        <article class="table-plan-group-card ${state.terminalTableCustomDraft?.originalId === table.id ? "is-active" : ""}">
+          <div class="table-plan-group-card-head">
+            <div>
+              <strong>${escapeHtml(table.label)}</strong>
+              <span>${escapeHtml(table.id)} · ${escapeHtml(table.area)}</span>
+            </div>
+            <small>${escapeHtml(String(table.seats || 0))} P</small>
+          </div>
+          <div class="table-plan-group-card-actions">
+            <button class="secondary" type="button" data-table-plan-custom-edit="${escapeHtml(table.id)}">Bearbeiten</button>
+            <button class="secondary danger-lite" type="button" data-table-plan-custom-delete="${escapeHtml(table.id)}">Löschen</button>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function terminalTableDateHintHtml(dateKey, info = state.terminalTableInfo || {}) {
+  const todayDate = info.todayDate || todayKey();
+  const parts = [];
+  if (dateKey !== todayDate && info.selectedAvailable) {
+    const items = Number(info.selectedItems || 0);
+    parts.push(`Für <strong>${escapeHtml(formatLongDate(dateKey))}</strong> ist bereits ein Tischplan gespeichert${items ? ` (${items} Einträge)` : ""}.`);
+  }
+  if (dateKey !== todayDate && info.todayAvailable) {
+    const items = Number(info.todayItems || 0);
+    parts.push(`Hinweis: Für <strong>heute</strong> ist bereits ein Tischplan verfügbar${items ? ` (${items} Einträge)` : ""}.`);
+  }
+  if (dateKey === todayDate && info.selectedAvailable) {
+    const items = Number(info.selectedItems || 0);
+    parts.push(`Für <strong>heute</strong> ist bereits ein Tischplan gespeichert${items ? ` (${items} Einträge)` : ""}.`);
+  }
+  return parts.join(" ");
+}
+
+function terminalTableBookingSummaryHtml(booked = [], compact = false) {
+  if (!booked.length) return "";
+  const primary = booked[0];
+  return `
+    <div class="table-plan-table-bookings ${compact ? "is-compact" : ""}">
+      <span class="table-plan-table-booking is-primary">
+        <span class="table-plan-table-booking-top">
+          <strong>${escapeHtml(primary.time || "--:--")}</strong>
+          <em>${escapeHtml(String(primary.people || 0))} P</em>
+        </span>
+        <span class="table-plan-table-booking-name">${escapeHtml(primary.name || "Reservierung")}</span>
+      </span>
+      ${booked.length > 1 ? `<span class="table-plan-table-booking is-more">+${booked.length - 1}</span>` : ""}
+    </div>
+  `;
+}
+
+function terminalTableStaffSummaryText(assignments = [], draft = {}) {
+  if (draft?.id) return `Bearbeiten · ${draft.employee || "Personalbereich"}`;
+  if (assignments.length) return `${assignments.length} Personalbereiche gespeichert`;
+  return "Noch kein Bereich zugewiesen";
+}
+
+function terminalTableStaffPositionsText(meta = {}) {
+  return Array.isArray(meta.positions) && meta.positions.length ? meta.positions.join(", ") : "laut Tages-Einteilung";
+}
+
+function terminalTableStaffTimeText(meta = {}) {
+  return meta.time?.from ? `ab ${meta.time.from}` : "Start offen";
+}
+
+function terminalTableStaffEmployeeOptionsHtml(employeeMeta = new Map(), selectedEmployee = "") {
+  const options = [];
+  if (!selectedEmployee || !employeeMeta.has(selectedEmployee)) {
+    options.push(`<option value="">Mitarbeiter wählen</option>`);
+  }
+  if (selectedEmployee && !employeeMeta.has(selectedEmployee)) {
+    options.push(`<option value="${escapeHtml(selectedEmployee)}">${escapeHtml(selectedEmployee)} · nicht mehr eingeteilt</option>`);
+  }
+  employeeMeta.forEach((meta, employee) => {
+    options.push(`<option value="${escapeHtml(employee)}"${employee === selectedEmployee ? " selected" : ""}>${escapeHtml(terminalTableEmployeeOptionLabel(meta))}</option>`);
+  });
+  return options.join("");
+}
+
+function terminalTableStaffPresetOptionsHtml(selectedPreset = "") {
+  return [
+    `<option value="">Bereich wählen</option>`,
+    ...TERMINAL_TABLE_STAFF_PRESETS.map((preset) => `<option value="${escapeHtml(preset.id)}"${preset.id === selectedPreset ? " selected" : ""}>${escapeHtml(preset.label)}</option>`)
+  ].join("");
+}
+
+function terminalTableStaffListHtml(dateKey, assignments = [], employeeMeta = new Map()) {
+  if (!assignments.length) return `<p class="hint">Noch kein Mitarbeiterbereich für ${escapeHtml(formatLongDate(dateKey))} angelegt.</p>`;
+  return `
+    <div class="table-plan-staff-cards">
+      ${assignments.map((assignment) => {
+        const preset = terminalTableStaffPreset(assignment.presetId);
+        const meta = employeeMeta.get(assignment.employee) || { employee: assignment.employee, positions: [], time: {} };
+        return `
+          <article class="table-plan-staff-card ${state.terminalTableStaffDraft?.id === assignment.id ? "is-active" : ""}" style="--staff-color:${escapeHtml(assignment.color)};">
+            <div class="table-plan-staff-card-head">
+              <div>
+                <strong>${escapeHtml(assignment.employee)}</strong>
+                <span>${escapeHtml(preset?.label || assignment.presetId)}</span>
+              </div>
+              <span class="table-plan-staff-color-dot" style="background:${escapeHtml(assignment.color)};"></span>
+            </div>
+            <div class="table-plan-staff-card-meta">
+              <small>${escapeHtml(terminalTableStaffPositionsText(meta))}</small>
+              <small>${escapeHtml(terminalTableStaffTimeText(meta))}</small>
+            </div>
+            ${assignment.note ? `<p>${escapeHtml(assignment.note)}</p>` : ""}
+            <div class="table-plan-staff-card-actions">
+              <button class="secondary" type="button" data-table-plan-staff-edit="${escapeHtml(assignment.id)}">Bearbeiten</button>
+              <button class="secondary danger-lite" type="button" data-table-plan-staff-delete="${escapeHtml(assignment.id)}">Löschen</button>
+            </div>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function terminalTableDraftOverlayHtml(draft = {}, groups = []) {
+  const ids = sortTerminalTableIds(draft.tableIds || []);
+  if (ids.length < 2) return "";
+  if (terminalTableGroupForTableIds(ids, groups)) return "";
+  const rect = terminalTableGroupRect({ tableIds: ids });
+  if (!rect) return "";
+  return `
+    <div class="table-plan-group-draft-overlay" style="left:${rect.left}%;top:${rect.top}%;width:${rect.width}%;height:${rect.height}%;">
+      <strong>Neue Tafel</strong>
+      <span>${escapeHtml(terminalTableLabels(ids).join(" + "))}</span>
+    </div>
+  `;
+}
+
+function terminalTableStaffOverlayHtml(assignments = [], employeeMeta = new Map()) {
+  const presetCounts = {};
+  return assignments.map((assignment) => {
+    const preset = terminalTableStaffPreset(assignment.presetId);
+    const baseRect = terminalTableStaffPresetRect(assignment.presetId);
+    if (!preset || !baseRect) return "";
+    const order = presetCounts[assignment.presetId] || 0;
+    presetCounts[assignment.presetId] = order + 1;
+    const rect = terminalTableInsetRect(baseRect, order * 0.8);
+    const meta = employeeMeta.get(assignment.employee) || { employee: assignment.employee, positions: [], time: {} };
+    return `
+      <div class="table-plan-staff-overlay" style="left:${rect.left}%;top:${rect.top}%;width:${rect.width}%;height:${rect.height}%;--staff-color:${escapeHtml(assignment.color)};--staff-color-soft:${escapeHtml(terminalColorToRgba(assignment.color, 0.14))};">
+        <div class="table-plan-staff-overlay-head">
+          <strong>${escapeHtml(assignment.employee)}</strong>
+          <span>${escapeHtml(preset.label)}</span>
+        </div>
+        <small>${escapeHtml(terminalTableStaffPositionsText(meta))}${meta.time?.from ? ` · ${escapeHtml(terminalTableStaffTimeText(meta))}` : ""}</small>
+        ${assignment.note ? `<small>${escapeHtml(assignment.note)}</small>` : ""}
+      </div>
+    `;
+  }).join("");
+}
+
+function terminalTablePrintStaffHtml(dateKey, assignments = [], employeeMeta = new Map()) {
+  if (!assignments.length) return "";
+  return `
+    <div class="table-plan-print-card">
+      <div class="table-plan-print-head">
+        <div>
+          <strong>Personalbereiche</strong>
+          <small>${escapeHtml(formatLongDate(dateKey))}</small>
+        </div>
+        <span>${escapeHtml(String(assignments.length))} Zuordnungen</span>
+      </div>
+      <table class="table-plan-print-table">
+        <thead>
+          <tr>
+            <th>Mitarbeiter</th>
+            <th>Bereich</th>
+            <th>Positionen</th>
+            <th>Start</th>
+            <th>Hinweis</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${assignments.map((assignment) => {
+            const preset = terminalTableStaffPreset(assignment.presetId);
+            const meta = employeeMeta.get(assignment.employee) || { employee: assignment.employee, positions: [], time: {} };
+            return `
+              <tr>
+                <td>${escapeHtml(assignment.employee)}</td>
+                <td>${escapeHtml(preset?.label || assignment.presetId)}</td>
+                <td>${escapeHtml(terminalTableStaffPositionsText(meta))}</td>
+                <td>${escapeHtml(terminalTableStaffTimeText(meta))}</td>
+                <td>${escapeHtml(assignment.note || "-")}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
+  syncTerminalTableDraftFromReport(report);
+  syncTerminalTableGroupDraftFromReport(report);
+  syncTerminalTableStaffDraftFromReport(report);
+  const reservations = sortTerminalTableReservations(terminalTableReservations(report), state.terminalTableSort || "time");
+  const groups = terminalTableGroups(report);
+  const staffAssignments = sortTerminalTableStaffAssignments(terminalTableStaffAssignments(report));
+  const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  const groupDraft = activeTerminalTableGroupDraft(state.terminalTableGroupDraft || {}, draft.tableIds);
+  const customDraft = emptyTerminalTableCustomDraft(state.terminalTableCustomDraft || {});
+  const staffDraft = emptyTerminalTableStaffDraft(state.terminalTableStaffDraft || {});
+  const employeeMeta = terminalTableEmployeeMeta(dateKey);
+  const selectedSeatCount = terminalTableSeatCount(draft.tableIds);
+  const singleTableId = singleSelectedTerminalTableId(draft);
+  const singleTable = terminalTableDef(singleTableId);
+  const shell = $(".table-plan-shell");
+  if (shell) shell.classList.toggle("is-work-view", state.terminalTableView === "work");
+  document.body.classList.toggle("table-plan-fullscreen", Boolean(state.terminalTableFullscreen));
+  const boardMeta = $("#tablePlanBoardMeta");
+  if (boardMeta) {
+    boardMeta.innerHTML = `
+      <article>
+        <small>Datum</small>
+        <strong>${escapeHtml(formatLongDate(dateKey))}</strong>
+      </article>
+      <article>
+        <small>Reservierungen</small>
+        <strong>${reservations.length}</strong>
+      </article>
+      <article>
+        <small>Tafeln</small>
+        <strong>${groups.length}</strong>
+      </article>
+      <article>
+        <small>Personalbereiche</small>
+        <strong>${staffAssignments.length}</strong>
+      </article>
+      <article>
+        <small>Ausgewählte Plätze</small>
+        <strong>${selectedSeatCount || 0}</strong>
+      </article>
+      <article>
+        <small>Status</small>
+        <strong>${reportClosed ? "Abgeschlossen" : "Offen"}</strong>
+      </article>
+    `;
+  }
+  const board = $("#tablePlanBoard");
+  if (board) board.innerHTML = terminalTableBoardHtml(reservations, groups, draft, staffAssignments, employeeMeta);
+  if ($("#tablePlanDate")) $("#tablePlanDate").value = dateKey;
+  const dateHint = $("#tablePlanDateHint");
+  if (dateHint) {
+    const hintHtml = terminalTableDateHintHtml(dateKey, state.terminalTableInfo || {});
+    dateHint.innerHTML = hintHtml;
+    dateHint.classList.toggle("hidden", !hintHtml);
+  }
+  if ($("#loadTodayTablePlan")) $("#loadTodayTablePlan").classList.toggle("hidden", !(dateKey !== (state.terminalTableInfo?.todayDate || todayKey()) && state.terminalTableInfo?.todayAvailable));
+  const summary = $("#tablePlanSelectionSummary");
+  if (summary) summary.textContent = draft.id ? `Bearbeiten · ${draft.name || terminalTableLabelText(draft.tableIds)}` : "Neue Reservierung";
+  const draftSummary = $("#tablePlanDraftSummary");
+  if (draftSummary) draftSummary.innerHTML = terminalTableDraftSummaryHtml(draft);
+  const conflictHint = $("#tablePlanConflictHint");
+  if (conflictHint) conflictHint.innerHTML = terminalTableConflictHtml(draft, reservations);
+  if ($("#tablePlanGroupSummary")) $("#tablePlanGroupSummary").textContent = terminalTableGroupSummaryText(groupDraft);
+  const groupDraftSummary = $("#tablePlanGroupDraftSummary");
+  if (groupDraftSummary) groupDraftSummary.innerHTML = terminalTableGroupDraftSummaryHtml(groupDraft);
+  if ($("#tablePlanGroupLabel")) $("#tablePlanGroupLabel").value = groupDraft.label || "";
+  if ($("#saveTablePlanGroup")) $("#saveTablePlanGroup").disabled = reportClosed || groupDraft.tableIds.length < 2;
+  if ($("#deleteTablePlanGroup")) $("#deleteTablePlanGroup").disabled = reportClosed || !groupDraft.id;
+  const groupList = $("#tablePlanGroupList");
+  if (groupList) groupList.innerHTML = terminalTableGroupListHtml(groups);
+  const configPanel = $("#tablePlanConfigPanel");
+  if (configPanel) configPanel.classList.toggle("hidden", state.terminalTableView === "work");
+  if ($("#tablePlanConfigLabel")) $("#tablePlanConfigLabel").textContent = singleTable ? `${singleTable.label} · ${singleTable.area}` : "Standardplätze";
+  if ($("#tablePlanDefaultSeats")) $("#tablePlanDefaultSeats").value = singleTable ? String(singleTable.seats || "") : "";
+  if ($("#tablePlanDefaultSeats")) $("#tablePlanDefaultSeats").disabled = reportClosed || !singleTable;
+  if ($("#saveTablePlanConfig")) $("#saveTablePlanConfig").disabled = reportClosed || !singleTable;
+  if ($("#tablePlanCustomId")) $("#tablePlanCustomId").value = customDraft.id || "";
+  if ($("#tablePlanCustomId")) $("#tablePlanCustomId").disabled = reportClosed || Boolean(customDraft.originalId);
+  if ($("#tablePlanCustomLabel")) $("#tablePlanCustomLabel").value = customDraft.label || "";
+  if ($("#tablePlanCustomArea")) $("#tablePlanCustomArea").value = customDraft.area || "";
+  if ($("#tablePlanCustomSeats")) $("#tablePlanCustomSeats").value = customDraft.seats || "";
+  if ($("#tablePlanCustomShape")) $("#tablePlanCustomShape").value = customDraft.shape || "table";
+  if ($("#tablePlanCustomX")) $("#tablePlanCustomX").value = customDraft.x || "";
+  if ($("#tablePlanCustomY")) $("#tablePlanCustomY").value = customDraft.y || "";
+  if ($("#tablePlanCustomW")) $("#tablePlanCustomW").value = customDraft.w || "";
+  if ($("#tablePlanCustomH")) $("#tablePlanCustomH").value = customDraft.h || "";
+  if ($("#saveTablePlanCustom")) $("#saveTablePlanCustom").disabled = reportClosed;
+  if ($("#resetTablePlanCustom")) $("#resetTablePlanCustom").disabled = reportClosed;
+  if ($("#deleteTablePlanCustom")) $("#deleteTablePlanCustom").disabled = reportClosed || !customDraft.originalId;
+  if ($("#fillTablePlanCustomFromSelection")) $("#fillTablePlanCustomFromSelection").disabled = reportClosed || !singleTable;
+  const customList = $("#tablePlanCustomList");
+  if (customList) customList.innerHTML = terminalTableCustomListHtml(state.terminalTableConfig?.customTables || []);
+  if ($("#tablePlanTime")) $("#tablePlanTime").value = draft.time || "";
+  if ($("#tablePlanName")) $("#tablePlanName").value = draft.name || "";
+  if ($("#tablePlanPeople")) $("#tablePlanPeople").value = draft.people || "";
+  if ($("#tablePlanNote")) $("#tablePlanNote").value = draft.note || "";
+  if ($("#tablePlanStaffSummary")) $("#tablePlanStaffSummary").textContent = terminalTableStaffSummaryText(staffAssignments, staffDraft);
+  if ($("#tablePlanStaffEmployee")) $("#tablePlanStaffEmployee").innerHTML = terminalTableStaffEmployeeOptionsHtml(employeeMeta, staffDraft.employee);
+  if ($("#tablePlanStaffPreset")) $("#tablePlanStaffPreset").innerHTML = terminalTableStaffPresetOptionsHtml(staffDraft.presetId);
+  if ($("#tablePlanStaffColor")) $("#tablePlanStaffColor").value = cleanTerminalColor(staffDraft.color);
+  if ($("#tablePlanStaffNote")) $("#tablePlanStaffNote").value = staffDraft.note || "";
+  if ($("#saveTablePlanStaff")) $("#saveTablePlanStaff").disabled = reportClosed || !employeeMeta.size;
+  if ($("#deleteTablePlanStaff")) $("#deleteTablePlanStaff").disabled = reportClosed || !staffDraft.id;
+  const staffList = $("#tablePlanStaffList");
+  if (staffList) staffList.innerHTML = terminalTableStaffListHtml(dateKey, staffAssignments, employeeMeta);
+  if ($("#tablePlanSort")) $("#tablePlanSort").value = state.terminalTableSort || "time";
+  if ($("#saveTablePlanReservation")) $("#saveTablePlanReservation").disabled = reportClosed;
+  if ($("#deleteTablePlanReservation")) $("#deleteTablePlanReservation").disabled = reportClosed || !draft.id;
+  const list = $("#tablePlanPrintArea");
+  if (list) list.innerHTML = terminalTablePrintListHtml(dateKey, reservations, staffAssignments, employeeMeta);
+  if ($("#tablePlanManageView")) $("#tablePlanManageView").classList.toggle("active", state.terminalTableView === "manage");
+  if ($("#tablePlanWorkView")) $("#tablePlanWorkView").classList.toggle("active", state.terminalTableView === "work");
+  if ($("#toggleTablePlanFullscreen")) $("#toggleTablePlanFullscreen").textContent = state.terminalTableFullscreen ? "Vollbild schließen" : "Vollbild";
+}
+
+function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staffAssignments = [], employeeMeta = new Map()) {
+  const occupancy = terminalTableOccupancyMap(reservations);
+  const staffByTable = terminalTableStaffAssignmentsByTable(staffAssignments);
+  const selected = new Set(sortTerminalTableIds(draft.tableIds));
+  const groupedIds = terminalTableGroupedIds(groups);
+  const visibleTables = terminalVisibleTableLayout();
+  const visibleZones = terminalVisibleZones();
+  return `
+    <div class="table-plan-canvas">
+      ${visibleZones.map((zone) => `
+        <div class="table-plan-zone ${escapeHtml(zone.className || "")}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;">
+          <span>${escapeHtml(zone.label)}</span>
+        </div>
+      `).join("")}
+      ${terminalTableDraftOverlayHtml(draft, groups)}
+      ${terminalTableStaffOverlayHtml(staffAssignments, employeeMeta)}
+      ${groups.map((group) => {
+        const rect = terminalTableGroupRect(group);
+        if (!rect) return "";
+        const booked = reservations.filter((reservation) => reservation.tableIds.some((tableId) => group.tableIds.includes(tableId)));
+        const assignedStaff = [...new Map(
+          group.tableIds
+            .flatMap((tableId) => staffByTable.get(tableId) || [])
+            .map((assignment) => [assignment.id, assignment])
+        ).values()];
+        const primaryStaffColor = assignedStaff[0]?.color || "";
+        const isSelected = group.tableIds.every((tableId) => selected.has(tableId));
+        const classes = [
+          "table-plan-table",
+          "is-group",
+          `is-${terminalTableGroupShape(group)}`,
+          booked.length ? "is-occupied" : "",
+          booked.length ? "has-booking" : "",
+          isSelected ? "is-selected" : "",
+          assignedStaff.length ? "has-staff-area" : ""
+        ].filter(Boolean).join(" ");
+        const style = [
+          `left:${rect.left}%`,
+          `top:${rect.top}%`,
+          `width:${rect.width}%`,
+          `height:${rect.height}%`
+        ];
+        if (primaryStaffColor) style.push(`--table-staff-color:${primaryStaffColor}`);
+        return `
+          <button class="${classes}" type="button" draggable="true" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
+            <div class="table-plan-table-head">
+              <strong>${escapeHtml(group.label)}</strong>
+              <span>${escapeHtml(String(terminalTableSeatCount(group.tableIds) || 0))} P</span>
+            </div>
+            <small>${escapeHtml(terminalTableLabels(group.tableIds).join(" + "))}</small>
+            ${assignedStaff.length ? `
+              <div class="table-plan-table-staff">
+                ${assignedStaff.slice(0, 2).map((assignment) => `
+                  <span class="table-plan-table-staff-chip" style="--staff-color:${escapeHtml(assignment.color)};">${escapeHtml(assignment.employee)}</span>
+                `).join("")}
+                ${assignedStaff.length > 2 ? `<span class="table-plan-table-staff-chip is-more">+${assignedStaff.length - 2}</span>` : ""}
+              </div>
+            ` : ""}
+            ${terminalTableBookingSummaryHtml(booked, false)}
+          </button>
+        `;
+      }).join("")}
+      ${visibleTables.map((table) => {
+        if (groupedIds.has(table.id)) return "";
+        const currentTable = terminalTableDef(table.id);
+        const booked = occupancy.get(table.id) || [];
+        const assignedStaff = staffByTable.get(table.id) || [];
+        const primaryStaffColor = assignedStaff[0]?.color || "";
+        const classes = [
+          "table-plan-table",
+          `is-${table.shape || "table"}`,
+          booked.length ? "is-occupied" : "",
+          booked.length ? "has-booking" : "",
+          selected.has(table.id) ? "is-selected" : "",
+          booked.some((reservation) => reservation.tableIds.length > 1) ? "is-connected" : "",
+          assignedStaff.length ? "has-staff-area" : ""
+        ].filter(Boolean).join(" ");
+        const style = [
+          `left:${table.x}%`,
+          `top:${table.y}%`,
+          `width:${table.w}%`,
+          `height:${table.h}%`
+        ];
+        if (primaryStaffColor) style.push(`--table-staff-color:${primaryStaffColor}`);
+        return `
+          <button class="${classes}" type="button" draggable="true" data-table-plan-select="${escapeHtml(table.id)}" data-table-plan-table="${escapeHtml(table.id)}" style="${style.join(";")}">
+            <div class="table-plan-table-head">
+              <strong>${escapeHtml(currentTable?.label || table.label)}</strong>
+              <span>${escapeHtml(String(currentTable?.seats || 0))} P</span>
+            </div>
+            ${booked.length ? "" : `<small>${escapeHtml(currentTable?.area || table.area)}</small>`}
+            ${assignedStaff.length ? `
+              <div class="table-plan-table-staff">
+                ${assignedStaff.slice(0, 1).map((assignment) => `
+                  <span class="table-plan-table-staff-chip" style="--staff-color:${escapeHtml(assignment.color)};">${escapeHtml(assignment.employee)}</span>
+                `).join("")}
+                ${assignedStaff.length > 1 ? `<span class="table-plan-table-staff-chip is-more">+${assignedStaff.length - 1}</span>` : ""}
+              </div>
+            ` : ""}
+            ${terminalTableBookingSummaryHtml(booked, true)}
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function terminalTableDraftSummaryHtml(draft = {}) {
+  if (!draft.tableIds.length) return `<p class="hint">Tische im Plan anklicken, dann Uhrzeit, Name und Personen eintragen.</p>`;
+  return `
+    <article>
+      <small>Tische</small>
+      <strong>${escapeHtml(terminalTableLabelText(draft.tableIds))}</strong>
+    </article>
+    <article>
+      <small>Bereich</small>
+      <strong>${escapeHtml(terminalTableAreaText(draft.tableIds))}</strong>
+    </article>
+    <article>
+      <small>Sitzplätze</small>
+      <strong>${escapeHtml(String(terminalTableSeatCount(draft.tableIds) || 0))}</strong>
+    </article>
+  `;
+}
+
+function terminalTableConflictHtml(draft = {}, reservations = []) {
+  if (!draft.tableIds.length) return "Noch keine Tische ausgewählt.";
+  const selected = new Set(sortTerminalTableIds(draft.tableIds));
+  const overlaps = reservations.filter((reservation) => (
+    reservation.id !== draft.id && reservation.tableIds.some((id) => selected.has(id))
+  ));
+  if (!overlaps.length) return "Auf den ausgewählten Tischen ist noch keine andere Reservierung gespeichert.";
+  return `
+    <strong>Bereits auf diesen Tischen vorhanden:</strong>
+    ${overlaps.map((reservation) => `${escapeHtml(reservation.time || "--:--")} · ${escapeHtml(reservation.name || "Reservierung")} (${escapeHtml(terminalTableLabelText(reservation.tableIds))})`).join("<br>")}
+  `;
+}
+
+function terminalTablePrintListHtml(dateKey, reservations = [], staffAssignments = [], employeeMeta = new Map()) {
+  if (!reservations.length && !staffAssignments.length) {
+    return `<p class="hint">Noch kein Tischplan für ${escapeHtml(formatLongDate(dateKey))}.</p>`;
+  }
+  return `
+    ${reservations.length ? `
+      <div class="table-plan-print-card">
+        <div class="table-plan-print-head">
+          <div>
+            <strong>Reservierungsliste</strong>
+            <small>${escapeHtml(formatLongDate(dateKey))}</small>
+          </div>
+          <span>${escapeHtml(String(reservations.length))} Einträge</span>
+        </div>
+        <table class="table-plan-print-table">
+          <thead>
+            <tr>
+              <th>Uhrzeit</th>
+              <th>Name</th>
+              <th>Personen</th>
+              <th>Tisch</th>
+              <th>Bereich</th>
+              <th>Notiz</th>
+              <th class="table-plan-print-action-cell">Aktion</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reservations.map((reservation) => `
+              <tr class="${state.terminalTableDraft?.id === reservation.id ? "is-active" : ""}">
+                <td>${escapeHtml(reservation.time || "--:--")}</td>
+                <td>${escapeHtml(reservation.name || "-")}</td>
+                <td>${escapeHtml(String(reservation.people || 0))}</td>
+                <td>${escapeHtml(terminalTableLabelText(reservation.tableIds))}</td>
+                <td>${escapeHtml(terminalTableAreaText(reservation.tableIds))}</td>
+                <td>${escapeHtml(reservation.note || "-")}</td>
+                <td class="table-plan-print-action-cell">
+                  <button class="secondary" type="button" data-table-plan-edit="${escapeHtml(reservation.id)}">Bearbeiten</button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    ` : ""}
+    ${terminalTablePrintStaffHtml(dateKey, staffAssignments, employeeMeta)}
+  `;
+}
+
+async function saveTerminalTableReservation(button) {
+  const payload = currentTerminalTablePayload();
+  if (!payload.tableIds.length) {
+    showToast("Bitte mindestens einen Tisch auswählen.");
+    return;
+  }
+  if (!payload.time) {
+    showToast("Bitte Uhrzeit eintragen.");
+    return;
+  }
+  if (!payload.name) {
+    showToast("Bitte Reservierungsname eintragen.");
+    return;
+  }
+  if (!payload.people) {
+    showToast("Bitte Personenzahl eintragen.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await terminalAction({
+      action: "save-table-reservation",
+      reservation: payload
+    });
+    resetTerminalTableDraft();
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Reservierung gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed);
+  }
+}
+
+async function deleteTerminalTableReservation(button) {
+  const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  if (!draft.id) {
+    showToast("Bitte zuerst eine gespeicherte Reservierung auswählen.");
+    return;
+  }
+  if (!confirm(`Reservierung "${draft.name || terminalTableLabelText(draft.tableIds)}" löschen?`)) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Löscht...";
+  try {
+    const result = await terminalAction({
+      action: "delete-table-reservation",
+      id: draft.id
+    });
+    resetTerminalTableDraft();
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Reservierung gelöscht.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed);
+  }
+}
+
+async function saveTerminalTableConfig(button) {
+  const payload = currentTerminalTableConfigPayload();
+  if (!payload.tableId) {
+    showToast("Bitte genau einen Tisch auswählen.");
+    return;
+  }
+  if (!payload.seats) {
+    showToast("Bitte eine gültige Standard-Personenzahl eintragen.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await terminalAction({
+      action: "save-table-config",
+      tableId: payload.tableId,
+      seats: payload.seats
+    });
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Standardplätze gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed);
+  }
+}
+
+async function saveAdminTablePlanEntry(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin erneut entsperren.");
+    return;
+  }
+  const payload = adminTablePlanDraftPayload();
+  if (!payload.id || !payload.label || !payload.area) {
+    showToast("Bitte Tisch-ID, Bezeichnung und Bereich ausfüllen.");
+    return;
+  }
+  if (!payload.seats) {
+    showToast("Bitte eine gültige Personenzahl eintragen.");
+    return;
+  }
+  const oldText = button.textContent;
+  const status = $("#adminTablePlanStatus");
+  if (status) status.textContent = "";
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await api("/api/settings", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "save-table-plan-entry",
+        table: payload
+      })
+    });
+    state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
+    loadAdminTablePlanDraft(payload.id);
+    renderAdminTablePlan();
+    if (state.terminalToken) renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    if (status) status.textContent = result.message || "Grundplan gespeichert.";
+    showToast(result.message || "Grundplan gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
+}
+
+async function deleteAdminTablePlanEntry(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin erneut entsperren.");
+    return;
+  }
+  const draft = emptyAdminTablePlanDraft(state.adminTablePlanDraft || {});
+  const tableId = cleanTerminalRawTableId(draft.originalId || draft.id || "");
+  if (!tableId) {
+    showToast("Bitte zuerst einen Tisch auswählen.");
+    return;
+  }
+  const custom = terminalCustomTableById(tableId);
+  const base = baseTerminalTableById(tableId);
+  const actionText = custom ? `Tisch ${tableId} löschen` : `Standardwerte für ${tableId} wiederherstellen`;
+  if (!confirm(`${actionText}?`)) return;
+  const oldText = button.textContent;
+  const status = $("#adminTablePlanStatus");
+  if (status) status.textContent = "";
+  button.disabled = true;
+  button.textContent = custom ? "Löscht..." : "Setzt zurück...";
+  try {
+    const result = await api("/api/settings", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "delete-table-plan-entry",
+        tableId,
+        baseTable: Boolean(base && !custom)
+      })
+    });
+    state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
+    resetAdminTablePlanDraft();
+    renderAdminTablePlan();
+    if (state.terminalToken) renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    if (status) status.textContent = result.message || "Grundplan aktualisiert.";
+    showToast(result.message || "Grundplan aktualisiert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
+}
+
+async function saveAdminTablePlanZone(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin erneut entsperren.");
+    return;
+  }
+  const payload = adminTablePlanZonePayload();
+  if (!payload.id || !payload.label) {
+    showToast("Bitte zuerst einen Bereich auswählen und benennen.");
+    return;
+  }
+  const oldText = button.textContent;
+  const status = $("#adminTablePlanZoneStatus");
+  if (status) status.textContent = "";
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await api("/api/settings", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "save-table-plan-zone",
+        zone: payload
+      })
+    });
+    state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
+    loadAdminTablePlanZoneDraft(payload.id);
+    renderAdminTablePlan();
+    if (state.terminalToken) renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    if (status) status.textContent = result.message || "Bereich gespeichert.";
+    showToast(result.message || "Bereich gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
+}
+
+async function deleteAdminTablePlanZone(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin erneut entsperren.");
+    return;
+  }
+  const draft = emptyAdminTablePlanZoneDraft(state.adminTablePlanZoneDraft || {});
+  const zoneId = cleanTerminalTableZoneId(draft.originalId || draft.id || "");
+  if (!zoneId) {
+    showToast("Bitte zuerst einen Bereich auswählen.");
+    return;
+  }
+  if (!adminTablePlanZoneHasOverride(zoneId)) {
+    showToast("Für diesen Bereich sind noch keine Änderungen gespeichert.");
+    return;
+  }
+  if (!confirm(`Bereich ${zoneId} auf Standard zurücksetzen?`)) return;
+  const oldText = button.textContent;
+  const status = $("#adminTablePlanZoneStatus");
+  if (status) status.textContent = "";
+  button.disabled = true;
+  button.textContent = "Setzt zurück...";
+  try {
+    const result = await api("/api/settings", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "delete-table-plan-zone",
+        zoneId
+      })
+    });
+    state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
+    loadAdminTablePlanZoneDraft(zoneId);
+    renderAdminTablePlan();
+    if (state.terminalToken) renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    if (status) status.textContent = result.message || "Bereich zurückgesetzt.";
+    showToast(result.message || "Bereich zurückgesetzt.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = false;
+  }
+}
+
+async function saveTerminalTableCustom(button) {
+  const payload = terminalTableCustomDraftPayload();
+  if (!payload.id || !payload.label || !payload.area) {
+    showToast("Bitte Tisch-ID, Bezeichnung und Bereich ausfüllen.");
+    return;
+  }
+  if (!payload.seats) {
+    showToast("Bitte eine gültige Sitzplatzzahl eintragen.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await terminalAction({
+      action: "save-custom-table-config",
+      table: payload
+    });
+    state.terminalTableCustomDraft = emptyTerminalTableCustomDraft({ ...payload, originalId: payload.id });
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Tisch gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed);
+  }
+}
+
+async function deleteTerminalTableCustom(button, explicitId = "") {
+  const draft = emptyTerminalTableCustomDraft(state.terminalTableCustomDraft || {});
+  const tableId = cleanTerminalRawTableId(explicitId || draft.originalId || draft.id || "");
+  if (!tableId) {
+    showToast("Bitte zuerst einen angelegten Tisch auswählen.");
+    return;
+  }
+  if (!confirm(`Tisch ${tableId} wirklich löschen?`)) return;
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Löscht...";
+  }
+  try {
+    const result = await terminalAction({
+      action: "delete-custom-table-config",
+      tableId
+    });
+    resetTerminalTableCustomDraft();
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Tisch gelöscht.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.textContent = oldText || "Tisch löschen";
+      button.disabled = Boolean(state.terminalReport?.closed);
+    }
+  }
+}
+
+async function saveTerminalTableGroup(button) {
+  const payload = currentTerminalTableGroupPayload();
+  if (payload.tableIds.length < 2) {
+    showToast("Bitte mindestens zwei benachbarte Tische auswählen.");
+    return;
+  }
+  if (!payload.label) {
+    showToast("Bitte eine Tischnummer oder Bezeichnung eintragen.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await terminalAction({
+      action: "save-table-group",
+      group: payload
+    });
+    resetTerminalTableGroupDraft();
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Tafel gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed);
+  }
+}
+
+async function deleteTerminalTableGroup(button, explicitId = "") {
+  const draft = activeTerminalTableGroupDraft(state.terminalTableGroupDraft || {});
+  const id = String(explicitId || draft.id || "").trim();
+  if (!id) {
+    showToast("Bitte zuerst eine gespeicherte Tafel auswählen.");
+    return;
+  }
+  const current = terminalTableGroups().find((item) => item.id === id) || draft;
+  if (!confirm(`Tafel "${current.label || terminalTableLabels(current.tableIds).join(" + ")}" löschen?`)) return;
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Löscht...";
+  }
+  try {
+    const result = await terminalAction({
+      action: "delete-table-group",
+      id
+    });
+    resetTerminalTableGroupDraft();
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Tafel gelöscht.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.textContent = oldText || "Löschen";
+      button.disabled = Boolean(state.terminalReport?.closed);
+    }
+  }
+}
+
+async function saveTerminalTableStaff(button) {
+  const payload = currentTerminalTableStaffPayload();
+  if (!payload.employee) {
+    showToast("Bitte Mitarbeiter auswählen.");
+    return;
+  }
+  if (!payload.presetId) {
+    showToast("Bitte Bereich auswählen.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    const result = await terminalAction({
+      action: "save-table-staff-assignment",
+      assignment: payload
+    });
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Personalbereich gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed);
+  }
+}
+
+async function deleteTerminalTableStaff(button, explicitId = "") {
+  const draft = emptyTerminalTableStaffDraft(state.terminalTableStaffDraft || {});
+  const id = String(explicitId || draft.id || "").trim();
+  if (!id) {
+    showToast("Bitte zuerst einen gespeicherten Personalbereich auswählen.");
+    return;
+  }
+  const current = terminalTableStaffAssignments().find((item) => item.id === id) || draft;
+  if (!confirm(`Personalbereich für "${current.employee || "Mitarbeiter"}" löschen?`)) return;
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Löscht...";
+  }
+  try {
+    const result = await terminalAction({
+      action: "delete-table-staff-assignment",
+      id
+    });
+    resetTerminalTableStaffDraft();
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Personalbereich gelöscht.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.textContent = oldText || "Löschen";
+      button.disabled = Boolean(state.terminalReport?.closed);
+    }
+  }
+}
+
+function printTerminalTablePlanList() {
+  document.body.classList.add("print-table-plan");
+  window.print();
+  window.setTimeout(() => {
+    document.body.classList.remove("print-table-plan");
+  }, 300);
+}
+
+function setTerminalTableView(mode) {
+  state.terminalTableView = mode === "work" ? "work" : "manage";
+  renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+}
+
+function toggleTerminalTableFullscreen() {
+  state.terminalTableFullscreen = !state.terminalTableFullscreen;
+  renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+}
+
+async function loadTerminalTableDate(dateValue = "") {
+  const date = String(dateValue || $("#tablePlanDate")?.value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    showToast("Bitte ein gültiges Datum auswählen.");
+    return;
+  }
+  resetTerminalTableDraft();
+  resetTerminalTableGroupDraft();
+  resetTerminalTableCustomDraft();
+  resetTerminalTableStaffDraft();
+  await terminalAction({
+    action: "load",
+    date
+  });
+  showToast(`Tischplan für ${formatLongDate(date)} geladen.`);
 }
 
 function renderTerminalAssignments(dateKey) {
@@ -5904,7 +9123,12 @@ async function saveInvoiceRow(button, markReady = false) {
   button.disabled = true;
   button.textContent = "Speichert...";
   try {
-    const result = await terminalAction(await collectDayReportPayload());
+    const payload = await collectDayReportPayload();
+    if (markReady) {
+      payload.sendInvoiceNotifications = true;
+      payload.sendInvoiceNotificationId = row.dataset.id || "";
+    }
+    const result = await terminalAction(payload);
     const toastMessage = markReady
       ? ["Rechnung ist fertig für Chef.", result?.mailMessage].filter(Boolean).join(" ")
       : "Rechnungskunde zwischengespeichert.";
@@ -6518,6 +9742,8 @@ async function terminalAction(payload) {
   state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
   state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
   state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
+  state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
+  state.terminalTableInfo = result.tablePlanInfo || state.terminalTableInfo;
   state.terminalDayMetaEditing = false;
   state.terminalCorrectionMode = Boolean(result.correctionMode || state.terminalReport?.correctionOpen);
   state.timesheets = result.entries || state.timesheets || {};
@@ -6547,6 +9773,8 @@ async function terminalLogin(code) {
   state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
   state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
   state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
+  state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
+  state.terminalTableInfo = result.tablePlanInfo || state.terminalTableInfo;
   state.terminalCorrectionMode = false;
   state.timesheets = result.entries || state.timesheets || {};
   renderTerminal();
@@ -6598,6 +9826,7 @@ async function openCorrectionReport(button) {
     state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
     state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
     state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+    state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
     state.terminalCorrectionMode = true;
     state.timesheets = result.entries || state.timesheets || {};
     const status = $("#correctionStatus");
@@ -6657,6 +9886,7 @@ async function closeCorrectionReport(button) {
       state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.terminalCleaningTemplates);
       state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || state.terminalWeeklyCleaningCompletions || {};
       state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+      state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
     }
     const status = $("#correctionStatus");
     if (status) status.textContent = result.message || "Tagesbericht wieder abgeschlossen.";
@@ -8981,18 +12211,131 @@ function bindEvents() {
     }
   });
 
+  $("#adminContent")?.addEventListener("input", (event) => {
+    const zoneField = event.target.closest("[data-admin-zone-field]");
+    if (zoneField) {
+      updateAdminTablePlanZoneField(zoneField.dataset.adminZoneField, zoneField.type === "checkbox" ? zoneField.checked : zoneField.value);
+      renderAdminTablePlan();
+      return;
+    }
+    const field = event.target.closest("[data-admin-table-field]");
+    if (!field) return;
+    updateAdminTablePlanField(field.dataset.adminTableField, field.value);
+    renderAdminTablePlan();
+  });
+
+  $("#adminContent")?.addEventListener("change", (event) => {
+    const zoneField = event.target.closest("[data-admin-zone-field]");
+    if (zoneField) {
+      updateAdminTablePlanZoneField(zoneField.dataset.adminZoneField, zoneField.type === "checkbox" ? zoneField.checked : zoneField.value);
+      renderAdminTablePlan();
+      return;
+    }
+    const field = event.target.closest("[data-admin-table-field]");
+    if (!field) return;
+    updateAdminTablePlanField(field.dataset.adminTableField, field.value);
+    renderAdminTablePlan();
+  });
+
+  $("#adminContent")?.addEventListener("click", async (event) => {
+    if (Date.now() < Number(state.adminTablePlanSuppressClickUntil || 0) && event.target.closest("[data-admin-table-select]")) {
+      state.adminTablePlanSuppressClickUntil = 0;
+      return;
+    }
+    const tableButton = event.target.closest("[data-admin-table-select]");
+    if (tableButton) {
+      loadAdminTablePlanDraft(tableButton.dataset.adminTableSelect);
+      renderAdminTablePlan();
+      return;
+    }
+    const zoneButton = event.target.closest("[data-admin-zone-select]");
+    if (zoneButton) {
+      loadAdminTablePlanZoneDraft(zoneButton.dataset.adminZoneSelect);
+      renderAdminTablePlan();
+      return;
+    }
+    const editCustomButton = event.target.closest("[data-admin-table-edit]");
+    if (editCustomButton) {
+      loadAdminTablePlanDraft(editCustomButton.dataset.adminTableEdit);
+      renderAdminTablePlan();
+      return;
+    }
+    if (event.target.closest("#resetAdminTablePlanDraft")) {
+      resetAdminTablePlanDraft();
+      renderAdminTablePlan();
+      return;
+    }
+    if (event.target.closest("#duplicateAdminTablePlanEntry")) {
+      duplicateAdminTablePlanDraft();
+      return;
+    }
+    const saveAdminTableButton = event.target.closest("#saveAdminTablePlanEntry");
+    if (saveAdminTableButton) {
+      await saveAdminTablePlanEntry(saveAdminTableButton);
+      return;
+    }
+    const deleteAdminTableButton = event.target.closest("#deleteAdminTablePlanEntry");
+    if (deleteAdminTableButton) {
+      await deleteAdminTablePlanEntry(deleteAdminTableButton);
+      return;
+    }
+    const saveAdminZoneButton = event.target.closest("#saveAdminTablePlanZone");
+    if (saveAdminZoneButton) {
+      await saveAdminTablePlanZone(saveAdminZoneButton);
+      return;
+    }
+    const deleteAdminZoneButton = event.target.closest("#deleteAdminTablePlanZone");
+    if (deleteAdminZoneButton) {
+      await deleteAdminTablePlanZone(deleteAdminZoneButton);
+    }
+  });
+
+  $("#adminTablePlanBoard")?.addEventListener("pointerdown", (event) => {
+    const resizeHandle = event.target.closest("[data-admin-table-resize]");
+    if (resizeHandle) {
+      beginAdminTablePlanInteraction(event, "resize", resizeHandle.dataset.adminTableResize);
+      return;
+    }
+    const tableButton = event.target.closest("[data-admin-table-select]");
+    if (!tableButton) return;
+    beginAdminTablePlanInteraction(event, "drag", tableButton.dataset.adminTableSelect);
+  });
+
+  window.addEventListener("pointermove", (event) => {
+    updateAdminTablePlanInteraction(event);
+  });
+
+  window.addEventListener("pointerup", (event) => {
+    endAdminTablePlanInteraction(event);
+  });
+
+  window.addEventListener("pointercancel", (event) => {
+    endAdminTablePlanInteraction(event);
+  });
+
   $("#adminEmployeeOverview")?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-admin-save-timesheet]");
     if (!button) return;
     saveAdminTimesheet(button);
   });
 
-  $("#adminOffers")?.addEventListener("input", () => {
+  $("#adminOffers")?.addEventListener("input", (event) => {
+    if (event.target.id === "offerCustomerSearch") {
+      state.offerCustomerSearch = event.target.value || "";
+      renderAdminOffers();
+      $("#offerCustomerSearch")?.focus();
+      return;
+    }
     state.offerDraftDirty = true;
   });
 
-  $("#adminOffers")?.addEventListener("change", () => {
+  $("#adminOffers")?.addEventListener("change", (event) => {
     state.offerDraftDirty = true;
+    if (offerFieldNeedsLiveRefresh(event.target)) {
+      const fieldName = event.target.dataset?.offerField || "";
+      const focusSelector = fieldName ? `[data-offer-field="${cssEscape(fieldName)}"]` : "";
+      refreshOfferEditorComputedView(focusSelector);
+    }
   });
 
   $("#adminOffers")?.addEventListener("click", async (event) => {
@@ -9047,6 +12390,31 @@ function bindEvents() {
       applyOfferTemplate(templateKey);
       return;
     }
+    const applyCustomer = event.target.closest("[data-offer-apply-customer]");
+    if (applyCustomer) {
+      const draft = currentOfferDraftFromDom();
+      const customerId = draft.customerDirectoryId || $("#adminOffers")?.querySelector('[data-offer-field="customerDirectoryId"]')?.value || "";
+      const customer = normalizeCustomerDirectory(state.customerDirectory).find((item) => item.id === customerId);
+      if (!customer) {
+        showToast("Bitte zuerst einen Kunden aus dem Kundenstamm wählen.");
+        return;
+      }
+      draft.customerDirectoryId = customer.id;
+      draft.customerName = customer.name || draft.customerName;
+      draft.customerContact = customer.contact || draft.customerContact;
+      draft.customerEmail = customer.email || draft.customerEmail;
+      draft.customerPhone = customer.phone || draft.customerPhone;
+      draft.customerAddress = customer.address || draft.customerAddress;
+      if (!draft.title || draft.title === "Neues Angebot") {
+        draft.title = `Angebot ${customer.name || "Kunde"}`;
+      }
+      state.offerDraft = normalizeOfferClient(draft);
+      state.offerDraftId = state.offerDraft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      showToast("Kundendaten aus dem Stamm übernommen.");
+      return;
+    }
     const addDish = event.target.closest("[data-offer-add-dish]");
     if (addDish) {
       const draft = currentOfferDraftFromDom();
@@ -9057,6 +12425,28 @@ function bindEvents() {
       state.offerDraftId = draft.id;
       state.offerDraftDirty = false;
       renderAdminOffers();
+      return;
+    }
+    const insertAssortment = event.target.closest("[data-offer-insert-assortment]");
+    if (insertAssortment) {
+      const draft = currentOfferDraftFromDom();
+      const category = insertAssortment.dataset.offerInsertAssortment;
+      const section = insertAssortment.closest("[data-offer-category]");
+      const select = section?.querySelector(`[data-offer-assortment-select="${cssEscape(category || "")}"]`);
+      const assortmentIndex = Number(select?.value ?? -1);
+      const assortment = offerDishAssortmentForCategory(category);
+      const selectedDish = Number.isInteger(assortmentIndex) && assortmentIndex >= 0 ? assortment[assortmentIndex] : null;
+      if (!category || !selectedDish) {
+        showToast("Bitte zuerst ein Gericht aus dem Sortiment wählen.");
+        return;
+      }
+      draft.buffet.categories[category] ||= [];
+      draft.buffet.categories[category].push({ id: cryptoId(), name: selectedDish.name, note: "" });
+      state.offerDraft = normalizeOfferClient(draft);
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      showToast("Gericht aus dem Sortiment eingefügt.");
       return;
     }
     const removeDish = event.target.closest("[data-offer-remove-dish]");
@@ -9296,6 +12686,152 @@ function bindEvents() {
       }
       return;
     }
+    const tablePlanViewButton = event.target.closest("[data-table-plan-view]");
+    if (tablePlanViewButton) {
+      setTerminalTableView(tablePlanViewButton.dataset.tablePlanView);
+      return;
+    }
+    const tablePlanFullscreenButton = event.target.closest("#toggleTablePlanFullscreen");
+    if (tablePlanFullscreenButton) {
+      toggleTerminalTableFullscreen();
+      return;
+    }
+    const loadTablePlanDateButton = event.target.closest("#loadTablePlanDate");
+    if (loadTablePlanDateButton) {
+      await loadTerminalTableDate($("#tablePlanDate")?.value || "");
+      return;
+    }
+    const loadTodayTablePlanButton = event.target.closest("#loadTodayTablePlan");
+    if (loadTodayTablePlanButton) {
+      await loadTerminalTableDate(state.terminalTableInfo?.todayDate || todayKey());
+      return;
+    }
+    const tableButton = event.target.closest("[data-table-plan-select]");
+    if (tableButton) {
+      toggleTerminalTableSelection(String(tableButton.dataset.tablePlanSelect || "").split(","));
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const editReservationButton = event.target.closest("[data-table-plan-edit]");
+    if (editReservationButton) {
+      loadTerminalTableDraft(editReservationButton.dataset.tablePlanEdit);
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const resetTablePlanButton = event.target.closest("#resetTablePlanDraft");
+    if (resetTablePlanButton) {
+      resetTerminalTableDraft();
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const resetTablePlanGroupButton = event.target.closest("#resetTablePlanGroupDraft");
+    if (resetTablePlanGroupButton) {
+      resetTerminalTableGroupDraft();
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const resetTablePlanStaffButton = event.target.closest("#resetTablePlanStaffDraft");
+    if (resetTablePlanStaffButton) {
+      resetTerminalTableStaffDraft();
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const saveTablePlanButton = event.target.closest("#saveTablePlanReservation");
+    if (saveTablePlanButton) {
+      await saveTerminalTableReservation(saveTablePlanButton);
+      return;
+    }
+    const deleteTablePlanButton = event.target.closest("#deleteTablePlanReservation");
+    if (deleteTablePlanButton) {
+      await deleteTerminalTableReservation(deleteTablePlanButton);
+      return;
+    }
+    const saveTablePlanConfigButton = event.target.closest("#saveTablePlanConfig");
+    if (saveTablePlanConfigButton) {
+      await saveTerminalTableConfig(saveTablePlanConfigButton);
+      return;
+    }
+    const fillTablePlanCustomFromSelectionButton = event.target.closest("#fillTablePlanCustomFromSelection");
+    if (fillTablePlanCustomFromSelectionButton) {
+      if (terminalTableUseSelectionForCustomDraft()) {
+        renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      }
+      return;
+    }
+    const resetTablePlanCustomButton = event.target.closest("#resetTablePlanCustom");
+    if (resetTablePlanCustomButton) {
+      resetTerminalTableCustomDraft();
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const saveTablePlanCustomButton = event.target.closest("#saveTablePlanCustom");
+    if (saveTablePlanCustomButton) {
+      await saveTerminalTableCustom(saveTablePlanCustomButton);
+      return;
+    }
+    const deleteTablePlanCustomButton = event.target.closest("#deleteTablePlanCustom");
+    if (deleteTablePlanCustomButton) {
+      await deleteTerminalTableCustom(deleteTablePlanCustomButton);
+      return;
+    }
+    const editTablePlanCustomButton = event.target.closest("[data-table-plan-custom-edit]");
+    if (editTablePlanCustomButton) {
+      loadTerminalTableCustomDraft(editTablePlanCustomButton.dataset.tablePlanCustomEdit);
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const deleteTablePlanCustomCardButton = event.target.closest("[data-table-plan-custom-delete]");
+    if (deleteTablePlanCustomCardButton) {
+      await deleteTerminalTableCustom(deleteTablePlanCustomCardButton, deleteTablePlanCustomCardButton.dataset.tablePlanCustomDelete);
+      return;
+    }
+    const editTablePlanGroupButton = event.target.closest("[data-table-plan-group-edit]");
+    if (editTablePlanGroupButton) {
+      loadTerminalTableGroupDraft(editTablePlanGroupButton.dataset.tablePlanGroupEdit);
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const deleteTablePlanGroupCardButton = event.target.closest("[data-table-plan-group-delete]");
+    if (deleteTablePlanGroupCardButton) {
+      await deleteTerminalTableGroup(deleteTablePlanGroupCardButton, deleteTablePlanGroupCardButton.dataset.tablePlanGroupDelete);
+      return;
+    }
+    const saveTablePlanGroupButton = event.target.closest("#saveTablePlanGroup");
+    if (saveTablePlanGroupButton) {
+      await saveTerminalTableGroup(saveTablePlanGroupButton);
+      return;
+    }
+    const deleteTablePlanGroupButton = event.target.closest("#deleteTablePlanGroup");
+    if (deleteTablePlanGroupButton) {
+      await deleteTerminalTableGroup(deleteTablePlanGroupButton);
+      return;
+    }
+    const editTablePlanStaffButton = event.target.closest("[data-table-plan-staff-edit]");
+    if (editTablePlanStaffButton) {
+      loadTerminalTableStaffDraft(editTablePlanStaffButton.dataset.tablePlanStaffEdit);
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const deleteTablePlanStaffCardButton = event.target.closest("[data-table-plan-staff-delete]");
+    if (deleteTablePlanStaffCardButton) {
+      await deleteTerminalTableStaff(deleteTablePlanStaffCardButton, deleteTablePlanStaffCardButton.dataset.tablePlanStaffDelete);
+      return;
+    }
+    const saveTablePlanStaffButton = event.target.closest("#saveTablePlanStaff");
+    if (saveTablePlanStaffButton) {
+      await saveTerminalTableStaff(saveTablePlanStaffButton);
+      return;
+    }
+    const deleteTablePlanStaffButton = event.target.closest("#deleteTablePlanStaff");
+    if (deleteTablePlanStaffButton) {
+      await deleteTerminalTableStaff(deleteTablePlanStaffButton);
+      return;
+    }
+    const printTablePlanButton = event.target.closest("#printTablePlanList");
+    if (printTablePlanButton) {
+      printTerminalTablePlanList();
+      return;
+    }
     const terminalMessageButton = event.target.closest("[data-confirm-terminal-message]");
     if (terminalMessageButton) {
       const oldText = terminalMessageButton.textContent;
@@ -9419,6 +12955,87 @@ function bindEvents() {
 
   $("#closeHandover")?.addEventListener("click", () => {
     $("#handoverModal")?.classList.add("hidden");
+  });
+
+  $("#terminalTablesSection")?.addEventListener("input", (event) => {
+    const field = event.target.closest("[data-table-plan-field]");
+    if (field) {
+      updateTerminalTableDraftField(field.dataset.tablePlanField, field.value);
+      return;
+    }
+    const groupField = event.target.closest("[data-table-plan-group-field]");
+    if (groupField) {
+      updateTerminalTableGroupField(groupField.dataset.tablePlanGroupField, groupField.value);
+      return;
+    }
+    const customField = event.target.closest("[data-table-plan-custom-field]");
+    if (customField) {
+      updateTerminalTableCustomField(customField.dataset.tablePlanCustomField, customField.value);
+      return;
+    }
+    const staffField = event.target.closest("[data-table-plan-staff-field]");
+    if (!staffField) return;
+    updateTerminalTableStaffField(staffField.dataset.tablePlanStaffField, staffField.value);
+  });
+
+  $("#terminalTablesSection")?.addEventListener("change", (event) => {
+    const sortSelect = event.target.closest("#tablePlanSort");
+    if (sortSelect) {
+      state.terminalTableSort = sortSelect.value || "time";
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const groupField = event.target.closest("[data-table-plan-group-field]");
+    if (groupField) {
+      updateTerminalTableGroupField(groupField.dataset.tablePlanGroupField, groupField.value);
+      return;
+    }
+    const customField = event.target.closest("[data-table-plan-custom-field]");
+    if (customField) {
+      updateTerminalTableCustomField(customField.dataset.tablePlanCustomField, customField.value);
+      return;
+    }
+    const staffField = event.target.closest("[data-table-plan-staff-field]");
+    if (!staffField) return;
+    updateTerminalTableStaffField(staffField.dataset.tablePlanStaffField, staffField.value);
+  });
+
+  $("#tablePlanBoard")?.addEventListener("dragstart", (event) => {
+    const table = event.target.closest("[data-table-plan-select]");
+    if (!table) return;
+    const selection = String(table.dataset.tablePlanSelect || "").split(",");
+    beginTerminalTableDrag(selection);
+    try {
+      event.dataTransfer?.setData("text/plain", String(table.dataset.tablePlanSelect || ""));
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+    } catch {}
+  });
+
+  $("#tablePlanBoard")?.addEventListener("dragover", (event) => {
+    const target = event.target.closest("[data-table-plan-select]");
+    if (!target) return;
+    const sourceId = state.terminalTableDragId || "";
+    const targetId = String(target.dataset.tablePlanSelect || "");
+    if (!terminalTableSetsAreAdjacent(sourceId, targetId)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  });
+
+  $("#tablePlanBoard")?.addEventListener("drop", (event) => {
+    const target = event.target.closest("[data-table-plan-select]");
+    if (!target) return;
+    event.preventDefault();
+    const sourceId = state.terminalTableDragId || "";
+    const targetId = String(target.dataset.tablePlanSelect || "");
+    if (connectTerminalTablesByDrag(sourceId, targetId)) {
+      showToast("Tische verbunden. Jetzt Tafel speichern und eine Tischnummer vergeben.");
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    }
+    endTerminalTableDrag();
+  });
+
+  $("#tablePlanBoard")?.addEventListener("dragend", () => {
+    endTerminalTableDrag();
   });
 
   $("#saveTerminalDayMeta")?.addEventListener("click", async () => {

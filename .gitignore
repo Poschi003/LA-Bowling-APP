@@ -1,0 +1,9 @@
+﻿# Lokale Geheimnisse
+.env.local
+
+# Lokale Logs
+*.log
+codex-*.log
+
+# Lokale Hilfs-/Temp-Bilder
+/tmp/

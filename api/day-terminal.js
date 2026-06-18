@@ -3,6 +3,26 @@ const crypto = require("crypto");
 const { defaultData } = require("./_data");
 const { sameEmployeeName } = require("./_data");
 
+const TABLE_PLAN_BASE_IDS = new Set([
+  ...Array.from({ length: 14 }, (_, index) => String(index + 1)),
+  "T50", "T15", "T16", "T17", "T18", "T19",
+  "T28", "T27", "T26", "T25", "T24",
+  "T30", "T31", "T32", "T33",
+  "T20", "T21", "T22", "T23",
+  "T60", "T70",
+  "T101", "T102", "T103", "T104"
+]);
+const TABLE_PLAN_BASE_ZONE_IDS = new Set([
+  "lanes",
+  "nz-small",
+  "main-left",
+  "dj",
+  "main-bottom",
+  "nz-big",
+  "hut",
+  "billiard"
+]);
+
 module.exports = async function handler(req, res) {
   try {
     if (req.method !== "POST") return sendJson(res, 405, { error: "Methode nicht erlaubt." });
@@ -29,6 +49,15 @@ module.exports = async function handler(req, res) {
     if (action === "save-day-meta") return saveDayMeta(body, res);
     if (action === "save-assignment-times") return saveAssignmentTimes(body, res);
     if (action === "add-handover") return addHandover(body, res);
+    if (action === "save-table-reservation") return saveTableReservation(body, res);
+    if (action === "delete-table-reservation") return deleteTableReservation(body, res);
+    if (action === "save-table-config") return saveTableConfig(body, res);
+    if (action === "save-custom-table-config") return saveCustomTableConfig(body, res);
+    if (action === "delete-custom-table-config") return deleteCustomTableConfig(body, res);
+    if (action === "save-table-group") return saveTableGroup(body, res);
+    if (action === "delete-table-group") return deleteTableGroup(body, res);
+    if (action === "save-table-staff-assignment") return saveTableStaffAssignment(body, res);
+    if (action === "delete-table-staff-assignment") return deleteTableStaffAssignment(body, res);
     if (action === "save-tips") return saveTips(body, res);
     if (action === "confirm-employee-tip-payout") return confirmEmployeeTipPayout(body, res);
     if (action === "confirm-tip-payout") return confirmTipPayout(body, res);
@@ -227,8 +256,9 @@ async function saveReport(body, res) {
   await writeAppData(appData);
   const shouldSendInvoiceNotifications = body.sendInvoiceNotifications === true || body.sendInvoiceNotifications === "true";
   const targetInvoiceId = shouldSendInvoiceNotifications ? String(body.sendInvoiceNotificationId || "").trim() : "";
+  const forceInvoiceNotification = shouldSendInvoiceNotifications && Boolean(targetInvoiceId);
   const mailResult = shouldSendInvoiceNotifications
-    ? await sendReadyInvoiceNotifications(appData, date, targetInvoiceId)
+    ? await sendReadyInvoiceNotifications(appData, date, targetInvoiceId, { forceResend: forceInvoiceNotification })
     : { sent: 0, failed: 0, skipped: 0, skipReasons: [], changed: false, errors: [] };
   const mailMessage = mailResult.sent || mailResult.failed || mailResult.skipped
     ? mailResult.failed
@@ -243,6 +273,230 @@ async function saveReport(body, res) {
       : "E-Mail wurde versendet."
     : "";
   sendJson(res, 200, { ok: true, message: "Tagesbericht gespeichert.", mailMessage, mailSent: mailResult.sent > 0, mailFailed: mailResult.failed > 0, ...terminalPayload(appData, date) });
+}
+
+async function saveTableReservation(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  const reservation = cleanTableReservation(body.reservation || {});
+  if (!reservation.tableIds.length) return sendJson(res, 400, { error: "Bitte mindestens einen Tisch auswählen." });
+  if (!reservation.time) return sendJson(res, 400, { error: "Bitte eine Uhrzeit eintragen." });
+  if (!reservation.name) return sendJson(res, 400, { error: "Bitte einen Reservierungsnamen eintragen." });
+  if (!reservation.people) return sendJson(res, 400, { error: "Bitte die Personenzahl eintragen." });
+  appData.dayReports ||= {};
+  const report = defaultReport(existing);
+  const reservations = cleanTableReservations(report.tableReservations || []);
+  const now = new Date().toISOString();
+  const nextReservation = {
+    ...reservation,
+    createdAt: reservation.createdAt || now,
+    updatedAt: now
+  };
+  const index = reservations.findIndex((item) => item.id === nextReservation.id);
+  if (index >= 0) {
+    nextReservation.createdAt = reservations[index].createdAt || nextReservation.createdAt;
+    reservations[index] = nextReservation;
+  } else {
+    reservations.push(nextReservation);
+  }
+  appData.dayReports[date] = {
+    ...report,
+    tableReservations: sortTableReservations(reservations),
+    updatedAt: now
+  };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Reservierung gespeichert.", ...terminalPayload(appData, date) });
+}
+
+async function deleteTableReservation(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  const id = cleanText(body.id, 120);
+  if (!id) return sendJson(res, 400, { error: "Reservierung nicht gefunden." });
+  appData.dayReports ||= {};
+  const report = defaultReport(existing);
+  appData.dayReports[date] = {
+    ...report,
+    tableReservations: cleanTableReservations(report.tableReservations || []).filter((item) => item.id !== id),
+    updatedAt: new Date().toISOString()
+  };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Reservierung gelöscht.", ...terminalPayload(appData, date) });
+}
+
+async function saveTableConfig(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  const tableId = cleanTableId(body.tableId);
+  if (!tableId) return sendJson(res, 400, { error: "Tisch nicht gefunden." });
+  const seats = cleanInteger(body.seats, 1, 200);
+  if (!seats) return sendJson(res, 400, { error: "Bitte eine gültige Standard-Personenzahl eintragen." });
+  appData.tablePlanConfig = normalizeTablePlanConfig(appData.tablePlanConfig);
+  appData.tablePlanConfig.seatsByTable[tableId] = seats;
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: `Standard-Personenzahl für ${tableId} gespeichert.`, ...terminalPayload(appData, date) });
+}
+
+async function saveCustomTableConfig(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  appData.tablePlanConfig = normalizeTablePlanConfig(appData.tablePlanConfig);
+  const table = cleanCustomTable(body.table || {});
+  if (!table.id || !table.label || !table.area) return sendJson(res, 400, { error: "Bitte Tisch-ID, Bezeichnung und Bereich eintragen." });
+  if (!table.seats) return sendJson(res, 400, { error: "Bitte eine gültige Sitzplatzzahl eintragen." });
+  if (TABLE_PLAN_BASE_IDS.has(table.id)) return sendJson(res, 400, { error: "Diese Tisch-ID ist bereits im Grundriss vorhanden." });
+  const nextTables = (appData.tablePlanConfig.customTables || []).filter((item) => item.id !== table.id);
+  nextTables.push(table);
+  appData.tablePlanConfig.customTables = sortCustomTables(nextTables);
+  appData.tablePlanConfig.seatsByTable[table.id] = table.seats;
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: `Tisch ${table.id} gespeichert.`, ...terminalPayload(appData, date) });
+}
+
+async function deleteCustomTableConfig(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  const tableId = cleanTableId(body.tableId);
+  if (!tableId) return sendJson(res, 400, { error: "Tisch nicht gefunden." });
+  appData.tablePlanConfig = normalizeTablePlanConfig(appData.tablePlanConfig);
+  const exists = (appData.tablePlanConfig.customTables || []).some((item) => item.id === tableId);
+  if (!exists) return sendJson(res, 400, { error: "Nur selbst angelegte Tische können hier gelöscht werden." });
+  appData.tablePlanConfig.customTables = (appData.tablePlanConfig.customTables || []).filter((item) => item.id !== tableId);
+  delete appData.tablePlanConfig.seatsByTable[tableId];
+  appData.dayReports = Object.fromEntries(Object.entries(appData.dayReports || {}).map(([dateKey, report]) => {
+    const cleaned = defaultReport(report);
+    return [dateKey, {
+      ...cleaned,
+      tableReservations: cleanTableReservations(cleaned.tableReservations || []).map((item) => ({
+        ...item,
+        tableIds: item.tableIds.filter((id) => id !== tableId)
+      })).filter((item) => item.tableIds.length),
+      tableGroups: cleanTableGroups(cleaned.tableGroups || []).map((item) => ({
+        ...item,
+        tableIds: item.tableIds.filter((id) => id !== tableId)
+      })).filter((item) => item.tableIds.length >= 2),
+      tableStaffAssignments: cleanTableStaffAssignments(cleaned.tableStaffAssignments || []).map((item) => {
+        const presetId = item.presetId === tableId ? "" : item.presetId;
+        return { ...item, presetId };
+      }).filter((item) => item.presetId)
+    }];
+  }));
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: `Tisch ${tableId} gelöscht.`, ...terminalPayload(appData, date) });
+}
+
+async function saveTableGroup(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  const group = cleanTableGroup(body.group || {});
+  if (group.tableIds.length < 2) return sendJson(res, 400, { error: "Bitte mindestens zwei Tische für eine Tafel auswählen." });
+  if (!group.label) return sendJson(res, 400, { error: "Bitte eine Tischnummer oder Bezeichnung für die Tafel eintragen." });
+  appData.dayReports ||= {};
+  const report = defaultReport(existing);
+  const groups = cleanTableGroups(report.tableGroups || []);
+  const selectedIds = new Set(group.tableIds);
+  const now = new Date().toISOString();
+  const next = {
+    ...group,
+    createdAt: group.createdAt || now,
+    updatedAt: now
+  };
+  const merged = groups
+    .filter((item) => item.id !== next.id)
+    .map((item) => ({ ...item, tableIds: item.tableIds.filter((tableId) => !selectedIds.has(tableId)) }))
+    .filter((item) => item.tableIds.length >= 2);
+  const existingIndex = groups.findIndex((item) => item.id === next.id);
+  if (existingIndex >= 0) next.createdAt = groups[existingIndex].createdAt || next.createdAt;
+  merged.push(next);
+  appData.dayReports[date] = {
+    ...report,
+    tableGroups: sortTableGroups(merged),
+    updatedAt: now
+  };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Tafel gespeichert.", ...terminalPayload(appData, date) });
+}
+
+async function deleteTableGroup(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  const id = cleanText(body.id, 120);
+  if (!id) return sendJson(res, 400, { error: "Tafel nicht gefunden." });
+  appData.dayReports ||= {};
+  const report = defaultReport(existing);
+  appData.dayReports[date] = {
+    ...report,
+    tableGroups: cleanTableGroups(report.tableGroups || []).filter((item) => item.id !== id),
+    updatedAt: new Date().toISOString()
+  };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Tafel gelöscht.", ...terminalPayload(appData, date) });
+}
+
+async function saveTableStaffAssignment(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  const assignment = cleanTableStaffAssignment(body.assignment || {});
+  if (!assignment.employee) return sendJson(res, 400, { error: "Bitte Mitarbeiter auswählen." });
+  if (!assignment.presetId) return sendJson(res, 400, { error: "Bitte Bereich auswählen." });
+  if (!(appData.settings?.employees || []).includes(assignment.employee)) return sendJson(res, 400, { error: "Mitarbeiter nicht gefunden." });
+  appData.dayReports ||= {};
+  const report = defaultReport(existing);
+  const assignments = cleanTableStaffAssignments(report.tableStaffAssignments || []);
+  const index = assignments.findIndex((item) => item.id === assignment.id);
+  const now = new Date().toISOString();
+  const next = {
+    ...assignment,
+    createdAt: assignment.createdAt || now,
+    updatedAt: now
+  };
+  if (index >= 0) {
+    next.createdAt = assignments[index].createdAt || next.createdAt;
+    assignments[index] = next;
+  } else {
+    assignments.push(next);
+  }
+  appData.dayReports[date] = {
+    ...report,
+    tableStaffAssignments: sortTableStaffAssignments(assignments),
+    updatedAt: now
+  };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Personalbereich gespeichert.", ...terminalPayload(appData, date) });
+}
+
+async function deleteTableStaffAssignment(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const existing = appData.dayReports?.[date] || {};
+  if (existing.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  const id = cleanText(body.id, 120);
+  if (!id) return sendJson(res, 400, { error: "Bereich nicht gefunden." });
+  appData.dayReports ||= {};
+  const report = defaultReport(existing);
+  appData.dayReports[date] = {
+    ...report,
+    tableStaffAssignments: cleanTableStaffAssignments(report.tableStaffAssignments || []).filter((item) => item.id !== id),
+    updatedAt: new Date().toISOString()
+  };
+  await writeAppData(appData);
+  sendJson(res, 200, { ok: true, message: "Personalbereich gelöscht.", ...terminalPayload(appData, date) });
 }
 
 async function saveTips(body, res) {
@@ -516,7 +770,7 @@ function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
   const assignmentDates = terminalAssignmentDates(date);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory) };
+  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory), tablePlanConfig: normalizeTablePlanConfig(appData.tablePlanConfig), tablePlanInfo: tablePlanInfo(appData, date) };
 }
 
 function terminalAssignmentDates(dateKey) {
@@ -575,6 +829,7 @@ function activeTerminalDate(appData, requestedDate) {
   const today = localDate(new Date());
   const requested = cleanDate(requestedDate);
   const requestedReport = appData.dayReports?.[requested];
+  if (requested && !requestedReport) return requested;
   if (requestedReport && !requestedReport.closed && !requestedReport.correctionOpen) return requested;
   const openDates = Object.entries(appData.dayReports || {})
     .filter(([dateKey, report]) => dateKey <= today && report && typeof report === "object" && !report.closed && !report.correctionOpen && reportHasActivity(report))
@@ -604,12 +859,250 @@ function reportHasActivity(report = {}) {
     Object.keys(report.cleaningCompletions || {}).length ||
     (report.toiletChecks || []).length ||
     (report.reminderChecks || []).length ||
-    (report.terminalMessageChecks || []).length
+    (report.terminalMessageChecks || []).length ||
+    (report.tableReservations || []).length ||
+    (report.tableGroups || []).length ||
+    (report.tableStaffAssignments || []).length
   );
 }
 
+function tablePlanHasActivity(report = {}) {
+  return Boolean(
+    (report.tableReservations || []).length ||
+    (report.tableGroups || []).length ||
+    (report.tableStaffAssignments || []).length
+  );
+}
+
+function tablePlanInfo(appData, selectedDate) {
+  const todayDate = localDate(new Date());
+  const todayReport = defaultReport(appData.dayReports?.[todayDate]);
+  const selectedReport = defaultReport(appData.dayReports?.[selectedDate]);
+  const todayItems = (todayReport.tableReservations || []).length + (todayReport.tableGroups || []).length + (todayReport.tableStaffAssignments || []).length;
+  const selectedItems = (selectedReport.tableReservations || []).length + (selectedReport.tableGroups || []).length + (selectedReport.tableStaffAssignments || []).length;
+  return {
+    todayDate,
+    todayAvailable: tablePlanHasActivity(todayReport),
+    todayItems,
+    selectedItems,
+    selectedAvailable: tablePlanHasActivity(selectedReport)
+  };
+}
+
 function defaultReport(report = {}) {
-  return { cashTotal: "", cashExpenses: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], removedEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], ...report };
+  return { cashTotal: "", cashExpenses: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], removedEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], tableReservations: [], tableGroups: [], tableStaffAssignments: [], ...report };
+}
+
+function normalizeTablePlanConfig(value = {}) {
+  const customTables = sortCustomTables((Array.isArray(value?.customTables) ? value.customTables : []).map((item) => cleanCustomTable(item)).filter((item) => item.id));
+  const allowedIds = new Set([...TABLE_PLAN_BASE_IDS, ...customTables.map((item) => item.id)]);
+  const seatsByTable = {};
+  if (value?.seatsByTable && typeof value.seatsByTable === "object" && !Array.isArray(value.seatsByTable)) {
+    for (const [tableId, seats] of Object.entries(value.seatsByTable)) {
+      const cleanId = cleanTableId(tableId);
+      const cleanSeats = cleanInteger(seats, 1, 200);
+      if (cleanId && cleanSeats && allowedIds.has(cleanId)) seatsByTable[cleanId] = cleanSeats;
+    }
+  }
+  const tableOverrides = {};
+  if (value?.tableOverrides && typeof value.tableOverrides === "object" && !Array.isArray(value.tableOverrides)) {
+    for (const [tableId, entry] of Object.entries(value.tableOverrides)) {
+      const cleanId = cleanTableId(tableId);
+      if (!cleanId || !TABLE_PLAN_BASE_IDS.has(cleanId)) continue;
+      const cleaned = cleanCustomTable({ ...(entry || {}), id: cleanId });
+      tableOverrides[cleanId] = {
+        label: cleaned.label || cleanId,
+        area: cleaned.area || "",
+        seats: cleaned.seats || seatsByTable[cleanId] || 4,
+        x: cleaned.x,
+        y: cleaned.y,
+        w: cleaned.w,
+        h: cleaned.h,
+        shape: cleaned.shape
+      };
+      seatsByTable[cleanId] = tableOverrides[cleanId].seats;
+    }
+  }
+  const zoneOverrides = {};
+  if (value?.zoneOverrides && typeof value.zoneOverrides === "object" && !Array.isArray(value.zoneOverrides)) {
+    for (const [zoneId, entry] of Object.entries(value.zoneOverrides)) {
+      const cleanId = cleanZoneId(zoneId);
+      if (!cleanId || !TABLE_PLAN_BASE_ZONE_IDS.has(cleanId)) continue;
+      const cleaned = cleanZoneEntry({ ...(entry || {}), id: cleanId });
+      if (!cleaned.id) continue;
+      zoneOverrides[cleanId] = {
+        label: cleaned.label || cleanId,
+        x: cleaned.x,
+        y: cleaned.y,
+        w: cleaned.w,
+        h: cleaned.h,
+        className: cleaned.className,
+        visible: cleaned.visible !== false
+      };
+    }
+  }
+  return { seatsByTable, tableOverrides, customTables, zoneOverrides };
+}
+
+function cleanCustomTable(value = {}) {
+  return {
+    id: cleanTableId(value.id),
+    label: cleanText(value.label, 60),
+    area: cleanText(value.area, 80),
+    seats: cleanInteger(value.seats, 1, 200),
+    x: cleanDecimal(value.x, 0, 96),
+    y: cleanDecimal(value.y, 0, 96),
+    w: cleanDecimal(value.w, 2, 40),
+    h: cleanDecimal(value.h, 2, 30),
+    shape: cleanTableShape(value.shape)
+  };
+}
+
+function cleanZoneEntry(value = {}) {
+  return {
+    id: cleanZoneId(value.id),
+    label: cleanText(value.label, 60),
+    x: cleanDecimal(value.x, 0, 98),
+    y: cleanDecimal(value.y, 0, 98),
+    w: cleanDecimal(value.w, 4, 98),
+    h: cleanDecimal(value.h, 4, 98),
+    className: cleanZoneClass(value.className),
+    visible: cleanBoolean(value.visible, true)
+  };
+}
+
+function sortCustomTables(value = []) {
+  return [...(Array.isArray(value) ? value : [])]
+    .filter((item) => item?.id)
+    .sort((left, right) => {
+      const topCompare = Number(left.y || 0) - Number(right.y || 0);
+      if (Math.abs(topCompare) > 0.1) return topCompare;
+      const leftCompare = Number(left.x || 0) - Number(right.x || 0);
+      if (Math.abs(leftCompare) > 0.1) return leftCompare;
+      return String(left.id || "").localeCompare(String(right.id || ""), "de", { numeric: true });
+    });
+}
+
+function cleanTableShape(value) {
+  return ["table", "room", "lane"].includes(String(value || "").trim()) ? String(value).trim() : "table";
+}
+
+function cleanZoneId(value) {
+  return String(value || "").trim().slice(0, 32);
+}
+
+function cleanZoneClass(value) {
+  return ["is-lanes", "is-room", "is-open"].includes(String(value || "").trim()) ? String(value).trim() : "is-open";
+}
+
+function cleanBoolean(value, fallback = true) {
+  if (value === true || value === "true" || value === 1 || value === "1") return true;
+  if (value === false || value === "false" || value === 0 || value === "0") return false;
+  return fallback;
+}
+
+function cleanTableGroups(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => cleanTableGroup(item))
+    .filter((item) => item.tableIds.length >= 2 && item.label);
+}
+
+function cleanTableGroup(value = {}) {
+  return {
+    id: cleanText(value.id || crypto.randomUUID(), 120),
+    label: cleanText(value.label, 120),
+    tableIds: [...new Set((Array.isArray(value.tableIds) ? value.tableIds : []).map(cleanTableId).filter(Boolean))].slice(0, 12),
+    createdAt: cleanText(value.createdAt, 80),
+    updatedAt: cleanText(value.updatedAt, 80)
+  };
+}
+
+function sortTableGroups(value = []) {
+  return [...cleanTableGroups(value)].sort((left, right) => {
+    const tableCompare = String(left.tableIds[0] || "").localeCompare(String(right.tableIds[0] || ""), "de", { numeric: true });
+    if (tableCompare) return tableCompare;
+    return String(left.label || "").localeCompare(String(right.label || ""), "de");
+  });
+}
+
+function cleanTableStaffAssignments(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => cleanTableStaffAssignment(item))
+    .filter((item) => item.employee && item.presetId);
+}
+
+function cleanTableStaffAssignment(value = {}) {
+  return {
+    id: cleanText(value.id || crypto.randomUUID(), 120),
+    employee: cleanText(value.employee, 160),
+    presetId: cleanText(value.presetId, 120),
+    color: cleanColor(value.color),
+    note: cleanText(value.note, 240),
+    createdAt: cleanText(value.createdAt, 80),
+    updatedAt: cleanText(value.updatedAt, 80)
+  };
+}
+
+function cleanColor(value) {
+  const color = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : "#e1172f";
+}
+
+function sortTableStaffAssignments(value = []) {
+  return [...cleanTableStaffAssignments(value)].sort((left, right) => {
+    const presetCompare = String(left.presetId || "").localeCompare(String(right.presetId || ""), "de", { numeric: true });
+    if (presetCompare) return presetCompare;
+    return String(left.employee || "").localeCompare(String(right.employee || ""), "de");
+  });
+}
+
+function cleanTableReservations(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => cleanTableReservation(item))
+    .filter((item) => item.tableIds.length && (item.time || item.name || item.people || item.note));
+}
+
+function cleanTableReservation(value = {}) {
+  const tableIds = [...new Set((Array.isArray(value.tableIds) ? value.tableIds : []).map(cleanTableId).filter(Boolean))].slice(0, 12);
+  const people = cleanInteger(value.people, 0, 500);
+  return {
+    id: cleanText(value.id || crypto.randomUUID(), 120),
+    tableIds,
+    time: cleanTime(value.time),
+    name: cleanText(value.name, 160),
+    people: people > 0 ? people : 0,
+    note: cleanText(value.note, 500),
+    createdAt: cleanText(value.createdAt, 80),
+    updatedAt: cleanText(value.updatedAt, 80)
+  };
+}
+
+function cleanTableId(value) {
+  const clean = String(value || "").trim().toUpperCase();
+  if (!clean) return "";
+  return /^[A-Z0-9][A-Z0-9_-]{0,15}$/.test(clean) ? clean : "";
+}
+
+function cleanDecimal(value, min = 0, max = 100) {
+  const number = Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(number)) return min;
+  return Math.max(min, Math.min(max, Math.round(number * 10) / 10));
+}
+
+function cleanInteger(value, min = 0, max = 9999) {
+  const number = Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(min, Math.min(max, Math.round(number)));
+}
+
+function sortTableReservations(value = []) {
+  return [...cleanTableReservations(value)].sort((left, right) => {
+    const timeCompare = String(left.time || "99:99").localeCompare(String(right.time || "99:99"));
+    if (timeCompare) return timeCompare;
+    const tableCompare = String(left.tableIds[0] || "").localeCompare(String(right.tableIds[0] || ""), "de", { numeric: true });
+    if (tableCompare) return tableCompare;
+    return String(left.name || "").localeCompare(String(right.name || ""), "de");
+  });
 }
 
 function tipPayoutOverview(appData) {
@@ -1097,7 +1590,7 @@ function mergeReportItemsById(existing = [], current = []) {
   return [...merged.values()].slice(0, 20);
 }
 
-async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = "") {
+async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = "", options = {}) {
   const report = appData.dayReports?.[date];
   const invoices = Array.isArray(report?.invoiceCustomers) ? report.invoiceCustomers : [];
   const now = new Date().toISOString();
@@ -1107,14 +1600,16 @@ async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = ""
   let changed = false;
   const errors = [];
   const skipReasons = new Map();
+  const forceResend = options?.forceResend === true;
 
   for (const invoice of invoices) {
     if (!invoice || typeof invoice !== "object") continue;
     const isReady = invoice.invoiceReady === true || invoice.invoiceReady === "true";
     const isDone = invoice.invoiceDone === true || invoice.invoiceDone === "true";
     const alreadySent = String(invoice.invoiceNotificationSentAt || "").trim();
-    if (targetInvoiceId && String(invoice.id || "").trim() !== targetInvoiceId) continue;
-    if (!isReady || isDone || alreadySent) continue;
+    const isTargetInvoice = !targetInvoiceId || String(invoice.id || "").trim() === targetInvoiceId;
+    if (!isTargetInvoice) continue;
+    if (!isReady || isDone || (alreadySent && !forceResend)) continue;
     const result = await sendInvoiceNotificationEmail({
       date,
       customer: invoice,
