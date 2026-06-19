@@ -6687,14 +6687,23 @@ function syncTerminalTableGroupDraftSelection(tableIds = []) {
 function toggleTerminalTableSelection(value) {
   const tableIds = terminalTableIdsFromValue(value);
   if (!tableIds.length) return;
-  const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
-  const selected = new Set(draft.tableIds);
+  const previousDraft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  const selected = new Set(previousDraft.tableIds);
   const isCompleteSelection = tableIds.every((tableId) => selected.has(tableId));
   if (isCompleteSelection) tableIds.forEach((tableId) => selected.delete(tableId));
   else tableIds.forEach((tableId) => selected.add(tableId));
-  draft.tableIds = [...selected];
-  state.terminalTableDraft = normalizeTerminalTableDraft(draft);
-  syncTerminalTableGroupDraftSelection(draft.tableIds);
+  const nextIds = sortTerminalTableIds([...selected]);
+  const exactMatches = terminalTableExactSelectedReservations(nextIds);
+  let nextDraft = normalizeTerminalTableDraft({ ...previousDraft, tableIds: nextIds });
+  if (!isCompleteSelection && exactMatches.length === 1) {
+    nextDraft = emptyTerminalTableDraft(exactMatches[0]);
+  } else if (!isCompleteSelection && previousDraft.id) {
+    nextDraft = normalizeTerminalTableDraft({ tableIds: nextIds });
+  } else if (isCompleteSelection && !nextIds.length && previousDraft.id) {
+    nextDraft = emptyTerminalTableDraft();
+  }
+  state.terminalTableDraft = normalizeTerminalTableDraft(nextDraft);
+  syncTerminalTableGroupDraftSelection(nextIds);
 }
 
 function beginTerminalTableDrag(id) {
@@ -6765,6 +6774,29 @@ function terminalTableGroupSummaryText(draft = {}) {
   return "Mindestens 2 benachbarte Tische auswählen";
 }
 
+function terminalTableSelectionCanConnect(tableIds = []) {
+  const ids = sortTerminalTableIds(tableIds);
+  if (ids.length < 2) return false;
+  const visited = new Set([ids[0]]);
+  const queue = [ids[0]];
+  while (queue.length) {
+    const current = queue.shift();
+    ids.forEach((nextId) => {
+      if (visited.has(nextId)) return;
+      if (!terminalTablesAreAdjacent(current, nextId)) return;
+      visited.add(nextId);
+      queue.push(nextId);
+    });
+  }
+  return visited.size === ids.length;
+}
+
+function terminalTableSuggestedGroupLabel(tableIds = []) {
+  const labels = terminalTableLabels(tableIds);
+  if (!labels.length) return "Neue Tafel";
+  return labels.join("/");
+}
+
 function terminalTableGroupDraftSummaryHtml(draft = {}) {
   if ((draft?.tableIds || []).length < 2) {
     return `<p class="hint">Tische im Plan auswählen oder per Drag & Drop verbinden. Danach eine Tischnummer für die gemeinsame Tafel vergeben.</p>`;
@@ -6802,6 +6834,57 @@ function terminalTableGroupListHtml(groups = []) {
             <button class="secondary" type="button" data-table-plan-group-edit="${escapeHtml(group.id)}">Bearbeiten</button>
             <button class="secondary danger-lite" type="button" data-table-plan-group-delete="${escapeHtml(group.id)}">Löschen</button>
           </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function terminalTableSelectedReservations(draft = {}, reservations = []) {
+  const selected = new Set(sortTerminalTableIds(draft.tableIds || []));
+  if (!selected.size) return [];
+  return sortTerminalTableReservations(reservations, "time").filter((reservation) => (
+    reservation.tableIds.some((id) => selected.has(id))
+  ));
+}
+
+function terminalTableExactSelectedReservations(tableIds = [], reservations = terminalTableReservations()) {
+  const ids = sortTerminalTableIds(tableIds);
+  if (!ids.length) return [];
+  const selectionKey = terminalTableSetKey(ids);
+  return sortTerminalTableReservations(reservations, "time").filter((reservation) => {
+    if (ids.length === 1) return reservation.tableIds.includes(ids[0]);
+    return terminalTableSetKey(reservation.tableIds) === selectionKey;
+  });
+}
+
+function terminalTableSelectionBookingsHtml(draft = {}, reservations = []) {
+  if (!draft.tableIds.length) {
+    return `<p class="hint">Tische im Plan anklicken. Danach kannst du direkt eine Reservierung anlegen oder vorhandene Einträge öffnen.</p>`;
+  }
+  const matches = terminalTableSelectedReservations(draft, reservations);
+  if (!matches.length) {
+    return `
+      <div class="table-plan-selection-bookings-empty">
+        <strong>Auf dieser Auswahl ist noch nichts eingetragen.</strong>
+        <span>Mehrfachbelegungen sind möglich. Du kannst für denselben Tisch mehrere Reservierungen mit unterschiedlicher Uhrzeit speichern.</span>
+      </div>
+    `;
+  }
+  return `
+    <div class="table-plan-selection-bookings-head">
+      <strong>Bereits auf dieser Auswahl</strong>
+      <span>${matches.length} Reservierung${matches.length === 1 ? "" : "en"}</span>
+    </div>
+    <div class="table-plan-selection-bookings-list">
+      ${matches.map((reservation) => `
+        <article class="table-plan-selection-booking ${state.terminalTableDraft?.id === reservation.id ? "is-active" : ""}">
+          <div>
+            <strong>${escapeHtml(reservation.time || "--:--")} · ${escapeHtml(reservation.name || "Reservierung")}</strong>
+            <span>${escapeHtml(String(reservation.people || 0))} Personen · ${escapeHtml(terminalTableLabelText(reservation.tableIds))}</span>
+            ${reservation.note ? `<small>${escapeHtml(reservation.note)}</small>` : ""}
+          </div>
+          <button class="secondary" type="button" data-table-plan-edit="${escapeHtml(reservation.id)}">Öffnen</button>
         </article>
       `).join("")}
     </div>
@@ -7026,6 +7109,7 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   const selectedSeatCount = terminalTableSeatCount(draft.tableIds);
   const singleTableId = singleSelectedTerminalTableId(draft);
   const singleTable = terminalTableDef(singleTableId);
+  const selectedGroup = terminalTableGroupForTableIds(draft.tableIds, groups);
   const shell = $(".table-plan-shell");
   if (shell) shell.classList.toggle("is-work-view", state.terminalTableView === "work");
   document.body.classList.toggle("table-plan-fullscreen", Boolean(state.terminalTableFullscreen));
@@ -7069,11 +7153,21 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   }
   if ($("#loadTodayTablePlan")) $("#loadTodayTablePlan").classList.toggle("hidden", !(dateKey !== (state.terminalTableInfo?.todayDate || todayKey()) && state.terminalTableInfo?.todayAvailable));
   const summary = $("#tablePlanSelectionSummary");
-  if (summary) summary.textContent = draft.id ? `Bearbeiten · ${draft.name || terminalTableLabelText(draft.tableIds)}` : "Neue Reservierung";
+  if (summary) {
+    summary.textContent = draft.id
+      ? `Bearbeiten · ${draft.name || terminalTableLabelText(draft.tableIds)}`
+      : draft.tableIds.length
+        ? terminalTableLabelText(draft.tableIds)
+        : "Tische auswählen";
+  }
   const draftSummary = $("#tablePlanDraftSummary");
   if (draftSummary) draftSummary.innerHTML = terminalTableDraftSummaryHtml(draft);
   const conflictHint = $("#tablePlanConflictHint");
   if (conflictHint) conflictHint.innerHTML = terminalTableConflictHtml(draft, reservations);
+  const selectionBookings = $("#tablePlanSelectionBookings");
+  if (selectionBookings) selectionBookings.innerHTML = terminalTableSelectionBookingsHtml(draft, reservations);
+  const reservationPanel = $("#tablePlanReservationPanel");
+  if (reservationPanel && (draft.tableIds.length || draft.id)) reservationPanel.open = true;
   if ($("#tablePlanGroupSummary")) $("#tablePlanGroupSummary").textContent = terminalTableGroupSummaryText(groupDraft);
   const groupDraftSummary = $("#tablePlanGroupDraftSummary");
   if (groupDraftSummary) groupDraftSummary.innerHTML = terminalTableGroupDraftSummaryHtml(groupDraft);
@@ -7108,7 +7202,18 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   if ($("#tablePlanName")) $("#tablePlanName").value = draft.name || "";
   if ($("#tablePlanPeople")) $("#tablePlanPeople").value = draft.people || "";
   if ($("#tablePlanNote")) $("#tablePlanNote").value = draft.note || "";
+  if ($("#newTablePlanReservationForSelection")) $("#newTablePlanReservationForSelection").disabled = reportClosed || !draft.tableIds.length;
+  if ($("#connectSelectedTables")) {
+    $("#connectSelectedTables").disabled = reportClosed || draft.tableIds.length < 2 || !terminalTableSelectionCanConnect(draft.tableIds);
+    $("#connectSelectedTables").textContent = selectedGroup ? "Verbindung anpassen" : "Tische verbinden";
+  }
+  if ($("#disconnectSelectedTables")) {
+    $("#disconnectSelectedTables").classList.toggle("hidden", !selectedGroup);
+    $("#disconnectSelectedTables").disabled = reportClosed || !selectedGroup;
+  }
   if ($("#tablePlanStaffSummary")) $("#tablePlanStaffSummary").textContent = terminalTableStaffSummaryText(staffAssignments, staffDraft);
+  const staffPanel = $("#tablePlanStaffPanel");
+  if (staffPanel && (staffDraft.id || staffDraft.employee || staffDraft.presetId || staffDraft.note)) staffPanel.open = true;
   if ($("#tablePlanStaffEmployee")) $("#tablePlanStaffEmployee").innerHTML = terminalTableStaffEmployeeOptionsHtml(employeeMeta, staffDraft.employee);
   if ($("#tablePlanStaffPreset")) $("#tablePlanStaffPreset").innerHTML = terminalTableStaffPresetOptionsHtml(staffDraft.presetId);
   if ($("#tablePlanStaffColor")) $("#tablePlanStaffColor").value = cleanTerminalColor(staffDraft.color);
@@ -7171,7 +7276,7 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
         ];
         if (primaryStaffColor) style.push(`--table-staff-color:${primaryStaffColor}`);
         return `
-          <button class="${classes}" type="button" draggable="true" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
+          <button class="${classes}" type="button" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
             <div class="table-plan-table-head">
               <strong>${escapeHtml(group.label)}</strong>
               <span>${escapeHtml(String(terminalTableSeatCount(group.tableIds) || 0))} P</span>
@@ -7212,7 +7317,7 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
         ];
         if (primaryStaffColor) style.push(`--table-staff-color:${primaryStaffColor}`);
         return `
-          <button class="${classes}" type="button" draggable="true" data-table-plan-select="${escapeHtml(table.id)}" data-table-plan-table="${escapeHtml(table.id)}" style="${style.join(";")}">
+          <button class="${classes}" type="button" data-table-plan-select="${escapeHtml(table.id)}" data-table-plan-table="${escapeHtml(table.id)}" style="${style.join(";")}">
             <div class="table-plan-table-head">
               <strong>${escapeHtml(currentTable?.label || table.label)}</strong>
               <span>${escapeHtml(String(currentTable?.seats || 0))} P</span>
@@ -7250,6 +7355,11 @@ function terminalTableDraftSummaryHtml(draft = {}) {
       <strong>${escapeHtml(String(terminalTableSeatCount(draft.tableIds) || 0))}</strong>
     </article>
   `;
+}
+
+function startNewTerminalTableReservation() {
+  const current = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  state.terminalTableDraft = normalizeTerminalTableDraft({ tableIds: current.tableIds });
 }
 
 function terminalTableConflictHtml(draft = {}, reservations = []) {
@@ -7348,6 +7458,63 @@ async function saveTerminalTableReservation(button) {
     button.textContent = oldText;
     button.disabled = Boolean(state.terminalReport?.closed);
   }
+}
+
+async function connectSelectedTerminalTables(button) {
+  const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  const tableIds = sortTerminalTableIds(draft.tableIds || []);
+  if (tableIds.length < 2) {
+    showToast("Bitte mindestens zwei Tische auswählen.");
+    return;
+  }
+  if (!terminalTableSelectionCanConnect(tableIds)) {
+    showToast("Bitte nur benachbarte Tische auswählen, die zusammen eine Tafel bilden.");
+    return;
+  }
+  const existingGroup = terminalTableGroupForTableIds(tableIds);
+  const label = window.prompt(
+    existingGroup ? "Bezeichnung für die verbundene Tafel anpassen" : "Wie soll die verbundene Tafel heißen?",
+    existingGroup?.label || terminalTableSuggestedGroupLabel(tableIds)
+  );
+  if (label == null) return;
+  const payload = {
+    ...(existingGroup || {}),
+    tableIds,
+    label: String(label || "").trim()
+  };
+  if (!payload.label) {
+    showToast("Bitte eine Tischnummer oder Bezeichnung eingeben.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = existingGroup ? "Aktualisiert..." : "Verbindet...";
+  try {
+    const result = await terminalAction({
+      action: "save-table-group",
+      group: payload
+    });
+    state.terminalTableGroupDraft = emptyTerminalTableGroupDraft(payload);
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Tische verbunden.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed);
+  }
+}
+
+async function disconnectSelectedTerminalTables(button) {
+  const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  const tableIds = sortTerminalTableIds(draft.tableIds || []);
+  const group = terminalTableGroupForTableIds(tableIds);
+  if (!group?.id) {
+    showToast("Auf dieser Auswahl ist keine gespeicherte Tafel hinterlegt.");
+    return;
+  }
+  if (!confirm(`Verbindung "${group.label || terminalTableLabels(group.tableIds).join(" + ")}" lösen?`)) return;
+  await deleteTerminalTableGroup(button, group.id);
 }
 
 async function deleteTerminalTableReservation(button) {
@@ -12723,11 +12890,6 @@ function bindEvents() {
       toggleTerminalTableFullscreen();
       return;
     }
-    const loadTablePlanDateButton = event.target.closest("#loadTablePlanDate");
-    if (loadTablePlanDateButton) {
-      await loadTerminalTableDate($("#tablePlanDate")?.value || "");
-      return;
-    }
     const loadTodayTablePlanButton = event.target.closest("#loadTodayTablePlan");
     if (loadTodayTablePlanButton) {
       await loadTerminalTableDate(state.terminalTableInfo?.todayDate || todayKey());
@@ -12749,6 +12911,22 @@ function bindEvents() {
     if (resetTablePlanButton) {
       resetTerminalTableDraft();
       renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const newReservationForSelectionButton = event.target.closest("#newTablePlanReservationForSelection");
+    if (newReservationForSelectionButton) {
+      startNewTerminalTableReservation();
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const connectSelectedTablesButton = event.target.closest("#connectSelectedTables");
+    if (connectSelectedTablesButton) {
+      await connectSelectedTerminalTables(connectSelectedTablesButton);
+      return;
+    }
+    const disconnectSelectedTablesButton = event.target.closest("#disconnectSelectedTables");
+    if (disconnectSelectedTablesButton) {
+      await disconnectSelectedTerminalTables(disconnectSelectedTablesButton);
       return;
     }
     const resetTablePlanGroupButton = event.target.closest("#resetTablePlanGroupDraft");
@@ -13006,6 +13184,11 @@ function bindEvents() {
   });
 
   $("#terminalTablesSection")?.addEventListener("change", (event) => {
+    const tableDateInput = event.target.closest("#tablePlanDate");
+    if (tableDateInput) {
+      loadTerminalTableDate(tableDateInput.value || "");
+      return;
+    }
     const sortSelect = event.target.closest("#tablePlanSort");
     if (sortSelect) {
       state.terminalTableSort = sortSelect.value || "time";

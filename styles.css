@@ -3207,7 +3207,7 @@ button:disabled {
 
 .table-plan-shell {
   display: grid;
-  grid-template-columns: minmax(0, 2.25fr) minmax(320px, 0.82fr);
+  grid-template-columns: minmax(0, 2.35fr) minmax(320px, 0.88fr);
   gap: 16px;
   align-items: start;
 }
@@ -3258,6 +3258,10 @@ button:disabled {
   background: var(--surface-soft);
   padding: 14px;
   box-shadow: var(--shadow-tight);
+}
+
+.table-plan-board-panel {
+  align-content: start;
 }
 
 .table-plan-config-panel {
@@ -3638,6 +3642,47 @@ button:disabled {
 .table-plan-sidebar {
   display: grid;
   gap: 14px;
+  align-content: start;
+}
+
+.table-plan-side-section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  box-shadow: var(--shadow-tight);
+  overflow: hidden;
+}
+
+.table-plan-side-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+}
+
+.table-plan-side-summary::-webkit-details-marker {
+  display: none;
+}
+
+.table-plan-side-summary strong {
+  font-size: 16px;
+}
+
+.table-plan-side-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.table-plan-side-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 14px 14px;
 }
 
 .table-plan-shell.is-work-view {
@@ -3657,6 +3702,61 @@ button:disabled {
 .table-plan-staff-cards {
   display: grid;
   gap: 10px;
+}
+
+.table-plan-selection-bookings {
+  display: grid;
+  gap: 10px;
+}
+
+.table-plan-selection-bookings-empty,
+.table-plan-selection-bookings-head,
+.table-plan-selection-booking {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.table-plan-selection-bookings-empty,
+.table-plan-selection-bookings-head {
+  display: grid;
+  gap: 4px;
+}
+
+.table-plan-selection-bookings-empty span,
+.table-plan-selection-bookings-head span,
+.table-plan-selection-booking span,
+.table-plan-selection-booking small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.table-plan-selection-bookings-list {
+  display: grid;
+  gap: 8px;
+}
+
+.table-plan-selection-booking {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.table-plan-selection-booking > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.table-plan-selection-booking strong {
+  font-size: 14px;
+}
+
+.table-plan-selection-booking.is-active {
+  border-color: rgba(225, 23, 47, 0.24);
+  background: #fff8f9;
 }
 
 .table-plan-group-cards {

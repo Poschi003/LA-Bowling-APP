@@ -958,10 +958,16 @@ function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
   return `
     <div style="margin:0;padding:24px;background:#f3f6f9;font-family:Arial,Helvetica,sans-serif;color:#111827;">
       <div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #e6ebf0;border-radius:16px;overflow:hidden;">
-        <div style="padding:24px 30px 20px;background:#ffffff;border-top:4px solid #d71920;border-bottom:1px solid #eef2f6;">
-          <div style="font-size:25px;font-weight:800;letter-spacing:0.02em;line-height:1;color:#111827;">LA-BOWLING</div>
-          <div style="margin-top:14px;font-size:26px;font-weight:700;line-height:1.2;color:#111827;">Bitte eine Rechnung schreiben</div>
-          <div style="margin-top:8px;font-size:14px;line-height:1.5;color:#6b7280;">Kunde auf Rechnung wurde in der TeamApp erfasst und ist jetzt bereit für die Rechnung.</div>
+        <div style="padding:20px 30px 18px;background:#fafbfc;border-bottom:1px solid #eef2f6;">
+          <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:0;vertical-align:top;">
+                <div style="font-size:22px;font-weight:800;letter-spacing:0.02em;line-height:1.1;color:#111827;">LA-BOWLING</div>
+                <div style="margin-top:8px;font-size:14px;font-weight:600;line-height:1.35;color:#111827;">Bitte eine Rechnung schreiben</div>
+                <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#6b7280;">Kunde auf Rechnung wurde in der TeamApp erfasst und ist bereit für die Rechnung.</div>
+              </td>
+            </tr>
+          </table>
         </div>
         <div style="padding:22px 30px 28px;">
           ${infoBlock("Datum", mailValue(formattedDate), dayReference ? `<div style="margin-top:6px;font-size:13px;color:#7b8794;">Tagesbericht-Zuordnung: <strong>${escapeMailHtml(formatMailDate(dayReference) || dayReference)}</strong></div>` : "")}

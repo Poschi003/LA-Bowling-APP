@@ -193,18 +193,13 @@
             <div class="terminal-section-head">
               <div>
                 <h3>Tischplan</h3>
-                <p class="hint">Reservierungen direkt im Terminal anlegen, Tische per Drag & Drop zu Tafeln verbinden und den Plan bei Bedarf im Vollbild führen.</p>
+                <p class="hint">Tische direkt anklicken, Reservierungen schnell erfassen und bei Bedarf mehrere Belegungen mit Uhrzeit auf demselben Tisch führen.</p>
               </div>
               <div class="table-plan-toolbar">
-                <div class="segmented-control table-plan-view-switch" aria-label="Tischplan-Ansicht">
-                  <button id="tablePlanManageView" class="active" type="button" data-table-plan-view="manage">Verwaltung</button>
-                  <button id="tablePlanWorkView" type="button" data-table-plan-view="work">Arbeitsansicht</button>
-                </div>
                 <div class="table-plan-toolbar-actions">
                   <label class="table-plan-date-control">Plan-Datum
                     <input id="tablePlanDate" type="date">
                   </label>
-                  <button id="loadTablePlanDate" class="secondary" type="button">Datum laden</button>
                   <button id="loadTodayTablePlan" class="secondary hidden" type="button">Heute öffnen</button>
                   <button id="toggleTablePlanFullscreen" class="secondary" type="button">Vollbild</button>
                 </div>
@@ -215,82 +210,11 @@
               <section class="table-plan-board-panel">
                 <div id="tablePlanBoardMeta" class="table-plan-meta"></div>
                 <div id="tablePlanBoard" class="table-plan-board"></div>
-              </section>
-              <aside class="table-plan-sidebar">
-                <section class="table-plan-editor">
-                  <div class="terminal-task-group-head">
-                    <div>
-                      <h4>Reservierung</h4>
-                      <span id="tablePlanSelectionSummary">Tische auswählen</span>
-                    </div>
-                    <button id="resetTablePlanDraft" class="secondary" type="button">Neu</button>
-                  </div>
-                  <div id="tablePlanDraftSummary" class="table-plan-draft-summary"></div>
-                  <div id="tablePlanConflictHint" class="hint"></div>
-                  <section id="tablePlanGroupPanel" class="table-plan-group-panel">
-                    <div class="terminal-task-group-head">
-                      <div>
-                        <h4>Tafel</h4>
-                        <span id="tablePlanGroupSummary">Mindestens 2 benachbarte Tische auswählen</span>
-                      </div>
-                      <button id="resetTablePlanGroupDraft" class="secondary" type="button">Neu</button>
-                    </div>
-                    <div id="tablePlanGroupDraftSummary" class="table-plan-draft-summary"></div>
-                    <div class="form-grid table-plan-group-form">
-                      <label>Tischnummer / Bezeichnung
-                        <input id="tablePlanGroupLabel" data-table-plan-group-field="label" type="text" maxlength="120" placeholder="z. B. T15/16 oder Tafel Rot">
-                      </label>
-                    </div>
-                    <div class="table-plan-editor-actions">
-                      <button id="saveTablePlanGroup" class="primary" type="button">Tafel speichern</button>
-                      <button id="deleteTablePlanGroup" class="secondary danger-lite" type="button">Tafel löschen</button>
-                    </div>
-                    <div id="tablePlanGroupList" class="table-plan-group-list"></div>
-                  </section>
-                  <section class="table-plan-staff-panel">
-                    <div class="terminal-task-group-head">
-                      <div>
-                        <h4>Personalbereiche</h4>
-                        <span id="tablePlanStaffSummary">Noch kein Bereich zugewiesen</span>
-                      </div>
-                      <button id="resetTablePlanStaffDraft" class="secondary" type="button">Neu</button>
-                    </div>
-                    <div class="form-grid table-plan-staff-form">
-                      <label>Mitarbeiter
-                        <select id="tablePlanStaffEmployee" data-table-plan-staff-field="employee"></select>
-                      </label>
-                      <label>Bereich
-                        <select id="tablePlanStaffPreset" data-table-plan-staff-field="presetId"></select>
-                      </label>
-                      <label>Farbe
-                        <input id="tablePlanStaffColor" data-table-plan-staff-field="color" type="color" value="#e1172f">
-                      </label>
-                      <label class="table-plan-note-field">Hinweis
-                        <input id="tablePlanStaffNote" data-table-plan-staff-field="note" type="text" maxlength="240" placeholder="z. B. Springer, Ansprechpartner, Reservierungen">
-                      </label>
-                    </div>
-                    <div class="table-plan-editor-actions">
-                      <button id="saveTablePlanStaff" class="primary" type="button">Bereich speichern</button>
-                      <button id="deleteTablePlanStaff" class="secondary danger-lite" type="button">Bereich löschen</button>
-                    </div>
-                    <div id="tablePlanStaffList" class="table-plan-staff-list"></div>
-                  </section>
-                  <div class="form-grid table-plan-form">
-                    <label>Uhrzeit<input id="tablePlanTime" data-table-plan-field="time" type="time"></label>
-                    <label>Reservierungsname<input id="tablePlanName" data-table-plan-field="name" placeholder="Name / Anlass"></label>
-                    <label>Personen<input id="tablePlanPeople" data-table-plan-field="people" type="number" min="1" step="1" placeholder="0"></label>
-                    <label class="table-plan-note-field">Notiz<textarea id="tablePlanNote" data-table-plan-field="note" rows="3" placeholder="z. B. Kinderstuhl, Geburtstag, zusammen mit T16"></textarea></label>
-                  </div>
-                  <div class="table-plan-editor-actions">
-                    <button id="saveTablePlanReservation" class="primary" type="button">Reservierung speichern</button>
-                    <button id="deleteTablePlanReservation" class="secondary danger-lite" type="button">Reservierung löschen</button>
-                  </div>
-                </section>
                 <section class="table-plan-list-panel">
                   <div class="terminal-section-head">
                     <div>
                       <h3>Druckliste</h3>
-                      <p class="hint">Sortierbar nach Uhrzeit, Tisch oder Bereich.</p>
+                      <p class="hint">Reservierungen und Personalbereiche für den Tag.</p>
                     </div>
                     <div class="table-plan-list-actions">
                       <label>Sortierung
@@ -305,6 +229,71 @@
                   </div>
                   <div id="tablePlanPrintArea" class="table-plan-print-area"></div>
                 </section>
+              </section>
+              <aside class="table-plan-sidebar">
+                <details id="tablePlanReservationPanel" class="table-plan-side-section">
+                  <summary class="table-plan-side-summary">
+                    <strong>Neue Reservierung</strong>
+                    <span id="tablePlanSelectionSummary">Tische auswählen</span>
+                  </summary>
+                  <div class="table-plan-side-body">
+                    <div id="tablePlanDraftSummary" class="table-plan-draft-summary"></div>
+                    <div id="tablePlanConflictHint" class="hint"></div>
+                    <div id="tablePlanSelectionBookings" class="table-plan-selection-bookings"></div>
+                    <div class="form-grid table-plan-form">
+                      <label>Uhrzeit<input id="tablePlanTime" data-table-plan-field="time" type="time"></label>
+                      <label>Reservierungsname<input id="tablePlanName" data-table-plan-field="name" placeholder="Name / Anlass"></label>
+                      <label>Personen<input id="tablePlanPeople" data-table-plan-field="people" type="number" min="1" step="1" placeholder="0"></label>
+                      <label class="table-plan-note-field">Notiz<textarea id="tablePlanNote" data-table-plan-field="note" rows="3" placeholder="z. B. Kinderstuhl, Geburtstag, zusammen mit T16"></textarea></label>
+                    </div>
+                    <div class="table-plan-editor-actions">
+                      <button id="newTablePlanReservationForSelection" class="secondary" type="button">Neue Reservierung</button>
+                      <button id="connectSelectedTables" class="secondary" type="button">Tische verbinden</button>
+                      <button id="disconnectSelectedTables" class="secondary danger-lite" type="button">Verbindung lösen</button>
+                    </div>
+                    <div class="table-plan-editor-actions">
+                      <button id="saveTablePlanReservation" class="primary" type="button">Reservierung speichern</button>
+                      <button id="deleteTablePlanReservation" class="secondary danger-lite" type="button">Reservierung löschen</button>
+                      <button id="resetTablePlanDraft" class="secondary" type="button">Zurücksetzen</button>
+                    </div>
+                  </div>
+                </details>
+                <details id="tablePlanStaffPanel" class="table-plan-side-section">
+                  <summary class="table-plan-side-summary">
+                    <strong>Personalbereich</strong>
+                    <span id="tablePlanStaffSummary">Noch kein Bereich zugewiesen</span>
+                  </summary>
+                  <div class="table-plan-side-body">
+                    <section class="table-plan-staff-panel">
+                      <div class="terminal-task-group-head">
+                        <div>
+                          <h4>Personalbereiche</h4>
+                          <span>Mitarbeiter und Zuständigkeiten für den Abend</span>
+                        </div>
+                        <button id="resetTablePlanStaffDraft" class="secondary" type="button">Neu</button>
+                      </div>
+                      <div class="form-grid table-plan-staff-form">
+                        <label>Mitarbeiter
+                          <select id="tablePlanStaffEmployee" data-table-plan-staff-field="employee"></select>
+                        </label>
+                        <label>Bereich
+                          <select id="tablePlanStaffPreset" data-table-plan-staff-field="presetId"></select>
+                        </label>
+                        <label>Farbe
+                          <input id="tablePlanStaffColor" data-table-plan-staff-field="color" type="color" value="#e1172f">
+                        </label>
+                        <label class="table-plan-note-field">Hinweis
+                          <input id="tablePlanStaffNote" data-table-plan-staff-field="note" type="text" maxlength="240" placeholder="z. B. Springer, Ansprechpartner, Reservierungen">
+                        </label>
+                      </div>
+                      <div class="table-plan-editor-actions">
+                        <button id="saveTablePlanStaff" class="primary" type="button">Bereich speichern</button>
+                        <button id="deleteTablePlanStaff" class="secondary danger-lite" type="button">Bereich löschen</button>
+                      </div>
+                      <div id="tablePlanStaffList" class="table-plan-staff-list"></div>
+                    </section>
+                  </div>
+                </details>
               </aside>
             </div>
           </section>
