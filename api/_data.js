@@ -943,8 +943,8 @@ function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
     `;
   const amountHtml = amountRows.map(([label, value], index) => `
       <tr>
-        <td style="padding:11px 0;border-bottom:${index === amountRows.length - 1 ? "0" : "1px solid #edf1f5"};color:#5f6b76;font-size:14px;vertical-align:top;">${escapeMailHtml(label)}</td>
-        <td style="padding:11px 0;border-bottom:${index === amountRows.length - 1 ? "0" : "1px solid #edf1f5"};color:#111827;font-size:15px;vertical-align:top;text-align:right;">${value}</td>
+        <td style="width:64%;padding:10px 10px 10px 0;border-bottom:${index === amountRows.length - 1 ? "0" : "1px solid #edf1f5"};color:#5f6b76;font-size:14px;vertical-align:top;">${escapeMailHtml(label)}</td>
+        <td style="width:36%;padding:10px 0;border-bottom:${index === amountRows.length - 1 ? "0" : "1px solid #edf1f5"};color:#111827;font-size:15px;vertical-align:top;text-align:right;white-space:nowrap;">${value}</td>
       </tr>
     `).join("");
   const attachmentHtml = attachments.length
@@ -968,15 +968,17 @@ function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
           ${infoBlock("Firma", formatMailMultiline(customer.name), `<div style="margin-top:14px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:8px;">Rechnungsadresse</div><div style="font-size:16px;line-height:1.55;color:#111827;">${formatMailMultiline(customer.address)}</div>`)}
           <div style="margin-top:14px;padding:16px 18px;background:#fafbfc;border:1px solid #e8edf2;border-radius:12px;">
             <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:10px;">Beträge</div>
-            <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;">
-              <tbody>${amountHtml}</tbody>
-              <tfoot>
-                <tr>
-                  <td style="padding-top:14px;border-top:1px solid #dbe2ea;color:#111827;font-size:15px;font-weight:700;">Gesamtbetrag</td>
-                  <td style="padding-top:14px;border-top:1px solid #dbe2ea;color:#111827;font-size:20px;font-weight:800;text-align:right;">${escapeMailHtml(formatInvoiceMoney(totalAmount))}</td>
-                </tr>
-              </tfoot>
-            </table>
+            <div style="max-width:500px;">
+              <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+                <tbody>${amountHtml}</tbody>
+                <tfoot>
+                  <tr>
+                    <td style="width:64%;padding:14px 10px 0 0;border-top:1px solid #dbe2ea;color:#111827;font-size:15px;font-weight:700;">Gesamtbetrag</td>
+                    <td style="width:36%;padding-top:14px;border-top:1px solid #dbe2ea;color:#111827;font-size:20px;font-weight:800;text-align:right;white-space:nowrap;">${escapeMailHtml(formatInvoiceMoney(totalAmount))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
           ${infoBlock("Zahlungsart", mailValue(paymentMethod))}
           ${infoBlock("Ansprechpartner", mailValue(customer.contact))}
