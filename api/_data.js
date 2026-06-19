@@ -864,10 +864,10 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
     `Datum: ${formattedDate}`,
     `Tagesbericht-Zuordnung: ${formattedDate}`,
     `Firma / Name: ${String(customer.name || "").trim() || "-"}`,
+    `Rechnungsadresse: ${String(customer.address || "").trim() || "-"}`,
     `Ansprechpartner: ${String(customer.contact || "").trim() || "-"}`,
     `Telefonnummer: ${String(customer.phone || "").trim() || "-"}`,
     `E-Mail für Rechnung: ${String(customer.email || "").trim() || "-"}`,
-    `Rechnungsadresse: ${String(customer.address || "").trim() || "-"}`,
     `Zahlungsart: ${paymentMethod}`,
     `Bowling Betrag: ${formatInvoiceMoney(bowlingAmount)}`,
     ...gastroLines,
@@ -878,6 +878,210 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
     "",
     "Hinweis: Kunde auf Rechnung wurde in der TeamApp erfasst und ist jetzt bereit für die Rechnungsschreibung"
   ].join("\n");
+}
+
+function escapeMailHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatMailMultiline(value) {
+  const text = String(value || "").trim();
+  if (!text) return "<strong>-</strong>";
+  return text
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => `<strong>${escapeMailHtml(line)}</strong>`)
+    .join("<br>");
+}
+
+function mailValue(value, fallback = "-") {
+  const text = String(value || "").trim() || fallback;
+  return `<strong>${escapeMailHtml(text)}</strong>`;
+}
+
+function mailMoneyValue(value) {
+  return `<strong>${escapeMailHtml(formatInvoiceMoney(value))}</strong>`;
+}
+
+function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
+  const formattedDate = formatMailDate(date) || String(date || "").trim() || "-";
+  const bowlingAmount = tipMoneyNumber(customer.bowlingAmount);
+  const gastroSplit = invoiceGastroSplit(customer);
+  const gastroAmount = gastroSplit.total;
+  const totalAmount = tipMoneyNumber(customer.amount) || bowlingAmount + gastroAmount;
+  const tipText = String(customer.tip || "").trim() || "-";
+  const paymentMethod = String(customer.paymentMethod || "").trim() || "-";
+  const summaryRows = [
+    ["Bowling Betrag", mailMoneyValue(bowlingAmount)],
+    ["Gastro Getränke", mailMoneyValue(gastroSplit.drinks)],
+    ["Gastro Speisen", mailMoneyValue(gastroSplit.food)],
+    ["Gastro Sonstiges", mailMoneyValue(gastroSplit.other)],
+    ["Gastro Gesamt", mailMoneyValue(gastroAmount)],
+    ...(gastroSplit.note ? [["Sonstiges Notiz", mailValue(gastroSplit.note)]] : []),
+    ["Tipp separat", mailValue(tipText)],
+    ["Notiz", mailValue(customer.note)]
+  ];
+  const contactRows = [
+    ["Datum", mailValue(formattedDate)],
+    ["Tagesbericht-Zuordnung", mailValue(formattedDate)],
+    ["Ansprechpartner", mailValue(customer.contact)],
+    ["Telefonnummer", mailValue(customer.phone)],
+    ["E-Mail für Rechnung", mailValue(customer.email)]
+  ];
+  const attachments = invoiceAttachmentSources(customer)
+    .map((item) => {
+      const label = item.label === "rechnungsbeleg"
+        ? "Rechnungsbeleg"
+        : item.label === "bowling-beleg"
+          ? "Bowling-Beleg"
+          : "Gastro-Beleg";
+      const filename = String(item.filename || "").trim() || label;
+      return { label, filename };
+    });
+  const summaryHtml = summaryRows.map(([label, value]) => `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:13px;vertical-align:top;width:220px;">${escapeMailHtml(label)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;vertical-align:top;">${value}</td>
+      </tr>
+    `).join("");
+  const contactHtml = contactRows.map(([label, value]) => `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:13px;vertical-align:top;width:220px;">${escapeMailHtml(label)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;vertical-align:top;">${value}</td>
+      </tr>
+    `).join("");
+  const attachmentHtml = attachments.length
+    ? `<div style="margin-top:18px;padding:16px 18px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;">
+        <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#64748b;margin-bottom:10px;">Mitgesendete Belege</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          ${attachments.map((item) => `<span style="display:inline-block;padding:8px 10px;border-radius:999px;background:#ffffff;border:1px solid #dbeafe;color:#1d4ed8;font-size:13px;"><strong>${escapeMailHtml(item.label)}:</strong> ${escapeMailHtml(item.filename)}</span>`).join("")}
+        </div>
+      </div>`
+    : "";
+  return `
+    <div style="margin:0;padding:24px;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+      <div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+        <div style="padding:22px 28px;background:#111827;border-bottom:4px solid #dc2626;">
+          <div style="font-size:30px;font-weight:800;letter-spacing:0.02em;line-height:1;color:#ffffff;">LA-BOWLING</div>
+          <div style="margin-top:10px;font-size:22px;font-weight:700;line-height:1.2;color:#ffffff;">Bitte eine Rechnung schreiben</div>
+          <div style="margin-top:8px;font-size:14px;color:#cbd5e1;">Kunde auf Rechnung wurde in der TeamApp erfasst und ist bereit für die Rechnungsschreibung.</div>
+        </div>
+        <div style="padding:24px 28px;">
+          <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,0.9fr);gap:18px;">
+            <div style="padding:18px 20px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;">
+              <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Briefkopf</div>
+              <div style="font-size:18px;line-height:1.45;color:#111827;">${formatMailMultiline(customer.name)}</div>
+              <div style="margin-top:10px;font-size:16px;line-height:1.5;color:#111827;">${formatMailMultiline(customer.address)}</div>
+            </div>
+            <div style="padding:18px 20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;">
+              <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#9a3412;margin-bottom:10px;">Zahlungsart</div>
+              <div style="font-size:22px;line-height:1.3;color:#111827;">${mailValue(paymentMethod)}</div>
+              <div style="margin-top:14px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#9a3412;margin-bottom:8px;">Gesamtbetrag</div>
+              <div style="padding:14px 16px;border-radius:12px;background:#dc2626;color:#ffffff;font-size:28px;line-height:1.1;font-weight:800;">${escapeMailHtml(formatInvoiceMoney(totalAmount))}</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:18px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#ffffff;">
+              <tbody>${contactHtml}</tbody>
+            </table>
+            <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#ffffff;">
+              <tbody>${summaryHtml}</tbody>
+            </table>
+          </div>
+          ${attachmentHtml}
+          <div style="margin-top:18px;padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;color:#9a3412;font-size:13px;line-height:1.5;">
+            Hinweis: Der Rechnungskunde wurde in der TeamApp erfasst. Bitte Zahlungsart und Belege bei der Rechnungserstellung beachten.
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function receiptPathFromUrl(url = "") {
+  const text = String(url || "").trim();
+  if (!text) return "";
+  try {
+    const parsed = new URL(text, "https://local.invalid");
+    return String(parsed.searchParams.get("path") || "").replace(/^\/+/, "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function attachmentFilename(label, filename = "", contentType = "application/octet-stream") {
+  const cleanName = cleanStorageName(filename || "");
+  if (cleanName && /\.[a-zA-Z0-9]{2,6}$/.test(cleanName)) return cleanName;
+  const ext = extensionForMime(contentType, cleanName || label);
+  const base = cleanName || cleanStorageName(label || "beleg");
+  return `${base}.${ext}`;
+}
+
+function invoiceAttachmentSources(customer = {}) {
+  return [
+    {
+      label: "rechnungsbeleg",
+      filename: customer.receiptName || "",
+      dataUrl: customer.receiptData || "",
+      objectPath: customer.receiptPath || receiptPathFromUrl(customer.receiptUrl)
+    },
+    {
+      label: "bowling-beleg",
+      filename: customer.bowlingReceiptName || "",
+      dataUrl: customer.bowlingReceiptData || "",
+      objectPath: customer.bowlingReceiptPath || receiptPathFromUrl(customer.bowlingReceiptUrl)
+    },
+    {
+      label: "gastro-beleg",
+      filename: customer.gastroReceiptName || "",
+      dataUrl: customer.gastroReceiptData || "",
+      objectPath: customer.gastroReceiptPath || receiptPathFromUrl(customer.gastroReceiptUrl)
+    }
+  ].filter((item) => item.dataUrl || item.objectPath);
+}
+
+async function invoiceMailAttachments(customer = {}) {
+  const seen = new Set();
+  const attachments = [];
+  for (const source of invoiceAttachmentSources(customer)) {
+    const key = source.objectPath || source.dataUrl || source.filename || source.label;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    try {
+      if (source.dataUrl) {
+        const parsed = dataUrlToBuffer(source.dataUrl);
+        if (!parsed?.buffer?.length) continue;
+        attachments.push({
+          filename: attachmentFilename(source.label, source.filename, parsed.mime),
+          content: parsed.buffer,
+          contentType: parsed.mime
+        });
+        continue;
+      }
+      if (source.objectPath) {
+        const downloaded = await downloadReceipt(source.objectPath);
+        if (!downloaded?.buffer?.length) continue;
+        attachments.push({
+          filename: attachmentFilename(source.label, source.filename, downloaded.contentType),
+          content: downloaded.buffer,
+          contentType: downloaded.contentType
+        });
+      }
+    } catch (error) {
+      console.error("Rechnungsbeleg konnte nicht als Mail-Anhang geladen werden.", {
+        label: source.label,
+        filename: source.filename || "",
+        objectPath: source.objectPath || "",
+        error: error?.message || String(error)
+      });
+    }
+  }
+  return attachments;
 }
 
 async function sendInvoiceNotificationEmail(payload = {}) {
@@ -915,11 +1119,14 @@ async function sendInvoiceNotificationEmail(payload = {}) {
   });
 
   try {
+    const attachments = await invoiceMailAttachments(payload.customer || {});
     const info = await transport.sendMail({
       from: String(process.env.EMAIL_FROM || smtpUser).trim(),
       to,
       subject: String(process.env.INVOICE_EMAIL_SUBJECT || "LA-Bowling - Bitte eine Rechnung schreiben").trim(),
-      text: buildInvoiceNotificationText(payload)
+      text: buildInvoiceNotificationText(payload),
+      html: buildInvoiceNotificationHtml(payload),
+      attachments
     });
     return {
       ok: true,
