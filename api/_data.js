@@ -862,19 +862,18 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
     "Bitte eine Rechnung schreiben",
     "",
     `Datum: ${formattedDate}`,
-    `Tagesbericht-Zuordnung: ${formattedDate}`,
     `Firma / Name: ${String(customer.name || "").trim() || "-"}`,
     `Rechnungsadresse: ${String(customer.address || "").trim() || "-"}`,
-    `Ansprechpartner: ${String(customer.contact || "").trim() || "-"}`,
-    `Telefonnummer: ${String(customer.phone || "").trim() || "-"}`,
-    `E-Mail für Rechnung: ${String(customer.email || "").trim() || "-"}`,
-    `Zahlungsart: ${paymentMethod}`,
     `Bowling Betrag: ${formatInvoiceMoney(bowlingAmount)}`,
     ...gastroLines,
     `Gesamtbetrag: ${formatInvoiceMoney(totalAmount)}`,
+    `Zahlungsart: ${paymentMethod}`,
+    `Ansprechpartner: ${String(customer.contact || "").trim() || "-"}`,
+    `Telefonnummer: ${String(customer.phone || "").trim() || "-"}`,
+    `E-Mail für Rechnung: ${String(customer.email || "").trim() || "-"}`,
     ...(gastroSplit.note ? [`Sonstiges Notiz: ${gastroSplit.note}`] : []),
-    `Tipp separat: ${tipText}`,
     `Notiz: ${String(customer.note || "").trim() || "-"}`,
+    `Tipp separat: ${tipText}`,
     "",
     "Hinweis: Kunde auf Rechnung wurde in der TeamApp erfasst und ist jetzt bereit für die Rechnungsschreibung"
   ].join("\n");
@@ -916,23 +915,15 @@ function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
   const totalAmount = tipMoneyNumber(customer.amount) || bowlingAmount + gastroAmount;
   const tipText = String(customer.tip || "").trim() || "-";
   const paymentMethod = String(customer.paymentMethod || "").trim() || "-";
-  const summaryRows = [
+  const amountRows = [
     ["Bowling Betrag", mailMoneyValue(bowlingAmount)],
     ["Gastro Getränke", mailMoneyValue(gastroSplit.drinks)],
     ["Gastro Speisen", mailMoneyValue(gastroSplit.food)],
     ["Gastro Sonstiges", mailMoneyValue(gastroSplit.other)],
     ["Gastro Gesamt", mailMoneyValue(gastroAmount)],
-    ...(gastroSplit.note ? [["Sonstiges Notiz", mailValue(gastroSplit.note)]] : []),
-    ["Tipp separat", mailValue(tipText)],
-    ["Notiz", mailValue(customer.note)]
+    ["Tipp", mailValue(tipText)]
   ];
-  const contactRows = [
-    ["Datum", mailValue(formattedDate)],
-    ["Tagesbericht-Zuordnung", mailValue(formattedDate)],
-    ["Ansprechpartner", mailValue(customer.contact)],
-    ["Telefonnummer", mailValue(customer.phone)],
-    ["E-Mail für Rechnung", mailValue(customer.email)]
-  ];
+  const dayReference = String(customer.reportDate || customer.dayDate || customer.date || date || "").trim();
   const attachments = invoiceAttachmentSources(customer)
     .map((item) => {
       const label = item.label === "rechnungsbeleg"
@@ -943,59 +934,57 @@ function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
       const filename = String(item.filename || "").trim() || label;
       return { label, filename };
     });
-  const summaryHtml = summaryRows.map(([label, value]) => `
+  const infoBlock = (label, value, extra = "") => `
+      <div style="margin-top:14px;padding:16px 18px;background:#fafbfc;border:1px solid #e8edf2;border-radius:12px;">
+        <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:8px;">${escapeMailHtml(label)}</div>
+        <div style="font-size:16px;line-height:1.55;color:#111827;">${value}</div>
+        ${extra}
+      </div>
+    `;
+  const amountHtml = amountRows.map(([label, value], index) => `
       <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:13px;vertical-align:top;width:220px;">${escapeMailHtml(label)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;vertical-align:top;">${value}</td>
-      </tr>
-    `).join("");
-  const contactHtml = contactRows.map(([label, value]) => `
-      <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:13px;vertical-align:top;width:220px;">${escapeMailHtml(label)}</td>
-        <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;vertical-align:top;">${value}</td>
+        <td style="padding:11px 0;border-bottom:${index === amountRows.length - 1 ? "0" : "1px solid #edf1f5"};color:#5f6b76;font-size:14px;vertical-align:top;">${escapeMailHtml(label)}</td>
+        <td style="padding:11px 0;border-bottom:${index === amountRows.length - 1 ? "0" : "1px solid #edf1f5"};color:#111827;font-size:15px;vertical-align:top;text-align:right;">${value}</td>
       </tr>
     `).join("");
   const attachmentHtml = attachments.length
-    ? `<div style="margin-top:18px;padding:16px 18px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;">
-        <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#64748b;margin-bottom:10px;">Mitgesendete Belege</div>
+    ? `<div style="margin-top:14px;padding:16px 18px;background:#fafbfc;border:1px solid #e8edf2;border-radius:12px;">
+        <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:10px;">Mitgesendete Belege</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          ${attachments.map((item) => `<span style="display:inline-block;padding:8px 10px;border-radius:999px;background:#ffffff;border:1px solid #dbeafe;color:#1d4ed8;font-size:13px;"><strong>${escapeMailHtml(item.label)}:</strong> ${escapeMailHtml(item.filename)}</span>`).join("")}
+          ${attachments.map((item) => `<span style="display:inline-block;padding:8px 10px;border-radius:999px;background:#ffffff;border:1px solid #e5e7eb;color:#4b5563;font-size:13px;"><strong>${escapeMailHtml(item.label)}:</strong> ${escapeMailHtml(item.filename)}</span>`).join("")}
         </div>
       </div>`
     : "";
   return `
-    <div style="margin:0;padding:24px;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#111827;">
-      <div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
-        <div style="padding:22px 28px;background:#111827;border-bottom:4px solid #dc2626;">
-          <div style="font-size:30px;font-weight:800;letter-spacing:0.02em;line-height:1;color:#ffffff;">LA-BOWLING</div>
-          <div style="margin-top:10px;font-size:22px;font-weight:700;line-height:1.2;color:#ffffff;">Bitte eine Rechnung schreiben</div>
-          <div style="margin-top:8px;font-size:14px;color:#cbd5e1;">Kunde auf Rechnung wurde in der TeamApp erfasst und ist bereit für die Rechnungsschreibung.</div>
+    <div style="margin:0;padding:24px;background:#f3f6f9;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+      <div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #e6ebf0;border-radius:16px;overflow:hidden;">
+        <div style="padding:24px 30px 20px;background:#ffffff;border-top:4px solid #d71920;border-bottom:1px solid #eef2f6;">
+          <div style="font-size:25px;font-weight:800;letter-spacing:0.02em;line-height:1;color:#111827;">LA-BOWLING</div>
+          <div style="margin-top:14px;font-size:26px;font-weight:700;line-height:1.2;color:#111827;">Bitte eine Rechnung schreiben</div>
+          <div style="margin-top:8px;font-size:14px;line-height:1.5;color:#6b7280;">Kunde auf Rechnung wurde in der TeamApp erfasst und ist jetzt bereit für die Rechnung.</div>
         </div>
-        <div style="padding:24px 28px;">
-          <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,0.9fr);gap:18px;">
-            <div style="padding:18px 20px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;">
-              <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#64748b;margin-bottom:8px;">Briefkopf</div>
-              <div style="font-size:18px;line-height:1.45;color:#111827;">${formatMailMultiline(customer.name)}</div>
-              <div style="margin-top:10px;font-size:16px;line-height:1.5;color:#111827;">${formatMailMultiline(customer.address)}</div>
-            </div>
-            <div style="padding:18px 20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;">
-              <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#9a3412;margin-bottom:10px;">Zahlungsart</div>
-              <div style="font-size:22px;line-height:1.3;color:#111827;">${mailValue(paymentMethod)}</div>
-              <div style="margin-top:14px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#9a3412;margin-bottom:8px;">Gesamtbetrag</div>
-              <div style="padding:14px 16px;border-radius:12px;background:#dc2626;color:#ffffff;font-size:28px;line-height:1.1;font-weight:800;">${escapeMailHtml(formatInvoiceMoney(totalAmount))}</div>
-            </div>
-          </div>
-          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:18px;">
-            <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#ffffff;">
-              <tbody>${contactHtml}</tbody>
-            </table>
-            <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#ffffff;">
-              <tbody>${summaryHtml}</tbody>
+        <div style="padding:22px 30px 28px;">
+          ${infoBlock("Datum", mailValue(formattedDate), dayReference ? `<div style="margin-top:6px;font-size:13px;color:#7b8794;">Tagesbericht-Zuordnung: <strong>${escapeMailHtml(formatMailDate(dayReference) || dayReference)}</strong></div>` : "")}
+          ${infoBlock("Firma", formatMailMultiline(customer.name), `<div style="margin-top:14px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:8px;">Rechnungsadresse</div><div style="font-size:16px;line-height:1.55;color:#111827;">${formatMailMultiline(customer.address)}</div>`)}
+          <div style="margin-top:14px;padding:16px 18px;background:#fafbfc;border:1px solid #e8edf2;border-radius:12px;">
+            <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:10px;">Beträge</div>
+            <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;">
+              <tbody>${amountHtml}</tbody>
+              <tfoot>
+                <tr>
+                  <td style="padding-top:14px;border-top:1px solid #dbe2ea;color:#111827;font-size:15px;font-weight:700;">Gesamtbetrag</td>
+                  <td style="padding-top:14px;border-top:1px solid #dbe2ea;color:#111827;font-size:20px;font-weight:800;text-align:right;">${escapeMailHtml(formatInvoiceMoney(totalAmount))}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
+          ${infoBlock("Zahlungsart", mailValue(paymentMethod))}
+          ${infoBlock("Ansprechpartner", mailValue(customer.contact))}
+          ${infoBlock("Telefon", mailValue(customer.phone), `<div style="margin-top:12px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:8px;">E-Mail für Rechnung</div><div style="font-size:15px;line-height:1.5;color:#111827;">${mailValue(customer.email)}</div>`)}
+          ${infoBlock("Notiz", mailValue(customer.note), gastroSplit.note ? `<div style="margin-top:12px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:8px;">Sonstiges Hinweis</div><div style="font-size:15px;line-height:1.5;color:#111827;">${mailValue(gastroSplit.note)}</div>` : "")}
           ${attachmentHtml}
-          <div style="margin-top:18px;padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;color:#9a3412;font-size:13px;line-height:1.5;">
-            Hinweis: Der Rechnungskunde wurde in der TeamApp erfasst. Bitte Zahlungsart und Belege bei der Rechnungserstellung beachten.
+          <div style="margin-top:14px;padding:14px 16px;background:#fcfcfd;border:1px solid #e8edf2;border-radius:12px;color:#6b7280;font-size:13px;line-height:1.55;">
+            Hinweis: Bitte Zahlungsart, Beträge und angehängte Belege bei der Rechnungserstellung berücksichtigen.
           </div>
         </div>
       </div>
@@ -1123,7 +1112,7 @@ async function sendInvoiceNotificationEmail(payload = {}) {
     const info = await transport.sendMail({
       from: String(process.env.EMAIL_FROM || smtpUser).trim(),
       to,
-      subject: String(process.env.INVOICE_EMAIL_SUBJECT || "LA-Bowling - Bitte eine Rechnung schreiben").trim(),
+      subject: "LA-Bowling Rechnung",
       text: buildInvoiceNotificationText(payload),
       html: buildInvoiceNotificationHtml(payload),
       attachments
