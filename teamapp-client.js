@@ -6054,20 +6054,89 @@ function duplicateAdminTablePlanDraft() {
   showToast("Tisch kopiert. Jetzt neue ID prüfen und bei Bedarf Größe ziehen.");
 }
 
-function beginAdminTablePlanInteraction(event, mode = "drag", tableId = "") {
+async function promptAdminTablePlanQuickEdit() {
+  const current = emptyAdminTablePlanDraft(state.adminTablePlanDraft || {});
+  if (!current.id && !current.originalId) return false;
+  const before = JSON.stringify({ label: current.label || "", area: current.area || "", seats: current.seats || "" });
+  const nextLabel = window.prompt("Tischname ändern", current.label || current.id || "");
+  if (nextLabel == null) return false;
+  const nextArea = window.prompt("Bereich ändern", current.area || "");
+  if (nextArea == null) return false;
+  const nextSeats = window.prompt("Plätze ändern", current.seats || String(terminalTableSeats(current.originalId || current.id) || 0));
+  if (nextSeats == null) return false;
+  state.adminTablePlanDraft = emptyAdminTablePlanDraft({
+    ...current,
+    label: String(nextLabel || "").trim(),
+    area: String(nextArea || "").trim(),
+    seats: String(nextSeats || "").trim()
+  });
+  renderAdminTablePlan();
+  const after = JSON.stringify({
+    label: String(nextLabel || "").trim(),
+    area: String(nextArea || "").trim(),
+    seats: String(nextSeats || "").trim()
+  });
+  if (after !== before && window.confirm("Änderung direkt speichern?\n\nOK = jetzt speichern\nAbbrechen = noch ziehen oder weiter anpassen")) {
+    try {
+      await saveAdminTablePlanEntry();
+    } catch (error) {
+      showError(error);
+    }
+    return true;
+  }
+  showToast("Jetzt Tisch ziehen oder unten rechts größer ziehen. Beim Loslassen kannst du speichern oder verwerfen.");
+  return true;
+}
+
+async function promptAdminTablePlanZoneQuickEdit() {
+  const current = emptyAdminTablePlanZoneDraft(state.adminTablePlanZoneDraft || {});
+  if (!current.id && !current.originalId) return false;
+  const before = String(current.label || "");
+  const nextLabel = window.prompt("Bereichsname ändern", current.label || current.id || "");
+  if (nextLabel == null) return false;
+  state.adminTablePlanZoneDraft = emptyAdminTablePlanZoneDraft({
+    ...current,
+    label: String(nextLabel || "").trim()
+  });
+  renderAdminTablePlan();
+  if (String(nextLabel || "").trim() !== before && window.confirm("Änderung direkt speichern?\n\nOK = jetzt speichern\nAbbrechen = noch ziehen oder weiter anpassen")) {
+    try {
+      await saveAdminTablePlanZone();
+    } catch (error) {
+      showError(error);
+    }
+    return true;
+  }
+  showToast("Jetzt Bereich ziehen oder unten rechts größer ziehen. Beim Loslassen kannst du speichern oder verwerfen.");
+  return true;
+}
+
+function beginAdminTablePlanInteraction(event, mode = "drag", entityId = "", entityType = "table") {
   if (!state.adminUnlocked) return;
-  const id = cleanTerminalRawTableId(tableId);
-  const source = terminalTableDef(id);
   const canvas = $("#adminTablePlanBoard .table-plan-canvas");
-  if (!id || !source || !canvas) return;
-  const customTable = terminalCustomTableById(id);
-  const baseTable = Boolean(baseTerminalTableById(id) && !customTable);
-  state.adminTablePlanDraft = emptyAdminTablePlanDraft({ ...source, originalId: id, baseTable });
-  const origin = adminTablePlanDraftPayload();
+  if (!canvas) return;
+  let id = "";
+  let origin = null;
+  if (entityType === "zone") {
+    id = cleanTerminalTableZoneId(entityId);
+    const source = terminalZoneDef(id);
+    if (!id || !source) return;
+    state.adminTablePlanZoneDraft = emptyAdminTablePlanZoneDraft({ ...source, originalId: id });
+    origin = adminTablePlanZonePayload();
+  } else {
+    id = cleanTerminalRawTableId(entityId);
+    const source = terminalTableDef(id);
+    if (!id || !source) return;
+    const customTable = terminalCustomTableById(id);
+    const baseTable = Boolean(baseTerminalTableById(id) && !customTable);
+    state.adminTablePlanDraft = emptyAdminTablePlanDraft({ ...source, originalId: id, baseTable });
+    origin = adminTablePlanDraftPayload();
+  }
   const canvasRect = canvas.getBoundingClientRect();
   state.adminTablePlanInteraction = {
+    entityType,
     mode,
-    tableId: id,
+    entityId: id,
     pointerId: event.pointerId,
     startClientX: event.clientX,
     startClientY: event.clientY,
@@ -6088,26 +6157,46 @@ function updateAdminTablePlanInteraction(event) {
     interaction.moved = true;
   }
   const next = { ...interaction.origin };
+  const minSize = interaction.entityType === "zone" ? 4 : 2;
+  const maxWidth = 98 - Number(interaction.origin.x || 0);
+  const maxHeight = 98 - Number(interaction.origin.y || 0);
   if (interaction.mode === "resize") {
-    next.w = cleanTerminalPercent(Number(interaction.origin.w || 0) + deltaX, 2, 40);
-    next.h = cleanTerminalPercent(Number(interaction.origin.h || 0) + deltaY, 2, 30);
-    next.w = Math.min(next.w, Math.max(2, 98 - Number(interaction.origin.x || 0)));
-    next.h = Math.min(next.h, Math.max(2, 98 - Number(interaction.origin.y || 0)));
+    next.w = cleanTerminalPercent(Number(interaction.origin.w || 0) + deltaX, minSize, Math.max(minSize, maxWidth));
+    next.h = cleanTerminalPercent(Number(interaction.origin.h || 0) + deltaY, minSize, Math.max(minSize, maxHeight));
+    next.w = Math.min(next.w, Math.max(minSize, maxWidth));
+    next.h = Math.min(next.h, Math.max(minSize, maxHeight));
   } else {
-    next.x = cleanTerminalPercent(Number(interaction.origin.x || 0) + deltaX, 0, 96);
-    next.y = cleanTerminalPercent(Number(interaction.origin.y || 0) + deltaY, 0, 96);
+    next.x = cleanTerminalPercent(Number(interaction.origin.x || 0) + deltaX, 0, 98);
+    next.y = cleanTerminalPercent(Number(interaction.origin.y || 0) + deltaY, 0, 98);
     next.x = Math.min(next.x, Math.max(0, 98 - Number(interaction.origin.w || 0)));
     next.y = Math.min(next.y, Math.max(0, 98 - Number(interaction.origin.h || 0)));
   }
-  state.adminTablePlanDraft = emptyAdminTablePlanDraft(next);
+  if (interaction.entityType === "zone") state.adminTablePlanZoneDraft = emptyAdminTablePlanZoneDraft(next);
+  else state.adminTablePlanDraft = emptyAdminTablePlanDraft(next);
   renderAdminTablePlan();
 }
 
-function endAdminTablePlanInteraction(event) {
+async function endAdminTablePlanInteraction(event) {
   const interaction = state.adminTablePlanInteraction;
   if (!interaction || (event && interaction.pointerId !== event.pointerId)) return;
   if (interaction.moved) state.adminTablePlanSuppressClickUntil = Date.now() + 250;
   state.adminTablePlanInteraction = null;
+  if (!interaction.moved) return;
+  const entityLabel = interaction.entityType === "zone" ? "Bereich" : "Tisch";
+  const shouldSave = window.confirm(`${entityLabel} geändert.\n\nOK = speichern\nAbbrechen = verwerfen`);
+  if (!shouldSave) {
+    if (interaction.entityType === "zone") loadAdminTablePlanZoneDraft(interaction.entityId);
+    else loadAdminTablePlanDraft(interaction.entityId);
+    renderAdminTablePlan();
+    showToast(`${entityLabel} verworfen.`);
+    return;
+  }
+  try {
+    if (interaction.entityType === "zone") await saveAdminTablePlanZone();
+    else await saveAdminTablePlanEntry();
+  } catch (error) {
+    showError(error);
+  }
 }
 
 function adminTablePlanSummaryText(draft = state.adminTablePlanDraft || {}) {
@@ -6121,7 +6210,7 @@ function adminTablePlanSummaryText(draft = state.adminTablePlanDraft || {}) {
 function adminTablePlanDraftSummaryHtml(draft = state.adminTablePlanDraft || {}) {
   const current = emptyAdminTablePlanDraft(draft);
   if (!current.id && !current.originalId) {
-    return `<p class="hint">Klicke links auf einen Tisch, um Name, Bereich, Größe und Plätze zu bearbeiten. Für neue Tische einfach rechts die Felder ausfüllen.</p>`;
+    return `<p class="hint">Tisch im Plan anklicken, Name und Plätze kurz bestätigen und dann direkt im Plan ziehen oder größer ziehen.</p>`;
   }
   const effective = adminTablePlanPreviewTable(current) || terminalTableDef(current.id || current.originalId) || current;
   return `
@@ -6150,7 +6239,7 @@ function adminTablePlanZoneSummaryText(draft = state.adminTablePlanZoneDraft || 
 function adminTablePlanZoneSummaryHtml(draft = state.adminTablePlanZoneDraft || {}) {
   const current = emptyAdminTablePlanZoneDraft(draft);
   if (!current.id && !current.originalId) {
-    return `<p class="hint">Hier bearbeitest du die großen Bereiche wie Gastraum, DJ, NZ Groß oder Hütte. Sichtbarkeit steuert, ob der Bereich im Tages-Tischplan erscheint.</p>`;
+    return `<p class="hint">Bereich im Plan anklicken, Namen bestätigen und danach direkt im Plan verschieben oder in der Größe anpassen.</p>`;
   }
   const effective = terminalZoneDef(current.id || current.originalId) || current;
   const preview = adminTablePlanZonePayload(current);
@@ -6204,6 +6293,7 @@ function adminTablePlanBoardHtml(draft = state.adminTablePlanDraft || {}) {
       ${visibleZones.map((zone) => `
         <button class="table-plan-zone admin-table-plan-zone ${escapeHtml(zone.className || "")} ${selectedZoneId === zone.id ? "is-selected" : ""} ${zone.visible === false ? "is-hidden" : ""}" type="button" data-admin-zone-select="${escapeHtml(zone.id)}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;">
           <span>${escapeHtml(zone.label)}</span>
+          <i class="admin-table-plan-resize-handle" data-admin-zone-resize="${escapeHtml(zone.id)}" aria-hidden="true"></i>
         </button>
       `).join("")}
       ${visibleTables.map((table) => {
@@ -7586,11 +7676,13 @@ async function saveAdminTablePlanEntry(button) {
     showToast("Bitte eine gültige Personenzahl eintragen.");
     return;
   }
-  const oldText = button.textContent;
+  const oldText = button?.textContent || "";
   const status = $("#adminTablePlanStatus");
   if (status) status.textContent = "";
-  button.disabled = true;
-  button.textContent = "Speichert...";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Speichert...";
+  }
   try {
     const result = await api("/api/settings", {
       method: "POST",
@@ -7609,8 +7701,10 @@ async function saveAdminTablePlanEntry(button) {
   } catch (error) {
     showError(error);
   } finally {
-    button.textContent = oldText;
-    button.disabled = false;
+    if (button) {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
   }
 }
 
@@ -7668,11 +7762,13 @@ async function saveAdminTablePlanZone(button) {
     showToast("Bitte zuerst einen Bereich auswählen und benennen.");
     return;
   }
-  const oldText = button.textContent;
+  const oldText = button?.textContent || "";
   const status = $("#adminTablePlanZoneStatus");
   if (status) status.textContent = "";
-  button.disabled = true;
-  button.textContent = "Speichert...";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Speichert...";
+  }
   try {
     const result = await api("/api/settings", {
       method: "POST",
@@ -7691,8 +7787,10 @@ async function saveAdminTablePlanZone(button) {
   } catch (error) {
     showError(error);
   } finally {
-    button.textContent = oldText;
-    button.disabled = false;
+    if (button) {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
   }
 }
 
@@ -12436,16 +12534,23 @@ function bindEvents() {
       state.adminTablePlanSuppressClickUntil = 0;
       return;
     }
+    if (Date.now() < Number(state.adminTablePlanSuppressClickUntil || 0) && event.target.closest("[data-admin-zone-select]")) {
+      state.adminTablePlanSuppressClickUntil = 0;
+      return;
+    }
+    if (event.target.closest("[data-admin-table-resize]") || event.target.closest("[data-admin-zone-resize]")) return;
     const tableButton = event.target.closest("[data-admin-table-select]");
     if (tableButton) {
       loadAdminTablePlanDraft(tableButton.dataset.adminTableSelect);
       renderAdminTablePlan();
+      await promptAdminTablePlanQuickEdit();
       return;
     }
     const zoneButton = event.target.closest("[data-admin-zone-select]");
     if (zoneButton) {
       loadAdminTablePlanZoneDraft(zoneButton.dataset.adminZoneSelect);
       renderAdminTablePlan();
+      await promptAdminTablePlanZoneQuickEdit();
       return;
     }
     const editCustomButton = event.target.closest("[data-admin-table-edit]");
@@ -12485,6 +12590,16 @@ function bindEvents() {
   });
 
   $("#adminTablePlanBoard")?.addEventListener("pointerdown", (event) => {
+    const zoneResizeHandle = event.target.closest("[data-admin-zone-resize]");
+    if (zoneResizeHandle) {
+      beginAdminTablePlanInteraction(event, "resize", zoneResizeHandle.dataset.adminZoneResize, "zone");
+      return;
+    }
+    const zoneButton = event.target.closest("[data-admin-zone-select]");
+    if (zoneButton) {
+      beginAdminTablePlanInteraction(event, "drag", zoneButton.dataset.adminZoneSelect, "zone");
+      return;
+    }
     const resizeHandle = event.target.closest("[data-admin-table-resize]");
     if (resizeHandle) {
       beginAdminTablePlanInteraction(event, "resize", resizeHandle.dataset.adminTableResize);
@@ -12499,8 +12614,8 @@ function bindEvents() {
     updateAdminTablePlanInteraction(event);
   });
 
-  window.addEventListener("pointerup", (event) => {
-    endAdminTablePlanInteraction(event);
+  window.addEventListener("pointerup", async (event) => {
+    await endAdminTablePlanInteraction(event);
   });
 
   window.addEventListener("pointercancel", (event) => {
