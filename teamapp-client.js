@@ -6530,20 +6530,20 @@ const TERMINAL_TABLE_MARKERS = {
     id: "birthday",
     label: "Kindergeburtstag",
     hint: "Pink",
-    tableSurface: "#fff2fb",
-    tableBorder: "#f3a8db",
-    bookingFill: "#ffe3f5",
-    bookingBorder: "#f4a8d8",
+    tableSurface: "#ffd8ee",
+    tableBorder: "#ec4899",
+    bookingFill: "rgba(255,255,255,0.92)",
+    bookingBorder: "#ec4899",
     bookingInk: "#a21caf"
   },
   setup: {
     id: "setup",
     label: "Eindecken",
     hint: "Blau",
-    tableSurface: "#eef6ff",
-    tableBorder: "#93c5fd",
-    bookingFill: "#dbeafe",
-    bookingBorder: "#93c5fd",
+    tableSurface: "#d9ebff",
+    tableBorder: "#2563eb",
+    bookingFill: "rgba(255,255,255,0.92)",
+    bookingBorder: "#2563eb",
     bookingInk: "#1d4ed8"
   }
 };

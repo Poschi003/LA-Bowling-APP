@@ -3446,6 +3446,13 @@ button:disabled {
 .table-plan-table.is-occupied {
   border-color: var(--table-reservation-border, #f0d29b);
   background: var(--table-reservation-surface, #fff8ef);
+  border-width: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--table-reservation-border, #f0d29b) 18%, transparent), var(--shadow-tight);
+}
+
+.table-plan-table.has-booking {
+  align-content: space-between;
+  gap: 8px;
 }
 
 .table-plan-table.is-connected {
@@ -3529,6 +3536,10 @@ button:disabled {
   font-size: 18px;
 }
 
+.table-plan-table.has-booking .table-plan-table-head strong {
+  font-size: 18px;
+}
+
 .table-plan-table-head span,
 .table-plan-table > small {
   color: var(--muted);
@@ -3594,20 +3605,25 @@ button:disabled {
   gap: 4px;
 }
 
+.table-plan-table.has-booking .table-plan-table-bookings,
+.table-plan-table.has-booking .table-plan-table-bookings.is-compact {
+  align-content: center;
+}
+
 .table-plan-table.is-group .table-plan-table-bookings {
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
 }
 
 .table-plan-table-booking {
   display: grid;
-  gap: 3px;
+  gap: 5px;
   min-width: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--table-reservation-fill, var(--brand-soft));
-  padding: 7px 8px;
+  padding: 8px 9px;
   border: 1px solid var(--table-reservation-fill-border, rgba(225, 23, 47, 0.12));
   font-size: 12px;
-  line-height: 1.12;
+  line-height: 1.08;
 }
 
 .table-plan-table-booking.is-primary {
@@ -3619,14 +3635,19 @@ button:disabled {
 .table-plan-table-booking-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
 }
 
 .table-plan-table-booking strong {
   color: var(--table-reservation-ink, var(--brand-strong));
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
 }
 
 .table-plan-table-booking-name {
@@ -3634,11 +3655,13 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: normal;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   color: var(--table-reservation-ink, var(--ink));
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 800;
+  line-height: 1.1;
+  word-break: break-word;
 }
 
 .table-plan-table-booking.is-more {
@@ -3654,15 +3677,15 @@ button:disabled {
 }
 
 .table-plan-table-bookings.is-compact .table-plan-table-booking strong {
-  font-size: 16px;
-}
-
-.table-plan-table.is-group .table-plan-table-booking strong {
   font-size: 17px;
 }
 
+.table-plan-table.is-group .table-plan-table-booking strong {
+  font-size: 18px;
+}
+
 .table-plan-table-bookings.is-compact .table-plan-table-booking-name {
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .table-plan-marker-legend {
