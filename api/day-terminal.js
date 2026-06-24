@@ -1071,10 +1071,16 @@ function cleanTableReservation(value = {}) {
     time: cleanTime(value.time),
     name: cleanText(value.name, 160),
     people: people > 0 ? people : 0,
+    marker: cleanTableMarker(value.marker),
     note: cleanText(value.note, 500),
     createdAt: cleanText(value.createdAt, 80),
     updatedAt: cleanText(value.updatedAt, 80)
   };
+}
+
+function cleanTableMarker(value) {
+  const marker = String(value || "").trim().toLowerCase();
+  return ["normal", "birthday", "setup"].includes(marker) ? marker : "normal";
 }
 
 function cleanTableId(value) {

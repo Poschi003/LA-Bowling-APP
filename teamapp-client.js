@@ -6054,61 +6054,86 @@ function duplicateAdminTablePlanDraft() {
   showToast("Tisch kopiert. Jetzt neue ID prüfen und bei Bedarf Größe ziehen.");
 }
 
-async function promptAdminTablePlanQuickEdit() {
+async function quickEditAdminTablePlanField(tableId, field) {
+  loadAdminTablePlanDraft(tableId);
   const current = emptyAdminTablePlanDraft(state.adminTablePlanDraft || {});
   if (!current.id && !current.originalId) return false;
-  const before = JSON.stringify({ label: current.label || "", area: current.area || "", seats: current.seats || "" });
-  const nextLabel = window.prompt("Tischname ändern", current.label || current.id || "");
-  if (nextLabel == null) return false;
-  const nextArea = window.prompt("Bereich ändern", current.area || "");
-  if (nextArea == null) return false;
-  const nextSeats = window.prompt("Plätze ändern", current.seats || String(terminalTableSeats(current.originalId || current.id) || 0));
-  if (nextSeats == null) return false;
-  state.adminTablePlanDraft = emptyAdminTablePlanDraft({
-    ...current,
-    label: String(nextLabel || "").trim(),
-    area: String(nextArea || "").trim(),
-    seats: String(nextSeats || "").trim()
-  });
-  renderAdminTablePlan();
-  const after = JSON.stringify({
-    label: String(nextLabel || "").trim(),
-    area: String(nextArea || "").trim(),
-    seats: String(nextSeats || "").trim()
-  });
-  if (after !== before && window.confirm("Änderung direkt speichern?\n\nOK = jetzt speichern\nAbbrechen = noch ziehen oder weiter anpassen")) {
-    try {
-      await saveAdminTablePlanEntry();
-    } catch (error) {
-      showError(error);
-    }
-    return true;
+  const targetId = current.originalId || current.id || "";
+  let promptLabel = "";
+  let currentValue = "";
+  if (field === "label") {
+    promptLabel = "Tischnummer oder Anzeige ändern";
+    currentValue = current.label || current.id || "";
+  } else if (field === "area") {
+    promptLabel = "Bereich ändern";
+    currentValue = current.area || "";
+  } else if (field === "seats") {
+    promptLabel = "Standard-Personenzahl ändern";
+    currentValue = current.seats || String(terminalTableSeats(targetId) || 0);
+  } else {
+    return false;
   }
-  showToast("Jetzt Tisch ziehen oder unten rechts größer ziehen. Beim Loslassen kannst du speichern oder verwerfen.");
-  return true;
+  const input = window.prompt(promptLabel, currentValue);
+  if (input == null) return false;
+  const nextValue = String(input || "").trim();
+  if (field === "seats" && !cleanTerminalTablePeople(nextValue)) {
+    showToast("Bitte eine gültige Personenzahl eingeben.");
+    return false;
+  }
+  if (field !== "seats" && !nextValue) {
+    showToast(field === "area" ? "Bitte einen Bereich eingeben." : "Bitte eine Tischnummer eingeben.");
+    return false;
+  }
+  const nextDraft = {
+    ...current,
+    [field]: nextValue
+  };
+  const before = field === "seats" ? String(cleanTerminalTablePeople(currentValue) || 0) : String(currentValue || "");
+  const after = field === "seats" ? String(cleanTerminalTablePeople(nextValue) || 0) : nextValue;
+  if (before === after) {
+    renderAdminTablePlan();
+    return false;
+  }
+  state.adminTablePlanDraft = emptyAdminTablePlanDraft(nextDraft);
+  renderAdminTablePlan();
+  try {
+    await saveAdminTablePlanEntry();
+    return true;
+  } catch (error) {
+    loadAdminTablePlanDraft(targetId);
+    renderAdminTablePlan();
+    showError(error);
+    return false;
+  }
 }
 
-async function promptAdminTablePlanZoneQuickEdit() {
+async function quickEditAdminTablePlanZoneField(zoneId, field = "label") {
+  loadAdminTablePlanZoneDraft(zoneId);
   const current = emptyAdminTablePlanZoneDraft(state.adminTablePlanZoneDraft || {});
   if (!current.id && !current.originalId) return false;
-  const before = String(current.label || "");
-  const nextLabel = window.prompt("Bereichsname ändern", current.label || current.id || "");
-  if (nextLabel == null) return false;
+  if (field !== "label") return false;
+  const targetId = current.originalId || current.id || "";
+  const input = window.prompt("Bereichsname ändern", current.label || current.id || "");
+  if (input == null) return false;
+  const nextValue = String(input || "").trim();
+  if (!nextValue || nextValue === String(current.label || "").trim()) {
+    renderAdminTablePlan();
+    return false;
+  }
   state.adminTablePlanZoneDraft = emptyAdminTablePlanZoneDraft({
     ...current,
-    label: String(nextLabel || "").trim()
+    label: nextValue
   });
   renderAdminTablePlan();
-  if (String(nextLabel || "").trim() !== before && window.confirm("Änderung direkt speichern?\n\nOK = jetzt speichern\nAbbrechen = noch ziehen oder weiter anpassen")) {
-    try {
-      await saveAdminTablePlanZone();
-    } catch (error) {
-      showError(error);
-    }
+  try {
+    await saveAdminTablePlanZone();
     return true;
+  } catch (error) {
+    loadAdminTablePlanZoneDraft(targetId);
+    renderAdminTablePlan();
+    showError(error);
+    return false;
   }
-  showToast("Jetzt Bereich ziehen oder unten rechts größer ziehen. Beim Loslassen kannst du speichern oder verwerfen.");
-  return true;
 }
 
 function beginAdminTablePlanInteraction(event, mode = "drag", entityId = "", entityType = "table") {
@@ -6182,19 +6207,13 @@ async function endAdminTablePlanInteraction(event) {
   if (interaction.moved) state.adminTablePlanSuppressClickUntil = Date.now() + 250;
   state.adminTablePlanInteraction = null;
   if (!interaction.moved) return;
-  const entityLabel = interaction.entityType === "zone" ? "Bereich" : "Tisch";
-  const shouldSave = window.confirm(`${entityLabel} geändert.\n\nOK = speichern\nAbbrechen = verwerfen`);
-  if (!shouldSave) {
-    if (interaction.entityType === "zone") loadAdminTablePlanZoneDraft(interaction.entityId);
-    else loadAdminTablePlanDraft(interaction.entityId);
-    renderAdminTablePlan();
-    showToast(`${entityLabel} verworfen.`);
-    return;
-  }
   try {
     if (interaction.entityType === "zone") await saveAdminTablePlanZone();
     else await saveAdminTablePlanEntry();
   } catch (error) {
+    if (interaction.entityType === "zone") loadAdminTablePlanZoneDraft(interaction.entityId);
+    else loadAdminTablePlanDraft(interaction.entityId);
+    renderAdminTablePlan();
     showError(error);
   }
 }
@@ -6210,7 +6229,7 @@ function adminTablePlanSummaryText(draft = state.adminTablePlanDraft || {}) {
 function adminTablePlanDraftSummaryHtml(draft = state.adminTablePlanDraft || {}) {
   const current = emptyAdminTablePlanDraft(draft);
   if (!current.id && !current.originalId) {
-    return `<p class="hint">Tisch im Plan anklicken, Name und Plätze kurz bestätigen und dann direkt im Plan ziehen oder größer ziehen.</p>`;
+    return `<p class="hint">Tisch im Plan anklicken. Name, Bereich und Plätze direkt auf der Kachel ändern. Verschieben und Größe werden automatisch gespeichert.</p>`;
   }
   const effective = adminTablePlanPreviewTable(current) || terminalTableDef(current.id || current.originalId) || current;
   return `
@@ -6292,7 +6311,7 @@ function adminTablePlanBoardHtml(draft = state.adminTablePlanDraft || {}) {
     <div class="table-plan-canvas admin-table-plan-canvas">
       ${visibleZones.map((zone) => `
         <button class="table-plan-zone admin-table-plan-zone ${escapeHtml(zone.className || "")} ${selectedZoneId === zone.id ? "is-selected" : ""} ${zone.visible === false ? "is-hidden" : ""}" type="button" data-admin-zone-select="${escapeHtml(zone.id)}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;">
-          <span>${escapeHtml(zone.label)}</span>
+          <span class="admin-table-plan-inline-edit" data-admin-inline-edit="1" data-admin-zone-quick="label" data-admin-zone-id="${escapeHtml(zone.id)}" title="Bereichsname ändern">${escapeHtml(zone.label)}</span>
           <i class="admin-table-plan-resize-handle" data-admin-zone-resize="${escapeHtml(zone.id)}" aria-hidden="true"></i>
         </button>
       `).join("")}
@@ -6307,10 +6326,10 @@ function adminTablePlanBoardHtml(draft = state.adminTablePlanDraft || {}) {
         return `
           <button class="${classes}" type="button" data-admin-table-select="${escapeHtml(table.id)}" style="left:${table.x}%;top:${table.y}%;width:${table.w}%;height:${table.h}%;">
             <div class="table-plan-table-head">
-              <strong>${escapeHtml(table.label)}</strong>
-              <span>${escapeHtml(String(table.seats || terminalTableSeats(table.id) || 0))} P</span>
+              <strong class="admin-table-plan-inline-edit" data-admin-inline-edit="1" data-admin-table-quick="label" data-admin-table-id="${escapeHtml(table.id)}" title="Tischnummer ändern">${escapeHtml(table.label)}</strong>
+              <span class="admin-table-plan-inline-edit" data-admin-inline-edit="1" data-admin-table-quick="seats" data-admin-table-id="${escapeHtml(table.id)}" title="Plätze ändern">${escapeHtml(String(table.seats || terminalTableSeats(table.id) || 0))} P</span>
             </div>
-            <small>${escapeHtml(table.area || "")}</small>
+            <small class="admin-table-plan-inline-edit" data-admin-inline-edit="1" data-admin-table-quick="area" data-admin-table-id="${escapeHtml(table.id)}" title="Bereich ändern">${escapeHtml(table.area || "")}</small>
             <span class="admin-table-plan-resize-handle" data-admin-table-resize="${escapeHtml(table.id)}" aria-hidden="true"></span>
           </button>
         `;
@@ -6462,6 +6481,7 @@ function emptyTerminalTableDraft(value = {}) {
     time: reservation.time || "",
     name: reservation.name || "",
     people: reservation.people ? String(reservation.people) : "",
+    marker: reservation.marker || "normal",
     note: reservation.note || "",
     createdAt: reservation.createdAt || "",
     updatedAt: reservation.updatedAt || ""
@@ -6482,6 +6502,7 @@ function normalizeTerminalTableReservation(value = {}) {
     time: String(value.time || "").trim().slice(0, 5),
     name: String(value.name || "").trim().slice(0, 160),
     people: cleanTerminalTablePeople(value.people),
+    marker: cleanTerminalTableMarker(value.marker),
     note: String(value.note || "").trim().slice(0, 500),
     createdAt: String(value.createdAt || "").trim(),
     updatedAt: String(value.updatedAt || "").trim()
@@ -6492,6 +6513,80 @@ function normalizeTerminalTableReservations(value = []) {
   return (Array.isArray(value) ? value : [])
     .map((item) => normalizeTerminalTableReservation(item))
     .filter((item) => item.tableIds.length && (item.time || item.name || item.people || item.note));
+}
+
+const TERMINAL_TABLE_MARKERS = {
+  normal: {
+    id: "normal",
+    label: "Normale Reservierung",
+    hint: "Keine Färbung",
+    tableSurface: "",
+    tableBorder: "",
+    bookingFill: "",
+    bookingBorder: "",
+    bookingInk: ""
+  },
+  birthday: {
+    id: "birthday",
+    label: "Kindergeburtstag",
+    hint: "Pink",
+    tableSurface: "#fff2fb",
+    tableBorder: "#f3a8db",
+    bookingFill: "#ffe3f5",
+    bookingBorder: "#f4a8d8",
+    bookingInk: "#a21caf"
+  },
+  setup: {
+    id: "setup",
+    label: "Eindecken",
+    hint: "Blau",
+    tableSurface: "#eef6ff",
+    tableBorder: "#93c5fd",
+    bookingFill: "#dbeafe",
+    bookingBorder: "#93c5fd",
+    bookingInk: "#1d4ed8"
+  }
+};
+
+function cleanTerminalTableMarker(value) {
+  const marker = String(value || "").trim().toLowerCase();
+  return TERMINAL_TABLE_MARKERS[marker] ? marker : "normal";
+}
+
+function terminalTableMarkerConfig(value) {
+  return TERMINAL_TABLE_MARKERS[cleanTerminalTableMarker(value)] || TERMINAL_TABLE_MARKERS.normal;
+}
+
+function terminalTableMarkerOptionsHtml(selected = "normal") {
+  const marker = cleanTerminalTableMarker(selected);
+  return Object.values(TERMINAL_TABLE_MARKERS).map((item) => (
+    `<option value="${escapeHtml(item.id)}"${item.id === marker ? " selected" : ""}>${escapeHtml(item.hint)} · ${escapeHtml(item.label)}</option>`
+  )).join("");
+}
+
+function terminalTableMarkerLegendHtml() {
+  return `
+    <div class="table-plan-marker-legend">
+      ${Object.values(TERMINAL_TABLE_MARKERS).map((item) => `
+        <span class="table-plan-marker-pill is-${escapeHtml(item.id)}">
+          <i aria-hidden="true"></i>
+          ${escapeHtml(item.hint)}${item.id === "normal" ? " · normale Reservierung" : ` · ${escapeHtml(item.label)}`}
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function terminalTableReservationThemeStyle(reservation = null) {
+  const marker = terminalTableMarkerConfig(reservation?.marker);
+  if (marker.id === "normal") return "";
+  return [
+    `--table-reservation-surface:${marker.tableSurface}`,
+    `--table-reservation-border:${marker.tableBorder}`,
+    `--table-reservation-fill:${marker.bookingFill}`,
+    `--table-reservation-fill-border:${marker.bookingBorder}`,
+    `--table-reservation-ink:${marker.bookingInk}`
+  ].join(";");
 }
 
 function normalizeTerminalTableGroup(value = {}) {
@@ -6837,6 +6932,7 @@ function currentTerminalTablePayload() {
   const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
   return {
     ...draft,
+    marker: cleanTerminalTableMarker(draft.marker),
     people: cleanTerminalTablePeople(draft.people)
   };
 }
@@ -7027,10 +7123,9 @@ function terminalTableBookingSummaryHtml(booked = [], compact = false) {
   const primary = booked[0];
   return `
     <div class="table-plan-table-bookings ${compact ? "is-compact" : ""}">
-      <span class="table-plan-table-booking is-primary">
+      <span class="table-plan-table-booking is-primary is-${escapeHtml(cleanTerminalTableMarker(primary.marker))}">
         <span class="table-plan-table-booking-top">
           <strong>${escapeHtml(primary.time || "--:--")}</strong>
-          <em>${escapeHtml(String(primary.people || 0))} P</em>
         </span>
         <span class="table-plan-table-booking-name">${escapeHtml(primary.name || "Reservierung")}</span>
       </span>
@@ -7291,7 +7386,10 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   if ($("#tablePlanTime")) $("#tablePlanTime").value = draft.time || "";
   if ($("#tablePlanName")) $("#tablePlanName").value = draft.name || "";
   if ($("#tablePlanPeople")) $("#tablePlanPeople").value = draft.people || "";
+  if ($("#tablePlanMarker")) $("#tablePlanMarker").innerHTML = terminalTableMarkerOptionsHtml(draft.marker || "normal");
   if ($("#tablePlanNote")) $("#tablePlanNote").value = draft.note || "";
+  const markerLegend = $("#tablePlanMarkerLegend");
+  if (markerLegend) markerLegend.innerHTML = terminalTableMarkerLegendHtml();
   if ($("#newTablePlanReservationForSelection")) $("#newTablePlanReservationForSelection").disabled = reportClosed || !draft.tableIds.length;
   if ($("#connectSelectedTables")) {
     $("#connectSelectedTables").disabled = reportClosed || draft.tableIds.length < 2 || !terminalTableSelectionCanConnect(draft.tableIds);
@@ -7332,9 +7430,7 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
   return `
     <div class="table-plan-canvas">
       ${visibleZones.map((zone) => `
-        <div class="table-plan-zone ${escapeHtml(zone.className || "")}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;">
-          <span>${escapeHtml(zone.label)}</span>
-        </div>
+        <div class="table-plan-zone ${escapeHtml(zone.className || "")}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;"></div>
       `).join("")}
       ${terminalTableDraftOverlayHtml(draft, groups)}
       ${terminalTableStaffOverlayHtml(staffAssignments, employeeMeta)}
@@ -7342,12 +7438,7 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
         const rect = terminalTableGroupRect(group);
         if (!rect) return "";
         const booked = reservations.filter((reservation) => reservation.tableIds.some((tableId) => group.tableIds.includes(tableId)));
-        const assignedStaff = [...new Map(
-          group.tableIds
-            .flatMap((tableId) => staffByTable.get(tableId) || [])
-            .map((assignment) => [assignment.id, assignment])
-        ).values()];
-        const primaryStaffColor = assignedStaff[0]?.color || "";
+        const reservationTheme = terminalTableReservationThemeStyle(booked[0]);
         const isSelected = group.tableIds.every((tableId) => selected.has(tableId));
         const classes = [
           "table-plan-table",
@@ -7355,8 +7446,7 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
           `is-${terminalTableGroupShape(group)}`,
           booked.length ? "is-occupied" : "",
           booked.length ? "has-booking" : "",
-          isSelected ? "is-selected" : "",
-          assignedStaff.length ? "has-staff-area" : ""
+          isSelected ? "is-selected" : ""
         ].filter(Boolean).join(" ");
         const style = [
           `left:${rect.left}%`,
@@ -7364,22 +7454,12 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
           `width:${rect.width}%`,
           `height:${rect.height}%`
         ];
-        if (primaryStaffColor) style.push(`--table-staff-color:${primaryStaffColor}`);
+        if (reservationTheme) style.push(reservationTheme);
         return `
           <button class="${classes}" type="button" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
             <div class="table-plan-table-head">
               <strong>${escapeHtml(group.label)}</strong>
-              <span>${escapeHtml(String(terminalTableSeatCount(group.tableIds) || 0))} P</span>
             </div>
-            <small>${escapeHtml(terminalTableLabels(group.tableIds).join(" + "))}</small>
-            ${assignedStaff.length ? `
-              <div class="table-plan-table-staff">
-                ${assignedStaff.slice(0, 2).map((assignment) => `
-                  <span class="table-plan-table-staff-chip" style="--staff-color:${escapeHtml(assignment.color)};">${escapeHtml(assignment.employee)}</span>
-                `).join("")}
-                ${assignedStaff.length > 2 ? `<span class="table-plan-table-staff-chip is-more">+${assignedStaff.length - 2}</span>` : ""}
-              </div>
-            ` : ""}
             ${terminalTableBookingSummaryHtml(booked, false)}
           </button>
         `;
@@ -7388,16 +7468,14 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
         if (groupedIds.has(table.id)) return "";
         const currentTable = terminalTableDef(table.id);
         const booked = occupancy.get(table.id) || [];
-        const assignedStaff = staffByTable.get(table.id) || [];
-        const primaryStaffColor = assignedStaff[0]?.color || "";
+        const reservationTheme = terminalTableReservationThemeStyle(booked[0]);
         const classes = [
           "table-plan-table",
           `is-${table.shape || "table"}`,
           booked.length ? "is-occupied" : "",
           booked.length ? "has-booking" : "",
           selected.has(table.id) ? "is-selected" : "",
-          booked.some((reservation) => reservation.tableIds.length > 1) ? "is-connected" : "",
-          assignedStaff.length ? "has-staff-area" : ""
+          booked.some((reservation) => reservation.tableIds.length > 1) ? "is-connected" : ""
         ].filter(Boolean).join(" ");
         const style = [
           `left:${table.x}%`,
@@ -7405,22 +7483,12 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
           `width:${table.w}%`,
           `height:${table.h}%`
         ];
-        if (primaryStaffColor) style.push(`--table-staff-color:${primaryStaffColor}`);
+        if (reservationTheme) style.push(reservationTheme);
         return `
           <button class="${classes}" type="button" data-table-plan-select="${escapeHtml(table.id)}" data-table-plan-table="${escapeHtml(table.id)}" style="${style.join(";")}">
             <div class="table-plan-table-head">
               <strong>${escapeHtml(currentTable?.label || table.label)}</strong>
-              <span>${escapeHtml(String(currentTable?.seats || 0))} P</span>
             </div>
-            ${booked.length ? "" : `<small>${escapeHtml(currentTable?.area || table.area)}</small>`}
-            ${assignedStaff.length ? `
-              <div class="table-plan-table-staff">
-                ${assignedStaff.slice(0, 1).map((assignment) => `
-                  <span class="table-plan-table-staff-chip" style="--staff-color:${escapeHtml(assignment.color)};">${escapeHtml(assignment.employee)}</span>
-                `).join("")}
-                ${assignedStaff.length > 1 ? `<span class="table-plan-table-staff-chip is-more">+${assignedStaff.length - 1}</span>` : ""}
-              </div>
-            ` : ""}
             ${terminalTableBookingSummaryHtml(booked, true)}
           </button>
         `;
@@ -12530,6 +12598,16 @@ function bindEvents() {
   });
 
   $("#adminContent")?.addEventListener("click", async (event) => {
+    const quickZoneField = event.target.closest("[data-admin-zone-quick]");
+    if (quickZoneField) {
+      await quickEditAdminTablePlanZoneField(quickZoneField.dataset.adminZoneId, quickZoneField.dataset.adminZoneQuick);
+      return;
+    }
+    const quickTableField = event.target.closest("[data-admin-table-quick]");
+    if (quickTableField) {
+      await quickEditAdminTablePlanField(quickTableField.dataset.adminTableId, quickTableField.dataset.adminTableQuick);
+      return;
+    }
     if (Date.now() < Number(state.adminTablePlanSuppressClickUntil || 0) && event.target.closest("[data-admin-table-select]")) {
       state.adminTablePlanSuppressClickUntil = 0;
       return;
@@ -12543,14 +12621,12 @@ function bindEvents() {
     if (tableButton) {
       loadAdminTablePlanDraft(tableButton.dataset.adminTableSelect);
       renderAdminTablePlan();
-      await promptAdminTablePlanQuickEdit();
       return;
     }
     const zoneButton = event.target.closest("[data-admin-zone-select]");
     if (zoneButton) {
       loadAdminTablePlanZoneDraft(zoneButton.dataset.adminZoneSelect);
       renderAdminTablePlan();
-      await promptAdminTablePlanZoneQuickEdit();
       return;
     }
     const editCustomButton = event.target.closest("[data-admin-table-edit]");
@@ -12590,6 +12666,7 @@ function bindEvents() {
   });
 
   $("#adminTablePlanBoard")?.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("[data-admin-inline-edit]")) return;
     const zoneResizeHandle = event.target.closest("[data-admin-zone-resize]");
     if (zoneResizeHandle) {
       beginAdminTablePlanInteraction(event, "resize", zoneResizeHandle.dataset.adminZoneResize, "zone");

@@ -240,15 +240,17 @@
                     <div id="tablePlanDraftSummary" class="table-plan-draft-summary"></div>
                     <div id="tablePlanConflictHint" class="hint"></div>
                     <div id="tablePlanSelectionBookings" class="table-plan-selection-bookings"></div>
-                    <div class="form-grid table-plan-form">
-                      <label>Uhrzeit<input id="tablePlanTime" data-table-plan-field="time" type="time"></label>
-                      <label>Reservierungsname<input id="tablePlanName" data-table-plan-field="name" placeholder="Name / Anlass"></label>
-                      <label>Personen<input id="tablePlanPeople" data-table-plan-field="people" type="number" min="1" step="1" placeholder="0"></label>
-                      <label class="table-plan-note-field">Notiz<textarea id="tablePlanNote" data-table-plan-field="note" rows="3" placeholder="z. B. Kinderstuhl, Geburtstag, zusammen mit T16"></textarea></label>
-                    </div>
-                    <div class="table-plan-editor-actions">
-                      <button id="newTablePlanReservationForSelection" class="secondary" type="button">Neue Reservierung</button>
-                      <button id="connectSelectedTables" class="secondary" type="button">Tische verbinden</button>
+                      <div class="form-grid table-plan-form">
+                        <label>Uhrzeit<input id="tablePlanTime" data-table-plan-field="time" type="time"></label>
+                        <label>Reservierungsname<input id="tablePlanName" data-table-plan-field="name" placeholder="Name / Anlass"></label>
+                        <label>Personen<input id="tablePlanPeople" data-table-plan-field="people" type="number" min="1" step="1" placeholder="0"></label>
+                        <label>Farbmarkierung<select id="tablePlanMarker" data-table-plan-field="marker"></select></label>
+                        <label class="table-plan-note-field">Notiz<textarea id="tablePlanNote" data-table-plan-field="note" rows="3" placeholder="z. B. Kinderstuhl, Geburtstag, zusammen mit T16"></textarea></label>
+                      </div>
+                      <div id="tablePlanMarkerLegend"></div>
+                      <div class="table-plan-editor-actions">
+                        <button id="newTablePlanReservationForSelection" class="secondary" type="button">Neue Reservierung</button>
+                        <button id="connectSelectedTables" class="secondary" type="button">Tische verbinden</button>
                       <button id="disconnectSelectedTables" class="secondary danger-lite" type="button">Verbindung lösen</button>
                     </div>
                     <div class="table-plan-editor-actions">
@@ -759,13 +761,13 @@
         <section class="admin-workspace" data-admin-workspace="floorplan">
         <details class="settings-box admin-priority" open>
           <summary>Tischplan Grundplan</summary>
-          <p class="settings-note">Hier definierst du den festen Grundriss: Tischname, Bereich, Größe, Position und Standard-Personenzahl. Der Terminal-Tischplan nutzt diese Daten später nur noch für den Tagesbetrieb.</p>
+          <p class="settings-note">Hier definierst du den festen Grundriss: Tische und Bereiche direkt im Plan anklicken, verschieben und vergrößern. Änderungen an Name, Bereich, Plätzen, Position und Größe werden direkt für den Tagesbetrieb übernommen.</p>
           <div class="table-plan-shell admin-table-plan-shell">
             <section class="table-plan-board-panel">
               <div class="table-plan-toolbar">
                 <div>
                   <h3>Grundriss</h3>
-                  <p class="hint">Tisch oder Bereich anklicken, Namen direkt bestätigen und dann im Plan ziehen. Beim Loslassen kannst du sofort speichern oder verwerfen.</p>
+                    <p class="hint">Klick auf Tischnummer, Bereich oder Plätze ändert genau dieses Feld. Ziehen und Größe anpassen speichert automatisch.</p>
                 </div>
                 <div class="table-plan-toolbar-actions">
                   <button id="resetAdminTablePlanDraft" class="secondary" type="button">Neuer Tisch</button>
