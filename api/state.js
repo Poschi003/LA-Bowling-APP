@@ -50,6 +50,7 @@ module.exports = async function handler(req, res) {
         schedules: appData.schedules || {},
         assignmentTimes: assignmentTimesForDates(appData, assignmentDates),
         assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates),
+        assignmentAvailability: assignmentAvailabilityForDates(appData, assignmentDates),
         timesheets: appData.timesheets?.[month] || {},
         dayReports: appData.dayReports || {},
         messages: appData.messages || [],
@@ -79,6 +80,7 @@ module.exports = async function handler(req, res) {
         schedules: sanitizeSchedules(appData.schedules),
         assignmentTimes: assignmentTimesForDates(appData, assignmentDates),
         assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates),
+        assignmentAvailability: assignmentAvailabilityForDates(appData, assignmentDates),
         timesheets: isChef
           ? (appData.timesheets?.[month] || {})
           : { [employeeSession.employee]: collectEmployeeTimesheets(appData, month, employeeSession.employee) },
@@ -101,6 +103,7 @@ module.exports = async function handler(req, res) {
       schedules: sanitizeSchedules(appData.schedules),
       assignmentTimes: assignmentTimesForDates(appData, assignmentDates),
       assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates),
+      assignmentAvailability: assignmentAvailabilityForDates(appData, assignmentDates),
       messages: [],
       pushPublicKey: pushPublicKey(),
       weather,
@@ -812,6 +815,25 @@ function assignmentSchedulesForDates(appData, dates = []) {
     const day = schedule.days?.[dateKey] || {};
     const isPublished = schedule.publishedWeeks?.[weekStartKey(dateKey)] || schedule.published;
     return [dateKey, isPublished ? day : {}];
+  }));
+}
+
+function assignmentAvailabilityForDates(appData, dates = []) {
+  return Object.fromEntries(dates.map((dateKey) => {
+    const month = dateKey.slice(0, 7);
+    const monthAvailability = appData.availability?.[month] || {};
+    const day = {};
+    Object.entries(monthAvailability).forEach(([employee, days]) => {
+      const entry = days?.[dateKey];
+      if (!entry || typeof entry !== "object") return;
+      const status = String(entry.status || "").trim().slice(0, 20);
+      const from = String(entry.from || "").trim().slice(0, 10);
+      const to = String(entry.to || "").trim().slice(0, 10);
+      const note = String(entry.note || "").trim().slice(0, 240);
+      if (!status && !from && !to && !note) return;
+      day[String(employee || "").trim().slice(0, 160)] = { status, from, to, note };
+    });
+    return [dateKey, day];
   }));
 }
 

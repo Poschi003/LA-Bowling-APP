@@ -1429,13 +1429,22 @@ body.terminal-login-mode #terminalLogin button:hover {
 
 .terminal-assignment-row > div {
   display: grid;
-  gap: 2px;
+  gap: 3px;
 }
 
 .terminal-assignment-row > div span {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+}
+
+.terminal-assignment-availability-note {
+  display: inline-block;
+  margin-top: 2px;
+  color: #8a3f13;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 @media (max-width: 760px) {

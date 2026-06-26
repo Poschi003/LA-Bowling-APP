@@ -20,6 +20,7 @@
   dayReports: {},
   assignmentTimes: {},
   assignmentSchedules: {},
+  assignmentAvailability: {},
   missingAvailability: [],
   swaps: { open: [], mine: [], myShifts: [], admin: [] },
   availabilityChangeRequests: [],
@@ -562,6 +563,7 @@ async function loadState() {
   state.dayReports = data.dayReports || {};
   state.assignmentTimes = normalizeAssignmentTimes(data.assignmentTimes || {});
   state.assignmentSchedules = data.assignmentSchedules || {};
+  state.assignmentAvailability = normalizeAssignmentAvailability(data.assignmentAvailability || {});
   state.terminalTableConfig = normalizeTerminalTableConfig(data.tablePlanConfig || state.terminalTableConfig || {});
   state.weather = data.weather || state.weather;
   state.isChef = Boolean(data.isChef);
@@ -736,6 +738,27 @@ function normalizeAssignmentTimes(value = {}) {
       if (from || note) day[cleanEmployee] = { from, to: "", note };
     });
     if (Object.keys(day).length) result[dateKey] = day;
+  });
+  return result;
+}
+
+function normalizeAssignmentAvailability(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  Object.entries(value).forEach(([dateKey, employees]) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || "")) || !employees || typeof employees !== "object" || Array.isArray(employees)) return;
+    const day = {};
+    Object.entries(employees).forEach(([employee, item]) => {
+      const cleanEmployee = String(employee || "").trim();
+      if (!cleanEmployee) return;
+      day[cleanEmployee] = {
+        status: String(item?.status || "").trim(),
+        from: String(item?.from || "").trim(),
+        to: String(item?.to || "").trim(),
+        note: String(item?.note || "").trim()
+      };
+    });
+    result[dateKey] = day;
   });
   return result;
 }
@@ -3493,6 +3516,12 @@ function assignmentTimeForEmployee(dateKey, employee, scheduleDay = {}, position
   const direct = state.assignmentTimes?.[dateKey]?.[employee];
   if (direct?.from || direct?.note) return { from: direct.from || "", to: "", note: direct.note || "" };
   return { from: "", to: "", note: "" };
+}
+
+function assignmentAvailabilityForEmployee(dateKey, employee) {
+  const direct = state.assignmentAvailability?.[dateKey]?.[employee];
+  if (direct) return direct;
+  return state.availability?.[employee]?.[dateKey] || null;
 }
 
 function assignmentPositionIncluded(position) {
@@ -8153,7 +8182,8 @@ function assignmentEmployeeRowsForDate(dateKey) {
       dateKey,
       employee: row.employee,
       positions: [],
-      time: assignmentTimeForEmployee(dateKey, row.employee, assignmentScheduleForDate(dateKey), row.position)
+      time: assignmentTimeForEmployee(dateKey, row.employee, assignmentScheduleForDate(dateKey), row.position),
+      availability: assignmentAvailabilityForEmployee(dateKey, row.employee)
     };
     existing.positions.push(row.position);
     byEmployee.set(row.employee, existing);
@@ -8163,11 +8193,14 @@ function assignmentEmployeeRowsForDate(dateKey) {
 
 function terminalAssignmentRowHtml(row) {
   const time = row.time || {};
+  const availability = row.availability || {};
+  const availabilityNote = String(availability.note || "").trim();
   return `
     <div class="terminal-assignment-row" data-assignment-date="${escapeHtml(row.dateKey)}" data-assignment-employee="${escapeHtml(row.employee)}">
       <div>
         <strong>${escapeHtml(row.employee)}</strong>
         <span>${escapeHtml(row.positions.join(", "))}</span>
+        ${availabilityNote ? `<small class="terminal-assignment-availability-note">Verfügbarkeit: ${escapeHtml(availabilityNote)}</small>` : ""}
       </div>
       <label>Beginn ab<input type="time" data-assignment-field="from" value="${escapeHtml(time.from || "")}"></label>
       <label>Notiz<input data-assignment-field="note" value="${escapeHtml(time.note || "")}" placeholder="optional"></label>
@@ -10096,6 +10129,7 @@ async function terminalAction(payload) {
   state.terminalSchedule = result.schedule || {};
   state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
   state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
+  state.assignmentAvailability = normalizeAssignmentAvailability(result.assignmentAvailability || state.assignmentAvailability || {});
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
@@ -10127,6 +10161,7 @@ async function terminalLogin(code) {
   state.terminalSchedule = result.schedule || {};
   state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
   state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
+  state.assignmentAvailability = normalizeAssignmentAvailability(result.assignmentAvailability || state.assignmentAvailability || {});
   state.terminalTasks = result.tasks || [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);

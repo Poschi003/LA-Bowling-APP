@@ -770,7 +770,7 @@ function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
   const assignmentDates = terminalAssignmentDates(date);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory), tablePlanConfig: normalizeTablePlanConfig(appData.tablePlanConfig), tablePlanInfo: tablePlanInfo(appData, date) };
+  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), assignmentAvailability: assignmentAvailabilityForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory), tablePlanConfig: normalizeTablePlanConfig(appData.tablePlanConfig), tablePlanInfo: tablePlanInfo(appData, date) };
 }
 
 function terminalAssignmentDates(dateKey) {
@@ -796,6 +796,25 @@ function assignmentSchedulesForDates(appData, dates = []) {
     const day = schedule.days?.[dateKey] || {};
     const isPublished = schedule.publishedWeeks?.[weekStartKey(dateKey)] || schedule.published;
     return [dateKey, isPublished ? day : {}];
+  }));
+}
+
+function assignmentAvailabilityForDates(appData, dates = []) {
+  return Object.fromEntries(dates.map((dateKey) => {
+    const month = dateKey.slice(0, 7);
+    const monthAvailability = appData.availability?.[month] || {};
+    const day = {};
+    Object.entries(monthAvailability).forEach(([employee, days]) => {
+      const entry = days?.[dateKey];
+      if (!entry || typeof entry !== "object") return;
+      const status = cleanText(entry.status, 20);
+      const from = cleanTime(entry.from);
+      const to = cleanTime(entry.to);
+      const note = cleanText(entry.note, 240);
+      if (!status && !from && !to && !note) return;
+      day[cleanText(employee, 160)] = { status, from, to, note };
+    });
+    return [dateKey, day];
   }));
 }
 
