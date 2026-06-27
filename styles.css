@@ -6134,6 +6134,133 @@ button:disabled {
   margin: 0;
 }
 
+.report-mini-calendar {
+  width: min(100%, 240px);
+  border: 1px solid rgba(30, 41, 59, 0.12);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+  color: #f8fafc;
+  padding: 14px 14px 12px;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18);
+}
+
+.report-mini-calendar-head {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-mini-calendar-head strong {
+  color: #f8fafc;
+  font-size: 15px;
+  font-weight: 850;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.report-mini-calendar-nav {
+  min-height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(248, 250, 252, 0.86);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+}
+
+.report-mini-calendar-nav:hover {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.report-mini-calendar-weekdays,
+.report-mini-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.report-mini-calendar-weekdays {
+  margin-top: 12px;
+}
+
+.report-mini-calendar-weekdays span {
+  color: #38bdf8;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.report-mini-calendar-grid {
+  margin-top: 8px;
+}
+
+.report-mini-calendar-day {
+  position: relative;
+  min-height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(248, 250, 252, 0.96);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0;
+}
+
+.report-mini-calendar-day span {
+  display: inline-block;
+  transform: translateY(-1px);
+}
+
+.report-mini-calendar-day.has-report {
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.report-mini-calendar-day.has-report:hover {
+  background: rgba(56, 189, 248, 0.18);
+}
+
+.report-mini-calendar-day.is-empty {
+  color: rgba(226, 232, 240, 0.42);
+}
+
+.report-mini-calendar-day.is-outside-month {
+  color: rgba(226, 232, 240, 0.28);
+}
+
+.report-mini-calendar-day.is-outside-month.has-report {
+  color: rgba(248, 250, 252, 0.74);
+}
+
+.report-mini-calendar-day.selected {
+  background: #1d9bf0;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(29, 155, 240, 0.34);
+}
+
+.report-mini-calendar-day.is-today:not(.selected) {
+  outline: 1px solid rgba(148, 163, 184, 0.42);
+  outline-offset: -1px;
+}
+
+.report-mini-calendar-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateX(-50%);
+  opacity: 0.82;
+}
+
+.report-mini-calendar-day.selected .report-mini-calendar-dot {
+  opacity: 1;
+}
+
 .chef-current-plan .week-days {
   grid-template-columns: repeat(2, minmax(320px, 1fr));
   gap: 14px;
@@ -6614,6 +6741,13 @@ button:disabled {
   background: #fff;
 }
 
+.invoice-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .invoice-position-field {
   gap: 10px;
 }
@@ -6643,6 +6777,12 @@ button:disabled {
 .invoice-position-row span {
   color: var(--muted);
   font-weight: 700;
+}
+
+.invoice-position-row-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .invoice-position-row strong {
@@ -6676,11 +6816,53 @@ button:disabled {
   font-size: 15px;
 }
 
-.invoice-copy-button {
+.invoice-copy-icon-button {
+  position: relative;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   min-height: 28px;
-  padding: 0 10px;
-  font-size: 12px;
-  justify-self: start;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.invoice-copy-icon-button:hover,
+.invoice-copy-icon-button:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--surface-soft);
+  box-shadow: none;
+  transform: none;
+}
+
+.invoice-copy-icon {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+}
+
+.invoice-copy-icon::before,
+.invoice-copy-icon::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--muted);
+  border-radius: 2px;
+  background: transparent;
+}
+
+.invoice-copy-icon::before {
+  top: 2px;
+  left: 4px;
+}
+
+.invoice-copy-icon::after {
+  top: 5px;
+  left: 1px;
 }
 
 .invoice-demo-panel {
@@ -7197,6 +7379,15 @@ button:disabled {
   .chef-section-head {
     align-items: stretch;
     display: grid;
+  }
+
+  .chef-section-tools {
+    justify-content: stretch;
+  }
+
+  .report-mini-calendar {
+    width: 100%;
+    max-width: none;
   }
 
   .day-header-meta {

@@ -13,6 +13,7 @@
   isChef: false,
   chefTab: "reports",
   chefReportDate: "",
+  chefReportMonth: "",
   chefInvoiceFolder: "",
   chefInvoiceItemOpen: "",
   chefReportSearch: "",
@@ -22,6 +23,7 @@
   chefSearchMissingDocsOnly: false,
   chefExportMonth: "",
   adminReportDate: "",
+  adminReportMonth: "",
   adminReportSearch: "",
   timesheets: {},
   messages: [],
@@ -2150,10 +2152,7 @@ function chefDashboardHtml() {
       <div class="chef-section-head">
         <h3>Tagesberichte</h3>
         <div class="chef-section-tools">
-          <label>
-            Datum
-            <input id="chefReportDate" type="date" value="${escapeHtml(selectedChefReportDate || "")}">
-          </label>
+          ${reportCalendarHtml("chef", selectedChefReportDate)}
         </div>
       </div>
       ${chefSelectedDayReportHtml(selectedChefReportDate)}
@@ -2250,10 +2249,14 @@ function ensureChefReportDateSelection() {
   const availableDates = new Set(reports.map(([dateKey]) => dateKey));
   if (!availableDates.size) {
     state.chefReportDate = "";
+    state.chefReportMonth = "";
     return "";
   }
   if (!state.chefReportDate || !availableDates.has(state.chefReportDate)) {
     state.chefReportDate = defaultChefReportDate();
+  }
+  if (!/^\d{4}-\d{2}$/.test(String(state.chefReportMonth || ""))) {
+    state.chefReportMonth = state.chefReportDate.slice(0, 7);
   }
   return state.chefReportDate;
 }
@@ -2726,12 +2729,87 @@ function ensureAdminReportDateSelection() {
   const availableDates = new Set(reports.map(([dateKey]) => dateKey));
   if (!availableDates.size) {
     state.adminReportDate = "";
+    state.adminReportMonth = "";
     return "";
   }
   if (!state.adminReportDate || !availableDates.has(state.adminReportDate)) {
     state.adminReportDate = defaultAdminReportDate();
   }
+  if (!/^\d{4}-\d{2}$/.test(String(state.adminReportMonth || ""))) {
+    state.adminReportMonth = state.adminReportDate.slice(0, 7);
+  }
   return state.adminReportDate;
+}
+
+function reportCalendarMonthKey(mode = "chef") {
+  return mode === "admin" ? "adminReportMonth" : "chefReportMonth";
+}
+
+function setReportCalendarSelection(mode = "chef", dateKey = "") {
+  if (mode === "admin") {
+    state.adminReportDate = dateKey || defaultAdminReportDate();
+    state.adminReportMonth = (dateKey || state.adminReportDate || todayKey()).slice(0, 7);
+    return;
+  }
+  state.chefReportDate = dateKey || defaultChefReportDate();
+  state.chefReportMonth = (dateKey || state.chefReportDate || todayKey()).slice(0, 7);
+}
+
+function ensureReportCalendarMonth(mode = "chef", selectedDate = "") {
+  const key = reportCalendarMonthKey(mode);
+  const fallback = String(selectedDate || "").slice(0, 7) || reportMonthsSorted()[0] || currentMonthValue();
+  if (!/^\d{4}-\d{2}$/.test(String(state[key] || ""))) {
+    state[key] = fallback;
+  }
+  return state[key];
+}
+
+function reportCalendarHtml(mode = "chef", selectedDate = "") {
+  const currentMonth = ensureReportCalendarMonth(mode, selectedDate);
+  const weeks = calendarWeeksForMonth(currentMonth);
+  const availableDates = new Set(sortedChefReportEntries().map(([dateKey]) => dateKey));
+  return `
+    <section class="report-mini-calendar" data-report-calendar="${mode}">
+      <div class="report-mini-calendar-head">
+        <button class="report-mini-calendar-nav" type="button" data-report-calendar-nav="${mode}|prev" aria-label="Vorheriger Monat">&#8249;</button>
+        <strong>${escapeHtml(formatCalendarMonthLabel(currentMonth))}</strong>
+        <button class="report-mini-calendar-nav" type="button" data-report-calendar-nav="${mode}|next" aria-label="Nächster Monat">&#8250;</button>
+      </div>
+      <div class="report-mini-calendar-weekdays">
+        ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((day) => `<span>${day}</span>`).join("")}
+      </div>
+      <div class="report-mini-calendar-grid">
+        ${weeks.map((week) => week.map((day) => reportCalendarDayHtml(mode, day, selectedDate, availableDates)).join("")).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function reportCalendarDayHtml(mode, day, selectedDate, availableDates = new Set()) {
+  const dateKey = isoDate(day.date);
+  const hasReport = availableDates.has(dateKey);
+  const isSelected = selectedDate === dateKey;
+  const isToday = todayKey() === dateKey;
+  const classes = [
+    "report-mini-calendar-day",
+    day.inMonth ? "" : "is-outside-month",
+    hasReport ? "has-report" : "is-empty",
+    isSelected ? "selected" : "",
+    isToday ? "is-today" : ""
+  ].filter(Boolean).join(" ");
+  return `
+    <button
+      class="${classes}"
+      type="button"
+      data-report-calendar-date="${mode}|${dateKey}"
+      aria-pressed="${isSelected ? "true" : "false"}"
+      aria-label="${escapeHtml(formatDate(dateKey))}${hasReport ? "" : " (kein Tagesbericht)"}"
+      ${hasReport ? "" : "disabled"}
+    >
+      <span>${day.date.getDate()}</span>
+      ${hasReport ? `<i class="report-mini-calendar-dot" aria-hidden="true"></i>` : ""}
+    </button>
+  `;
 }
 
 function renderAdminReports() {
@@ -2754,10 +2832,7 @@ function adminReportsHtml() {
         <p>Bericht direkt per Datum wählen. Der zuletzt abgeschlossene Tagesbericht ist automatisch vorausgewählt.</p>
       </div>
       <div class="chef-section-tools">
-        <label>
-          Datum
-          <input id="adminReportDate" type="date" value="${escapeHtml(selectedDate || "")}">
-        </label>
+        ${reportCalendarHtml("admin", selectedDate)}
         <label>
           Suche
           <input id="adminReportSearch" type="search" value="${escapeHtml(reportSearch)}" placeholder="Kunde, Datum, Mitarbeiter">
@@ -3231,26 +3306,13 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
   const otherNoteText = String(gastroSplit.note || "").trim() || "-";
   const primaryAction = invoiceCardPrimaryAction(mode, token, isDemo);
   const expanded = state.chefInvoiceItemOpen === chefInvoiceItemToken({ dateKey, invoice, index }, mode);
-  const statusBadgeHtml = mode === "done"
-    ? `<span class="invoice-pill ${escapeHtml(invoiceStatusClass(invoice))}">${escapeHtml(invoiceStatusText(invoice))}${isDemo ? " · Demo" : ""}</span>`
-    : "";
-  const metaFields = [
-    invoiceStaticField("Rechnungsdatum", formatDate(dateKey)),
-    invoiceCopyField("Rechnungsemail", invoice.email || "-", "", true),
-    invoiceStaticField("Zahlungsart", paymentMethod),
-    invoiceStaticField("Ansprechpartner", invoice.contact || "-"),
-    invoiceStaticField("Telefon", invoice.phone || "-")
-  ];
-  if (mode === "done") {
-    metaFields.push(invoiceStaticField("Erledigt am", formatDateTime(invoice.invoicePaidAt || invoice.invoiceDoneAt || "")));
-  }
   const noteFields = [
     noteText !== "-" ? invoiceStaticField("Notiz", noteText, "invoice-copy-field-wide") : "",
     otherNoteText !== "-" ? invoiceStaticField("Sonstiges Notiz", otherNoteText, "invoice-copy-field-wide") : ""
   ].filter(Boolean);
   return `
     <article class="open-invoice-card ${isDemo ? "is-demo" : ""} ${expanded ? "is-open" : ""}">
-      <button class="open-invoice-summary" type="button" data-chef-invoice-item="${escapeHtml(chefInvoiceItemToken({ dateKey, invoice, index }, mode))}" data-chef-invoice-item-folder="${mode}" aria-expanded="${expanded ? "true" : "false"}">
+      ${expanded ? "" : `<button class="open-invoice-summary" type="button" data-chef-invoice-item="${escapeHtml(chefInvoiceItemToken({ dateKey, invoice, index }, mode))}" data-chef-invoice-item-folder="${mode}" aria-expanded="false">
         <div class="open-invoice-summary-main">
           <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
           <span class="open-invoice-summary-date">${escapeHtml(formatDate(dateKey))}</span>
@@ -3258,26 +3320,31 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
         <div class="open-invoice-summary-side">
           <strong class="open-invoice-summary-total">${escapeHtml(formatReportMoney(total))}</strong>
         </div>
-      </button>
+      </button>`}
       ${expanded ? `<div class="open-invoice-body">
         <div class="open-invoice-head">
-          <div class="open-invoice-title-block">${statusBadgeHtml}</div>
+          <div class="open-invoice-title-block"></div>
           <div class="open-invoice-actions">
+            <button class="secondary" type="button" data-chef-invoice-item="${escapeHtml(chefInvoiceItemToken({ dateKey, invoice, index }, mode))}" data-chef-invoice-item-folder="${mode}">Schließen</button>
             ${primaryAction}
             ${!isDemo ? `<button class="secondary danger-lite" type="button" data-delete-invoice="${escapeHtml(token)}">Löschen</button>` : ""}
           </div>
         </div>
         <div class="invoice-copy-grid">
-          ${invoiceCopyField("Rechnungsadresse", invoiceBriefhead(invoice), "invoice-copy-field-wide invoice-copy-field-priority", true)}
-          ${metaFields.join("")}
-          ${invoicePositionOverviewField([
-            ["Bowling", formatReportMoney(bowling)],
-            ["Speisen", formatReportMoney(gastroSplit.food)],
-            ["Getränke", formatReportMoney(gastroSplit.drinks)],
-            ["Sonstiges", formatReportMoney(gastroSplit.other)],
-            ["Tipp", tipText]
-          ])}
-          ${invoiceCopyField("Gesamtbetrag", formatReportMoney(total), "invoice-copy-field-total", true)}
+          ${invoiceAddressField(invoice, dateKey)}
+          ${invoiceListField("Rechnungspositionen", [
+            { label: "Bowling", value: formatReportMoney(bowling), copyValue: formatReportMoney(bowling) },
+            { label: "Speisen", value: formatReportMoney(gastroSplit.food), copyValue: formatReportMoney(gastroSplit.food) },
+            { label: "Getränke", value: formatReportMoney(gastroSplit.drinks), copyValue: formatReportMoney(gastroSplit.drinks) },
+            { label: "Sonstiges", value: formatReportMoney(gastroSplit.other), copyValue: formatReportMoney(gastroSplit.other) },
+            { label: "Tipp", value: tipText, copyValue: tipText },
+            { label: "Zahlungsart", value: paymentMethod, copyValue: paymentMethod }
+          ], "invoice-copy-field-wide invoice-position-field")}
+          ${invoiceCopyField("Rechnungsbetrag", formatReportMoney(total), "invoice-copy-field-total invoice-copy-field-wide", true)}
+          ${invoiceListField("Kontakt", [
+            { label: "Ansprechpartner", value: invoice.contact || "-", copyValue: invoice.contact || "-" },
+            { label: "Telefon", value: invoice.phone || "-", copyValue: invoice.phone || "-" }
+          ], "invoice-copy-field-wide")}
           ${noteFields.join("")}
         </div>
         ${invoiceReceiptLinksHtml(invoice)}
@@ -3400,9 +3467,11 @@ function invoiceCopyField(label, value, className = "", copyable = true) {
   const escapedText = escapeHtml(text);
   return `
     <div class="invoice-copy-field ${escapeHtml(className)}">
-      <small>${escapeHtml(label)}</small>
+      <div class="invoice-field-head">
+        <small>${escapeHtml(label)}</small>
+        ${copyable ? copyIconButtonHtml(text, label) : ""}
+      </div>
       <strong>${escapedText.replace(/\n/g, "<br>")}</strong>
-      ${copyable ? `<button class="secondary invoice-copy-button" type="button" data-copy-value="${escapedText.replace(/\n/g, "&#10;")}">Kopieren</button>` : ""}
     </div>
   `;
 }
@@ -3411,20 +3480,59 @@ function invoiceStaticField(label, value, className = "") {
   return invoiceCopyField(label, value, className, false);
 }
 
-function invoicePositionOverviewField(rows = []) {
+function invoiceListField(label, rows = [], className = "") {
   return `
-    <div class="invoice-copy-field invoice-copy-field-wide invoice-position-field">
-      <small>Rechnungspositionen</small>
+    <div class="invoice-copy-field ${escapeHtml(className)}">
+      <div class="invoice-field-head">
+        <small>${escapeHtml(label)}</small>
+      </div>
       <ul class="invoice-position-list">
-        ${rows.map(([label, value]) => `
+        ${rows.map((row) => `
           <li class="invoice-position-row">
-            <span>${escapeHtml(label)}</span>
-            <strong>${escapeHtml(String(value || "-"))}</strong>
+            <span>${escapeHtml(row.label || "")}</span>
+            <div class="invoice-position-row-value">
+              <strong>${escapeHtml(String(row.value || "-"))}</strong>
+              ${row.copyValue !== undefined ? copyIconButtonHtml(String(row.copyValue || "-"), row.label || label) : ""}
+            </div>
           </li>
         `).join("")}
       </ul>
     </div>
   `;
+}
+
+function invoiceAddressField(invoice = {}, dateKey = "") {
+  const detailRows = [
+    { label: "Rechnungsdatum", value: formatDate(dateKey), copyValue: formatDate(dateKey) },
+    { label: "Rechnungsemail", value: invoice.email || "-", copyValue: invoice.email || "-" }
+  ];
+  if (invoice.invoiceDone || invoice.invoicePaid) {
+    detailRows.push({ label: "Erledigt am", value: formatDateTime(invoice.invoicePaidAt || invoice.invoiceDoneAt || ""), copyValue: formatDateTime(invoice.invoicePaidAt || invoice.invoiceDoneAt || "") });
+  }
+  return `
+    <div class="invoice-copy-field invoice-copy-field-wide invoice-copy-field-priority">
+      <div class="invoice-field-head">
+        <small>Rechnungsadresse</small>
+        ${copyIconButtonHtml(invoiceBriefhead(invoice), "Rechnungsadresse")}
+      </div>
+      <strong>${escapeHtml(invoiceBriefhead(invoice)).replace(/\n/g, "<br>")}</strong>
+      <ul class="invoice-position-list">
+        ${detailRows.map((row) => `
+          <li class="invoice-position-row">
+            <span>${escapeHtml(row.label)}</span>
+            <div class="invoice-position-row-value">
+              <strong>${escapeHtml(String(row.value || "-"))}</strong>
+              ${copyIconButtonHtml(String(row.copyValue || "-"), row.label)}
+            </div>
+          </li>
+        `).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+function copyIconButtonHtml(value, label = "Wert") {
+  return `<button class="invoice-copy-icon-button" type="button" data-copy-value="${escapeHtml(String(value || "-")).replace(/\n/g, "&#10;")}" aria-label="${escapeHtml(label)} kopieren" title="${escapeHtml(label)} kopieren"><span class="invoice-copy-icon" aria-hidden="true"></span></button>`;
 }
 
 function formatCopyMoneyValue(value) {
@@ -12086,6 +12194,17 @@ function formatMonth(month) {
   return new Date(year, monthNumber - 1, 1).toLocaleDateString("de-DE", { month: "long", year: "numeric" });
 }
 
+function formatCalendarMonthLabel(month) {
+  const label = formatMonth(month || currentMonthValue());
+  return label ? label.charAt(0).toUpperCase() + label.slice(1) : "";
+}
+
+function shiftMonthValue(month, offset) {
+  const base = /^\d{4}-\d{2}$/.test(String(month || "")) ? String(month) : currentMonthValue();
+  const [year, monthNumber] = base.split("-").map(Number);
+  return monthValue(new Date(year, monthNumber - 1 + offset, 1));
+}
+
 function renderAdminLock() {
   const unlocked = state.adminUnlocked;
   $("#adminLocked").classList.toggle("hidden", unlocked);
@@ -12714,10 +12833,28 @@ function bindEvents() {
       renderChef();
       return;
     }
+    const reportCalendarNav = event.target.closest("[data-report-calendar-nav]");
+    if (reportCalendarNav) {
+      const [mode, direction] = String(reportCalendarNav.dataset.reportCalendarNav || "").split("|");
+      if (mode === "chef") {
+        state.chefReportMonth = shiftMonthValue(ensureReportCalendarMonth("chef", ensureChefReportDateSelection()), direction === "prev" ? -1 : 1);
+        renderChef();
+      }
+      return;
+    }
+    const reportCalendarDay = event.target.closest("[data-report-calendar-date]");
+    if (reportCalendarDay) {
+      const [mode, dateKey] = String(reportCalendarDay.dataset.reportCalendarDate || "").split("|");
+      if (mode === "chef" && dateKey) {
+        setReportCalendarSelection("chef", dateKey);
+        renderChef();
+      }
+      return;
+    }
     const openReportButton = event.target.closest("[data-chef-open-report]");
     if (openReportButton) {
       state.chefTab = "reports";
-      state.chefReportDate = openReportButton.dataset.chefOpenReport || defaultChefReportDate();
+      setReportCalendarSelection("chef", openReportButton.dataset.chefOpenReport || defaultChefReportDate());
       renderChef();
       return;
     }
@@ -12815,7 +12952,7 @@ function bindEvents() {
 
   $("#chefDashboard")?.addEventListener("change", (event) => {
     if (event.target.matches("#chefReportDate")) {
-      state.chefReportDate = event.target.value || defaultChefReportDate();
+      setReportCalendarSelection("chef", event.target.value || defaultChefReportDate());
       renderChef();
       return;
     }
@@ -13736,6 +13873,24 @@ function bindEvents() {
   });
 
   $("#adminContent")?.addEventListener("click", async (event) => {
+    const reportCalendarNav = event.target.closest("[data-report-calendar-nav]");
+    if (reportCalendarNav) {
+      const [mode, direction] = String(reportCalendarNav.dataset.reportCalendarNav || "").split("|");
+      if (mode === "admin") {
+        state.adminReportMonth = shiftMonthValue(ensureReportCalendarMonth("admin", ensureAdminReportDateSelection()), direction === "prev" ? -1 : 1);
+        renderAdminReports();
+      }
+      return;
+    }
+    const reportCalendarDay = event.target.closest("[data-report-calendar-date]");
+    if (reportCalendarDay) {
+      const [mode, dateKey] = String(reportCalendarDay.dataset.reportCalendarDate || "").split("|");
+      if (mode === "admin" && dateKey) {
+        setReportCalendarSelection("admin", dateKey);
+        renderAdminReports();
+      }
+      return;
+    }
     const exportDayButton = event.target.closest("[data-export-day-report]");
     if (exportDayButton) {
       exportDayReport(exportDayButton.dataset.exportDayReport);
@@ -14086,7 +14241,7 @@ function bindEvents() {
 
   $("#adminContent")?.addEventListener("change", (event) => {
     if (event.target.matches("#adminReportDate")) {
-      state.adminReportDate = event.target.value || defaultAdminReportDate();
+      setReportCalendarSelection("admin", event.target.value || defaultAdminReportDate());
       renderAdminReports();
       return;
     }
