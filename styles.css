@@ -6524,16 +6524,29 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.open-invoice-summary-side {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
 .open-invoice-summary-date {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
 }
 
+.open-invoice-summary-total {
+  color: var(--ink);
+  font-size: 15px;
+  white-space: nowrap;
+}
+
 .open-invoice-body {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
   border-top: 1px solid var(--line);
 }
 
@@ -6556,6 +6569,12 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.open-invoice-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
 .danger-lite {
   border-color: rgba(185, 28, 28, 0.28);
   color: #991b1b;
@@ -6563,18 +6582,18 @@ button:disabled {
 
 .invoice-copy-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 10px;
 }
 
 .invoice-copy-field {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   align-content: start;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-soft);
-  padding: 12px;
+  padding: 10px;
 }
 
 .invoice-copy-field-wide {
@@ -6584,11 +6603,20 @@ button:disabled {
 .invoice-copy-field small {
   color: var(--muted);
   font-weight: 900;
+  font-size: 11px;
 }
 
 .invoice-copy-field strong {
   overflow-wrap: anywhere;
   line-height: 1.45;
+  font-size: 15px;
+}
+
+.invoice-copy-button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  justify-self: start;
 }
 
 .invoice-demo-panel {

@@ -13,7 +13,7 @@
   isChef: false,
   chefTab: "reports",
   chefReportDate: "",
-  chefInvoiceFolder: "write",
+  chefInvoiceFolder: "",
   chefInvoiceItemOpen: "",
   chefReportSearch: "",
   chefSearchScope: "all",
@@ -3182,19 +3182,16 @@ function completedInvoiceItems() {
 }
 
 function normalizedChefInvoiceFolder(toWrite = [], done = []) {
-  const available = [];
-  if (toWrite.length) available.push("write");
-  if (done.length) available.push("done");
-  const nextFolder = available.includes(state.chefInvoiceFolder)
-    ? state.chefInvoiceFolder
-    : (available[0] || "write");
+  const available = new Set();
+  if (toWrite.length) available.add("write");
+  if (done.length) available.add("done");
   const validTokens = new Set([
     ...toWrite.map((entry) => chefInvoiceItemToken(entry, "write")),
     ...done.map((entry) => chefInvoiceItemToken(entry, "done"))
   ]);
   if (!validTokens.has(state.chefInvoiceItemOpen)) state.chefInvoiceItemOpen = "";
-  state.chefInvoiceFolder = nextFolder;
-  return nextFolder;
+  if (!available.has(state.chefInvoiceFolder)) state.chefInvoiceFolder = "";
+  return state.chefInvoiceFolder;
 }
 
 function chefInvoiceItemToken({ dateKey, invoice, index }, mode) {
@@ -3232,7 +3229,6 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
   const paymentMethod = String(invoice.paymentMethod || "").trim() || "-";
   const noteText = String(invoice.note || "").trim() || "-";
   const otherNoteText = String(gastroSplit.note || "").trim() || "-";
-  const pentacodeText = invoicePentacodeEntered(invoice) ? "Ja" : "Nein";
   const primaryAction = invoiceCardPrimaryAction(mode, token, isDemo);
   const expanded = state.chefInvoiceItemOpen === chefInvoiceItemToken({ dateKey, invoice, index }, mode);
   const metaFields = [
@@ -3243,12 +3239,32 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
   if (mode === "done") {
     metaFields.push(invoiceCopyField("Erledigt am", formatDateTime(invoice.invoicePaidAt || invoice.invoiceDoneAt || "")));
   }
+  const contactLines = [
+    String(invoice.contact || "").trim(),
+    String(invoice.phone || "").trim() ? `Tel: ${String(invoice.phone || "").trim()}` : "",
+    String(invoice.email || "").trim() ? `E-Mail: ${String(invoice.email || "").trim()}` : ""
+  ].filter(Boolean);
+  const noteLines = [
+    noteText !== "-" ? `Notiz: ${noteText}` : "",
+    otherNoteText !== "-" ? `Sonstiges: ${otherNoteText}` : ""
+  ].filter(Boolean);
+  const amountFields = [
+    bowling > 0 ? invoiceCopyField("Bowling", formatReportMoney(bowling)) : "",
+    gastroSplit.drinks > 0 ? invoiceCopyField("Getränke", formatReportMoney(gastroSplit.drinks)) : "",
+    gastroSplit.food > 0 ? invoiceCopyField("Speisen", formatReportMoney(gastroSplit.food)) : "",
+    gastroSplit.other > 0 ? invoiceCopyField("Sonstiges", formatReportMoney(gastroSplit.other)) : "",
+    invoiceCopyField("Gastro gesamt", formatReportMoney(gastroSplit.total)),
+    reportMoneyNumber(invoice.tip || 0) > 0 ? invoiceCopyField("Trinkgeld", tipText) : ""
+  ].filter(Boolean);
   return `
     <article class="open-invoice-card ${isDemo ? "is-demo" : ""} ${expanded ? "is-open" : ""}">
       <button class="open-invoice-summary" type="button" data-chef-invoice-item="${escapeHtml(chefInvoiceItemToken({ dateKey, invoice, index }, mode))}" data-chef-invoice-item-folder="${mode}" aria-expanded="${expanded ? "true" : "false"}">
         <div class="open-invoice-summary-main">
           <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
           <span class="open-invoice-summary-date">${escapeHtml(formatDate(dateKey))}</span>
+        </div>
+        <div class="open-invoice-summary-side">
+          <strong class="open-invoice-summary-total">${escapeHtml(formatReportMoney(total))}</strong>
         </div>
       </button>
       ${expanded ? `<div class="open-invoice-body">
@@ -3264,20 +3280,10 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
         </div>
         <div class="invoice-copy-grid">
           ${metaFields.join("")}
-          ${invoiceCopyField("Firma / Name", invoice.name || "-", "invoice-copy-field-wide")}
-          ${invoiceCopyField("Rechnungsadresse", invoice.address || "-", "invoice-copy-field-wide")}
-          ${invoiceCopyField("Bowling Betrag", formatReportMoney(bowling))}
-          ${invoiceCopyField("Gastro Getränke", formatReportMoney(gastroSplit.drinks))}
-          ${invoiceCopyField("Gastro Speisen", formatReportMoney(gastroSplit.food))}
-          ${invoiceCopyField("Gastro Sonstiges", formatReportMoney(gastroSplit.other))}
-          ${invoiceCopyField("Gastro Gesamt", formatReportMoney(gastroSplit.total))}
-          ${invoiceCopyField("Trinkgeld", tipText)}
-          ${invoiceCopyField("Ansprechpartner", invoice.contact || "-")}
-          ${invoiceCopyField("Telefon", invoice.phone || "-")}
-          ${invoiceCopyField("E-Mail", invoice.email || "-", "invoice-copy-field-wide")}
-          ${invoiceCopyField("Notiz", noteText, "invoice-copy-field-wide")}
-          ${invoiceCopyField("Sonstiges Notiz", otherNoteText, "invoice-copy-field-wide")}
-          ${invoiceCopyField("In Pentacode eingetragen", pentacodeText)}
+          ${invoiceCopyField("Briefkopf", invoiceBriefhead(invoice), "invoice-copy-field-wide")}
+          ${amountFields.join("")}
+          ${contactLines.length ? invoiceCopyField("Kontakt", contactLines.join("\n"), "invoice-copy-field-wide") : ""}
+          ${noteLines.length ? invoiceCopyField("Hinweise", noteLines.join("\n"), "invoice-copy-field-wide") : ""}
         </div>
         ${invoiceReceiptLinksHtml(invoice)}
       </div>` : ""}
@@ -3401,7 +3407,7 @@ function invoiceCopyField(label, value, className = "") {
     <div class="invoice-copy-field ${escapeHtml(className)}">
       <small>${escapeHtml(label)}</small>
       <strong>${escapedText.replace(/\n/g, "<br>")}</strong>
-      <button class="secondary" type="button" data-copy-value="${escapedText.replace(/\n/g, "&#10;")}">Kopieren</button>
+      <button class="secondary invoice-copy-button" type="button" data-copy-value="${escapedText.replace(/\n/g, "&#10;")}">Kopieren</button>
     </div>
   `;
 }
@@ -12648,8 +12654,14 @@ function bindEvents() {
   $("#chefDashboard")?.addEventListener("click", (event) => {
     const invoiceFolderButton = event.target.closest("[data-chef-invoice-folder]");
     if (invoiceFolderButton) {
-      state.chefInvoiceFolder = invoiceFolderButton.dataset.chefInvoiceFolder || "write";
-      state.chefInvoiceItemOpen = "";
+      const nextFolder = invoiceFolderButton.dataset.chefInvoiceFolder || "write";
+      const closing = state.chefInvoiceFolder === nextFolder;
+      state.chefInvoiceFolder = closing ? "" : nextFolder;
+      if (closing) {
+        state.chefInvoiceItemOpen = "";
+      } else if (!state.chefInvoiceItemOpen.startsWith(`${nextFolder}|`)) {
+        state.chefInvoiceItemOpen = "";
+      }
       renderChef();
       return;
     }
