@@ -3224,7 +3224,8 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
   const bowling = reportMoneyNumber(invoice.bowlingAmount || 0);
   const gastroSplit = invoiceGastroSplit(invoice);
   const total = invoiceTotal(invoice);
-  const tipText = String(invoice.tip || "").trim() || "-";
+  const tipAmount = reportMoneyNumber(invoice.tip || 0);
+  const tipText = formatReportMoney(tipAmount);
   const token = `${dateKey}|${invoice.id || index}`;
   const paymentMethod = String(invoice.paymentMethod || "").trim() || "-";
   const noteText = String(invoice.note || "").trim() || "-";
@@ -3235,30 +3236,23 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
     ? `<span class="invoice-pill ${escapeHtml(invoiceStatusClass(invoice))}">${escapeHtml(invoiceStatusText(invoice))}${isDemo ? " · Demo" : ""}</span>`
     : "";
   const metaFields = [
-    invoiceCopyField("Rechnungsdatum", formatDate(dateKey)),
-    invoiceCopyField("Zahlungsart", paymentMethod),
-    invoiceCopyField("Gesamtbetrag", formatReportMoney(total))
+    invoiceStaticField("Rechnungsdatum", formatDate(dateKey)),
+    invoiceStaticField("Zahlungsart", paymentMethod),
+    invoiceCopyField("Rechnungsemail", invoice.email || "-", "", true),
+    invoiceStaticField("Ansprechpartner", invoice.contact || "-"),
+    invoiceStaticField("Telefon", invoice.phone || "-")
   ];
   if (mode === "done") {
-    metaFields.push(invoiceCopyField("Erledigt am", formatDateTime(invoice.invoicePaidAt || invoice.invoiceDoneAt || "")));
+    metaFields.push(invoiceStaticField("Erledigt am", formatDateTime(invoice.invoicePaidAt || invoice.invoiceDoneAt || "")));
   }
-  const contactLines = [
-    String(invoice.contact || "").trim(),
-    String(invoice.phone || "").trim() ? `Tel: ${String(invoice.phone || "").trim()}` : "",
-    String(invoice.email || "").trim() ? `E-Mail: ${String(invoice.email || "").trim()}` : ""
-  ].filter(Boolean);
-  const noteLines = [
-    noteText !== "-" ? `Notiz: ${noteText}` : "",
-    otherNoteText !== "-" ? `Sonstiges: ${otherNoteText}` : ""
-  ].filter(Boolean);
   const amountFields = [
-    bowling > 0 ? invoiceCopyField("Bowling", formatReportMoney(bowling)) : "",
-    gastroSplit.drinks > 0 ? invoiceCopyField("Getränke", formatReportMoney(gastroSplit.drinks)) : "",
-    gastroSplit.food > 0 ? invoiceCopyField("Speisen", formatReportMoney(gastroSplit.food)) : "",
-    gastroSplit.other > 0 ? invoiceCopyField("Sonstiges", formatReportMoney(gastroSplit.other)) : "",
-    invoiceCopyField("Gastro gesamt", formatReportMoney(gastroSplit.total)),
-    reportMoneyNumber(invoice.tip || 0) > 0 ? invoiceCopyField("Trinkgeld", tipText) : ""
-  ].filter(Boolean);
+    invoiceStaticField("Bowling", formatReportMoney(bowling)),
+    invoiceStaticField("Getränke", formatReportMoney(gastroSplit.drinks)),
+    invoiceStaticField("Speisen", formatReportMoney(gastroSplit.food)),
+    invoiceStaticField("Sonstiges", formatReportMoney(gastroSplit.other)),
+    invoiceStaticField("Tipp", tipText),
+    invoiceCopyField("Gesamtbetrag", formatReportMoney(total), "invoice-copy-field-total", true)
+  ];
   return `
     <article class="open-invoice-card ${isDemo ? "is-demo" : ""} ${expanded ? "is-open" : ""}">
       <button class="open-invoice-summary" type="button" data-chef-invoice-item="${escapeHtml(chefInvoiceItemToken({ dateKey, invoice, index }, mode))}" data-chef-invoice-item-folder="${mode}" aria-expanded="${expanded ? "true" : "false"}">
@@ -3272,21 +3266,19 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
       </button>
       ${expanded ? `<div class="open-invoice-body">
         <div class="open-invoice-head">
-          <div class="open-invoice-title-block">
-            <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
-            ${statusBadgeHtml}
-          </div>
+          <div class="open-invoice-title-block">${statusBadgeHtml}</div>
           <div class="open-invoice-actions">
             ${primaryAction}
             ${!isDemo ? `<button class="secondary danger-lite" type="button" data-delete-invoice="${escapeHtml(token)}">Löschen</button>` : ""}
           </div>
         </div>
         <div class="invoice-copy-grid">
-          ${invoiceCopyField("Rechnungsadresse", invoiceBriefhead(invoice), "invoice-copy-field-wide invoice-copy-field-priority")}
+          ${invoiceCopyField("Rechnungsadresse", invoice.address || "-", "invoice-copy-field-wide invoice-copy-field-priority", true)}
           ${metaFields.join("")}
           ${amountFields.join("")}
-          ${contactLines.length ? invoiceCopyField("Kontakt", contactLines.join("\n"), "invoice-copy-field-wide") : ""}
-          ${noteLines.length ? invoiceCopyField("Hinweise", noteLines.join("\n"), "invoice-copy-field-wide") : ""}
+          ${invoiceStaticField("Rechnungslogik", "Bowling + Getränke + Speisen + Sonstiges + Tipp = Gesamtbetrag", "invoice-copy-field-wide invoice-formula-field")}
+          ${invoiceStaticField("Notiz", noteText, "invoice-copy-field-wide")}
+          ${invoiceStaticField("Sonstiges Notiz", otherNoteText, "invoice-copy-field-wide")}
         </div>
         ${invoiceReceiptLinksHtml(invoice)}
       </div>` : ""}
@@ -3403,16 +3395,20 @@ function invoiceBriefhead(invoice = {}) {
   ].map((line) => String(line || "").trim()).filter(Boolean).join("\n") || "-";
 }
 
-function invoiceCopyField(label, value, className = "") {
+function invoiceCopyField(label, value, className = "", copyable = true) {
   const text = String(value || "-");
   const escapedText = escapeHtml(text);
   return `
     <div class="invoice-copy-field ${escapeHtml(className)}">
       <small>${escapeHtml(label)}</small>
       <strong>${escapedText.replace(/\n/g, "<br>")}</strong>
-      <button class="secondary invoice-copy-button" type="button" data-copy-value="${escapedText.replace(/\n/g, "&#10;")}">Kopieren</button>
+      ${copyable ? `<button class="secondary invoice-copy-button" type="button" data-copy-value="${escapedText.replace(/\n/g, "&#10;")}">Kopieren</button>` : ""}
     </div>
   `;
+}
+
+function invoiceStaticField(label, value, className = "") {
+  return invoiceCopyField(label, value, className, false);
 }
 
 function formatCopyMoneyValue(value) {

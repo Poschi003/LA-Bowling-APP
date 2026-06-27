@@ -6567,6 +6567,10 @@ button:disabled {
   gap: 8px;
 }
 
+.open-invoice-title-block:empty {
+  display: none;
+}
+
 .open-invoice-actions {
   display: flex;
   flex-wrap: wrap;
@@ -6608,6 +6612,21 @@ button:disabled {
 .invoice-copy-field-priority {
   border-color: rgba(17, 24, 39, 0.14);
   background: #fff;
+}
+
+.invoice-copy-field-total {
+  border-color: rgba(225, 23, 47, 0.18);
+  background: #fff6f7;
+}
+
+.invoice-copy-field-total strong {
+  color: var(--brand-strong);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.invoice-formula-field {
+  background: #f8fafc;
 }
 
 .invoice-copy-field small {
