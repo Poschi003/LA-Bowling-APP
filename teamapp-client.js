@@ -3231,6 +3231,9 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
   const otherNoteText = String(gastroSplit.note || "").trim() || "-";
   const primaryAction = invoiceCardPrimaryAction(mode, token, isDemo);
   const expanded = state.chefInvoiceItemOpen === chefInvoiceItemToken({ dateKey, invoice, index }, mode);
+  const statusBadgeHtml = mode === "done"
+    ? `<span class="invoice-pill ${escapeHtml(invoiceStatusClass(invoice))}">${escapeHtml(invoiceStatusText(invoice))}${isDemo ? " · Demo" : ""}</span>`
+    : "";
   const metaFields = [
     invoiceCopyField("Rechnungsdatum", formatDate(dateKey)),
     invoiceCopyField("Zahlungsart", paymentMethod),
@@ -3271,7 +3274,7 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
         <div class="open-invoice-head">
           <div class="open-invoice-title-block">
             <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
-            <span class="invoice-pill ${escapeHtml(invoiceStatusClass(invoice))}">${escapeHtml(invoiceStatusText(invoice))}${isDemo ? " · Demo" : ""}</span>
+            ${statusBadgeHtml}
           </div>
           <div class="open-invoice-actions">
             ${primaryAction}
@@ -3279,8 +3282,8 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
           </div>
         </div>
         <div class="invoice-copy-grid">
+          ${invoiceCopyField("Rechnungsadresse", invoiceBriefhead(invoice), "invoice-copy-field-wide invoice-copy-field-priority")}
           ${metaFields.join("")}
-          ${invoiceCopyField("Briefkopf", invoiceBriefhead(invoice), "invoice-copy-field-wide")}
           ${amountFields.join("")}
           ${contactLines.length ? invoiceCopyField("Kontakt", contactLines.join("\n"), "invoice-copy-field-wide") : ""}
           ${noteLines.length ? invoiceCopyField("Hinweise", noteLines.join("\n"), "invoice-copy-field-wide") : ""}

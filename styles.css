@@ -6402,20 +6402,26 @@ button:disabled {
   gap: 12px;
   width: 100%;
   min-height: 0;
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
   box-shadow: none;
   color: var(--ink);
-  padding: 0;
+  padding: 12px 14px;
   text-align: left;
 }
 
 .invoice-folder-toggle:hover,
 .invoice-folder-toggle:focus-visible {
-  border: 0;
-  background: transparent;
+  border-color: var(--line-strong);
+  background: #fff;
   box-shadow: none;
   transform: none;
+}
+
+.invoice-status-section.is-open .invoice-folder-toggle {
+  border-color: rgba(17, 24, 39, 0.14);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
 }
 
 .invoice-folder-meta {
@@ -6438,7 +6444,6 @@ button:disabled {
   display: grid;
   gap: 12px;
   padding-top: 12px;
-  border-top: 1px solid var(--line);
 }
 
 .invoice-status-head {
@@ -6598,6 +6603,11 @@ button:disabled {
 
 .invoice-copy-field-wide {
   grid-column: 1 / -1;
+}
+
+.invoice-copy-field-priority {
+  border-color: rgba(17, 24, 39, 0.14);
+  background: #fff;
 }
 
 .invoice-copy-field small {
