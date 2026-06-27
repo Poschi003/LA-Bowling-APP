@@ -13,6 +13,8 @@
   isChef: false,
   chefTab: "reports",
   chefReportDate: "",
+  chefInvoiceFolder: "write",
+  chefInvoiceItemOpen: "",
   chefReportSearch: "",
   chefSearchScope: "all",
   chefSearchMonthOnly: false,
@@ -3130,6 +3132,7 @@ function openInvoicesHtml() {
   const toWrite = openInvoiceItems();
   const done = completedInvoiceItems();
   const hasRealItems = toWrite.length || done.length;
+  const activeFolder = normalizedChefInvoiceFolder(toWrite, done);
   return `
     <section class="open-invoices-panel">
       <div>
@@ -3137,8 +3140,8 @@ function openInvoicesHtml() {
         <p>Offene Rechnungen schreiben und danach als erledigt markieren.</p>
       </div>
       <div class="invoice-status-grid">
-        ${invoiceStatusSectionHtml("Rechnung schreiben", "Fertig für Chef und wartet auf die Rechnung.", toWrite, "write")}
-        ${invoiceStatusSectionHtml("Erledigt", "Nur zum Nachsehen. Bereits erledigte Rechnungen.", done, "done")}
+        ${invoiceStatusSectionHtml("Rechnung schreiben", "Fertig für Chef und wartet auf die Rechnung.", toWrite, "write", activeFolder === "write")}
+        ${invoiceStatusSectionHtml("Erledigt", "Nur zum Nachsehen. Bereits erledigte Rechnungen.", done, "done", activeFolder === "done")}
       </div>
       ${!hasRealItems ? `<p class="hint">Noch keine Rechnungen in diesen Bereichen vorhanden.</p>` : ""}
       ${localInvoiceExamplesHtml()}
@@ -3178,19 +3181,42 @@ function completedInvoiceItems() {
   });
 }
 
-function invoiceStatusSectionHtml(title, description, items, mode) {
+function normalizedChefInvoiceFolder(toWrite = [], done = []) {
+  const available = [];
+  if (toWrite.length) available.push("write");
+  if (done.length) available.push("done");
+  const nextFolder = available.includes(state.chefInvoiceFolder)
+    ? state.chefInvoiceFolder
+    : (available[0] || "write");
+  const validTokens = new Set([
+    ...toWrite.map((entry) => chefInvoiceItemToken(entry, "write")),
+    ...done.map((entry) => chefInvoiceItemToken(entry, "done"))
+  ]);
+  if (!validTokens.has(state.chefInvoiceItemOpen)) state.chefInvoiceItemOpen = "";
+  state.chefInvoiceFolder = nextFolder;
+  return nextFolder;
+}
+
+function chefInvoiceItemToken({ dateKey, invoice, index }, mode) {
+  return `${mode}|${dateKey}|${invoice?.id || index}`;
+}
+
+function invoiceStatusSectionHtml(title, description, items, mode, isOpen = false) {
   return `
-    <section class="invoice-status-section">
-      <div class="invoice-status-head">
-        <div>
-          <h4>${escapeHtml(title)}</h4>
-          <p>${escapeHtml(description)}</p>
+    <section class="invoice-status-section ${isOpen ? "is-open" : ""}">
+      <button class="invoice-folder-toggle" type="button" data-chef-invoice-folder="${mode}" aria-expanded="${isOpen ? "true" : "false"}">
+        <div class="invoice-folder-meta">
+          <strong>${escapeHtml(title)}</strong>
+          <span>${items.length ? `${items.length} Kunde${items.length === 1 ? "" : "n"}` : "Keine Einträge"}</span>
         </div>
         <span class="invoice-status-count">${items.length}</span>
-      </div>
-      ${items.length ? `<div class="open-invoice-list">
-        ${items.map((entry) => openInvoiceCardHtml(entry, { mode })).join("")}
-      </div>` : `<p class="hint">Keine Einträge.</p>`}
+      </button>
+      ${isOpen ? `<div class="invoice-status-body">
+        <p class="hint">${escapeHtml(description)}</p>
+        ${items.length ? `<div class="open-invoice-list">
+          ${items.map((entry) => openInvoiceCardHtml(entry, { mode })).join("")}
+        </div>` : `<p class="hint">Keine Einträge.</p>`}
+      </div>` : ""}
     </section>
   `;
 }
@@ -3208,6 +3234,7 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
   const otherNoteText = String(gastroSplit.note || "").trim() || "-";
   const pentacodeText = invoicePentacodeEntered(invoice) ? "Ja" : "Nein";
   const primaryAction = invoiceCardPrimaryAction(mode, token, isDemo);
+  const expanded = state.chefInvoiceItemOpen === chefInvoiceItemToken({ dateKey, invoice, index }, mode);
   const metaFields = [
     invoiceCopyField("Rechnungsdatum", formatDate(dateKey)),
     invoiceCopyField("Zahlungsart", paymentMethod),
@@ -3217,35 +3244,43 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
     metaFields.push(invoiceCopyField("Erledigt am", formatDateTime(invoice.invoicePaidAt || invoice.invoiceDoneAt || "")));
   }
   return `
-    <article class="open-invoice-card ${isDemo ? "is-demo" : ""}">
-      <div class="open-invoice-head">
-        <div class="open-invoice-title-block">
+    <article class="open-invoice-card ${isDemo ? "is-demo" : ""} ${expanded ? "is-open" : ""}">
+      <button class="open-invoice-summary" type="button" data-chef-invoice-item="${escapeHtml(chefInvoiceItemToken({ dateKey, invoice, index }, mode))}" data-chef-invoice-item-folder="${mode}" aria-expanded="${expanded ? "true" : "false"}">
+        <div class="open-invoice-summary-main">
           <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
-          <span class="invoice-pill ${escapeHtml(invoiceStatusClass(invoice))}">${escapeHtml(invoiceStatusText(invoice))}${isDemo ? " · Demo" : ""}</span>
+          <span class="open-invoice-summary-date">${escapeHtml(formatDate(dateKey))}</span>
         </div>
-        <div class="open-invoice-actions">
-          ${primaryAction}
-          ${!isDemo ? `<button class="secondary danger-lite" type="button" data-delete-invoice="${escapeHtml(token)}">Löschen</button>` : ""}
+      </button>
+      ${expanded ? `<div class="open-invoice-body">
+        <div class="open-invoice-head">
+          <div class="open-invoice-title-block">
+            <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
+            <span class="invoice-pill ${escapeHtml(invoiceStatusClass(invoice))}">${escapeHtml(invoiceStatusText(invoice))}${isDemo ? " · Demo" : ""}</span>
+          </div>
+          <div class="open-invoice-actions">
+            ${primaryAction}
+            ${!isDemo ? `<button class="secondary danger-lite" type="button" data-delete-invoice="${escapeHtml(token)}">Löschen</button>` : ""}
+          </div>
         </div>
-      </div>
-      <div class="invoice-copy-grid">
-        ${metaFields.join("")}
-        ${invoiceCopyField("Firma / Name", invoice.name || "-", "invoice-copy-field-wide")}
-        ${invoiceCopyField("Rechnungsadresse", invoice.address || "-", "invoice-copy-field-wide")}
-        ${invoiceCopyField("Bowling Betrag", formatReportMoney(bowling))}
-        ${invoiceCopyField("Gastro Getränke", formatReportMoney(gastroSplit.drinks))}
-        ${invoiceCopyField("Gastro Speisen", formatReportMoney(gastroSplit.food))}
-        ${invoiceCopyField("Gastro Sonstiges", formatReportMoney(gastroSplit.other))}
-        ${invoiceCopyField("Gastro Gesamt", formatReportMoney(gastroSplit.total))}
-        ${invoiceCopyField("Trinkgeld", tipText)}
-        ${invoiceCopyField("Ansprechpartner", invoice.contact || "-")}
-        ${invoiceCopyField("Telefon", invoice.phone || "-")}
-        ${invoiceCopyField("E-Mail", invoice.email || "-", "invoice-copy-field-wide")}
-        ${invoiceCopyField("Notiz", noteText, "invoice-copy-field-wide")}
-        ${invoiceCopyField("Sonstiges Notiz", otherNoteText, "invoice-copy-field-wide")}
-        ${invoiceCopyField("In Pentacode eingetragen", pentacodeText)}
-      </div>
-      ${invoiceReceiptLinksHtml(invoice)}
+        <div class="invoice-copy-grid">
+          ${metaFields.join("")}
+          ${invoiceCopyField("Firma / Name", invoice.name || "-", "invoice-copy-field-wide")}
+          ${invoiceCopyField("Rechnungsadresse", invoice.address || "-", "invoice-copy-field-wide")}
+          ${invoiceCopyField("Bowling Betrag", formatReportMoney(bowling))}
+          ${invoiceCopyField("Gastro Getränke", formatReportMoney(gastroSplit.drinks))}
+          ${invoiceCopyField("Gastro Speisen", formatReportMoney(gastroSplit.food))}
+          ${invoiceCopyField("Gastro Sonstiges", formatReportMoney(gastroSplit.other))}
+          ${invoiceCopyField("Gastro Gesamt", formatReportMoney(gastroSplit.total))}
+          ${invoiceCopyField("Trinkgeld", tipText)}
+          ${invoiceCopyField("Ansprechpartner", invoice.contact || "-")}
+          ${invoiceCopyField("Telefon", invoice.phone || "-")}
+          ${invoiceCopyField("E-Mail", invoice.email || "-", "invoice-copy-field-wide")}
+          ${invoiceCopyField("Notiz", noteText, "invoice-copy-field-wide")}
+          ${invoiceCopyField("Sonstiges Notiz", otherNoteText, "invoice-copy-field-wide")}
+          ${invoiceCopyField("In Pentacode eingetragen", pentacodeText)}
+        </div>
+        ${invoiceReceiptLinksHtml(invoice)}
+      </div>` : ""}
     </article>
   `;
 }
@@ -12611,6 +12646,22 @@ function bindEvents() {
   });
 
   $("#chefDashboard")?.addEventListener("click", (event) => {
+    const invoiceFolderButton = event.target.closest("[data-chef-invoice-folder]");
+    if (invoiceFolderButton) {
+      state.chefInvoiceFolder = invoiceFolderButton.dataset.chefInvoiceFolder || "write";
+      state.chefInvoiceItemOpen = "";
+      renderChef();
+      return;
+    }
+    const invoiceItemButton = event.target.closest("[data-chef-invoice-item]");
+    if (invoiceItemButton) {
+      const token = invoiceItemButton.dataset.chefInvoiceItem || "";
+      const folder = invoiceItemButton.dataset.chefInvoiceItemFolder || state.chefInvoiceFolder || "write";
+      state.chefInvoiceFolder = folder;
+      state.chefInvoiceItemOpen = state.chefInvoiceItemOpen === token ? "" : token;
+      renderChef();
+      return;
+    }
     const searchScopeButton = event.target.closest("[data-chef-search-scope]");
     if (searchScopeButton) {
       state.chefSearchScope = searchScopeButton.dataset.chefSearchScope || "all";

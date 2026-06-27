@@ -6377,7 +6377,7 @@ button:disabled {
 
 .invoice-status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 14px;
 }
 
@@ -6389,6 +6389,56 @@ button:disabled {
   border-radius: 10px;
   background: var(--surface-soft);
   padding: 12px;
+}
+
+.invoice-status-section.is-open {
+  background: #fff;
+}
+
+.invoice-folder-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  padding: 0;
+  text-align: left;
+}
+
+.invoice-folder-toggle:hover,
+.invoice-folder-toggle:focus-visible {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.invoice-folder-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.invoice-folder-meta strong {
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.invoice-folder-meta span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.invoice-status-body {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
 .invoice-status-head {
@@ -6426,15 +6476,65 @@ button:disabled {
 
 .open-invoice-card {
   display: grid;
-  gap: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
-  padding: 14px;
+  overflow: hidden;
 }
 
 .open-invoice-card.is-demo {
   border-style: dashed;
+}
+
+.open-invoice-card.is-open {
+  border-color: var(--line-strong);
+}
+
+.open-invoice-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  color: var(--ink);
+  padding: 14px;
+  text-align: left;
+}
+
+.open-invoice-summary:hover,
+.open-invoice-summary:focus-visible {
+  border: 0;
+  background: var(--surface-soft);
+  box-shadow: none;
+  transform: none;
+}
+
+.open-invoice-summary-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.open-invoice-summary-main strong {
+  overflow-wrap: anywhere;
+}
+
+.open-invoice-summary-date {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.open-invoice-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-top: 1px solid var(--line);
 }
 
 .open-invoice-head {
