@@ -6614,6 +6614,44 @@ button:disabled {
   background: #fff;
 }
 
+.invoice-position-field {
+  gap: 10px;
+}
+
+.invoice-position-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.invoice-position-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.invoice-position-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.invoice-position-row span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.invoice-position-row strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .invoice-copy-field-total {
   border-color: rgba(225, 23, 47, 0.18);
   background: #fff6f7;
@@ -6625,9 +6663,6 @@ button:disabled {
   font-weight: 900;
 }
 
-.invoice-formula-field {
-  background: #f8fafc;
-}
 
 .invoice-copy-field small {
   color: var(--muted);

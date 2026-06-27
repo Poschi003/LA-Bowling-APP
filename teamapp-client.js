@@ -3209,7 +3209,6 @@ function invoiceStatusSectionHtml(title, description, items, mode, isOpen = fals
         <span class="invoice-status-count">${items.length}</span>
       </button>
       ${isOpen ? `<div class="invoice-status-body">
-        <p class="hint">${escapeHtml(description)}</p>
         ${items.length ? `<div class="open-invoice-list">
           ${items.map((entry) => openInvoiceCardHtml(entry, { mode })).join("")}
         </div>` : `<p class="hint">Keine Einträge.</p>`}
@@ -3237,22 +3236,18 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
     : "";
   const metaFields = [
     invoiceStaticField("Rechnungsdatum", formatDate(dateKey)),
-    invoiceStaticField("Zahlungsart", paymentMethod),
     invoiceCopyField("Rechnungsemail", invoice.email || "-", "", true),
+    invoiceStaticField("Zahlungsart", paymentMethod),
     invoiceStaticField("Ansprechpartner", invoice.contact || "-"),
     invoiceStaticField("Telefon", invoice.phone || "-")
   ];
   if (mode === "done") {
     metaFields.push(invoiceStaticField("Erledigt am", formatDateTime(invoice.invoicePaidAt || invoice.invoiceDoneAt || "")));
   }
-  const amountFields = [
-    invoiceStaticField("Bowling", formatReportMoney(bowling)),
-    invoiceStaticField("Getränke", formatReportMoney(gastroSplit.drinks)),
-    invoiceStaticField("Speisen", formatReportMoney(gastroSplit.food)),
-    invoiceStaticField("Sonstiges", formatReportMoney(gastroSplit.other)),
-    invoiceStaticField("Tipp", tipText),
-    invoiceCopyField("Gesamtbetrag", formatReportMoney(total), "invoice-copy-field-total", true)
-  ];
+  const noteFields = [
+    noteText !== "-" ? invoiceStaticField("Notiz", noteText, "invoice-copy-field-wide") : "",
+    otherNoteText !== "-" ? invoiceStaticField("Sonstiges Notiz", otherNoteText, "invoice-copy-field-wide") : ""
+  ].filter(Boolean);
   return `
     <article class="open-invoice-card ${isDemo ? "is-demo" : ""} ${expanded ? "is-open" : ""}">
       <button class="open-invoice-summary" type="button" data-chef-invoice-item="${escapeHtml(chefInvoiceItemToken({ dateKey, invoice, index }, mode))}" data-chef-invoice-item-folder="${mode}" aria-expanded="${expanded ? "true" : "false"}">
@@ -3273,12 +3268,17 @@ function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
           </div>
         </div>
         <div class="invoice-copy-grid">
-          ${invoiceCopyField("Rechnungsadresse", invoice.address || "-", "invoice-copy-field-wide invoice-copy-field-priority", true)}
+          ${invoiceCopyField("Rechnungsadresse", invoiceBriefhead(invoice), "invoice-copy-field-wide invoice-copy-field-priority", true)}
           ${metaFields.join("")}
-          ${amountFields.join("")}
-          ${invoiceStaticField("Rechnungslogik", "Bowling + Getränke + Speisen + Sonstiges + Tipp = Gesamtbetrag", "invoice-copy-field-wide invoice-formula-field")}
-          ${invoiceStaticField("Notiz", noteText, "invoice-copy-field-wide")}
-          ${invoiceStaticField("Sonstiges Notiz", otherNoteText, "invoice-copy-field-wide")}
+          ${invoicePositionOverviewField([
+            ["Bowling", formatReportMoney(bowling)],
+            ["Speisen", formatReportMoney(gastroSplit.food)],
+            ["Getränke", formatReportMoney(gastroSplit.drinks)],
+            ["Sonstiges", formatReportMoney(gastroSplit.other)],
+            ["Tipp", tipText]
+          ])}
+          ${invoiceCopyField("Gesamtbetrag", formatReportMoney(total), "invoice-copy-field-total", true)}
+          ${noteFields.join("")}
         </div>
         ${invoiceReceiptLinksHtml(invoice)}
       </div>` : ""}
@@ -3409,6 +3409,22 @@ function invoiceCopyField(label, value, className = "", copyable = true) {
 
 function invoiceStaticField(label, value, className = "") {
   return invoiceCopyField(label, value, className, false);
+}
+
+function invoicePositionOverviewField(rows = []) {
+  return `
+    <div class="invoice-copy-field invoice-copy-field-wide invoice-position-field">
+      <small>Rechnungspositionen</small>
+      <ul class="invoice-position-list">
+        ${rows.map(([label, value]) => `
+          <li class="invoice-position-row">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(String(value || "-"))}</strong>
+          </li>
+        `).join("")}
+      </ul>
+    </div>
+  `;
 }
 
 function formatCopyMoneyValue(value) {
