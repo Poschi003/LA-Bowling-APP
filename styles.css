@@ -5501,6 +5501,28 @@ button:disabled {
   gap: 10px;
 }
 
+.invoice-amount-grid {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  align-items: start;
+}
+
+.invoice-tip-field {
+  grid-column: 2 / span 2;
+}
+
+.invoice-other-note-field {
+  grid-column: 1 / -1;
+}
+
+.invoice-field-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .invoice-day-overview {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) repeat(4, auto);
@@ -5553,6 +5575,32 @@ button:disabled {
   gap: 10px;
   border-top: 1px solid var(--line);
   padding: 12px;
+}
+
+.invoice-pentacode-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.invoice-pentacode-check input {
+  width: 18px;
+  height: 18px;
+}
+
+@media (max-width: 900px) {
+  .invoice-amount-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .invoice-tip-field,
+  .invoice-other-note-field {
+    grid-column: 1 / -1;
+  }
 }
 
 .invoice-entry-actions,
@@ -5642,9 +5690,15 @@ button:disabled {
 }
 
 .invoice-pill.is-done {
-  border-color: var(--success);
-  background: var(--success-soft);
-  color: var(--success);
+  border-color: #d97706;
+  background: #fff7ed;
+  color: #b45309;
+}
+
+.invoice-pill.is-paid {
+  border-color: #0f766e;
+  background: #ecfeff;
+  color: #0f766e;
 }
 
 .receipt-link {
@@ -5825,8 +5879,108 @@ button:disabled {
   padding: 4px;
 }
 
+.chef-topbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.chef-topbar-spacer {
+  flex: 1 1 auto;
+}
+
+.chef-search-controls {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 520px;
+}
+
+.chef-search-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chef-search-chip {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.chef-search-chip.active {
+  border-color: rgba(225, 23, 47, 0.24);
+  background: rgba(225, 23, 47, 0.08);
+  color: var(--brand-strong);
+}
+
+.chef-global-search {
+  width: min(320px, 100%);
+  margin-left: auto;
+}
+
+.chef-search-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.chef-search-section {
+  display: grid;
+  gap: 10px;
+}
+
+.chef-search-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chef-search-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.chef-search-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.chef-search-card > div:first-child,
+.chef-search-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chef-search-card span,
+.chef-search-card p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.chef-search-card button {
+  justify-self: start;
+}
+
 .chef-tab {
-  flex: 1 0 190px;
+  flex: 1 1 132px;
+  min-width: 132px;
+  padding: 0 10px;
+  font-size: 14px;
   box-shadow: none;
 }
 
@@ -5968,6 +6122,18 @@ button:disabled {
   width: min(220px, 100%);
 }
 
+.chef-section-tools {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.chef-section-tools label {
+  margin: 0;
+}
+
 .chef-current-plan .week-days {
   grid-template-columns: repeat(2, minmax(320px, 1fr));
   gap: 14px;
@@ -6059,12 +6225,10 @@ button:disabled {
 
 .day-report-attachments {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   margin: 12px 14px 14px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-soft);
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
 }
 
 .day-report-attachments-head {
@@ -6110,16 +6274,18 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .day-report-attachment-item div {
   display: grid;
   gap: 3px;
   min-width: 0;
+}
+
+.day-report-attachment-item:last-child {
+  border-bottom: 0;
 }
 
 .day-report-attachment-item strong,
@@ -6135,6 +6301,39 @@ button:disabled {
 .day-report-attachment-item .receipt-link {
   justify-self: end;
   white-space: nowrap;
+}
+
+.chef-day-report-actions {
+  margin: 0 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.chef-day-report-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.chef-day-report-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chef-day-report-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .open-invoices-panel {
@@ -6176,6 +6375,55 @@ button:disabled {
   gap: 14px;
 }
 
+.invoice-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.invoice-status-section,
+.invoice-demo-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 12px;
+}
+
+.invoice-status-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.invoice-status-head h4,
+.invoice-status-head p {
+  margin: 0;
+}
+
+.invoice-status-head p {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.invoice-status-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--line);
+  font-weight: 900;
+}
+
 .open-invoice-card {
   display: grid;
   gap: 12px;
@@ -6185,11 +6433,20 @@ button:disabled {
   padding: 14px;
 }
 
+.open-invoice-card.is-demo {
+  border-style: dashed;
+}
+
 .open-invoice-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: center;
+  align-items: flex-start;
+}
+
+.open-invoice-title-block {
+  display: grid;
+  gap: 8px;
 }
 
 .open-invoice-actions {
@@ -6232,6 +6489,10 @@ button:disabled {
 .invoice-copy-field strong {
   overflow-wrap: anywhere;
   line-height: 1.45;
+}
+
+.invoice-demo-panel {
+  margin-top: 4px;
 }
 
 .invoice-briefhead {
@@ -6315,28 +6576,24 @@ button:disabled {
 
 .report-folder-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
   gap: 12px;
-  padding: 0 14px 14px;
 }
 
 .report-folder-card {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--surface-soft);
-  padding: 0;
-  overflow: hidden;
+  background: #fff;
+  padding: 12px;
 }
 
 .report-folder-card-head {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  align-items: start;
-  cursor: pointer;
-  padding: 12px;
+  align-items: flex-start;
 }
 
 .report-folder-card-head div {
@@ -6346,12 +6603,7 @@ button:disabled {
 
 .report-folder-card-head span {
   color: var(--muted);
-  font-weight: 800;
-}
-
-.report-folder-card-head button {
-  min-height: 36px;
-  white-space: nowrap;
+  font-weight: 700;
 }
 
 .report-folder-actions {
@@ -6359,13 +6611,11 @@ button:disabled {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
-  padding: 0 12px;
 }
 
 .report-folder-files {
   display: grid;
   gap: 7px;
-  padding: 0 12px 12px;
 }
 
 .report-folder-file {
@@ -6375,8 +6625,8 @@ button:disabled {
   gap: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
-  padding: 9px 10px;
+  background: var(--surface-soft);
+  padding: 8px 10px;
 }
 
 .report-file-select {
@@ -6402,6 +6652,37 @@ button:disabled {
 
 .report-file-actions button {
   min-height: 34px;
+}
+
+.report-folder-card-static {
+  align-content: start;
+}
+
+.compact-export-files {
+  gap: 8px;
+}
+
+.compact-export-file {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.compact-export-select {
+  min-width: 0;
+}
+
+.compact-export-actions {
+  justify-content: flex-start;
+}
+
+.compact-export-actions .secondary {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.chef-report-search-results .day-report-card,
+.chef-report-single .day-report-card {
+  border-radius: 10px;
 }
 
 .report-file-preview {
@@ -6589,6 +6870,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .invoice-status-grid {
+    grid-template-columns: 1fr;
+  }
+
   .terminal-day-meta-display {
     display: grid;
   }
@@ -6615,6 +6900,19 @@ button:disabled {
 
   .chef-tab {
     flex-basis: auto;
+  }
+
+  .chef-topbar {
+    display: grid;
+  }
+
+  .chef-search-controls {
+    order: 2;
+  }
+
+  .chef-global-search {
+    order: 1;
+    width: 100%;
   }
 
   .login-reminder {

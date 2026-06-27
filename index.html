@@ -116,7 +116,7 @@
         <div class="section-head">
           <div>
             <h2>Chef-Übersicht</h2>
-            <p id="chefState">Tagesberichte, Mitarbeiterübersicht und Dienstplan.</p>
+            <p id="chefState">Schön, dass du da bist.</p>
           </div>
         </div>
         <div id="chefDashboard" class="chef-dashboard"></div>
@@ -570,6 +570,7 @@
         <div id="adminContent" class="admin-content hidden">
         <nav class="admin-workspace-tabs" aria-label="Admin-Arbeitsbereiche">
           <button class="admin-workspace-tab active" type="button" data-admin-workspace-tab="planning">Planung</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="reports">Tagesberichte</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="employees">Mitarbeiter Sicht</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="numbers">Monatszahlen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
@@ -590,6 +591,13 @@
         <details class="settings-box admin-primary-box">
           <summary>Veröffentlichte Wochen</summary>
           <div id="adminPublishedList" class="swap-list"></div>
+        </details>
+        </section>
+
+        <section class="admin-workspace" data-admin-workspace="reports">
+        <details class="settings-box admin-priority" open>
+          <summary>Tagesberichte</summary>
+          <div id="adminReports" class="chef-dashboard"></div>
         </details>
         </section>
 

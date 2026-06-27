@@ -12,6 +12,15 @@
   pinChangeRequired: false,
   isChef: false,
   chefTab: "reports",
+  chefReportDate: "",
+  chefReportSearch: "",
+  chefSearchScope: "all",
+  chefSearchMonthOnly: false,
+  chefSearchOpenInvoicesOnly: false,
+  chefSearchMissingDocsOnly: false,
+  chefExportMonth: "",
+  adminReportDate: "",
+  adminReportSearch: "",
   timesheets: {},
   messages: [],
   terminalMessages: [],
@@ -448,6 +457,23 @@ function groupedMonthWeeks(month) {
   return groups;
 }
 
+function groupedCalendarWeeksForMonth(month) {
+  const groups = [];
+  const seen = new Set();
+  for (const date of datesInMonth(month)) {
+    const start = weekStart(date);
+    const startKey = isoDate(start);
+    if (seen.has(startKey)) continue;
+    seen.add(startKey);
+    const dates = [];
+    for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
+      dates.push(addDays(start, dayOffset));
+    }
+    groups.push({ key: startKey, dates });
+  }
+  return groups;
+}
+
 function renderWeekSections(month, renderer) {
   return groupedMonthWeeks(month).map((week) => `
     <section class="week-section">
@@ -460,9 +486,10 @@ function renderWeekSections(month, renderer) {
 }
 
 function renderPublishedWeekSections(month) {
-  const schedule = arguments.length > 1 ? arguments[1] : state.schedule;
+  const baseSchedule = arguments.length > 1 ? arguments[1] : state.schedule;
+  const schedule = { ...(baseSchedule || {}), days: publishedScheduleDays(baseSchedule || {}) };
   const scheduleDays = schedule?.days || {};
-  const weeks = groupedMonthWeeks(month).filter((week) => (
+  const weeks = groupedCalendarWeeksForMonth(month).filter((week) => (
     week.dates.some((date) => scheduleDays[isoDate(date)])
   ));
   return weeks.map((week) => `
@@ -472,7 +499,7 @@ function renderPublishedWeekSections(month) {
         <span class="week-state">veröffentlicht</span>
       </summary>
       <div class="week-days">
-        ${week.dates.map((date) => renderScheduleDay(date, { compact: true, collapsible: true, schedule })).join("")}
+        ${week.dates.map((date) => renderScheduleDay(date, { compact: true, collapsible: true, crossMonth: true, publishedOnly: true, schedule })).join("")}
       </div>
     </details>
   `).join("");
@@ -486,6 +513,15 @@ function publishedScheduleDays(schedule = {}) {
 
 function scheduleHasPublishedDays(schedule = {}) {
   return Object.keys(publishedScheduleDays(schedule)).length > 0;
+}
+
+function publishedScheduleDayAssignments(dateKey) {
+  const schedule = scheduleForMonth(dateKey.slice(0, 7));
+  if (!schedule?.days?.[dateKey]) return {};
+  if (schedule.publishedWeeks && Object.keys(schedule.publishedWeeks).length) {
+    return schedule.publishedWeeks[weekStartKey(dateKey)] ? schedule.days[dateKey] : {};
+  }
+  return schedule.published ? schedule.days[dateKey] : {};
 }
 
 function chefPublishedSchedulesHtml() {
@@ -1706,6 +1742,7 @@ function renderAll() {
   renderSettings();
   renderPlanner();
   renderAdminLock();
+  renderAdminReports();
   renderAdminEmployeeOverview();
   renderAdminPublishedList();
   renderAdminMonthlyNumbers();
@@ -1793,6 +1830,34 @@ function currentUserIsChef() {
   if (!state.activeEmployee) return false;
   const role = String(state.settings?.employeeRoles?.[state.activeEmployee] || "").trim().toLowerCase();
   return state.isChef || role === "chef";
+}
+
+function displayFirstName(name = "") {
+  const text = String(name || "").trim();
+  if (!text) return "Chef";
+  if (text.includes(",")) {
+    return text.split(",")[1]?.trim().split(/\s+/)[0] || text.split(",")[0].trim();
+  }
+  return text.split(/\s+/)[0] || text;
+}
+
+function motivationLineForName(name = "") {
+  const lines = [
+    "schön, dass du da bist - heute darf leicht, klar und gut werden.",
+    "du bringst Ruhe, Richtung und gute Energie in den Tag.",
+    "was du heute anpackst, darf gelingen und Freude machen.",
+    "heute ist ein guter Tag, um mit Klarheit und Zuversicht voranzugehen."
+  ];
+  const text = String(name || "").trim();
+  if (!text) return lines[0];
+  let hash = 0;
+  for (const char of text) hash = (hash + char.charCodeAt(0)) % lines.length;
+  return lines[hash];
+}
+
+function chefStateText() {
+  const firstName = displayFirstName(state.activeEmployee || "");
+  return `Hallo ${firstName}: ${motivationLineForName(state.activeEmployee || firstName)}`;
 }
 
 function renderEmployeeBadge() {
@@ -2044,25 +2109,30 @@ function renderHomeStats() {
 
 function renderChef() {
   const container = $("#chefDashboard");
+  const stateText = $("#chefState");
   if (!container) return;
   if (!currentUserIsChef()) {
+    if (stateText) stateText.textContent = "Diese Ansicht ist nur für die Geschäftsleitung sichtbar.";
     container.innerHTML = `<p class="hint">Diese Ansicht ist nur für die Geschäftsleitung sichtbar.</p>`;
     return;
   }
+  if (stateText) stateText.textContent = chefStateText();
   container.innerHTML = chefDashboardHtml();
 }
 
 function chefDashboardHtml() {
   const today = todayKey();
-  const schedule = state.schedule || {};
   const openInvoiceCount = openInvoiceItems().length;
-  const pendingInvoiceCount = pendingInvoiceItems().length;
+  const invoiceTabVisible = invoiceManagementVisible();
+  const selectedChefReportDate = ensureChefReportDateSelection();
+  const selectedChefExportMonth = ensureChefExportMonthSelection();
   const tabs = [
     ["reports", "Tagesberichte", chefSectionEnabled("reports")],
-    ["invoices", "Rechnung schreiben", openInvoiceCount > 0],
-    ["employees", "Mitarbeiterübersicht", chefSectionEnabled("employees")],
+    ["invoices", "Rechnungen", invoiceTabVisible],
+    ["schedule", "Dienstplan", chefSectionEnabled("schedule")],
     ["numbers", "Monatszahlen", true],
-    ["schedule", "Dienstplan", chefSectionEnabled("schedule")]
+    ["exports", "Exporte", true],
+    ["employees", "Mitarbeiterübersicht", chefSectionEnabled("employees")]
   ].filter(([, , visible]) => visible);
   if (!tabs.some(([key]) => key === state.chefTab)) state.chefTab = tabs[0]?.[0] || "";
   return `
@@ -2071,16 +2141,36 @@ function chefDashboardHtml() {
       <summary>Heutiger Tag</summary>
       ${renderScheduleDay(new Date(`${today}T12:00:00`), { today: true })}
     </details>` : ""}
-    ${openInvoiceCount ? invoiceWriteAlertHtml(openInvoiceCount) : pendingInvoiceCount ? invoicePendingHintHtml(pendingInvoiceCount) : ""}
     <nav class="chef-tabs" aria-label="Chef-Bereiche">
       ${tabs.map(([key, label]) => `<button class="chef-tab ${state.chefTab === key ? "active" : ""} ${key === "invoices" && openInvoiceCount ? "needs-attention" : ""}" type="button" data-chef-tab="${key}">${label}${key === "invoices" && openInvoiceCount ? ` <span>${openInvoiceCount}</span>` : ""}</button>`).join("")}
     </nav>
     ${chefSectionEnabled("reports") ? `<section class="chef-section ${state.chefTab === "reports" ? "active" : "hidden"}">
-      ${dayReportFoldersByMonthHtml()}
+      <div class="chef-section-head">
+        <h3>Tagesberichte</h3>
+        <div class="chef-section-tools">
+          <label>
+            Datum
+            <input id="chefReportDate" type="date" value="${escapeHtml(selectedChefReportDate || "")}">
+          </label>
+        </div>
+      </div>
+      ${chefSelectedDayReportHtml(selectedChefReportDate)}
     </section>` : ""}
-    ${openInvoiceCount ? `<section class="chef-section ${state.chefTab === "invoices" ? "active" : "hidden"}">
+    ${invoiceTabVisible ? `<section class="chef-section ${state.chefTab === "invoices" ? "active" : "hidden"}">
       ${openInvoicesHtml()}
     </section>` : ""}
+    ${chefSectionEnabled("schedule") ? `<section class="chef-section ${state.chefTab === "schedule" ? "active" : "hidden"}">
+      <div class="chef-current-plan">
+        <h3>Veröffentlichte Dienstpläne</h3>
+        ${chefPublishedSchedulesHtml()}
+      </div>
+    </section>` : ""}
+    <section class="chef-section ${state.chefTab === "numbers" ? "active" : "hidden"}">
+      ${monthlyNumbersHtml("chef")}
+    </section>
+    <section class="chef-section ${state.chefTab === "exports" ? "active" : "hidden"}">
+      ${chefExportsHtml(selectedChefExportMonth)}
+    </section>
     ${chefSectionEnabled("employees") ? `<section class="chef-section ${state.chefTab === "employees" ? "active" : "hidden"}">
       <div class="chef-section-head">
         <h3>Mitarbeiterübersicht</h3>
@@ -2090,15 +2180,6 @@ function chefDashboardHtml() {
         </label>
       </div>
       ${employeeOverviewHtml({ allowCorrection: false })}
-    </section>` : ""}
-    <section class="chef-section ${state.chefTab === "numbers" ? "active" : "hidden"}">
-      ${monthlyNumbersHtml("chef")}
-    </section>
-    ${chefSectionEnabled("schedule") ? `<section class="chef-section ${state.chefTab === "schedule" ? "active" : "hidden"}">
-      <div class="chef-current-plan">
-        <h3>Veröffentlichte Dienstpläne</h3>
-        ${chefPublishedSchedulesHtml()}
-      </div>
     </section>` : ""}
   `;
 }
@@ -2146,17 +2227,600 @@ function dayReportsHtml() {
   `;
 }
 
-function dayReportsForMonthHtml(month) {
+function sortedChefReportEntries() {
+  return Object.entries(state.dayReports || {})
+    .filter(([dateKey, report]) => dateKey && report && typeof report === "object")
+    .sort(([a], [b]) => b.localeCompare(a));
+}
+
+function reportMonthsSorted() {
+  return [...new Set(sortedChefReportEntries().map(([dateKey]) => dateKey.slice(0, 7)))];
+}
+
+function defaultChefReportDate() {
+  const reports = sortedChefReportEntries();
+  const latestClosed = reports.find(([, report]) => report?.closed);
+  return latestClosed?.[0] || reports[0]?.[0] || "";
+}
+
+function ensureChefReportDateSelection() {
+  const reports = sortedChefReportEntries();
+  const availableDates = new Set(reports.map(([dateKey]) => dateKey));
+  if (!availableDates.size) {
+    state.chefReportDate = "";
+    return "";
+  }
+  if (!state.chefReportDate || !availableDates.has(state.chefReportDate)) {
+    state.chefReportDate = defaultChefReportDate();
+  }
+  return state.chefReportDate;
+}
+
+function defaultChefExportMonth() {
+  return reportMonthsSorted()[0] || currentMonthValue();
+}
+
+function ensureChefExportMonthSelection() {
+  const months = reportMonthsSorted();
+  if (!months.length) {
+    state.chefExportMonth = currentMonthValue();
+    return state.chefExportMonth;
+  }
+  if (!state.chefExportMonth || !months.includes(state.chefExportMonth)) {
+    state.chefExportMonth = defaultChefExportMonth();
+  }
+  return state.chefExportMonth;
+}
+
+function chefSearchScopeOptions() {
+  return [
+    ["all", "Alle"],
+    ["reports", "Tagesberichte"],
+    ["invoices", "Rechnungen"],
+    ["employees", "Mitarbeiter"],
+    ["documents", "Dokumente"],
+    ["schedule", "Dienstplan"]
+  ];
+}
+
+function chefSearchIsActive() {
+  return Boolean(
+    String(state.chefReportSearch || "").trim()
+    || state.chefSearchMonthOnly
+    || state.chefSearchOpenInvoicesOnly
+    || state.chefSearchMissingDocsOnly
+  );
+}
+
+function chefSearchTopbarHtml(reportSearch = "") {
+  return `
+    <div class="chef-topbar">
+      <div class="chef-search-controls">
+        <div class="chef-search-chip-row">
+          ${chefSearchScopeOptions().map(([key, label]) => `
+            <button class="chef-search-chip ${state.chefSearchScope === key ? "active" : ""}" type="button" data-chef-search-scope="${key}">
+              ${escapeHtml(label)}
+            </button>
+          `).join("")}
+        </div>
+        <div class="chef-search-chip-row">
+          <button class="chef-search-chip ${state.chefSearchMonthOnly ? "active" : ""}" type="button" data-chef-search-toggle="month">
+            Monat
+          </button>
+          <button class="chef-search-chip ${state.chefSearchOpenInvoicesOnly ? "active" : ""}" type="button" data-chef-search-toggle="open-invoices">
+            Offene Rechnungen
+          </button>
+          <button class="chef-search-chip ${state.chefSearchMissingDocsOnly ? "active" : ""}" type="button" data-chef-search-toggle="missing-documents">
+            Fehlende Dokumente
+          </button>
+          ${chefSearchIsActive() ? `<button class="chef-search-chip" type="button" data-clear-chef-search>Zurücksetzen</button>` : ""}
+        </div>
+      </div>
+      <label class="chef-global-search">
+        Suche
+        <input id="chefReportSearch" type="search" value="${escapeHtml(reportSearch)}" placeholder="Kunde, Datum, Mitarbeiter, Dokument">
+      </label>
+    </div>
+  `;
+}
+
+function chefSearchTokens(query = "") {
+  return String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function chefMatchesSearch(values = [], query = "") {
+  const tokens = chefSearchTokens(query);
+  if (!tokens.length) return true;
+  const blob = values.map((value) => String(value || "").trim().toLowerCase()).join(" ");
+  return tokens.every((token) => blob.includes(token));
+}
+
+function chefSearchDateAllowed(dateKey = "") {
+  if (!state.chefSearchMonthOnly) return true;
+  return String(dateKey || "").startsWith(`${state.selectedMonth}-`);
+}
+
+function reportMissingDocumentLabels(report = {}) {
+  const missing = [];
+  if (!hasDocument(report.documents?.penta)) missing.push("Penta");
+  if (!hasDocument(report.documents?.handwriting)) missing.push("Handschrift");
+  if (!hasDocument(report.documents?.ecCut)) missing.push("EC-Schnitt");
+  return missing;
+}
+
+function chefReportMatchesFilters(dateKey, report = {}) {
+  if (!chefSearchDateAllowed(dateKey)) return false;
+  if (state.chefSearchOpenInvoicesOnly && !(report.invoiceCustomers || []).some((item) => invoiceIsReady(item) && !item.invoiceDone && !invoiceIsPaid(item))) {
+    return false;
+  }
+  if (state.chefSearchMissingDocsOnly && !reportMissingDocumentLabels(report).length) {
+    return false;
+  }
+  return true;
+}
+
+function chefReportSearchEntries(query = "") {
+  if (!chefSearchIsActive()) return [];
+  const search = String(query || "").trim().toLowerCase();
+  return sortedChefReportEntries().filter(([dateKey, report]) => (
+    chefReportMatchesFilters(dateKey, report) && reportMatchesChefSearch(dateKey, report, search)
+  ));
+}
+
+function reportMatchesChefSearch(dateKey, report = {}, query = "") {
+  return chefMatchesSearch([
+    dateKey,
+    formatDate(dateKey),
+    formatNumericDate(dateKey),
+    report.shiftLeader || "",
+    report.notes || "",
+    ...(reportEmployeesForDate(dateKey, report) || []),
+    ...((report.invoiceCustomers || []).flatMap((item) => [item.name || "", item.contact || "", item.email || "", item.note || ""])),
+    ...((report.expenses || []).flatMap((item) => [item.name || "", item.category || "", item.note || ""]))
+  ], query);
+}
+
+function chefInvoiceSearchEntries(query = "") {
+  if (!chefSearchIsActive()) return [];
+  const items = [];
+  for (const [dateKey, report] of Object.entries(state.dayReports || {})) {
+    if (!chefSearchDateAllowed(dateKey)) continue;
+    (report.invoiceCustomers || []).forEach((invoice, index) => {
+      const isOpen = invoiceIsReady(invoice) && !invoice.invoiceDone && !invoiceIsPaid(invoice);
+      if (state.chefSearchOpenInvoicesOnly && !isOpen) return;
+      if (state.chefSearchMissingDocsOnly && hasReceipt(invoice)) return;
+      if (!chefMatchesSearch([
+        dateKey,
+        formatDate(dateKey),
+        formatNumericDate(dateKey),
+        invoice.name || "",
+        invoice.contact || "",
+        invoice.email || "",
+        invoice.phone || "",
+        invoice.address || "",
+        invoice.note || "",
+        invoice.paymentMethod || "",
+        invoice.tip || "",
+        invoice.gastroOtherNote || "",
+        formatReportMoney(invoiceTotal(invoice))
+      ], query)) return;
+      items.push({ dateKey, invoice, index });
+    });
+  }
+  return items.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+}
+
+function chefEmployeeSearchEntries(query = "") {
+  if (!chefSearchIsActive()) return [];
+  if (state.chefSearchOpenInvoicesOnly || state.chefSearchMissingDocsOnly) return [];
+  return (state.settings.employees || []).filter((employee) => {
+    const role = roleLabel(state.settings.employeeRoles?.[employee] || "Team");
+    const departments = (state.settings.employeeDepartments?.[employee] || []).join(" ");
+    return chefMatchesSearch([employee, role, departments], query);
+  }).map((employee) => ({
+    employee,
+    role: roleLabel(state.settings.employeeRoles?.[employee] || "Team"),
+    departments: state.settings.employeeDepartments?.[employee] || [],
+    totals: totalsForEmployee(employee)
+  }));
+}
+
+function chefDocumentSearchEntries(query = "") {
+  if (!chefSearchIsActive()) return [];
+  if (state.chefSearchOpenInvoicesOnly) return [];
+  const items = [];
+  for (const [dateKey, report] of Object.entries(state.dayReports || {})) {
+    if (!chefSearchDateAllowed(dateKey)) continue;
+    const docs = [
+      ["Penta", report.documents?.penta],
+      ["Handschrift", report.documents?.handwriting],
+      ["EC-Schnitt", report.documents?.ecCut]
+    ];
+    docs.forEach(([label, document]) => {
+      if (state.chefSearchMissingDocsOnly) {
+        if (hasDocument(document)) return;
+        if (!chefMatchesSearch([dateKey, formatDate(dateKey), formatNumericDate(dateKey), label, "fehlt"], query)) return;
+        items.push({ dateKey, label, missing: true, document: {} });
+        return;
+      }
+      if (!hasDocument(document)) return;
+      if (!chefMatchesSearch([dateKey, formatDate(dateKey), formatNumericDate(dateKey), label, document.name || ""], query)) return;
+      items.push({ dateKey, label, missing: false, document });
+    });
+  }
+  return items.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+}
+
+function chefScheduleSearchEntries(query = "") {
+  if (!chefSearchIsActive()) return [];
+  if (state.chefSearchOpenInvoicesOnly || state.chefSearchMissingDocsOnly) return [];
+  const items = [];
+  for (const [month, schedule] of Object.entries(state.allSchedules || {})) {
+    const publishedDays = publishedScheduleDays(schedule || {});
+    for (const [dateKey, assignments] of Object.entries(publishedDays || {})) {
+      if (!chefSearchDateAllowed(dateKey)) continue;
+      const positions = state.settings.positions.filter((position) => assignments?.[position]);
+      const employees = positions.map((position) => assignments[position]);
+      if (!positions.length && !assignments?.__dayNote) continue;
+      if (!chefMatchesSearch([
+        month,
+        dateKey,
+        formatDate(dateKey),
+        formatNumericDate(dateKey),
+        assignments?.__dayNote || "",
+        ...positions,
+        ...employees
+      ], query)) continue;
+      items.push({ dateKey, assignments, positions, employees });
+    }
+  }
+  return items.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+}
+
+function chefSearchSections(query = "") {
+  const scope = state.chefSearchScope || "all";
+  const sections = [];
+  const allow = (key) => scope === "all" || scope === key;
+  if (allow("reports")) {
+    const items = chefReportSearchEntries(query);
+    if (items.length) {
+      sections.push({
+        key: "reports",
+        title: "Tagesberichte",
+        count: items.length,
+        html: `<div class="chef-search-card-grid">${items.slice(0, 8).map(([dateKey, report]) => chefReportSearchCardHtml(dateKey, report)).join("")}</div>${items.length > 8 ? `<p class="hint">+${items.length - 8} weitere Treffer</p>` : ""}`
+      });
+    }
+  }
+  if (allow("invoices")) {
+    const items = chefInvoiceSearchEntries(query);
+    if (items.length) {
+      sections.push({
+        key: "invoices",
+        title: "Rechnungen",
+        count: items.length,
+        html: `<div class="open-invoice-list">${items.slice(0, 6).map((entry) => openInvoiceCardHtml(entry, { mode: entry.invoice.invoiceDone || invoiceIsPaid(entry.invoice) ? "done" : "write" })).join("")}</div>${items.length > 6 ? `<p class="hint">+${items.length - 6} weitere Treffer</p>` : ""}`
+      });
+    }
+  }
+  if (allow("employees")) {
+    const items = chefEmployeeSearchEntries(query);
+    if (items.length) {
+      sections.push({
+        key: "employees",
+        title: "Mitarbeiter",
+        count: items.length,
+        html: `<div class="chef-search-card-grid">${items.slice(0, 8).map((item) => chefEmployeeSearchCardHtml(item)).join("")}</div>${items.length > 8 ? `<p class="hint">+${items.length - 8} weitere Treffer</p>` : ""}`
+      });
+    }
+  }
+  if (allow("documents")) {
+    const items = chefDocumentSearchEntries(query);
+    if (items.length) {
+      sections.push({
+        key: "documents",
+        title: "Dokumente",
+        count: items.length,
+        html: `<div class="chef-search-card-grid">${items.slice(0, 8).map((item) => chefDocumentSearchCardHtml(item)).join("")}</div>${items.length > 8 ? `<p class="hint">+${items.length - 8} weitere Treffer</p>` : ""}`
+      });
+    }
+  }
+  if (allow("schedule")) {
+    const items = chefScheduleSearchEntries(query);
+    if (items.length) {
+      sections.push({
+        key: "schedule",
+        title: "Dienstplan",
+        count: items.length,
+        html: `<div class="chef-search-card-grid">${items.slice(0, 8).map((item) => chefScheduleSearchCardHtml(item)).join("")}</div>${items.length > 8 ? `<p class="hint">+${items.length - 8} weitere Treffer</p>` : ""}`
+      });
+    }
+  }
+  return sections;
+}
+
+function chefSearchResultsPanelHtml(query = "") {
+  const sections = chefSearchSections(query);
+  const total = sections.reduce((sum, section) => sum + section.count, 0);
+  return `
+    <section class="chef-section chef-search-panel">
+      <div class="chef-section-head">
+        <div>
+          <h3>Suche</h3>
+          <p>${total ? `${total} Treffer in der Chefansicht.` : "Keine Treffer für diese Suche."}</p>
+        </div>
+        <button class="secondary" type="button" data-clear-chef-search>Zurücksetzen</button>
+      </div>
+      ${sections.length ? sections.map((section) => `
+        <section class="chef-search-section">
+          <div class="chef-search-section-head">
+            <strong>${escapeHtml(section.title)}</strong>
+            <span>${section.count}</span>
+          </div>
+          ${section.html}
+        </section>
+      `).join("") : `<p class="hint">Bitte andere Begriffe oder Filter ausprobieren.</p>`}
+    </section>
+  `;
+}
+
+function chefReportSearchCardHtml(dateKey, report = {}) {
+  const missingDocs = reportMissingDocumentLabels(report);
+  return `
+    <article class="chef-search-card">
+      <div>
+        <strong>${escapeHtml(formatDate(dateKey))}</strong>
+        <span>${escapeHtml(report.shiftLeader || "Keine Schichtleitung hinterlegt")}</span>
+      </div>
+      <p>${escapeHtml(report.notes || "Keine Notiz hinterlegt.")}</p>
+      <div class="chef-search-card-meta">
+        <span>${report.closed ? "Abgeschlossen" : "Offen"}</span>
+        ${missingDocs.length ? `<span>Fehlt: ${escapeHtml(missingDocs.join(", "))}</span>` : `<span>Dokumente vollständig</span>`}
+      </div>
+      <button class="secondary" type="button" data-chef-open-report="${escapeHtml(dateKey)}">Bericht öffnen</button>
+    </article>
+  `;
+}
+
+function chefEmployeeSearchCardHtml(item = {}) {
+  return `
+    <article class="chef-search-card">
+      <div>
+        <strong>${escapeHtml(item.employee || "")}</strong>
+        <span>${escapeHtml(item.role || "Team")}</span>
+      </div>
+      <p>${escapeHtml((item.departments || []).join(", ") || "Kein Bereich hinterlegt.")}</p>
+      <div class="chef-search-card-meta">
+        <span>${formatHours(item.totals?.hours || 0)}</span>
+        <span>${item.totals?.days || 0} Tage</span>
+      </div>
+      <button class="secondary" type="button" data-chef-open-tab="employees">Mitarbeiterübersicht öffnen</button>
+    </article>
+  `;
+}
+
+function chefDocumentSearchCardHtml(item = {}) {
+  return `
+    <article class="chef-search-card">
+      <div>
+        <strong>${escapeHtml(item.label || "Dokument")}</strong>
+        <span>${escapeHtml(formatDate(item.dateKey || ""))}</span>
+      </div>
+      <p>${item.missing ? "Dokument fehlt noch." : escapeHtml(item.document?.name || "Dokument vorhanden.")}</p>
+      <div class="chef-search-card-meta">
+        <span>${item.missing ? "Fehlt" : "Vorhanden"}</span>
+      </div>
+      <button class="secondary" type="button" data-chef-open-report="${escapeHtml(item.dateKey || "")}">Tag öffnen</button>
+    </article>
+  `;
+}
+
+function chefScheduleSearchCardHtml(item = {}) {
+  return `
+    <article class="chef-search-card">
+      <div>
+        <strong>${escapeHtml(formatDate(item.dateKey || ""))}</strong>
+        <span>${item.positions?.length || 0} Dienste</span>
+      </div>
+      <p>${escapeHtml(item.employees?.join(", ") || item.assignments?.__dayNote || "Keine Namen hinterlegt.")}</p>
+      <div class="chef-search-card-meta">
+        <span>${escapeHtml(item.positions?.slice(0, 3).join(", ") || "Dienstplan")}</span>
+      </div>
+      <button class="secondary" type="button" data-chef-open-schedule-date="${escapeHtml(item.dateKey || "")}">Dienstplan öffnen</button>
+    </article>
+  `;
+}
+
+function chefReportSearchResultsHtml(query = "") {
+  const matches = chefReportSearchEntries(query);
+  if (!matches.length) {
+    return `<p class="hint">Keine Tagesberichte für diese Suche gefunden.</p>`;
+  }
+  return `
+    <div class="day-report-list chef-report-search-results">
+      ${matches.map(([dateKey, report]) => `
+        <details class="day-report-card chef-selected-report" open>
+          <summary>
+            <strong>${formatDate(dateKey)}</strong>
+            <span>${dayReportSummaryLine(report)}</span>
+          </summary>
+          ${dayReportActionBarHtml(dateKey, report)}
+          ${dayReportA4Html(dateKey, report)}
+          ${chefDayReportAttachmentsHtml(dateKey, report)}
+        </details>
+      `).join("")}
+    </div>
+  `;
+}
+
+function chefSelectedDayReportHtml(dateKey) {
+  if (!dateKey) return `<p class="hint">Noch keine Tagesberichte gespeichert.</p>`;
+  const report = state.dayReports?.[dateKey];
+  if (!report || typeof report !== "object") {
+    return `<p class="hint">Für ${escapeHtml(formatDate(dateKey))} ist kein Tagesbericht gespeichert.</p>`;
+  }
+  return `
+    <div class="day-report-list chef-report-single">
+      <details class="day-report-card chef-selected-report" open>
+        <summary>
+          <strong>${formatDate(dateKey)}</strong>
+          <span>${dayReportSummaryLine(report)}</span>
+        </summary>
+        ${dayReportActionBarHtml(dateKey, report)}
+        ${dayReportA4Html(dateKey, report)}
+        ${chefDayReportAttachmentsHtml(dateKey, report)}
+      </details>
+    </div>
+  `;
+}
+
+function dayReportActionBarHtml(dateKey, report = {}) {
+  return `
+    <div class="day-report-actions chef-day-report-actions">
+      <div class="chef-day-report-summary">
+        <span>${report.closed ? "Tagesbericht abgeschlossen" : "Tagesbericht offen"}</span>
+      </div>
+      <div class="chef-day-report-buttons">
+        <button class="secondary" type="button" data-export-day-report="${escapeHtml(dateKey)}">Export</button>
+        <button class="primary" type="button" data-print-day-report="${escapeHtml(dateKey)}">Drucken</button>
+      </div>
+    </div>
+  `;
+}
+
+function chefExportsHtml(month) {
+  const selectedMonth = month || ensureChefExportMonthSelection();
+  const totalFiles = ["penta", "handwriting", "ecCut"].reduce((sum, key) => sum + reportFolderItems(selectedMonth, key).length, 0);
+  return `
+    <div class="chef-section-head">
+      <div>
+        <h3>Exporte</h3>
+        <p>Monatsweise Penta, Handschrift und EC-Schnitt einzeln oder gesammelt exportieren.</p>
+      </div>
+      <div class="chef-section-tools">
+        <label>
+          Monat
+          <input id="chefExportMonth" type="month" value="${escapeHtml(selectedMonth)}">
+        </label>
+        <button class="secondary" type="button" data-export-chef-month="${escapeHtml(selectedMonth)}" ${totalFiles ? "" : "disabled"}>Monat komplett exportieren</button>
+      </div>
+    </div>
+    ${totalFiles ? `
+      <div class="report-folder-grid">
+        ${reportFolderHtml(selectedMonth, "penta", "Penta")}
+        ${reportFolderHtml(selectedMonth, "handwriting", "Handschrift")}
+        ${reportFolderHtml(selectedMonth, "ecCut", "EC-Schnitt")}
+      </div>
+    ` : `<p class="hint">In diesem Monat wurden noch keine Penta-, Handschrift- oder EC-Dateien hochgeladen.</p>`}
+  `;
+}
+
+function defaultAdminReportDate() {
+  return defaultChefReportDate();
+}
+
+function ensureAdminReportDateSelection() {
+  const reports = sortedChefReportEntries();
+  const availableDates = new Set(reports.map(([dateKey]) => dateKey));
+  if (!availableDates.size) {
+    state.adminReportDate = "";
+    return "";
+  }
+  if (!state.adminReportDate || !availableDates.has(state.adminReportDate)) {
+    state.adminReportDate = defaultAdminReportDate();
+  }
+  return state.adminReportDate;
+}
+
+function renderAdminReports() {
+  const container = $("#adminReports");
+  if (!container) return;
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  container.innerHTML = adminReportsHtml();
+}
+
+function adminReportsHtml() {
+  const selectedDate = ensureAdminReportDateSelection();
+  const reportSearch = String(state.adminReportSearch || "").trim();
+  return `
+    <div class="chef-section-head">
+      <div>
+        <h3>Tagesberichte</h3>
+        <p>Bericht direkt per Datum wählen. Der zuletzt abgeschlossene Tagesbericht ist automatisch vorausgewählt.</p>
+      </div>
+      <div class="chef-section-tools">
+        <label>
+          Datum
+          <input id="adminReportDate" type="date" value="${escapeHtml(selectedDate || "")}">
+        </label>
+        <label>
+          Suche
+          <input id="adminReportSearch" type="search" value="${escapeHtml(reportSearch)}" placeholder="Kunde, Datum, Mitarbeiter">
+        </label>
+      </div>
+    </div>
+    ${reportSearch ? adminReportSearchResultsHtml(reportSearch) : adminSelectedDayReportHtml(selectedDate)}
+  `;
+}
+
+function adminReportSearchResultsHtml(query = "") {
+  const matches = chefReportSearchEntries(query);
+  if (!matches.length) {
+    return `<p class="hint">Keine Tagesberichte für diese Suche gefunden.</p>`;
+  }
+  return `
+    <div class="day-report-list chef-report-search-results">
+      ${matches.map(([dateKey, report]) => `
+        <details class="day-report-card chef-selected-report" open>
+          <summary>
+            <strong>${formatDate(dateKey)}</strong>
+            <span></span>
+          </summary>
+          ${dayReportActionBarHtml(dateKey, report)}
+          ${dayReportA4Html(dateKey, report)}
+          ${chefDayReportAttachmentsHtml(dateKey, report)}
+        </details>
+      `).join("")}
+    </div>
+  `;
+}
+
+function adminSelectedDayReportHtml(dateKey) {
+  if (!dateKey) return `<p class="hint">Noch keine Tagesberichte gespeichert.</p>`;
+  const report = state.dayReports?.[dateKey];
+  if (!report || typeof report !== "object") {
+    return `<p class="hint">Für ${escapeHtml(formatDate(dateKey))} ist kein Tagesbericht gespeichert.</p>`;
+  }
+  return `
+    <div class="day-report-list chef-report-single">
+      <details class="day-report-card chef-selected-report" open>
+        <summary>
+          <strong>${formatDate(dateKey)}</strong>
+          <span></span>
+        </summary>
+        ${dayReportActionBarHtml(dateKey, report)}
+        ${dayReportA4Html(dateKey, report)}
+        ${chefDayReportAttachmentsHtml(dateKey, report)}
+      </details>
+    </div>
+  `;
+}
+
+function dayReportsForMonthHtml(month, selectedDate = "") {
   const reports = Object.entries(state.dayReports || {})
     .filter(([dateKey, report]) => dateKey.startsWith(`${month}-`) && report && typeof report === "object")
     .sort(([a], [b]) => b.localeCompare(a));
   if (!reports.length) {
     return `<p class="hint">In diesem Monat sind noch keine Tagesberichte gespeichert.</p>`;
   }
+  const selectedInMonth = selectedDate.startsWith(`${month}-`) ? selectedDate : "";
   return `
     <div class="day-report-list">
-      ${reports.map(([dateKey, report]) => `
-        <details class="day-report-card">
+      ${reports.map(([dateKey, report], index) => `
+        <details class="day-report-card" ${dateKey === selectedInMonth || (!selectedInMonth && index === 0) ? "open" : ""}>
           <summary>
             <strong>${formatDate(dateKey)}</strong>
           <span>${dayReportSummaryLine(report)}</span>
@@ -2171,14 +2835,7 @@ function dayReportsForMonthHtml(month) {
 }
 
 function dayReportSummaryLine(report = {}) {
-  return [
-    `Umsatz ${formatReportMoney(reportRevenueTotal(report))}`,
-    `Rechnung ${formatReportMoney(reportInvoiceTotal(report))}`,
-    `EC ${formatReportMoney(reportEcTotal(report))}`,
-    ...(reportPersonalConsumptionTotal(report) ? [`Personalverzehr ${formatReportMoney(reportPersonalConsumptionTotal(report))}`] : []),
-    `Ausgaben Kasse ${formatReportMoney(reportCashExpensesTotal(report))}`,
-    `Abzugeben an Chef ${formatReportMoney(reportChefHandoverTotal(report))}`
-  ].join(" · ");
+  return "";
 }
 
 function dayReportValuesHtml(report = {}) {
@@ -2400,7 +3057,9 @@ function a4InvoiceBlock(items = []) {
             <div>
               <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)}</strong>
               <small>Bowling ${formatReportMoney(item.bowlingAmount)} · ${escapeHtml(invoiceGastroSummaryText(item))}</small>
+              <small>Zahlungsart ${escapeHtml(item.paymentMethod || "-")} · Trinkgeld ${escapeHtml(item.tip || "-")}</small>
               ${item.gastroOtherNote ? `<small>Sonstiges Notiz: ${escapeHtml(item.gastroOtherNote)}</small>` : ""}
+              ${item.note ? `<small>Notiz: ${escapeHtml(item.note)}</small>` : ""}
             </div>
             <strong>${formatReportMoney(invoiceTotal(item))}</strong>
           </div>
@@ -2468,24 +3127,34 @@ function a4NotesBlock(notes = "") {
 }
 
 function openInvoicesHtml() {
-  const items = openInvoiceItems();
+  const toWrite = openInvoiceItems();
+  const done = completedInvoiceItems();
+  const hasRealItems = toWrite.length || done.length;
   return `
-    <section class="open-invoices-panel ${items.length ? "has-open-invoices" : ""}">
+    <section class="open-invoices-panel">
       <div>
         <h3>Rechnung schreiben</h3>
-        <p>${items.length ? `${items.length} Rechnung${items.length === 1 ? "" : "en"} zu schreiben` : "Keine offene Rechnung."}</p>
+        <p>Offene Rechnungen schreiben und danach als erledigt markieren.</p>
       </div>
-      ${items.length ? `<div class="open-invoice-list">
-        ${items.map((entry) => openInvoiceCardHtml(entry)).join("")}
-      </div>` : ""}
+      <div class="invoice-status-grid">
+        ${invoiceStatusSectionHtml("Rechnung schreiben", "Fertig für Chef und wartet auf die Rechnung.", toWrite, "write")}
+        ${invoiceStatusSectionHtml("Erledigt", "Nur zum Nachsehen. Bereits erledigte Rechnungen.", done, "done")}
+      </div>
+      ${!hasRealItems ? `<p class="hint">Noch keine Rechnungen in diesen Bereichen vorhanden.</p>` : ""}
+      ${localInvoiceExamplesHtml()}
     </section>
   `;
+}
+
+function invoiceManagementVisible() {
+  return openInvoiceItems().length > 0 || completedInvoiceItems().length > 0 || localInvoiceExamples().length > 0;
 }
 
 function openInvoiceItems() {
   const items = [];
   for (const [dateKey, report] of Object.entries(state.dayReports || {})) {
     (report.invoiceCustomers || []).forEach((invoice, index) => {
+      if (invoiceIsPaid(invoice)) return;
       if (invoice.invoiceDone) return;
       if (!invoiceIsReady(invoice)) return;
       items.push({ dateKey, invoice, index });
@@ -2494,51 +3163,192 @@ function openInvoiceItems() {
   return items.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
 }
 
-function pendingInvoiceItems() {
+function completedInvoiceItems() {
   const items = [];
   for (const [dateKey, report] of Object.entries(state.dayReports || {})) {
     (report.invoiceCustomers || []).forEach((invoice, index) => {
-      if (invoice.invoiceDone || invoiceIsReady(invoice)) return;
+      if (!invoice.invoiceDone && !invoiceIsPaid(invoice)) return;
       items.push({ dateKey, invoice, index });
     });
   }
-  return items.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+  return items.sort((a, b) => {
+    const aKey = a.invoice?.invoicePaidAt || a.invoice?.invoiceDoneAt || a.dateKey;
+    const bKey = b.invoice?.invoicePaidAt || b.invoice?.invoiceDoneAt || b.dateKey;
+    return bKey.localeCompare(aKey);
+  });
 }
 
-function openInvoiceCardHtml({ dateKey, invoice, index }) {
+function invoiceStatusSectionHtml(title, description, items, mode) {
+  return `
+    <section class="invoice-status-section">
+      <div class="invoice-status-head">
+        <div>
+          <h4>${escapeHtml(title)}</h4>
+          <p>${escapeHtml(description)}</p>
+        </div>
+        <span class="invoice-status-count">${items.length}</span>
+      </div>
+      ${items.length ? `<div class="open-invoice-list">
+        ${items.map((entry) => openInvoiceCardHtml(entry, { mode })).join("")}
+      </div>` : `<p class="hint">Keine Einträge.</p>`}
+    </section>
+  `;
+}
+
+function openInvoiceCardHtml({ dateKey, invoice, index }, options = {}) {
+  const mode = options.mode || "write";
+  const isDemo = Boolean(options.demo);
   const bowling = reportMoneyNumber(invoice.bowlingAmount || 0);
   const gastroSplit = invoiceGastroSplit(invoice);
   const total = invoiceTotal(invoice);
-  const tipText = String(invoice.tip || "").trim();
+  const tipText = String(invoice.tip || "").trim() || "-";
   const token = `${dateKey}|${invoice.id || index}`;
-  const briefhead = invoiceBriefhead(invoice);
-  const gastroFields = gastroSplit.hasSplit
-    ? `
-        ${invoiceCopyField("Gastro Getränke", formatReportMoney(gastroSplit.drinks))}
-        ${invoiceCopyField("Gastro Speisen", formatReportMoney(gastroSplit.food))}
-        ${invoiceCopyField("Gastro Sonstiges", formatReportMoney(gastroSplit.other))}
-      `
-    : invoiceCopyField("Gastro Betrag", formatReportMoney(gastroSplit.total), "invoice-copy-field-wide");
+  const paymentMethod = String(invoice.paymentMethod || "").trim() || "-";
+  const noteText = String(invoice.note || "").trim() || "-";
+  const otherNoteText = String(gastroSplit.note || "").trim() || "-";
+  const pentacodeText = invoicePentacodeEntered(invoice) ? "Ja" : "Nein";
+  const primaryAction = invoiceCardPrimaryAction(mode, token, isDemo);
+  const metaFields = [
+    invoiceCopyField("Rechnungsdatum", formatDate(dateKey)),
+    invoiceCopyField("Zahlungsart", paymentMethod),
+    invoiceCopyField("Gesamtbetrag", formatReportMoney(total))
+  ];
+  if (mode === "done") {
+    metaFields.push(invoiceCopyField("Erledigt am", formatDateTime(invoice.invoicePaidAt || invoice.invoiceDoneAt || "")));
+  }
   return `
-    <article class="open-invoice-card">
+    <article class="open-invoice-card ${isDemo ? "is-demo" : ""}">
       <div class="open-invoice-head">
-        <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
+        <div class="open-invoice-title-block">
+          <strong>${escapeHtml(invoice.name || `Rechnung ${index + 1}`)}</strong>
+          <span class="invoice-pill ${escapeHtml(invoiceStatusClass(invoice))}">${escapeHtml(invoiceStatusText(invoice))}${isDemo ? " · Demo" : ""}</span>
+        </div>
         <div class="open-invoice-actions">
-          <button class="primary" type="button" data-complete-invoice="${escapeHtml(token)}">Erledigt</button>
-          <button class="secondary danger-lite" type="button" data-delete-invoice="${escapeHtml(token)}">Löschen</button>
+          ${primaryAction}
+          ${!isDemo ? `<button class="secondary danger-lite" type="button" data-delete-invoice="${escapeHtml(token)}">Löschen</button>` : ""}
         </div>
       </div>
       <div class="invoice-copy-grid">
-        ${invoiceCopyField("Rechnungsdatum", formatDate(dateKey))}
-        ${invoiceCopyField("Briefkopf", briefhead, "invoice-copy-field-wide")}
-        ${invoiceCopyField("Betrag Bowling", formatReportMoney(bowling))}
-        ${gastroFields}
-        ${invoiceCopyField("Betrag gesamt", formatReportMoney(total))}
+        ${metaFields.join("")}
+        ${invoiceCopyField("Firma / Name", invoice.name || "-", "invoice-copy-field-wide")}
+        ${invoiceCopyField("Rechnungsadresse", invoice.address || "-", "invoice-copy-field-wide")}
+        ${invoiceCopyField("Bowling Betrag", formatReportMoney(bowling))}
+        ${invoiceCopyField("Gastro Getränke", formatReportMoney(gastroSplit.drinks))}
+        ${invoiceCopyField("Gastro Speisen", formatReportMoney(gastroSplit.food))}
+        ${invoiceCopyField("Gastro Sonstiges", formatReportMoney(gastroSplit.other))}
+        ${invoiceCopyField("Gastro Gesamt", formatReportMoney(gastroSplit.total))}
+        ${invoiceCopyField("Trinkgeld", tipText)}
+        ${invoiceCopyField("Ansprechpartner", invoice.contact || "-")}
+        ${invoiceCopyField("Telefon", invoice.phone || "-")}
+        ${invoiceCopyField("E-Mail", invoice.email || "-", "invoice-copy-field-wide")}
+        ${invoiceCopyField("Notiz", noteText, "invoice-copy-field-wide")}
+        ${invoiceCopyField("Sonstiges Notiz", otherNoteText, "invoice-copy-field-wide")}
+        ${invoiceCopyField("In Pentacode eingetragen", pentacodeText)}
       </div>
-      <p class="hint">Ansprechpartner: ${escapeHtml(invoice.contact || "-")} · E-Mail: ${escapeHtml(invoice.email || "-")} · Telefon: ${escapeHtml(invoice.phone || "-")}${tipText ? ` · Tipp: ${escapeHtml(tipText)}` : ""}</p>
-      ${gastroSplit.note ? `<p class="hint">Sonstiges Notiz: ${escapeHtml(gastroSplit.note)}</p>` : ""}
       ${invoiceReceiptLinksHtml(invoice)}
     </article>
+  `;
+}
+
+function invoiceCardPrimaryAction(mode, token, isDemo = false) {
+  if (mode === "write") {
+    return `<button class="primary" type="button" ${isDemo ? "disabled" : `data-complete-invoice="${escapeHtml(token)}"`}>Als erledigt markieren</button>`;
+  }
+  return "";
+}
+
+function localInvoiceExamples() {
+  const host = String(window.location.hostname || "").trim().toLowerCase();
+  if (!["localhost", "127.0.0.1", "::1"].includes(host)) return [];
+  return [
+    {
+      dateKey: "2026-06-20",
+      invoice: {
+        id: "demo-write",
+        name: "Musterkunde Geburtstag",
+        contact: "Anna Beispiel",
+        phone: "+49 160 1234567",
+        email: "demo1@la-bowling.de",
+        address: "Beispielweg 1\n84034 Landshut",
+        paymentMethod: "Überweisung",
+        bowlingAmount: "180.00",
+        gastroDrinksAmount: "120.00",
+        gastroFoodAmount: "210.00",
+        gastroOtherAmount: "50.00",
+        gastroOtherNote: "Raummiete",
+        tip: "20,00",
+        note: "Lokales Beispiel für zu schreiben",
+        invoiceReady: true,
+        pentacodeEntered: true
+      },
+      mode: "write"
+    },
+    {
+      dateKey: "2026-06-18",
+      invoice: {
+        id: "demo-sent",
+        name: "Musterfirma Event GmbH",
+        contact: "Peter Muster",
+        phone: "+49 170 555000",
+        email: "demo2@la-bowling.de",
+        address: "Hauptstraße 22\n84034 Landshut",
+        paymentMethod: "EC",
+        bowlingAmount: "95.00",
+        gastroDrinksAmount: "70.00",
+        gastroFoodAmount: "140.00",
+        gastroOtherAmount: "0.00",
+        tip: "0,00",
+        note: "Lokales Beispiel für erledigt",
+        invoiceReady: true,
+        invoiceDone: true,
+        invoiceDoneAt: "2026-06-19T09:30:00.000Z",
+        pentacodeEntered: true
+      },
+      mode: "done"
+    },
+    {
+      dateKey: "2026-06-14",
+      invoice: {
+        id: "demo-paid",
+        name: "Testkunde Verein",
+        contact: "Julia Test",
+        phone: "+49 151 222333",
+        email: "demo3@la-bowling.de",
+        address: "Testgasse 7\n84034 Landshut",
+        paymentMethod: "Bar",
+        bowlingAmount: "240.00",
+        gastroDrinksAmount: "130.00",
+        gastroFoodAmount: "200.00",
+        gastroOtherAmount: "0.00",
+        tip: "35,00",
+        note: "Lokales Beispiel für erledigt",
+        invoiceReady: true,
+        invoiceDone: true,
+        invoiceDoneAt: "2026-06-15T08:00:00.000Z",
+        invoicePaid: true,
+        invoicePaidAt: "2026-06-16T13:15:00.000Z",
+        pentacodeEntered: true
+      },
+      mode: "done"
+    }
+  ];
+}
+
+function localInvoiceExamplesHtml() {
+  const examples = localInvoiceExamples();
+  if (!examples.length) return "";
+  return `
+    <section class="invoice-demo-panel">
+      <div class="invoice-status-head">
+        <div>
+          <h4>Lokale Beispiele</h4>
+          <p>Nur auf localhost sichtbar. Diese Karten ändern keine echten Rechnungen.</p>
+        </div>
+      </div>
+      <div class="open-invoice-list">
+        ${examples.map((entry, index) => openInvoiceCardHtml({ dateKey: entry.dateKey, invoice: entry.invoice, index }, { mode: entry.mode, demo: true })).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -2561,12 +3371,34 @@ function invoiceCopyField(label, value, className = "") {
   `;
 }
 
-function dayReportFoldersByMonthHtml() {
+function formatCopyMoneyValue(value) {
+  return Number(value || 0).toFixed(2).replace(".", ",");
+}
+
+function invoiceRowCustomerCopyValue(row) {
+  return String(reportFieldValue(row, "name") || "").trim() || "Kunde";
+}
+
+function invoiceRowTotalValue(row) {
+  return parseMoneyInput(reportFieldValue(row, "bowlingAmount")) + invoiceGastroSplit({
+    gastroAmount: reportFieldValue(row, "gastroAmount"),
+    gastroDrinksAmount: reportFieldValue(row, "gastroDrinksAmount"),
+    gastroFoodAmount: reportFieldValue(row, "gastroFoodAmount"),
+    gastroOtherAmount: reportFieldValue(row, "gastroOtherAmount")
+  }).total + parseMoneyInput(reportFieldValue(row, "tip"));
+}
+
+function invoiceRowTotalCopyValue(row) {
+  return formatCopyMoneyValue(invoiceRowTotalValue(row));
+}
+
+function dayReportFoldersByMonthHtml(selectedDate = "") {
   const months = Object.keys(state.dayReports || {})
     .filter((dateKey) => state.dayReports?.[dateKey] && typeof state.dayReports[dateKey] === "object")
     .map((dateKey) => dateKey.slice(0, 7));
   const sortedMonths = [...new Set(months)].sort((a, b) => b.localeCompare(a));
   if (!sortedMonths.length) return "";
+  const selectedMonth = selectedDate?.slice(0, 7) || sortedMonths[0] || "";
   return `
     <section class="report-folders">
       <div class="report-folders-head">
@@ -2576,7 +3408,7 @@ function dayReportFoldersByMonthHtml() {
         </div>
       </div>
       ${sortedMonths.map((month) => `
-        <details class="report-month-card">
+        <details class="report-month-card" ${month === selectedMonth ? "open" : ""}>
           <summary class="report-month-summary">
             <span>
               <strong>${formatMonth(month)}</strong>
@@ -2584,9 +3416,9 @@ function dayReportFoldersByMonthHtml() {
             </span>
             <b>${monthReportAttachmentCount(month)} Dateien</b>
           </summary>
-          <details class="report-month-section">
+          <details class="report-month-section" ${month === selectedMonth ? "open" : ""}>
             <summary>Tagesberichte</summary>
-            ${dayReportsForMonthHtml(month)}
+            ${dayReportsForMonthHtml(month, selectedDate)}
           </details>
         </details>
       `).join("")}
@@ -2597,35 +3429,35 @@ function dayReportFoldersByMonthHtml() {
 function reportFolderHtml(month, key, label) {
   const items = reportFolderItems(month, key);
   return `
-    <details class="report-folder-card">
-      <summary class="report-folder-card-head">
+    <section class="report-folder-card report-folder-card-static">
+      <div class="report-folder-card-head">
         <div>
           <strong>${escapeHtml(label)}</strong>
           <span>${items.length} Datei${items.length === 1 ? "" : "en"}</span>
         </div>
-      </summary>
-      <div class="report-folder-actions">
-        <button class="secondary" type="button" data-export-selected-folder="${escapeHtml(month)}|${escapeHtml(key)}" ${items.length ? "" : "disabled"}>Ausgewählte exportieren</button>
-        <button class="secondary" type="button" data-export-report-folder="${escapeHtml(month)}|${escapeHtml(key)}" ${items.length ? "" : "disabled"}>Alle exportieren</button>
+        <div class="report-folder-actions">
+          <button class="secondary" type="button" data-export-selected-folder="${escapeHtml(month)}|${escapeHtml(key)}" ${items.length ? "" : "disabled"}>Ausgewählte</button>
+          <button class="secondary" type="button" data-export-report-folder="${escapeHtml(month)}|${escapeHtml(key)}" ${items.length ? "" : "disabled"}>Monat exportieren</button>
+        </div>
       </div>
-      <div class="report-folder-files">
+      <div class="report-folder-files compact-export-files">
         ${items.length ? items.map((item, index) => {
           const token = `${month}|${key}|${index}`;
           return `
-          <div class="report-folder-file" data-report-file-row="${escapeHtml(token)}">
-            <label class="report-file-select">
+          <div class="report-folder-file compact-export-file" data-report-file-row="${escapeHtml(token)}">
+            <label class="report-file-select compact-export-select">
               <input type="checkbox" data-report-file="${escapeHtml(token)}">
               <span>${escapeHtml(item.title)}</span>
             </label>
-            <div class="report-file-actions">
+            <div class="report-file-actions compact-export-actions">
               <button class="secondary" type="button" data-preview-report-file="${escapeHtml(token)}">Vorschau</button>
               <button class="secondary" type="button" data-export-report-file="${escapeHtml(token)}">Export</button>
             </div>
             <div class="report-file-preview hidden" data-report-file-preview="${escapeHtml(token)}"></div>
           </div>
-        `}).join("") : `<p class="hint">Keine Dateien in diesem Ordner.</p>`}
+        `}).join("") : `<p class="hint">Keine Dateien in diesem Monat.</p>`}
       </div>
-    </details>
+    </section>
   `;
 }
 
@@ -2878,15 +3710,25 @@ function invoiceIsReady(item = {}) {
   return invoiceTotal(item) > 0 && Boolean(invoiceReceipt(item));
 }
 
+function invoiceIsPaid(item = {}) {
+  return item.invoicePaid === true || item.invoicePaid === "true";
+}
+
+function invoicePentacodeEntered(item = {}) {
+  if (item.pentacodeEntered === true || item.pentacodeEntered === "true") return true;
+  if (item.pentacodeEntered === false || item.pentacodeEntered === "false") return false;
+  return Boolean(item.invoiceDone || item.invoiceReady || item.invoiceNotificationSentAt || item.invoicePaid);
+}
+
 function invoiceStatusText(item = {}) {
-  if (item.invoiceDone) return "Erledigt";
+  if (invoiceIsPaid(item) || item.invoiceDone) return "Erledigt";
   if (item.invoiceNotificationSentAt) return "An Chef gesendet";
   if (invoiceIsReady(item)) return "Fertig für Chef";
   return "Angelegt";
 }
 
 function invoiceStatusClass(item = {}) {
-  if (item.invoiceDone) return "is-done";
+  if (invoiceIsPaid(item) || item.invoiceDone) return "is-done";
   if (invoiceIsReady(item)) return "is-ready";
   return "is-draft";
 }
@@ -2937,14 +3779,16 @@ function reportInvoiceCustomersHtml(items = []) {
           <span>Rechnungssumme ${formatReportMoney(invoiceTotal(item))}</span>
           <span>Bowling ${formatReportMoney(item.bowlingAmount)}</span>
           <span>${escapeHtml(invoiceGastroSummaryText(item))}</span>
+          <span>Zahlungsart: ${escapeHtml(item.paymentMethod || "-")}</span>
+          <span>Trinkgeld: ${escapeHtml(item.tip || "-")}</span>
           <span>Briefkopf</span>
           <p class="invoice-briefhead">${escapeHtml(invoiceBriefhead(item)).replace(/\n/g, "<br>")}</p>
           <span>Ansprechpartner: ${escapeHtml(item.contact || "-")}</span>
           <span>Telefon: ${escapeHtml(item.phone || "-")}</span>
-          <span>Tipp: ${escapeHtml(item.tip || "-")}</span>
           <span>${escapeHtml(item.email || "Keine E-Mail")}</span>
           ${item.gastroOtherNote ? `<span>Sonstiges Notiz: ${escapeHtml(item.gastroOtherNote)}</span>` : ""}
           ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
+          <span>In Pentacode eingetragen: ${invoicePentacodeEntered(item) ? "Ja" : "Nein"}</span>
           ${invoiceReceiptLinksHtml(item)}
         </article>
       `).join("")}
@@ -3132,9 +3976,14 @@ function reportMoneyNumber(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function invoiceTipAmount(item = {}) {
+  return reportMoneyNumber(item.tip);
+}
+
 function invoiceTotal(item = {}) {
   const splitTotal = reportMoneyNumber(item.bowlingAmount) + invoiceGastroSplit(item).total;
-  return splitTotal || reportMoneyNumber(item.amount);
+  const baseTotal = splitTotal || reportMoneyNumber(item.amount);
+  return baseTotal + invoiceTipAmount(item);
 }
 
 function exportDayReport(dateKey) {
@@ -3210,6 +4059,13 @@ function exportReportFolder(value) {
   exportReportItems(items);
 }
 
+function exportChefMonthDocuments(month) {
+  const items = ["penta", "handwriting", "ecCut"]
+    .flatMap((key) => reportFolderItems(month, key))
+    .filter((item) => item.href);
+  exportReportItems(items);
+}
+
 function exportSelectedReportFolder(value) {
   const [month, key] = String(value || "").split("|");
   const prefix = `${month}|${key}|`;
@@ -3282,7 +4138,33 @@ async function completeInvoice(value, button) {
       })
     });
     await loadState();
-    showToast("Rechnung erledigt.");
+    showToast("Rechnung als geschrieben markiert.");
+  } catch (error) {
+    button.textContent = oldText;
+    button.disabled = false;
+    showError(error);
+  }
+}
+
+async function payInvoice(value, button) {
+  const [date, invoiceId] = String(value || "").split("|");
+  if (!date || !invoiceId) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "pay-invoice",
+        date,
+        invoiceId,
+        employeeToken: state.employeeToken,
+        adminToken: state.adminToken
+      })
+    });
+    await loadState();
+    showToast("Rechnung als bezahlt markiert.");
   } catch (error) {
     button.textContent = oldText;
     button.disabled = false;
@@ -3584,7 +4466,11 @@ function assignmentTimeText(time = {}) {
 function renderScheduleDay(date, options = {}) {
   const key = isoDate(date);
   const sourceSchedule = options.schedule || state.schedule;
-  const assignments = sourceSchedule && sourceSchedule.days && sourceSchedule.days[key] ? sourceSchedule.days[key] : {};
+  const assignments = sourceSchedule?.days?.[key]
+    || (options.crossMonth
+      ? (options.publishedOnly ? publishedScheduleDayAssignments(key) : scheduleForMonth(key.slice(0, 7)).days?.[key])
+      : null)
+    || {};
   const holiday = holidayInfo(key);
   const filled = state.settings.positions.filter((position) => assignments[position]);
   const visiblePositions = state.settings.positions.filter((position) => assignments[position]);
@@ -8717,9 +9603,9 @@ function renderReportEntryLists(report) {
 }
 
 function invoiceDayOverviewHtml(invoices = []) {
-  const ready = invoices.filter((item) => invoiceIsReady(item) && !item.invoiceDone).length;
+  const ready = invoices.filter((item) => invoiceIsReady(item) && !item.invoiceDone && !invoiceIsPaid(item)).length;
   const draft = invoices.filter((item) => !invoiceIsReady(item) && !item.invoiceDone).length;
-  const done = invoices.filter((item) => item.invoiceDone).length;
+  const done = invoices.filter((item) => item.invoiceDone || invoiceIsPaid(item)).length;
   const total = invoices.reduce((sum, item) => sum + invoiceTotal(item), 0);
   return `
     <div class="invoice-day-overview">
@@ -8728,7 +9614,7 @@ function invoiceDayOverviewHtml(invoices = []) {
         <strong>${invoices.length} Kunde${invoices.length === 1 ? "" : "n"}</strong>
       </div>
       <span class="invoice-pill is-draft">${draft} angelegt</span>
-      <span class="invoice-pill is-ready">${ready} fertig für Chef</span>
+      <span class="invoice-pill is-ready">${ready} zu schreiben</span>
       <span class="invoice-pill is-done">${done} erledigt</span>
       <span class="invoice-pill">${formatReportMoney(total)}</span>
     </div>
@@ -8837,8 +9723,9 @@ function renderCustomerInvoiceDesk() {
   const expenses = report.expenses || [];
   const summary = $("#customerInvoiceDaySummary");
   if (summary) {
-    const ready = invoices.filter((item) => invoiceIsReady(item) && !item.invoiceDone).length;
+    const ready = invoices.filter((item) => invoiceIsReady(item) && !item.invoiceDone && !invoiceIsPaid(item)).length;
     const draft = invoices.filter((item) => !invoiceIsReady(item) && !item.invoiceDone).length;
+    const done = invoices.filter((item) => item.invoiceDone || invoiceIsPaid(item)).length;
     const total = invoices.reduce((sum, item) => sum + invoiceTotal(item), 0);
     summary.innerHTML = `
       <div>
@@ -8846,7 +9733,8 @@ function renderCustomerInvoiceDesk() {
         <strong>${invoices.length} Rechnungskunde${invoices.length === 1 ? "" : "n"}</strong>
       </div>
       <span class="invoice-pill is-draft">${draft} offen</span>
-      <span class="invoice-pill is-ready">${ready} fertig für Chef</span>
+      <span class="invoice-pill is-ready">${ready} zu schreiben</span>
+      <span class="invoice-pill is-done">${done} erledigt</span>
       <span class="invoice-pill">${formatReportMoney(total)}</span>
     `;
   }
@@ -8918,11 +9806,14 @@ function customerMasterToInvoice(customer = {}) {
     paymentMethod: customer.paymentMethod || "",
     tip: customer.tip || "",
     note: customer.note || "",
+    pentacodeEntered: false,
     createdAt: new Date().toISOString(),
     invoiceReady: false,
     invoiceReadyAt: "",
     invoiceDone: false,
     invoiceDoneAt: "",
+    invoicePaid: false,
+    invoicePaidAt: "",
     amount: "",
     bowlingAmount: "",
     gastroAmount: "",
@@ -8968,6 +9859,7 @@ function invoiceRowHtml(item = {}) {
   const isReady = invoiceIsReady(item);
   const statusClass = invoiceStatusClass(item);
   const total = invoiceTotal(item);
+  const pentacodeEntered = invoicePentacodeEntered(item);
   const legacyHint = !singleReceipt && legacyReceipts.length
     ? `<span class="hint">Bisherige getrennte Belege: ${legacyReceipts.map(({ label, receipt }) => `${escapeHtml(label)} ${escapeHtml(receipt.receiptName || "")}`).join(" | ")}</span>`
     : "";
@@ -8995,17 +9887,21 @@ function invoiceRowHtml(item = {}) {
             <option value="Überweisung"${item.paymentMethod === "Überweisung" ? " selected" : ""}>Überweisung</option>
           </select>
         </label>
-        <label>Tipp<input data-report-field="tip" value="${escapeHtml(item.tip || "")}" placeholder="optional"></label>
       </div>
-      <div class="report-entry-grid">
+      <div class="report-entry-grid invoice-amount-grid">
         <label>Bowling Betrag<input data-report-field="bowlingAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.bowlingAmount || (item.area === "bowling" ? item.amount : ""))}" placeholder="0,00"></label>
         <label>Gastro Getränke<input data-report-field="gastroDrinksAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroDrinksAmount || "")}" placeholder="0,00"></label>
         <label>Gastro Speisen<input data-report-field="gastroFoodAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroFoodAmount || "")}" placeholder="0,00"></label>
         <label>Gastro Sonstiges<input data-report-field="gastroOtherAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroOtherAmount || "")}" placeholder="z.B. Raummiete"></label>
-        <label>Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="z.B. Raummiete oder Sonderleistung">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
+        <label class="invoice-tip-field">Tipp
+          <input data-report-field="tip" value="${escapeHtml(item.tip || "")}" placeholder="optional">
+          <small class="invoice-field-hint">Achtung: Wenn Tip boniert ist, steht er separat auf dem Gastro-Beleg.</small>
+        </label>
+        <label class="invoice-other-note-field">Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="z.B. Raummiete oder Sonderleistung">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
       </div>
       <label>Rechnungsadresse<textarea data-report-field="address" rows="2" placeholder="Adresse für Rechnung">${escapeHtml(item.address || "")}</textarea></label>
       <label>Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
+      <label class="invoice-pentacode-check"><input data-report-field="pentacodeEntered" type="checkbox" value="true" ${pentacodeEntered ? "checked" : ""}> In Pentacode eingetragen</label>
       <label>Rechnungsbeleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
       ${singleReceipt?.receiptName ? `<span class="hint">Aktueller Rechnungsbeleg: ${escapeHtml(singleReceipt.receiptName)}</span>` : ""}
       ${legacyHint}
@@ -9026,9 +9922,13 @@ function invoiceRowHtml(item = {}) {
       <input type="hidden" data-report-field="invoiceReadyAt" value="${escapeHtml(item.invoiceReadyAt || "")}">
       <input type="hidden" data-report-field="invoiceDone" value="${item.invoiceDone ? "true" : "false"}">
       <input type="hidden" data-report-field="invoiceDoneAt" value="${escapeHtml(item.invoiceDoneAt || "")}">
+      <input type="hidden" data-report-field="invoicePaid" value="${invoiceIsPaid(item) ? "true" : "false"}">
+      <input type="hidden" data-report-field="invoicePaidAt" value="${escapeHtml(item.invoicePaidAt || "")}">
       <input type="hidden" data-report-field="invoiceNotificationSentAt" value="${escapeHtml(item.invoiceNotificationSentAt || "")}">
       <input type="hidden" data-report-field="createdAt" value="${escapeHtml(item.createdAt || "")}">
       <div class="invoice-entry-actions">
+        <button class="secondary" data-copy-invoice-customer type="button">Kunde kopieren</button>
+        <button class="secondary" data-copy-invoice-total type="button">Betrag kopieren</button>
         <button class="secondary" data-save-invoice-draft type="button">Zwischenspeichern</button>
         <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut an Chef senden" : "Fertig für Chef"}</button>
         <button class="secondary danger-lite" data-remove-report-entry type="button">Vollständig löschen</button>
@@ -9143,7 +10043,7 @@ async function collectReportEntriesFrom(root, type) {
   for (const row of [...(root || document).querySelectorAll(selector)]) {
     const item = { id: row.dataset.id || cryptoId() };
     row.querySelectorAll("[data-report-field]").forEach((field) => {
-      item[field.dataset.reportField] = field.value;
+      item[field.dataset.reportField] = field.type === "checkbox" ? (field.checked ? "true" : "") : field.value;
     });
     if (type === "expense") {
       item.receipts = await collectExpenseReceipts(row);
@@ -9454,12 +10354,19 @@ async function removeCustomerInvoiceDeskEntry(button) {
 }
 
 function reportFieldValue(row, name) {
-  return row.querySelector(`[data-report-field="${name}"]`)?.value || "";
+  const field = row.querySelector(`[data-report-field="${name}"]`);
+  if (!field) return "";
+  return field.type === "checkbox" ? (field.checked ? "true" : "") : field.value || "";
 }
 
 function setReportFieldValue(row, name, value) {
   const field = row.querySelector(`[data-report-field="${name}"]`);
-  if (field) field.value = value;
+  if (!field) return;
+  if (field.type === "checkbox") {
+    field.checked = value === true || value === "true" || value === 1 || value === "1";
+    return;
+  }
+  field.value = value;
 }
 
 function invoiceRowHasReceipt(row) {
@@ -9482,6 +10389,7 @@ function invoiceRowReadyProblems(row) {
   if (!reportFieldValue(row, "name")) problems.push("Firma/Name fehlt");
   if (!reportFieldValue(row, "address")) problems.push("Rechnungsadresse fehlt");
   if (!reportFieldValue(row, "email")) problems.push("E-Mail fehlt");
+  if (!reportFieldValue(row, "pentacodeEntered")) problems.push("In Pentacode eingetragen fehlt");
   const gastroAmount = reportFieldValue(row, "gastroAmount");
   const gastroDrinks = reportFieldValue(row, "gastroDrinksAmount");
   const gastroFood = reportFieldValue(row, "gastroFoodAmount");
@@ -10393,7 +11301,7 @@ function renderAdminPublishedList() {
   container.innerHTML = schedules.map(([month, schedule]) => {
     const publishedWeekMap = schedule.publishedWeeks || {};
     const hasPublishedWeekMap = Object.keys(publishedWeekMap).some((key) => Boolean(publishedWeekMap[key]));
-    const weeks = groupedMonthWeeks(month).filter((week) => (
+    const weeks = groupedCalendarWeeksForMonth(month).filter((week) => (
       hasPublishedWeekMap ? Boolean(publishedWeekMap[week.key]) : Boolean(schedule.published)
     ));
     return `
@@ -11703,14 +12611,70 @@ function bindEvents() {
   });
 
   $("#chefDashboard")?.addEventListener("click", (event) => {
+    const searchScopeButton = event.target.closest("[data-chef-search-scope]");
+    if (searchScopeButton) {
+      state.chefSearchScope = searchScopeButton.dataset.chefSearchScope || "all";
+      renderChef();
+      return;
+    }
+    const searchToggleButton = event.target.closest("[data-chef-search-toggle]");
+    if (searchToggleButton) {
+      const toggle = searchToggleButton.dataset.chefSearchToggle || "";
+      if (toggle === "month") state.chefSearchMonthOnly = !state.chefSearchMonthOnly;
+      if (toggle === "open-invoices") state.chefSearchOpenInvoicesOnly = !state.chefSearchOpenInvoicesOnly;
+      if (toggle === "missing-documents") state.chefSearchMissingDocsOnly = !state.chefSearchMissingDocsOnly;
+      renderChef();
+      return;
+    }
+    const clearSearchButton = event.target.closest("[data-clear-chef-search]");
+    if (clearSearchButton) {
+      state.chefReportSearch = "";
+      state.chefSearchScope = "all";
+      state.chefSearchMonthOnly = false;
+      state.chefSearchOpenInvoicesOnly = false;
+      state.chefSearchMissingDocsOnly = false;
+      renderChef();
+      return;
+    }
+    const openReportButton = event.target.closest("[data-chef-open-report]");
+    if (openReportButton) {
+      state.chefTab = "reports";
+      state.chefReportDate = openReportButton.dataset.chefOpenReport || defaultChefReportDate();
+      renderChef();
+      return;
+    }
+    const openTabButton = event.target.closest("[data-chef-open-tab]");
+    if (openTabButton) {
+      state.chefTab = openTabButton.dataset.chefOpenTab || "reports";
+      renderChef();
+      return;
+    }
+    const openScheduleButton = event.target.closest("[data-chef-open-schedule-date]");
+    if (openScheduleButton) {
+      const dateKey = openScheduleButton.dataset.chefOpenScheduleDate || "";
+      if (dateKey) state.selectedMonth = dateKey.slice(0, 7);
+      state.chefTab = "schedule";
+      renderChef();
+      return;
+    }
     const copyButton = event.target.closest("[data-copy-value]");
     if (copyButton) {
       copyText(copyButton.dataset.copyValue || "");
       return;
     }
+    const exportDayButton = event.target.closest("[data-export-day-report]");
+    if (exportDayButton) {
+      exportDayReport(exportDayButton.dataset.exportDayReport);
+      return;
+    }
     const completeInvoiceButton = event.target.closest("[data-complete-invoice]");
     if (completeInvoiceButton) {
       completeInvoice(completeInvoiceButton.dataset.completeInvoice, completeInvoiceButton);
+      return;
+    }
+    const payInvoiceButton = event.target.closest("[data-pay-invoice]");
+    if (payInvoiceButton) {
+      payInvoice(payInvoiceButton.dataset.payInvoice, payInvoiceButton);
       return;
     }
     const deleteInvoiceButton = event.target.closest("[data-delete-invoice]");
@@ -11726,6 +12690,11 @@ function bindEvents() {
     const folderButton = event.target.closest("[data-export-report-folder]");
     if (folderButton) {
       exportReportFolder(folderButton.dataset.exportReportFolder);
+      return;
+    }
+    const monthButton = event.target.closest("[data-export-chef-month]");
+    if (monthButton) {
+      exportChefMonthDocuments(monthButton.dataset.exportChefMonth);
       return;
     }
     const selectedFolderButton = event.target.closest("[data-export-selected-folder]");
@@ -11749,7 +12718,34 @@ function bindEvents() {
     renderChef();
   });
 
+  $("#chefDashboard")?.addEventListener("input", (event) => {
+    if (!event.target.matches("#chefReportSearch")) return;
+    const nextValue = event.target.value || "";
+    state.chefReportSearch = nextValue;
+    renderChef();
+    const field = $("#chefReportSearch");
+    if (field) {
+      field.focus();
+      const end = nextValue.length;
+      try {
+        field.setSelectionRange(end, end);
+      } catch (error) {
+        // Ignore browsers without setSelectionRange for search inputs.
+      }
+    }
+  });
+
   $("#chefDashboard")?.addEventListener("change", (event) => {
+    if (event.target.matches("#chefReportDate")) {
+      state.chefReportDate = event.target.value || defaultChefReportDate();
+      renderChef();
+      return;
+    }
+    if (event.target.matches("#chefExportMonth")) {
+      state.chefExportMonth = event.target.value || defaultChefExportMonth();
+      renderChef();
+      return;
+    }
     if (!event.target.matches("#chefEmployeeMonth, #chefNumbersMonth")) return;
     state.selectedMonth = event.target.value;
     loadState().catch(showError);
@@ -11884,6 +12880,18 @@ function bindEvents() {
   });
 
   $("#customerInvoiceStaffArea")?.addEventListener("click", (event) => {
+    const copyCustomerButton = event.target.closest("[data-copy-invoice-customer]");
+    if (copyCustomerButton) {
+      const row = copyCustomerButton.closest('[data-report-entry="invoice"]');
+      copyText(invoiceRowCustomerCopyValue(row));
+      return;
+    }
+    const copyTotalButton = event.target.closest("[data-copy-invoice-total]");
+    if (copyTotalButton) {
+      const row = copyTotalButton.closest('[data-report-entry="invoice"]');
+      copyText(invoiceRowTotalCopyValue(row));
+      return;
+    }
     const draftButton = event.target.closest("[data-save-invoice-draft]");
     if (draftButton) {
       saveCustomerInvoiceDeskRow(draftButton, false);
@@ -12632,7 +13640,34 @@ function bindEvents() {
     renderAdminTablePlan();
   });
 
+  $("#adminContent")?.addEventListener("input", (event) => {
+    if (!event.target.matches("#adminReportSearch")) return;
+    const nextValue = event.target.value || "";
+    state.adminReportSearch = nextValue;
+    renderAdminReports();
+    const field = $("#adminReportSearch");
+    if (field) {
+      field.focus();
+      const end = nextValue.length;
+      try {
+        field.setSelectionRange(end, end);
+      } catch (error) {
+        // Ignore browsers without setSelectionRange for search inputs.
+      }
+    }
+  });
+
   $("#adminContent")?.addEventListener("click", async (event) => {
+    const exportDayButton = event.target.closest("[data-export-day-report]");
+    if (exportDayButton) {
+      exportDayReport(exportDayButton.dataset.exportDayReport);
+      return;
+    }
+    const printReportButton = event.target.closest("[data-print-day-report]");
+    if (printReportButton) {
+      printDayReportFromChef(printReportButton.dataset.printDayReport, printReportButton);
+      return;
+    }
     const quickZoneField = event.target.closest("[data-admin-zone-quick]");
     if (quickZoneField) {
       await quickEditAdminTablePlanZoneField(quickZoneField.dataset.adminZoneId, quickZoneField.dataset.adminZoneQuick);
@@ -12972,6 +14007,11 @@ function bindEvents() {
   });
 
   $("#adminContent")?.addEventListener("change", (event) => {
+    if (event.target.matches("#adminReportDate")) {
+      state.adminReportDate = event.target.value || defaultAdminReportDate();
+      renderAdminReports();
+      return;
+    }
     if (!event.target.matches("#adminNumbersMonth")) return;
     state.selectedMonth = event.target.value;
     if ($("#monthInput")) $("#monthInput").value = state.selectedMonth;
@@ -13652,6 +14692,18 @@ function bindEvents() {
   });
 
   $("#terminalFinanceSection")?.addEventListener("click", (event) => {
+    const copyCustomerButton = event.target.closest("[data-copy-invoice-customer]");
+    if (copyCustomerButton) {
+      const row = copyCustomerButton.closest('[data-report-entry="invoice"]');
+      copyText(invoiceRowCustomerCopyValue(row));
+      return;
+    }
+    const copyTotalButton = event.target.closest("[data-copy-invoice-total]");
+    if (copyTotalButton) {
+      const row = copyTotalButton.closest('[data-report-entry="invoice"]');
+      copyText(invoiceRowTotalCopyValue(row));
+      return;
+    }
     const draftButton = event.target.closest("[data-save-invoice-draft]");
     if (draftButton) {
       saveInvoiceRow(draftButton, false);

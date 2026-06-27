@@ -1496,6 +1496,12 @@ async function cleanReportItems(items, type, date) {
   const gastroDrinksAmount = cleanMoney(raw.gastroDrinksAmount);
   const gastroFoodAmount = cleanMoney(raw.gastroFoodAmount);
   const gastroOtherAmount = cleanMoney(raw.gastroOtherAmount);
+  const invoiceReadyRequested = raw.invoiceReady === true || raw.invoiceReady === "true";
+  const invoiceDone = raw.invoiceDone === true || raw.invoiceDone === "true";
+  const invoiceNotificationSentAt = cleanText(raw.invoiceNotificationSentAt, 80);
+  const hasPentacodeFlag = Object.prototype.hasOwnProperty.call(raw || {}, "pentacodeEntered");
+  const pentacodeEntered = raw.pentacodeEntered === true || raw.pentacodeEntered === "true"
+    || (!hasPentacodeFlag && (invoiceReadyRequested || invoiceDone || invoiceNotificationSentAt));
   const hasGastroSplit = [String(raw.gastroDrinksAmount ?? "").trim(), String(raw.gastroFoodAmount ?? "").trim(), String(raw.gastroOtherAmount ?? "").trim()].some(Boolean);
   const gastroAmount = hasGastroSplit
       ? cleanMoney(String(
@@ -1533,14 +1539,17 @@ async function cleanReportItems(items, type, date) {
       phone: String(raw.phone || "").trim().slice(0, 80),
       paymentMethod: String(raw.paymentMethod || "").trim().slice(0, 40),
       tip: String(raw.tip || "").trim().slice(0, 160),
+      pentacodeEntered,
       email: String(raw.email || "").trim().slice(0, 180),
       category: String(raw.category || "").trim().slice(0, 120),
       createdAt: cleanText(raw.createdAt || new Date().toISOString(), 80),
-      invoiceReady: raw.invoiceReady === true || raw.invoiceReady === "true",
+      invoiceReady: invoiceReadyRequested && pentacodeEntered,
       invoiceReadyAt: cleanText(raw.invoiceReadyAt, 80),
-      invoiceDone: raw.invoiceDone === true || raw.invoiceDone === "true",
+      invoiceDone,
       invoiceDoneAt: cleanText(raw.invoiceDoneAt, 80),
-      invoiceNotificationSentAt: cleanText(raw.invoiceNotificationSentAt, 80),
+      invoicePaid: raw.invoicePaid === true || raw.invoicePaid === "true",
+      invoicePaidAt: cleanText(raw.invoicePaidAt, 80),
+      invoiceNotificationSentAt,
       area: type === "invoice" ? "rechnung" : raw.area
     };
     if (type === "expense") {

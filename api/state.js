@@ -213,6 +213,9 @@ async function saveCustomerInvoice(body, res) {
   if (action === "complete-invoice") {
     return completeInvoice(body, res);
   }
+  if (action === "pay-invoice") {
+    return payInvoice(body, res);
+  }
   if (action === "delete-invoice-customer") {
     return deleteInvoiceCustomer(body, res);
   }
@@ -266,11 +269,46 @@ async function completeInvoice(body, res) {
     return {
       ...invoice,
       invoiceDone: true,
-      invoiceDoneAt: new Date().toISOString()
+      invoiceDoneAt: new Date().toISOString(),
+      invoicePaid: false,
+      invoicePaidAt: ""
     };
   });
   if (!found) return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
   report.updatedAt = new Date().toISOString();
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true });
+}
+
+async function payInvoice(body, res) {
+  const appData = await readAppData();
+  const adminSession = verifyToken(body.adminToken || "", "admin");
+  const employeeSession = verifyToken(body.employeeToken || "", "employee");
+  const employee = employeeSession?.employee || "";
+  if (!adminSession && !employeeIsChef(appData.settings, employee)) {
+    return sendJson(res, 401, { error: "Bitte als Chef anmelden." });
+  }
+  const date = String(body.date || "").trim();
+  const invoiceId = String(body.invoiceId || "").trim();
+  const report = appData.dayReports?.[date];
+  if (!report || !Array.isArray(report.invoiceCustomers)) {
+    return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
+  }
+  let found = false;
+  const now = new Date().toISOString();
+  report.invoiceCustomers = report.invoiceCustomers.map((invoice, index) => {
+    if (String(invoice.id || index) !== invoiceId) return invoice;
+    found = true;
+    return {
+      ...invoice,
+      invoiceDone: true,
+      invoiceDoneAt: String(invoice.invoiceDoneAt || "").trim() || now,
+      invoicePaid: true,
+      invoicePaidAt: now
+    };
+  });
+  if (!found) return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
+  report.updatedAt = now;
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true });
 }
@@ -548,6 +586,8 @@ function cleanCustomer(item) {
     invoiceReadyAt: "",
     invoiceDone: false,
     invoiceDoneAt: "",
+    invoicePaid: false,
+    invoicePaidAt: "",
     amount: "",
     bowlingAmount: "",
     gastroAmount: "",
