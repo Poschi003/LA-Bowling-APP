@@ -4627,6 +4627,20 @@ function assignmentTimeText(time = {}) {
   return "Startzeit ausstehend";
 }
 
+function assignmentVisibleInSchedule(dateKey, position = "", employee = "") {
+  if (!dateKey || !position || !employee) return false;
+  if (!assignmentPositionIncluded(position)) return false;
+  return assignmentDateKeys(todayKey()).includes(dateKey);
+}
+
+function assignmentScheduleMetaText(dateKey, employee, scheduleDay = {}, position = "") {
+  if (!assignmentVisibleInSchedule(dateKey, position, employee)) return "";
+  const time = assignmentTimeForEmployee(dateKey, employee, scheduleDay, position);
+  const base = assignmentTimeText(time);
+  const note = String(time?.note || "").trim();
+  return note ? `${base} · ${note}` : base;
+}
+
 function renderScheduleDay(date, options = {}) {
   const key = isoDate(date);
   const sourceSchedule = options.schedule || state.schedule;
@@ -4644,11 +4658,13 @@ function renderScheduleDay(date, options = {}) {
   const cells = visiblePositions.map((position) => {
     const assignedEmployee = assignments[position] || "";
     const ownShift = Boolean(state.activeEmployee && assignedEmployee === state.activeEmployee && !state.adminUnlocked);
+    const assignmentMeta = assignmentScheduleMetaText(key, assignedEmployee, assignments, position);
     return `
           <div class="position-cell ${positionClass(position)} ${assignedEmployee ? "filled" : ""} ${ownShift ? "own-shift clickable-shift" : ""}"
             ${ownShift ? `data-request-swap-date="${key}" data-request-swap-position="${escapeHtml(position)}"` : ""}>
             <span class="position-name">${escapeHtml(position)}</span>
             <span class="assignment">${escapeHtml(assignedEmployee)}</span>
+            ${assignmentMeta ? `<span class="assignment-meta">${escapeHtml(assignmentMeta)}</span>` : ""}
             ${ownShift ? `<span class="assignment-note">Zum Diensttausch anklicken</span>` : ""}
           </div>
         `;
