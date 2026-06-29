@@ -62,6 +62,7 @@ module.exports = async function handler(req, res) {
     if (action === "confirm-employee-tip-payout") return confirmEmployeeTipPayout(body, res);
     if (action === "confirm-tip-payout") return confirmTipPayout(body, res);
     if (action === "save-report") return saveReport(body, res);
+    if (action === "send-ready-invoice-mail") return sendReadyInvoiceMail(body, res);
     if (action === "close-report") return closeReport(body, res);
     return sendJson(res, 400, { error: "Unbekannte Aktion." });
   } catch (error) {
@@ -260,19 +261,24 @@ async function saveReport(body, res) {
   const mailResult = shouldSendInvoiceNotifications
     ? await sendReadyInvoiceNotifications(appData, date, targetInvoiceId, { forceResend: forceInvoiceNotification })
     : { sent: 0, failed: 0, skipped: 0, skipReasons: [], changed: false, errors: [] };
-  const mailMessage = mailResult.sent || mailResult.failed || mailResult.skipped
-    ? mailResult.failed
-      ? (mailResult.sent ? "E-Mail teilweise versendet." : "E-Mail konnte nicht versendet werden.")
-      : mailResult.skipped
-        ? (mailResult.skipReasons.some((item) => item.reason === "missing-smtp-config")
-          ? "E-Mail nicht versendet: SMTP in Vercel fehlt."
-          : mailResult.skipReasons.some((item) => item.reason === "nodemailer-missing")
-            ? "E-Mail nicht versendet: Mail-Modul fehlt im Build."
-            : "E-Mail nicht versendet."
-        )
-      : "E-Mail wurde versendet."
-    : "";
+  const mailMessage = invoiceMailResultMessage(mailResult);
   sendJson(res, 200, { ok: true, message: "Tagesbericht gespeichert.", mailMessage, mailSent: mailResult.sent > 0, mailFailed: mailResult.failed > 0, ...terminalPayload(appData, date) });
+}
+
+async function sendReadyInvoiceMail(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const targetInvoiceId = String(body.invoiceId || body.sendInvoiceNotificationId || "").trim();
+  if (!targetInvoiceId) return sendJson(res, 400, { error: "Rechnungskunde nicht gefunden." });
+  const mailResult = await sendReadyInvoiceNotifications(appData, date, targetInvoiceId, { forceResend: true });
+  sendJson(res, 200, {
+    ok: true,
+    message: "Mailversand geprüft.",
+    mailMessage: invoiceMailResultMessage(mailResult),
+    mailSent: mailResult.sent > 0,
+    mailFailed: mailResult.failed > 0,
+    ...terminalPayload(appData, date)
+  });
 }
 
 async function saveTableReservation(body, res) {
@@ -1636,6 +1642,7 @@ async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = ""
   const errors = [];
   const skipReasons = new Map();
   const forceResend = options?.forceResend === true;
+  let matchedTarget = !targetInvoiceId;
 
   for (const invoice of invoices) {
     if (!invoice || typeof invoice !== "object") continue;
@@ -1644,13 +1651,20 @@ async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = ""
     const alreadySent = String(invoice.invoiceNotificationSentAt || "").trim();
     const isTargetInvoice = !targetInvoiceId || String(invoice.id || "").trim() === targetInvoiceId;
     if (!isTargetInvoice) continue;
-    if (!isReady || isDone || (alreadySent && !forceResend)) continue;
+    matchedTarget = true;
+    if (isDone) continue;
+    if (alreadySent && !forceResend) continue;
+    if (!isReady && !targetInvoiceId) continue;
     const result = await sendInvoiceNotificationEmail({
       date,
       customer: invoice,
       to: appData.settings?.invoiceNotificationTo
     });
     if (result?.ok) {
+      if (!(invoice.invoiceReady === true || invoice.invoiceReady === "true")) {
+        invoice.invoiceReady = true;
+        if (!String(invoice.invoiceReadyAt || "").trim()) invoice.invoiceReadyAt = now;
+      }
       invoice.invoiceNotificationSentAt = now;
       sent += 1;
       changed = true;
@@ -1672,7 +1686,33 @@ async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = ""
     await writeAppData(appData);
   }
 
-  return { sent, failed, skipped, skipReasons: [...skipReasons.entries()].map(([reason, count]) => ({ reason, count })), changed, errors };
+  return {
+    sent,
+    failed,
+    skipped,
+    skipReasons: [...skipReasons.entries()].map(([reason, count]) => ({ reason, count })),
+    changed,
+    errors,
+    notFound: Boolean(targetInvoiceId) && !matchedTarget
+  };
+}
+
+function invoiceMailResultMessage(mailResult = {}) {
+  return mailResult.notFound
+    ? "E-Mail nicht versendet: Rechnungskunde wurde für den Versand nicht gefunden."
+    : mailResult.sent || mailResult.failed || mailResult.skipped
+      ? mailResult.failed
+        ? (mailResult.sent
+          ? "E-Mail teilweise versendet."
+          : `E-Mail konnte nicht versendet werden${mailResult.errors?.[0]?.error ? `: ${mailResult.errors[0].error}` : "."}`)
+        : mailResult.skipped
+          ? (mailResult.skipReasons.some((item) => item.reason === "missing-smtp-config")
+            ? "E-Mail nicht versendet: SMTP in Vercel fehlt."
+            : mailResult.skipReasons.some((item) => item.reason === "nodemailer-missing")
+              ? "E-Mail nicht versendet: Mail-Modul fehlt im Build."
+              : "E-Mail nicht versendet.")
+          : "E-Mail wurde versendet."
+      : "";
 }
 
 function upsertCustomerDirectory(appData, customers) {

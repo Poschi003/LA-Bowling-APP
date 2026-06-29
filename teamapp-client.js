@@ -2917,6 +2917,7 @@ function dayReportSummaryLine(report = {}) {
 
 function dayReportValuesHtml(report = {}) {
   const gastroParts = reportGastroParts(report);
+  const transferInvoiceTotal = reportTransferInvoiceTotal(report);
   return `
     <div class="day-report-values">
       <span><small>Umsatz Bowling</small><strong>${formatReportMoney(report.revenueBowling || report.barBowling)}</strong></span>
@@ -2925,7 +2926,7 @@ function dayReportValuesHtml(report = {}) {
       <span><small>Speisen</small><strong>${formatReportMoney(gastroParts.food || "")}</strong></span>
       <span><small>Sonstiges</small><strong>${formatReportMoney(gastroParts.other || "")}</strong></span>
       <span><small>Umsatz gesamt</small><strong>${formatReportMoney(reportRevenueTotal(report))}</strong></span>
-      ${reportFieldEnabled("invoiceCustomers") ? `<span><small>Rechnung</small><strong>${formatReportMoney(reportInvoiceTotal(report))}</strong></span>` : ""}
+      ${reportFieldEnabled("invoiceCustomers") ? `<span><small>Rechnung</small><strong>${formatReportMoney(transferInvoiceTotal)}</strong></span>` : ""}
       <span><small>EC</small><strong>${formatReportMoney(reportEcTotal(report))}</strong></span>
       <span><small>Personalverzehr</small><strong>${formatReportMoney(reportPersonalConsumptionTotal(report))}</strong></span>
       ${reportFieldEnabled("expenses") ? `<span><small>Ausgaben Kasse</small><strong>${formatReportMoney(reportCashExpensesTotal(report))}</strong></span>` : ""}
@@ -2936,7 +2937,7 @@ function dayReportValuesHtml(report = {}) {
 
 function dayReportA4Html(dateKey, report = {}) {
   const printableInvoices = reportInvoiceCustomers(report);
-  const invoiceTotalValue = reportItemsTotal(printableInvoices);
+  const invoiceTotalValue = reportTransferInvoiceTotal(report);
   const expenseTotalValue = reportCashExpensesTotal(report);
   const ecTotalValue = reportEcTotal(report);
   const ecTerminal1Value = reportMoneyNumber(report.ecTerminal1);
@@ -4055,6 +4056,11 @@ function reportInvoiceCustomers(report = {}) {
   return (report.invoiceCustomers || []).filter((item) => invoiceIsReady(item));
 }
 
+function reportTransferInvoiceCustomers(report = {}) {
+  return reportInvoiceCustomers(report)
+    .filter((item) => normalizedInvoicePaymentMethod(item.paymentMethod) === "ueberweisung");
+}
+
 function reportInvoiceTotal(report = {}) {
   return reportItemsTotal(reportInvoiceCustomers(report));
 }
@@ -4068,9 +4074,7 @@ function normalizedInvoicePaymentMethod(value = "") {
 }
 
 function reportTransferInvoiceTotal(report = {}) {
-  return reportInvoiceCustomers(report)
-    .filter((item) => normalizedInvoicePaymentMethod(item.paymentMethod) === "ueberweisung")
-    .reduce((sum, item) => sum + invoiceTotal(item), 0);
+  return reportItemsTotal(reportTransferInvoiceCustomers(report));
 }
 
 function barTotal(report = {}) {
@@ -4130,8 +4134,30 @@ function reportChefHandoverTotal(report = {}) {
     0,
     reportRevenueTotal(report)
       - reportEcTotal(report)
-      - reportInvoiceTotal(report)
+      - reportTransferInvoiceTotal(report)
       - reportCashExpensesTotal(report)
+  );
+}
+
+function currentTerminalFinanceInvoiceEntries() {
+  const root = $("#terminalFinanceSection");
+  if (!root) return [];
+  return [...root.querySelectorAll('[data-report-entry="invoice"]')].map((row) => {
+    const item = { id: row.dataset.id || cryptoId() };
+    row.querySelectorAll("[data-report-field]").forEach((field) => {
+      item[field.dataset.reportField] = field.type === "checkbox" ? (field.checked ? "true" : "") : field.value;
+    });
+    return item;
+  }).filter((item) => item.name || item.amount || item.address || item.email || item.contact || item.phone || item.tip || item.paymentMethod);
+}
+
+function currentTerminalTransferInvoiceTotal(report = {}) {
+  const currentEntries = currentTerminalFinanceInvoiceEntries();
+  if (!currentEntries.length) return reportTransferInvoiceTotal(report);
+  return reportItemsTotal(
+    currentEntries
+      .filter((item) => invoiceIsReady(item))
+      .filter((item) => normalizedInvoicePaymentMethod(item.paymentMethod) === "ueberweisung")
   );
 }
 
@@ -4155,7 +4181,7 @@ function exportDayReport(dateKey) {
   if (!report) return;
   const lineIf = (key, line) => reportFieldEnabled(key) ? [line] : [];
   const printableInvoices = reportInvoiceCustomers(report);
-  const invoiceTotalValue = reportItemsTotal(printableInvoices);
+  const invoiceTotalValue = reportTransferInvoiceTotal(report);
   const expenseTotalValue = reportCashExpensesTotal(report);
   const ecTotalValue = reportEcTotal(report);
   const personalConsumptionValue = reportPersonalConsumptionTotal(report);
@@ -10506,9 +10532,55 @@ async function saveCustomerInvoiceDeskReportWithOptions(button, successText = "T
   }
 }
 
+async function sendCustomerInvoiceReadyMail(invoiceId, button) {
+  if (!state.invoiceTerminalToken) {
+    showToast("Bitte Mitarbeiter-Code eingeben.");
+    return null;
+  }
+  const targetId = String(invoiceId || "").trim();
+  if (!targetId) {
+    showToast("Rechnungskunde konnte für den Versand nicht gefunden werden.");
+    return null;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sende Mail...";
+  }
+  try {
+    const result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "send-ready-invoice-mail",
+        date: state.invoiceDate || todayKey(),
+        invoiceId: targetId,
+        terminalToken: state.invoiceTerminalToken
+      })
+    });
+    state.invoiceDate = result.date || state.invoiceDate || todayKey();
+    state.invoiceReport = result.report || {};
+    state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
+    state.dayReports[state.invoiceDate] = state.invoiceReport;
+    renderCustomerInvoiceDesk();
+    const displayMessage = result?.mailMessage || "E-Mail wurde versendet.";
+    $("#customerInvoiceStaffStatus").textContent = displayMessage;
+    showToast(displayMessage);
+    return result;
+  } catch (error) {
+    showError(error);
+    return null;
+  } finally {
+    if (button) {
+      button.textContent = oldText || "Fertig für Chef";
+      button.disabled = false;
+    }
+  }
+}
+
 async function saveCustomerInvoiceDeskRow(button, markReady = false) {
   const row = button.closest('[data-report-entry="invoice"]');
   if (!row) return;
+  const invoiceId = row.dataset.id || "";
   if (markReady) {
     const problems = invoiceRowReadyProblems(row);
     if (problems.length) {
@@ -10518,10 +10590,15 @@ async function saveCustomerInvoiceDeskRow(button, markReady = false) {
     setReportFieldValue(row, "invoiceReady", "true");
     setReportFieldValue(row, "invoiceReadyAt", new Date().toISOString());
   }
-  await saveCustomerInvoiceDeskReport(button, markReady ? "Rechnung ist fertig für Chef." : "Rechnungskunde zwischengespeichert.", {
-    sendInvoiceNotifications: markReady,
-    sendInvoiceNotificationId: row.dataset.id || ""
-  });
+  const result = await saveCustomerInvoiceDeskReport(
+    button,
+    markReady ? "Rechnung gespeichert." : "Rechnungskunde zwischengespeichert."
+  );
+  if (!result) {
+    if (markReady) setReportFieldValue(row, "invoiceReady", "false");
+    return;
+  }
+  if (markReady) await sendCustomerInvoiceReadyMail(invoiceId, button);
 }
 
 async function removeCustomerInvoiceDeskEntry(button) {
@@ -10799,9 +10876,9 @@ function renderDailyTipDistribution() {
     tipRemainder: result.tipRemainder.toFixed(2),
     tipsByEmployee: Object.fromEntries(result.rows.map((row) => [row.employee, row.tip.toFixed(2)]))
   };
-  const displayRows = dailyTipRowsForDisplay(result, state.terminalReport || {});
+  const displayRows = dailyTipRowsForDisplay(result, report);
   const distributed = displayRows.reduce((sum, row) => sum + Number(row.tip || 0), 0);
-  const chefHandover = reportChefHandoverTotal(report);
+  const chefHandover = result.chefHandover;
   const cashAfterExpenses = Math.max(0, result.cashTotal - result.cashExpenses);
   const summaryHtml = `
     <article>
@@ -10964,7 +11041,7 @@ function calculateTipDistribution(dateKey) {
   const revenueBowling = parseMoneyInput($("#reportRevenueBowling")?.value || state.terminalReport?.revenueBowling || state.terminalReport?.barBowling || "");
   const revenueFood = parseMoneyInput($("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "");
   const revenueGastro = gastroRevenueFromFormOrReport();
-  const transferInvoiceTotal = reportTransferInvoiceTotal(state.terminalReport || {});
+  const transferInvoiceTotal = currentTerminalTransferInvoiceTotal(state.terminalReport || {});
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
   const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal + transferInvoiceTotal - totalRevenue);
   const openingTime = tipOpeningTime(dateKey);
@@ -11014,6 +11091,7 @@ function calculateTipDistribution(dateKey) {
     revenueGastro,
     invoiceTotal: transferInvoiceTotal,
     totalRevenue,
+    chefHandover: Math.max(0, totalRevenue - ecTotal - transferInvoiceTotal - cashExpenses),
     tipTotal,
     distributedTipTotal,
     tipRemainder,
@@ -11660,7 +11738,7 @@ function monthlyNumbersForMonth(month) {
     revenue.gastro += gastroRevenueTotal(report);
     revenue.ec += reportEcTotal(report);
     revenue.personalConsumption += reportPersonalConsumptionTotal(report);
-    revenue.invoices += reportInvoiceTotal(report);
+    revenue.invoices += reportTransferInvoiceTotal(report);
     revenue.expenses += reportCashExpensesTotal(report);
   });
   revenue.total = Math.max(0, revenue.bowling + revenue.gastro - revenue.personalConsumption);
