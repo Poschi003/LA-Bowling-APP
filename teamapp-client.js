@@ -43,6 +43,7 @@
   terminalTab: "tasks",
   terminalDate: "",
   terminalOpenDates: [],
+  terminalOpenDaysExpanded: false,
   terminalEntries: {},
   terminalReport: {},
   terminalTableDraft: null,
@@ -10789,27 +10790,31 @@ function renderTerminalOpenDays(dateKey) {
   const dates = [...new Set([...(Array.isArray(state.terminalOpenDates) ? state.terminalOpenDates : []), dateKey].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) && value <= today))].sort((a, b) => b.localeCompare(a));
   target.classList.remove("hidden");
   target.innerHTML = `
-    <div class="terminal-open-days-head">
-      <strong>Offene Tage</strong>
-      <p>Nicht abgeschlossene Tage kannst du hier direkt wieder öffnen.</p>
-    </div>
-    <div class="terminal-open-days-controls">
-      <div class="terminal-open-days-list">
-        ${dates.map((item) => `
-          <button
-            class="secondary terminal-open-day-chip ${item === dateKey ? "active" : ""}"
-            type="button"
-            data-open-terminal-date="${escapeHtml(item)}"
-          >${escapeHtml(formatDate(item))}</button>
-        `).join("")}
+    <details id="terminalOpenDaysDetails" class="terminal-open-days-details" ${state.terminalOpenDaysExpanded ? "open" : ""}>
+      <summary class="terminal-open-days-summary">
+        <div class="terminal-open-days-head">
+          <strong>Offene Tage</strong>
+          <p>${dates.length} ${dates.length === 1 ? "Tag ist noch offen" : "Tage sind noch offen"}</p>
+        </div>
+      </summary>
+      <div class="terminal-open-days-controls">
+        <div class="terminal-open-days-list">
+          ${dates.map((item) => `
+            <button
+              class="secondary terminal-open-day-chip ${item === dateKey ? "active" : ""}"
+              type="button"
+              data-open-terminal-date="${escapeHtml(item)}"
+            >${escapeHtml(formatDate(item))}</button>
+          `).join("")}
+        </div>
+        <label class="terminal-open-day-manual">
+          <span>Datum öffnen</span>
+          <input id="terminalJumpDate" type="date" max="${today}" value="${dateKey}">
+        </label>
+        <button id="loadTerminalDate" class="secondary" type="button">Tag laden</button>
       </div>
-      <label class="terminal-open-day-manual">
-        <span>Datum öffnen</span>
-        <input id="terminalJumpDate" type="date" max="${today}" value="${dateKey}">
-      </label>
-      <button id="loadTerminalDate" class="secondary" type="button">Tag laden</button>
-    </div>
-    <p class="terminal-open-days-hint">Abgeschlossene Tage bleiben geschützt und laufen weiter über den Admin-Korrekturmodus.</p>
+      <p class="terminal-open-days-hint">Abgeschlossene Tage bleiben geschützt und laufen weiter über den Admin-Korrekturmodus.</p>
+    </details>
   `;
 }
 
@@ -16844,6 +16849,12 @@ function bindEvents() {
       showToast("Korrekturmodus im Admin-Bereich geöffnet.");
     }
   });
+
+  $("#terminalContent")?.addEventListener("toggle", (event) => {
+    const details = event.target;
+    if (!(details instanceof HTMLElement) || details.id !== "terminalOpenDaysDetails") return;
+    state.terminalOpenDaysExpanded = details.hasAttribute("open");
+  }, true);
 
   $("#terminalContent")?.addEventListener("change", async (event) => {
     const taskInput = event.target.closest("[data-terminal-task]");

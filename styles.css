@@ -4898,6 +4898,35 @@ button:disabled {
   color: var(--muted);
 }
 
+.terminal-open-days-details {
+  display: grid;
+  gap: 12px;
+}
+
+.terminal-open-days-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.terminal-open-days-summary::-webkit-details-marker {
+  display: none;
+}
+
+.terminal-open-days-summary::marker {
+  content: "";
+}
+
+.terminal-open-days-summary .terminal-open-days-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.terminal-open-days-summary .terminal-open-days-head p {
+  text-align: right;
+}
+
 .terminal-open-days-controls {
   display: flex;
   flex-wrap: wrap;
