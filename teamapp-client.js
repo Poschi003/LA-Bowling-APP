@@ -42,6 +42,7 @@
   terminalToken: "",
   terminalTab: "tasks",
   terminalDate: "",
+  terminalOpenDates: [],
   terminalEntries: {},
   terminalReport: {},
   terminalTableDraft: null,
@@ -73,7 +74,17 @@
   invoiceTerminalToken: window.localStorage?.getItem("invoiceTerminalToken") || "",
   invoiceDate: todayKey(),
   invoiceReport: {},
+  invoiceDeskDraftId: "",
+  invoiceDeskDraft: null,
   customerDirectory: [],
+  invoiceSettings: null,
+  invoices: [],
+  invoiceAdminView: "overview",
+  invoiceEditorId: "",
+  invoiceEditorDraft: null,
+  invoiceEditorDirty: false,
+  invoiceSkipDomSync: false,
+  invoiceSearch: "",
   offers: [],
   offerDraft: null,
   offerDraftId: "",
@@ -272,12 +283,36 @@ const defaultData = {
   messages: [],
   terminalMessages: [],
   customerDirectory: [],
+  invoiceSettings: createDefaultInvoiceSettingsClient(),
+  invoices: [],
   offers: [],
   dayReports: {},
   assignmentTimes: {},
   assignmentSchedules: {},
   availabilityChangeRequests: []
 };
+
+function createDefaultInvoiceSettingsClient() {
+  return {
+    companyName: "LA-Bowling Peter Vorholzer",
+    companyAddress: "Röntgenstraße 12 a\n84030 Landshut",
+    taxNumber: "",
+    vatId: "",
+    iban: "",
+    bankName: "",
+    bic: "",
+    paymentDays: 14,
+    defaultText: "Rechnung zu beiliegenden Einzelbelegen",
+    colors: {
+      primary: "#111827",
+      accent: "#d71e28",
+      muted: "#6b7280",
+      line: "#dbe2ea",
+      highlight: "#f4f6f8"
+    },
+    logoData: ""
+  };
+}
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -594,6 +629,13 @@ async function loadState() {
   state.cleaningTemplates = normalizeCleaningTemplates(data.cleaningTemplates);
   state.reminderTemplates = normalizeReminderTemplates(data.reminderTemplates);
   state.customerDirectory = normalizeCustomerDirectory(data.customerDirectory || state.customerDirectory || []);
+  state.invoiceSettings = normalizeInvoiceSettingsClient(data.invoiceSettings || state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  state.invoices = normalizeInvoicesClient(data.invoices || state.invoices || [], state.invoiceSettings);
+  if (!state.invoiceEditorDraft || !state.invoices.some((invoice) => invoice.id === state.invoiceEditorDraft?.id)) {
+    state.invoiceEditorDraft = state.invoices[0] ? cloneData(state.invoices[0]) : createBlankInvoiceDraftClient(state.invoiceSettings);
+    state.invoiceEditorId = state.invoiceEditorDraft.id;
+  }
+  state.invoiceEditorDirty = false;
   state.offers = normalizeOffersClient(data.offers || state.offers || []);
   if (!state.offerDraft || !state.offers.some((offer) => offer.id === state.offerDraft?.id)) {
     state.offerDraft = state.offers[0] ? cloneData(state.offers[0]) : createBlankOfferDraft();
@@ -748,6 +790,8 @@ function mergeData(value) {
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     customerDirectory: normalizeCustomerDirectory(value?.customerDirectory || base.customerDirectory),
+    invoiceSettings: normalizeInvoiceSettingsClient(value?.invoiceSettings || base.invoiceSettings || createDefaultInvoiceSettingsClient()),
+    invoices: normalizeInvoicesClient(value?.invoices || base.invoices || [], value?.invoiceSettings || base.invoiceSettings || createDefaultInvoiceSettingsClient()),
     offers: normalizeOffersClient(value?.offers || base.offers || []),
     dayReports: value && value.dayReports ? value.dayReports : base.dayReports,
     assignmentTimes: normalizeAssignmentTimes(value?.assignmentTimes || base.assignmentTimes),
@@ -858,6 +902,9 @@ function normalizeCustomerDirectory(customers) {
 }
 
 function customerDirectoryEntry(item = {}) {
+  const sourceType = ["event", "advertising", "manual"].includes(String(item.sourceType || "").trim())
+    ? String(item.sourceType || "").trim()
+    : "event";
   return {
     id: String(item.id || customerDirectoryKey(item) || cryptoId()),
     name: String(item.name || "").trim().slice(0, 160),
@@ -866,6 +913,7 @@ function customerDirectoryEntry(item = {}) {
     email: String(item.email || "").trim().slice(0, 180),
     address: String(item.address || "").trim().slice(0, 600),
     paymentMethod: String(item.paymentMethod || "").trim().slice(0, 40),
+    sourceType,
     tip: String(item.tip || "").trim().slice(0, 160),
     note: String(item.note || "").trim().slice(0, 600),
     createdAt: String(item.createdAt || new Date().toISOString()),
@@ -1730,8 +1778,8 @@ function offerDishAssortmentOptions(category = "") {
 }
 
 function renderAll() {
-  $("#appTitle").textContent = isCustomerInvoiceMode() ? "Bezahlung auf Rechnung" : isTodoMode() ? "TO DO" : state.settings.businessName;
-  if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = formatDate(localDateValue());
+  $("#appTitle").textContent = isCustomerInvoiceMode() ? "Veranstaltungen auf Rechnung" : isTodoMode() ? "TO DO" : state.settings.businessName;
+  if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = invoiceSafeDate(state.invoiceDate, todayKey());
   $("#monthInput").value = availabilityMonthValue();
   $("#monthInput").disabled = true;
   renderAccess();
@@ -1749,6 +1797,7 @@ function renderAll() {
   renderAdminReports();
   renderAdminEmployeeOverview();
   renderAdminPublishedList();
+  renderAdminInvoices();
   renderAdminMonthlyNumbers();
   renderAdminSwaps();
   renderAdminAvailabilityRequests();
@@ -2199,7 +2248,7 @@ function invoicePendingHintHtml(count) {
   return `
     <div class="invoice-pending-hint">
       <strong>${count} Rechnungskunde${count === 1 ? "" : "n"} angelegt</strong>
-      <span>Noch nicht fertig für den Chef. In „Bezahlung auf Rechnung“ Betrag und Beleg ergänzen, dann „Fertig für Chef“ drücken.</span>
+      <span>Noch nicht fertig für den Chef. In „Veranstaltungen auf Rechnung“ Betrag und Beleg ergänzen, dann „Fertig für Chef“ drücken.</span>
     </div>
   `;
 }
@@ -3896,6 +3945,68 @@ function invoiceStatusClass(item = {}) {
   if (invoiceIsPaid(item) || item.invoiceDone) return "is-done";
   if (invoiceIsReady(item)) return "is-ready";
   return "is-draft";
+}
+
+function invoiceItemHasReceipt(item = {}) {
+  if (invoiceReceipt(item)) return true;
+  return [
+    item.receiptData,
+    item.receiptPath,
+    item.receiptUrl,
+    item.bowlingReceiptData,
+    item.bowlingReceiptPath,
+    item.bowlingReceiptUrl,
+    item.gastroReceiptData,
+    item.gastroReceiptPath,
+    item.gastroReceiptUrl
+  ].some((field) => Boolean(String(field || "").trim()));
+}
+
+function invoiceReadyProblemsFromData(item = {}) {
+  const problems = [];
+  if (!String(item.name || "").trim()) problems.push("Firma oder Name fehlt");
+  if (!String(item.address || "").trim()) problems.push("Rechnungsadresse fehlt");
+  if (!String(item.email || "").trim()) problems.push("Rechnungs-E-Mail fehlt");
+  if (!invoicePentacodeEntered(item)) problems.push("Pentacode-Haken fehlt");
+  const amount = reportMoneyNumber(item.bowlingAmount) + invoiceGastroSplit(item).total;
+  if (amount <= 0) problems.push("Beträge fehlen");
+  if (reportMoneyNumber(item.gastroOtherAmount) > 0 && !String(item.gastroOtherNote || "").trim()) problems.push("Notiz für Sonstiges fehlt");
+  if (!invoiceItemHasReceipt(item)) problems.push("Rechnungsbeleg fehlt");
+  return problems;
+}
+
+function invoiceWorkflowState(item = {}, linkedInvoice = null) {
+  const problems = invoiceReadyProblemsFromData(item);
+  if (linkedInvoice && linkedInvoice.status !== "draft") {
+    return {
+      title: "Rechnung festgeschrieben",
+      detail: "Dieser Rechnungskunde ist bereits mit einer festgeschriebenen Rechnung verknüpft."
+    };
+  }
+  if (linkedInvoice && linkedInvoice.status === "draft") {
+    return {
+      title: "Rechnungsentwurf vorhanden",
+      detail: problems.length
+        ? `Du kannst weiter korrigieren. Nächster offener Punkt: ${problems[0]}.`
+        : "Alles da. Öffne jetzt den Rechnungsentwurf für Vorschau, Festschreiben und Drucken."
+    };
+  }
+  if (problems.length) {
+    return {
+      title: "Nächster Schritt",
+      detail: problems[0]
+    };
+  }
+  if (invoiceIsReady(item)) {
+    return {
+      title: "Bereit für den nächsten Schritt",
+      detail: "Jetzt entweder an den Chef senden oder direkt die Rechnung erstellen."
+    };
+  }
+  return {
+    title: "Angaben prüfen",
+    detail: "Du kannst alles hier ändern und zwischenspeichern, solange die Rechnung noch nicht festgeschrieben ist."
+  };
 }
 
 function invoiceGastroSummaryText(item = {}) {
@@ -5817,20 +5928,35 @@ function offerTemplateBadgeLabel(offer) {
 function offerTimelineScaleMarkup(events = []) {
   const timed = (Array.isArray(events) ? events : []).filter((item) => cleanOfferTimeValue(item.time));
   if (!timed.length) return "";
-  const minutes = timed.map((item) => offerTimeMinutesValue(item.time)).filter((value) => value != null);
+  const grouped = [];
+  timed.forEach((item) => {
+    const last = grouped[grouped.length - 1];
+    if (last && last.time === item.time) {
+      last.events.push(item);
+      return;
+    }
+    grouped.push({ time: item.time, events: [item] });
+  });
+  const minutes = grouped.map((item) => offerTimeMinutesValue(item.time)).filter((value) => value != null);
   const minMinutes = Math.min(...minutes);
   const maxMinutes = Math.max(...minutes);
   const span = Math.max(60, maxMinutes - minMinutes);
-  const points = timed.map((item, index) => {
-    const value = offerTimeMinutesValue(item.time) ?? minMinutes;
-    const left = timed.length === 1 ? 50 : Math.max(3, Math.min(97, ((value - minMinutes) / span) * 100));
+  const points = grouped.map((group, index) => {
+    const value = offerTimeMinutesValue(group.time) ?? minMinutes;
+    const ratio = grouped.length === 1 ? 0.5 : (value - minMinutes) / span;
+    const left = 4 + Math.max(0, Math.min(1, ratio)) * 92;
     const palette = index % 3 === 1 ? "gold" : index % 3 === 2 ? "dark" : "red";
-    return `
-      <div class="scale-point" style="left:${left}%">
-        <div class="scale-time">${escapeHtml(item.time)}</div>
-        <div class="scale-dot is-${palette}"></div>
+    const items = group.events.map((item) => `
+      <div class="scale-entry">
         <div class="scale-label">${escapeHtml(item.title || "Ereignis")}</div>
         ${item.note ? `<div class="scale-note">${escapeHtml(item.note)}</div>` : ""}
+      </div>
+    `).join("");
+    return `
+      <div class="scale-point" style="left:${left}%">
+        <div class="scale-time">${escapeHtml(group.time)}</div>
+        <div class="scale-dot is-${palette}"></div>
+        <div class="scale-stack">${items}</div>
       </div>
     `;
   }).join("");
@@ -5938,20 +6064,20 @@ function printOfferDraft() {
           * { box-sizing: border-box; }
           html, body { margin: 0; padding: 0; }
           body { font-family: Arial, Helvetica, sans-serif; color: #161616; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .sheet { width: 210mm; min-height: 297mm; height: 297mm; padding: 0 11mm 8mm; position: relative; background: #fff; display: flex; flex-direction: column; gap: 4.5mm; overflow: hidden; }
+          .sheet { width: 210mm; min-height: 297mm; height: 297mm; padding: 0 11mm 8mm; position: relative; background: #fff; display: flex; flex-direction: column; gap: 4mm; overflow: hidden; }
           .sheet + .sheet { page-break-before: always; margin-top: 0; }
-          .header { margin: 0 -11mm 6mm; height: 43mm; display: grid; grid-template-columns: 1.42fr 0.88fr; overflow: hidden; }
-          .header-left { position: relative; background: linear-gradient(135deg, #111 0%, #1f1f1f 60%, #151515 100%); color: #fff; padding: 9mm 9mm 6mm 11mm; }
+          .header { margin: 0 -11mm 4mm; height: 34mm; display: grid; grid-template-columns: 1.48fr 0.82fr; overflow: hidden; }
+          .header-left { position: relative; background: linear-gradient(135deg, #111 0%, #1f1f1f 60%, #151515 100%); color: #fff; padding: 6.5mm 9mm 4.5mm 11mm; }
           .header-left::before { content: ""; position: absolute; inset: 0; background:
             linear-gradient(130deg, transparent 0 42%, rgba(168,136,72,0.22) 42% 49%, transparent 49% 100%),
             repeating-linear-gradient(130deg, transparent 0 18px, rgba(255,255,255,0.08) 18px 20px, transparent 20px 60px); pointer-events: none; }
           .header-left > * { position: relative; z-index: 1; }
-          .header-right { position: relative; background: #b8202c; color: #fff; padding: 9mm 11mm 6mm 8mm; clip-path: polygon(16% 0, 100% 0, 100% 100%, 0 100%); display: flex; flex-direction: column; justify-content: flex-start; }
-          .header-logo { width: 74mm; max-width: 100%; filter: brightness(0) invert(1); }
-          .header-contact { margin-top: 6mm; font-size: 10px; letter-spacing: 0.02em; }
-          .header-offer-title { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
-          .header-offer-date { margin-top: 4mm; font-size: 10px; }
-          .page-title { margin: 0 0 2mm; font-size: 22px; font-weight: 700; }
+          .header-right { position: relative; background: #b8202c; color: #fff; padding: 6.5mm 11mm 4.5mm 8mm; clip-path: polygon(16% 0, 100% 0, 100% 100%, 0 100%); display: flex; flex-direction: column; justify-content: center; }
+          .header-logo { width: 68mm; max-width: 100%; filter: brightness(0) invert(1); }
+          .header-contact { margin-top: 3.5mm; font-size: 9px; letter-spacing: 0.02em; }
+          .header-offer-title { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+          .header-offer-date { margin-top: 2.5mm; font-size: 9px; }
+          .page-title { margin: 0 0 1.5mm; font-size: 20px; font-weight: 700; }
           .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 4.5mm; }
           .template-card { border: 1px solid #ddd3c8; border-radius: 6mm; padding: 4.5mm 5mm; background: #fff; page-break-inside: avoid; }
           .template-card + .template-card { margin-top: 4.5mm; }
@@ -5960,16 +6086,18 @@ function printOfferDraft() {
           .muted { color: #6d6b68; }
           .event-grid { display: grid; grid-template-columns: 100px 1fr; row-gap: 4px; column-gap: 10px; font-size: 11px; }
           .event-grid strong { color: #77716a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
-          .scale-wrap { position: relative; margin-top: 3mm; min-height: 42mm; padding: 7mm 3mm 0; }
-          .scale-line { position: absolute; left: 4%; right: 4%; top: 20mm; height: 2px; background: #c8a764; }
-          .scale-point { position: absolute; top: 0; transform: translateX(-50%); width: 27mm; text-align: center; }
-          .scale-time { font-size: 10px; font-weight: 700; margin-bottom: 7mm; }
-          .scale-dot { width: 8mm; height: 8mm; border-radius: 999px; margin: 0 auto 5mm; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
+          .scale-wrap { position: relative; margin-top: 2.5mm; min-height: 46mm; padding: 6mm 3mm 0; }
+          .scale-line { position: absolute; left: 4%; right: 4%; top: 18mm; height: 2px; background: #c8a764; }
+          .scale-point { position: absolute; top: 0; transform: translateX(-50%); width: 30mm; text-align: center; }
+          .scale-time { font-size: 10px; font-weight: 700; margin-bottom: 6mm; }
+          .scale-dot { width: 8mm; height: 8mm; border-radius: 999px; margin: 0 auto 4.5mm; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
           .scale-dot.is-red { background: #be1d2b; }
           .scale-dot.is-gold { background: #c8a764; }
           .scale-dot.is-dark { background: #111; }
-          .scale-label { font-size: 10px; font-weight: 700; }
-          .scale-note { margin-top: 2px; font-size: 9px; color: #6d6b68; line-height: 1.3; }
+          .scale-stack { display: grid; gap: 2.5mm; }
+          .scale-entry { display: grid; gap: 1px; }
+          .scale-label { font-size: 9.6px; font-weight: 700; line-height: 1.25; }
+          .scale-note { font-size: 8.7px; color: #6d6b68; line-height: 1.25; }
           .buffet-layout { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4mm; align-items: start; }
           .buffet-col h4 { margin: 0 0 2mm; font-size: 12px; text-align: center; }
           .buffet-col ul { list-style: none; margin: 0; padding: 0; font-size: 10px; line-height: 1.45; text-align: center; }
@@ -6123,6 +6251,1285 @@ function printOfferDraft() {
     win.focus();
     win.print();
   };
+}
+
+function invoiceMoneyNumber(value) {
+  const raw = String(value == null ? "" : value).trim();
+  if (!raw) return 0;
+  const compact = raw.replace(/\s+/g, "").replace(/[^\d,.-]/g, "");
+  const lastComma = compact.lastIndexOf(",");
+  const lastDot = compact.lastIndexOf(".");
+  let normalized = compact;
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastComma > lastDot) {
+      normalized = compact.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = compact.replace(/,/g, "");
+    }
+  } else if (lastComma >= 0) {
+    normalized = compact.replace(",", ".");
+  } else if ((compact.match(/\./g) || []).length > 1) {
+    const parts = compact.split(".");
+    const fraction = parts.pop();
+    normalized = `${parts.join("")}.${fraction}`;
+  }
+  const number = Number(normalized);
+  return Number.isFinite(number) ? Math.round(number * 100) / 100 : 0;
+}
+
+function invoiceTaxRateNumber(value) {
+  const rate = invoiceMoneyNumber(value);
+  if (rate <= 0) return 0;
+  if (Math.abs(rate - 7) < 0.01) return 7;
+  if (Math.abs(rate - 19) < 0.01) return 19;
+  return Math.max(0, Math.min(100, rate));
+}
+
+function invoiceSafeDate(value, fallback = "") {
+  const text = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : fallback;
+}
+
+function invoiceAddDays(dateKey, days) {
+  const base = invoiceSafeDate(dateKey, todayKey());
+  const date = new Date(`${base}T12:00:00`);
+  date.setDate(date.getDate() + Number(days || 0));
+  return localDateValue(date);
+}
+
+function normalizeInvoicePositionClient(item = {}) {
+  return {
+    id: String(item.id || cryptoId()).trim(),
+    articleNumber: String(item.articleNumber || item.articleNo || "").trim(),
+    description: String(item.description || item.label || item.name || "").trim(),
+    quantity: Math.max(0, invoiceMoneyNumber(item.quantity || 1)),
+    unit: String(item.unit || "Stück").trim() || "Stück",
+    unitPrice: Math.max(0, invoiceMoneyNumber(item.unitPrice || item.price || item.amount || 0)),
+    taxRate: invoiceTaxRateNumber(item.taxRate)
+  };
+}
+
+function normalizeInvoiceAttachmentClient(item = {}) {
+  return {
+    id: String(item.id || cryptoId()).trim(),
+    label: String(item.label || "Anlage").trim() || "Anlage",
+    name: String(item.name || item.filename || "").trim(),
+    data: String(item.data || item.dataUrl || "").trim(),
+    path: String(item.path || item.objectPath || "").trim(),
+    url: String(item.url || "").trim(),
+    mime: String(item.mime || "").trim()
+  };
+}
+
+function normalizeInvoiceRecordClient(invoice = {}, settings = state.invoiceSettings || createDefaultInvoiceSettingsClient()) {
+  const normalizedSettings = normalizeInvoiceSettingsClient(settings);
+  const invoiceDate = invoiceSafeDate(invoice.invoiceDate, todayKey());
+  return {
+    id: String(invoice.id || cryptoId()).trim(),
+    type: ["invoice", "correction", "storno"].includes(String(invoice.type || "").trim()) ? String(invoice.type).trim() : "invoice",
+    sourceType: normalizeInvoiceSourceTypeClient(invoice),
+    sourceDate: invoiceSafeDate(invoice.sourceDate),
+    sourceCustomerId: String(invoice.sourceCustomerId || "").trim(),
+    sourceCustomerStatus: String(invoice.sourceCustomerStatus || "").trim(),
+    customerName: String(invoice.customerName || invoice.name || "").trim(),
+    customerContact: String(invoice.customerContact || invoice.contact || "").trim(),
+    customerEmail: String(invoice.customerEmail || invoice.email || "").trim(),
+    customerPhone: String(invoice.customerPhone || invoice.phone || "").trim(),
+    customerAddress: String(invoice.customerAddress || invoice.address || "").trim(),
+    invoiceDate,
+    serviceDate: invoiceSafeDate(invoice.serviceDate, invoiceDate),
+    dueDate: invoiceSafeDate(invoice.dueDate, invoiceAddDays(invoiceDate, normalizedSettings.paymentDays)),
+    paymentMethod: String(invoice.paymentMethod || "").trim(),
+    paymentStatus: ["open", "paid", "cash-paid"].includes(String(invoice.paymentStatus || "").trim()) ? String(invoice.paymentStatus).trim() : "open",
+    headline: String(invoice.headline || "Rechnung").trim() || "Rechnung",
+    introText: String(invoice.introText || normalizedSettings.defaultText).trim() || normalizedSettings.defaultText,
+    note: String(invoice.note || "").trim(),
+    internalNote: String(invoice.internalNote || "").trim(),
+    positions: (Array.isArray(invoice.positions) ? invoice.positions : []).map(normalizeInvoicePositionClient).filter((item) => item.description || item.unitPrice || item.quantity),
+    attachments: (Array.isArray(invoice.attachments) ? invoice.attachments : []).map(normalizeInvoiceAttachmentClient).filter((item) => item.name || item.data || item.path || item.url),
+    status: ["draft", "finalized", "sent", "archived"].includes(String(invoice.status || "").trim()) ? String(invoice.status).trim() : "draft",
+    invoiceNumber: String(invoice.invoiceNumber || "").trim(),
+    pdfData: String(invoice.pdfData || "").trim(),
+    pdfFileName: String(invoice.pdfFileName || "").trim(),
+    createdAt: String(invoice.createdAt || new Date().toISOString()).trim(),
+    updatedAt: String(invoice.updatedAt || invoice.createdAt || new Date().toISOString()).trim(),
+    finalizedAt: String(invoice.finalizedAt || "").trim(),
+    sentAt: String(invoice.sentAt || "").trim(),
+    archivedAt: String(invoice.archivedAt || "").trim(),
+    emailMessageId: String(invoice.emailMessageId || "").trim(),
+    auditLog: Array.isArray(invoice.auditLog) ? invoice.auditLog : []
+  };
+}
+
+function normalizeInvoicesClient(invoices = [], settings = state.invoiceSettings || createDefaultInvoiceSettingsClient()) {
+  return (Array.isArray(invoices) ? invoices : [])
+    .map((invoice) => normalizeInvoiceRecordClient(invoice, settings))
+    .sort((a, b) => {
+      const rank = { draft: 0, finalized: 1, sent: 2, archived: 3 };
+      const statusDiff = (rank[a.status] ?? 9) - (rank[b.status] ?? 9);
+      if (statusDiff) return statusDiff;
+      return (Date.parse(b.updatedAt || "") || 0) - (Date.parse(a.updatedAt || "") || 0);
+    });
+}
+
+function createBlankInvoiceDraftClient(settings = state.invoiceSettings || createDefaultInvoiceSettingsClient()) {
+  const normalizedSettings = normalizeInvoiceSettingsClient(settings);
+  const today = todayKey();
+  return normalizeInvoiceRecordClient({
+    sourceType: "manual",
+    headline: "Rechnung",
+    introText: normalizedSettings.defaultText,
+    invoiceDate: today,
+    serviceDate: today,
+    dueDate: invoiceAddDays(today, normalizedSettings.paymentDays),
+    paymentStatus: "open",
+    positions: [],
+    attachments: [],
+    status: "draft",
+    auditLog: []
+  }, normalizedSettings);
+}
+
+function normalizeInvoiceSourceTypeClient(invoice = {}) {
+  const explicit = String(invoice.sourceType || "").trim();
+  if (["event", "advertising", "manual"].includes(explicit)) return explicit;
+  if (invoice.sourceDate || invoice.sourceCustomerId) return "event";
+  return "manual";
+}
+
+function invoicePositionGrossClient(position = {}) {
+  return Math.max(0, invoiceMoneyNumber(position.quantity || 0) * invoiceMoneyNumber(position.unitPrice || 0));
+}
+
+function invoicePositionNetClient(position = {}) {
+  const gross = invoicePositionGrossClient(position);
+  const rate = invoiceTaxRateNumber(position.taxRate);
+  if (!rate) return gross;
+  return Math.round((gross / (1 + rate / 100)) * 100) / 100;
+}
+
+function invoicePositionTaxClient(position = {}) {
+  return Math.round((invoicePositionGrossClient(position) - invoicePositionNetClient(position)) * 100) / 100;
+}
+
+function invoiceTotalsClient(invoice = {}) {
+  const groups = new Map();
+  let grossTotal = 0;
+  let netTotal = 0;
+  let taxTotal = 0;
+  (invoice.positions || []).forEach((position) => {
+    const gross = invoicePositionGrossClient(position);
+    const net = invoicePositionNetClient(position);
+    const tax = invoicePositionTaxClient(position);
+    const rate = invoiceTaxRateNumber(position.taxRate);
+    grossTotal += gross;
+    netTotal += net;
+    taxTotal += tax;
+    const group = groups.get(rate) || { rate, gross: 0, net: 0, tax: 0 };
+    group.gross += gross;
+    group.net += net;
+    group.tax += tax;
+    groups.set(rate, group);
+  });
+  return {
+    grossTotal: Math.round(grossTotal * 100) / 100,
+    netTotal: Math.round(netTotal * 100) / 100,
+    taxTotal: Math.round(taxTotal * 100) / 100,
+    groups: [...groups.values()]
+      .map((group) => ({
+        rate: group.rate,
+        gross: Math.round(group.gross * 100) / 100,
+        net: Math.round(group.net * 100) / 100,
+        tax: Math.round(group.tax * 100) / 100
+      }))
+      .sort((a, b) => b.rate - a.rate)
+  };
+}
+
+function invoiceStatusLabelClient(status = "draft") {
+  if (status === "finalized") return "Finalisiert";
+  if (status === "sent") return "Versendet";
+  if (status === "archived") return "Archiviert";
+  return "Entwurf";
+}
+
+function invoiceTypeLabelClient(type = "invoice") {
+  if (type === "correction") return "Korrekturrechnung";
+  if (type === "storno") return "Stornorechnung";
+  return "Rechnung";
+}
+
+function invoiceSourceTypeLabelClient(sourceType = "manual") {
+  if (sourceType === "event") return "Veranstaltung";
+  if (sourceType === "advertising") return "Werbekunde";
+  return "Manuell";
+}
+
+function invoicePaymentStatusLabelClient(value = "open") {
+  if (value === "paid") return "Bezahlt";
+  if (value === "cash-paid") return "Bereits über Kasse bezahlt";
+  return "Offen";
+}
+
+function invoiceStatusClassClient(status = "draft") {
+  if (status === "sent") return "is-sent";
+  if (status === "finalized") return "is-finalized";
+  if (status === "archived") return "is-archived";
+  return "is-draft";
+}
+
+function invoiceMatchesSourceTypeClient(invoice = {}, sourceType = "event") {
+  return normalizeInvoiceSourceTypeClient(invoice) === sourceType;
+}
+
+function customerDirectoryMatchesSourceTypeClient(customer = {}, sourceType = "event") {
+  const current = ["event", "advertising", "manual"].includes(String(customer.sourceType || "").trim())
+    ? String(customer.sourceType || "").trim()
+    : "event";
+  if (sourceType === "non-advertising") return current !== "advertising";
+  return current === sourceType;
+}
+
+function invoiceSearchMatches(invoice = {}, query = "") {
+  const text = String(query || "").trim().toLowerCase();
+  if (!text) return true;
+  const totals = invoiceTotalsClient(invoice);
+  const blob = [
+    invoice.customerName,
+    invoice.customerContact,
+    invoice.customerEmail,
+    invoice.customerAddress,
+    invoice.invoiceNumber,
+    invoice.invoiceDate,
+    invoice.serviceDate,
+    invoiceTypeLabelClient(invoice.type),
+    invoiceStatusLabelClient(invoice.status),
+    formatMoney(totals.grossTotal)
+  ].join(" ").toLowerCase();
+  return text.split(/\s+/).every((token) => blob.includes(token));
+}
+
+function ensureInvoiceDraft() {
+  const settings = normalizeInvoiceSettingsClient(state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  const invoices = normalizeInvoicesClient(state.invoices || [], settings);
+  const existingId = String(state.invoiceEditorDraft?.id || state.invoiceEditorId || "").trim();
+  const selected = existingId ? invoices.find((invoice) => invoice.id === existingId) : null;
+  if (selected) {
+    state.invoiceEditorDraft = normalizeInvoiceRecordClient(cloneData(selected), settings);
+    state.invoiceEditorId = state.invoiceEditorDraft.id;
+    return state.invoiceEditorDraft;
+  }
+  const draft = state.invoiceEditorDraft
+    ? normalizeInvoiceRecordClient(cloneData(state.invoiceEditorDraft), settings)
+    : (invoices[0] ? normalizeInvoiceRecordClient(cloneData(invoices[0]), settings) : createBlankInvoiceDraftClient(settings));
+  state.invoiceEditorDraft = draft;
+  state.invoiceEditorId = draft.id;
+  return draft;
+}
+
+function setInvoiceDraftFromInvoice(invoice) {
+  const draft = normalizeInvoiceRecordClient(cloneData(invoice || createBlankInvoiceDraftClient(state.invoiceSettings)), state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  state.invoiceEditorDraft = draft;
+  state.invoiceEditorId = draft.id;
+  state.invoiceEditorDirty = false;
+}
+
+function currentInvoiceDraftFromDom() {
+  const root = $("#adminInvoices");
+  const base = normalizeInvoiceRecordClient(cloneData(state.invoiceEditorDraft || createBlankInvoiceDraftClient(state.invoiceSettings)), state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  if (!root) return base;
+  const field = (name) => root.querySelector(`[data-invoice-field="${cssEscape(name)}"]`);
+  const text = (name) => String(field(name)?.value || "").trim();
+  base.customerName = text("customerName");
+  base.customerContact = text("customerContact");
+  base.customerEmail = text("customerEmail");
+  base.customerPhone = text("customerPhone");
+  base.customerAddress = text("customerAddress");
+  base.invoiceDate = invoiceSafeDate(text("invoiceDate"), base.invoiceDate || todayKey());
+  base.serviceDate = invoiceSafeDate(text("serviceDate"), base.serviceDate || base.invoiceDate);
+  base.dueDate = invoiceSafeDate(text("dueDate"), base.dueDate || invoiceAddDays(base.invoiceDate, state.invoiceSettings?.paymentDays || 14));
+  base.paymentMethod = text("paymentMethod");
+  base.paymentStatus = text("paymentStatus") || "open";
+  base.headline = text("headline") || "Rechnung";
+  base.introText = String(field("introText")?.value || "").trim();
+  base.note = String(field("note")?.value || "").trim();
+  base.internalNote = String(field("internalNote")?.value || "").trim();
+  base.positions = [...root.querySelectorAll("[data-invoice-position-row]")].map((row) => normalizeInvoicePositionClient({
+    id: row.dataset.invoicePositionId || cryptoId(),
+    articleNumber: row.querySelector('[data-invoice-position-field="articleNumber"]')?.value,
+    description: row.querySelector('[data-invoice-position-field="description"]')?.value,
+    quantity: row.querySelector('[data-invoice-position-field="quantity"]')?.value,
+    unit: row.querySelector('[data-invoice-position-field="unit"]')?.value,
+    unitPrice: row.querySelector('[data-invoice-position-field="unitPrice"]')?.value,
+    taxRate: row.querySelector('[data-invoice-position-field="taxRate"]')?.value
+  })).filter((item) => item.description || item.unitPrice || item.quantity);
+  const attachmentMap = Object.fromEntries((base.attachments || []).map((item) => [item.id, item]));
+  base.attachments = [...root.querySelectorAll("[data-invoice-attachment-row]")].map((row) => {
+    const id = row.dataset.invoiceAttachmentId || cryptoId();
+    return normalizeInvoiceAttachmentClient({
+      ...(attachmentMap[id] || {}),
+      id,
+      label: row.querySelector('[data-invoice-attachment-field="label"]')?.value || attachmentMap[id]?.label || "Anlage"
+    });
+  }).filter((item) => item.name || item.data || item.path || item.url);
+  return normalizeInvoiceRecordClient(base, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+}
+
+function refreshInvoicePreviewOnly() {
+  const preview = $("#invoicePreviewPanel");
+  if (!preview) return;
+  state.invoiceEditorDraft = currentInvoiceDraftFromDom();
+  state.invoiceEditorId = state.invoiceEditorDraft.id;
+  preview.innerHTML = invoicePreviewHtml(state.invoiceEditorDraft, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  const dirtyHint = $("#invoiceEditorDirtyHint");
+  if (dirtyHint) dirtyHint.textContent = state.invoiceEditorDirty ? "Ungespeicherte Änderungen." : "";
+}
+
+function invoiceReadySources() {
+  const invoices = normalizeInvoicesClient(state.invoices || [], state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  return Object.entries(state.dayReports || {}).flatMap(([dateKey, report]) =>
+    (report?.invoiceCustomers || [])
+      .map((customer, index) => {
+        const sourceCustomerId = String(customer.id || index);
+        const existing = invoices.find((invoice) => invoice.sourceDate === dateKey && invoice.sourceCustomerId === sourceCustomerId && invoice.status !== "archived");
+        return {
+          dateKey,
+          sourceCustomerId,
+          customer,
+          existing,
+          total: invoiceTotal(customer)
+        };
+      })
+      .filter((entry) => invoiceIsReady(entry.customer))
+  ).sort((a, b) => String(b.dateKey).localeCompare(String(a.dateKey)));
+}
+
+function invoiceAttachmentHref(item = {}) {
+  if (item.url) return item.url;
+  if (item.path) return `/api/receipt?path=${encodeURIComponent(item.path)}&name=${encodeURIComponent(item.name || "anlage")}`;
+  return item.data || "";
+}
+
+function renderInvoicePositionEditorRow(position = {}, readonly = false) {
+  return `
+    <div class="invoice-edit-row" data-invoice-position-row data-invoice-position-id="${escapeHtml(position.id)}">
+      <input data-invoice-position-field="articleNumber" value="${escapeHtml(position.articleNumber)}" placeholder="Art.-Nr." ${readonly ? "disabled" : ""}>
+      <input data-invoice-position-field="description" value="${escapeHtml(position.description)}" placeholder="Bezeichnung" ${readonly ? "disabled" : ""}>
+      <input data-invoice-position-field="quantity" type="number" min="0" step="0.01" value="${escapeHtml(String(position.quantity || 0))}" placeholder="Menge" ${readonly ? "disabled" : ""}>
+      <input data-invoice-position-field="unit" value="${escapeHtml(position.unit || "Stück")}" placeholder="Einheit" ${readonly ? "disabled" : ""}>
+      <input data-invoice-position-field="unitPrice" type="number" min="0" step="0.01" value="${escapeHtml(String(position.unitPrice || 0))}" placeholder="Einzelpreis" ${readonly ? "disabled" : ""}>
+      <select data-invoice-position-field="taxRate" ${readonly ? "disabled" : ""}>
+        <option value="0" ${Number(position.taxRate || 0) === 0 ? "selected" : ""}>steuerfrei</option>
+        <option value="7" ${Number(position.taxRate || 0) === 7 ? "selected" : ""}>7 %</option>
+        <option value="19" ${Number(position.taxRate || 0) === 19 ? "selected" : ""}>19 %</option>
+      </select>
+      <div class="row-actions">
+        ${readonly ? "" : `<button class="secondary" type="button" data-invoice-move-position="up">↑</button>
+        <button class="secondary" type="button" data-invoice-move-position="down">↓</button>
+        <button class="secondary danger-lite" type="button" data-invoice-remove-position>Entfernen</button>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderInvoiceAttachmentEditorRow(attachment = {}, readonly = false) {
+  const href = invoiceAttachmentHref(attachment);
+  return `
+    <div class="invoice-attachment-row" data-invoice-attachment-row data-invoice-attachment-id="${escapeHtml(attachment.id)}">
+      <input data-invoice-attachment-field="label" value="${escapeHtml(attachment.label || "Anlage")}" placeholder="Bezeichnung" ${readonly ? "disabled" : ""}>
+      <div class="invoice-attachment-meta">
+        <strong>${escapeHtml(attachment.name || "Anlage")}</strong>
+        <small>${escapeHtml(attachment.mime || "Datei")}</small>
+      </div>
+      <div class="row-actions">
+        ${href ? `<a class="secondary" href="${escapeHtml(href)}" target="_blank" rel="noopener">Öffnen</a>` : ""}
+        ${readonly ? "" : `<button class="secondary danger-lite" type="button" data-invoice-remove-attachment>Entfernen</button>`}
+      </div>
+    </div>
+  `;
+}
+
+function invoicePreviewHtml(invoice = {}, settings = createDefaultInvoiceSettingsClient()) {
+  const normalizedSettings = normalizeInvoiceSettingsClient(settings);
+  const draft = normalizeInvoiceRecordClient(invoice, normalizedSettings);
+  const totals = invoiceTotalsClient(draft);
+  const senderLine = `${normalizedSettings.companyName} · ${normalizedSettings.companyAddress.replace(/\n/g, " · ")}`;
+  const rows = draft.positions.length
+    ? draft.positions.map((position, index) => `
+      <div class="invoice-preview-table-row">
+        <span>${index + 1}</span>
+        <span>${escapeHtml(position.articleNumber || "-")}</span>
+        <span>${escapeHtml(position.description || "-")}</span>
+        <span>${escapeHtml(String(position.quantity || 0))}</span>
+        <span>${escapeHtml(position.unit || "-")}</span>
+        <span>${escapeHtml(formatMoney(position.unitPrice || 0))}</span>
+        <strong>${escapeHtml(formatMoney(invoicePositionGrossClient(position)))}</strong>
+      </div>
+    `).join("")
+    : `<div class="invoice-preview-empty">Noch keine Positionen eingetragen.</div>`;
+  const taxRows = totals.groups.filter((group) => group.rate > 0).map((group) => `
+    <div class="invoice-preview-sum-row">
+      <span>${String(group.rate).replace(".", ",")} % USt. auf EUR ${group.net.toFixed(2).replace(".", ",")}</span>
+      <strong>${group.tax.toFixed(2).replace(".", ",")} Euro</strong>
+    </div>
+  `).join("");
+  return `
+    <div class="invoice-preview-sheet" style="--invoice-primary:${escapeHtml(normalizedSettings.colors.primary)};--invoice-accent:${escapeHtml(normalizedSettings.colors.accent)};--invoice-muted:${escapeHtml(normalizedSettings.colors.muted)};--invoice-line:${escapeHtml(normalizedSettings.colors.line)};--invoice-highlight:${escapeHtml(normalizedSettings.colors.highlight)};">
+      <div class="invoice-preview-head">
+        <div class="invoice-preview-brand">
+          <img src="${escapeHtml(normalizedSettings.logoData || "la-bowling-print-logo.png")}" alt="LA Bowling">
+          <span>${escapeHtml(senderLine)}</span>
+        </div>
+        <div class="invoice-preview-meta">
+          <div><small>Belegnummer</small><strong>${escapeHtml(draft.invoiceNumber || "wird bei Finalisierung vergeben")}</strong></div>
+          <div><small>Belegdatum</small><strong>${escapeHtml(draft.invoiceDate ? formatNumericDate(draft.invoiceDate) : "-")}</strong></div>
+          <div><small>Leistungsdatum</small><strong>${escapeHtml(draft.serviceDate ? formatNumericDate(draft.serviceDate) : "-")}</strong></div>
+          <div><small>Seite</small><strong>1 von 1</strong></div>
+        </div>
+      </div>
+      <div class="invoice-preview-customer">
+        <strong>${escapeHtml(draft.customerName || "Kunde / Firma")}</strong>
+        <div>${escapeHtml(draft.customerAddress || "Kundenadresse").replace(/\n/g, "<br>")}</div>
+      </div>
+      <div class="invoice-preview-title-block">
+        <h3>${escapeHtml(draft.headline || "Rechnung")}</h3>
+        <p>${escapeHtml(draft.introText || normalizedSettings.defaultText)}</p>
+        <div class="invoice-preview-taxline">
+          <span>Steuernummer <strong>${escapeHtml(normalizedSettings.taxNumber || "-")}</strong></span>
+          <span>USt-ID <strong>${escapeHtml(normalizedSettings.vatId || "-")}</strong></span>
+        </div>
+      </div>
+      <div class="invoice-preview-table">
+        <div class="invoice-preview-table-head">
+          <span>Pos</span>
+          <span>Art.-Nr.</span>
+          <span>Bezeichnung</span>
+          <span>Menge</span>
+          <span>Einheit</span>
+          <span>Einzelpreis</span>
+          <span>Betrag EUR</span>
+        </div>
+        ${rows}
+      </div>
+      <div class="invoice-preview-bottom">
+        <div class="invoice-preview-footer-copy">
+          <div><small>Zahlungsziel</small><strong>${escapeHtml(draft.dueDate ? formatNumericDate(draft.dueDate) : "-")}</strong></div>
+          <div><small>Zahlungsstatus</small><strong>${escapeHtml(invoicePaymentStatusLabelClient(draft.paymentStatus))}</strong></div>
+          <div><small>Zahlungsart</small><strong>${escapeHtml(draft.paymentMethod || "-")}</strong></div>
+          <div><small>Bank</small><strong>${escapeHtml(normalizedSettings.bankName || "-")}</strong></div>
+          <div><small>IBAN</small><strong>${escapeHtml(normalizedSettings.iban || "-")}</strong></div>
+          <div><small>BIC</small><strong>${escapeHtml(normalizedSettings.bic || "-")}</strong></div>
+          ${draft.note ? `<div class="invoice-preview-note"><small>Hinweis</small><strong>${escapeHtml(draft.note)}</strong></div>` : ""}
+          <p>Beiliegende Einzelbelege sind Bestandteil dieser Rechnung.</p>
+        </div>
+        <div class="invoice-preview-sums">
+          <div class="invoice-preview-sum-row">
+            <span>Summe</span>
+            <strong>${escapeHtml(formatMoney(totals.grossTotal))}</strong>
+          </div>
+          ${taxRows}
+          <div class="invoice-preview-sum-row">
+            <span>Nettogesamtbetrag</span>
+            <strong>${escapeHtml(formatMoney(totals.netTotal))}</strong>
+          </div>
+          <div class="invoice-preview-endtotal">
+            <span>Endbetrag</span>
+            <strong>${escapeHtml(formatMoney(totals.grossTotal))}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderInvoiceListSection(title, items, activeId) {
+  if (!items.length) return "";
+  return `
+    <section class="invoice-list-section">
+      <div class="invoice-list-section-head">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${items.length}</span>
+      </div>
+      <div class="invoice-list-items">
+        ${items.map((invoice) => renderInvoiceListItem(invoice, activeId)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderInvoiceListItem(invoice, activeId) {
+  const totals = invoiceTotalsClient(invoice);
+  return `
+    <button class="invoice-list-item ${invoice.id === activeId ? "active" : ""}" type="button" data-select-invoice="${escapeHtml(invoice.id)}">
+      <div class="invoice-list-item-head">
+        <strong>${escapeHtml(invoice.customerName || "Rechnung")}</strong>
+        <span class="invoice-status-chip ${invoiceStatusClassClient(invoice.status)}">${escapeHtml(invoiceStatusLabelClient(invoice.status))}</span>
+      </div>
+      <span>${escapeHtml(invoice.invoiceNumber || invoiceTypeLabelClient(invoice.type))}</span>
+      <small>${escapeHtml(invoice.invoiceDate ? formatNumericDate(invoice.invoiceDate) : "-")} · ${escapeHtml(formatMoney(totals.grossTotal))}</small>
+    </button>
+  `;
+}
+
+function renderInvoiceReadySourceItem(entry = {}) {
+  const existing = entry.existing;
+  return `
+    <article class="invoice-source-item">
+      <div>
+        <strong>${escapeHtml(entry.customer?.name || "Kunde")}</strong>
+        <span>${escapeHtml(formatDate(entry.dateKey))}</span>
+        <small>${escapeHtml(formatMoney(entry.total || 0))}${existing ? ` · ${escapeHtml(invoiceStatusLabelClient(existing.status))}` : ""}</small>
+      </div>
+      <button class="secondary" type="button" data-invoice-import-ready="${escapeHtml(entry.dateKey)}|${escapeHtml(entry.sourceCustomerId)}">${existing ? "Öffnen" : "Übernehmen"}</button>
+    </article>
+  `;
+}
+
+function renderInvoiceAdminViewNav(currentView, counts = {}) {
+  const items = [
+    { key: "overview", label: "Zentrale" },
+    { key: "events", label: "Veranstaltungen" },
+    { key: "advertising", label: "Werbekunden" },
+    { key: "directory", label: "Kundenstamm" },
+    { key: "editor", label: "Rechnungen" }
+  ];
+  return `
+    <div class="invoice-admin-nav" role="tablist" aria-label="Rechnungsbereiche">
+      ${items.map((item) => `
+        <button
+          class="invoice-admin-nav-button ${currentView === item.key ? "active" : ""}"
+          type="button"
+          data-invoice-view="${item.key}"
+          role="tab"
+          aria-selected="${currentView === item.key ? "true" : "false"}"
+        >
+          <span>${escapeHtml(item.label)}</span>
+          <small>${escapeHtml(String(counts[item.key] || 0))}</small>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderInvoiceOverviewCard(viewKey, title, body, count, buttonLabel = "Öffnen") {
+  return `
+    <article class="invoice-overview-card">
+      <div class="invoice-overview-card-head">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(String(count || 0))}</span>
+      </div>
+      <p>${escapeHtml(body)}</p>
+      <button class="secondary" type="button" data-invoice-view="${escapeHtml(viewKey)}">${escapeHtml(buttonLabel)}</button>
+    </article>
+  `;
+}
+
+function renderInvoiceDirectoryEntry(customer = {}) {
+  const metaParts = [customer.contact, customer.email || customer.phone].filter(Boolean);
+  return `
+    <article class="invoice-source-item invoice-directory-entry">
+      <div>
+        <strong>${escapeHtml(customer.name || "Kunde")}</strong>
+        <span>${escapeHtml(invoiceSourceTypeLabelClient(customer.sourceType || "event"))}</span>
+        <small>${escapeHtml(metaParts.join(" · ") || customer.address || "Noch keine Zusatzdaten")}</small>
+      </div>
+      <button
+        class="secondary"
+        type="button"
+        data-invoice-import-customer
+        data-invoice-customer-id="${escapeHtml(customer.id || "")}"
+        data-invoice-source-type="${escapeHtml(customer.sourceType || "event")}"
+      >
+        Übernehmen
+      </button>
+    </article>
+  `;
+}
+
+function renderInvoiceAuditLog(invoice = {}) {
+  const log = Array.isArray(invoice.auditLog) ? invoice.auditLog : [];
+  if (!log.length) return `<p class="hint">Noch keine Einträge im Audit-Log.</p>`;
+  return `
+    <div class="invoice-audit-list">
+      ${log.slice().reverse().map((entry) => `
+        <article class="invoice-audit-item">
+          <strong>${escapeHtml(entry.action || "Aktion")}</strong>
+          <span>${escapeHtml(formatDateTime(entry.at || ""))}${entry.actor ? ` · ${escapeHtml(entry.actor)}` : ""}</span>
+          ${entry.note ? `<p>${escapeHtml(entry.note)}</p>` : ""}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderInvoiceEditorShell(draft, totals, readonly) {
+  return `
+    <section class="invoice-editor-shell">
+      <div class="invoice-editor-head">
+        <div>
+          <h3>${escapeHtml(draft.customerName || invoiceTypeLabelClient(draft.type))}</h3>
+          <p>${escapeHtml(invoiceTypeLabelClient(draft.type))} · ${escapeHtml(invoiceSourceTypeLabelClient(draft.sourceType))} · ${escapeHtml(invoiceStatusLabelClient(draft.status))}${draft.invoiceNumber ? ` · ${escapeHtml(draft.invoiceNumber)}` : ""}</p>
+        </div>
+        <div class="invoice-head-badges">
+          <span class="invoice-badge">${escapeHtml(draft.invoiceDate ? formatNumericDate(draft.invoiceDate) : "Belegdatum offen")}</span>
+          <span class="invoice-badge">${escapeHtml(draft.serviceDate ? formatNumericDate(draft.serviceDate) : "Leistungsdatum offen")}</span>
+          <span class="invoice-badge">${escapeHtml(formatMoney(totals.grossTotal))}</span>
+        </div>
+      </div>
+      <p id="invoiceEditorDirtyHint" class="action-status">${state.invoiceEditorDirty ? "Ungespeicherte Änderungen." : ""}</p>
+      <div class="invoice-editor-grid">
+        <div class="invoice-editor-form">
+          <section class="invoice-editor-section">
+            <div class="invoice-section-head">
+              <strong>Kundendaten</strong>
+              <span>Entwurf bleibt bearbeitbar bis zur Finalisierung.</span>
+            </div>
+            <div class="invoice-grid invoice-grid-two">
+              <label>Kunde / Firma<input data-invoice-field="customerName" value="${escapeHtml(draft.customerName)}" placeholder="Firma oder Name" ${readonly ? "disabled" : ""}></label>
+              <label>Ansprechpartner<input data-invoice-field="customerContact" value="${escapeHtml(draft.customerContact)}" placeholder="Ansprechpartner" ${readonly ? "disabled" : ""}></label>
+              <label>Rechnungs-E-Mail<input data-invoice-field="customerEmail" type="email" value="${escapeHtml(draft.customerEmail)}" placeholder="kunde@example.com" ${readonly ? "disabled" : ""}></label>
+              <label>Telefon<input data-invoice-field="customerPhone" value="${escapeHtml(draft.customerPhone)}" placeholder="Telefonnummer" ${readonly ? "disabled" : ""}></label>
+              <label class="invoice-grid-wide">Kundenadresse<textarea data-invoice-field="customerAddress" rows="4" placeholder="Adresse" ${readonly ? "disabled" : ""}>${escapeHtml(draft.customerAddress)}</textarea></label>
+            </div>
+          </section>
+
+          <section class="invoice-editor-section">
+            <div class="invoice-section-head">
+              <strong>Rechnungsdaten</strong>
+              <span>Fortlaufende Nummern werden erst bei Finalisierung fest vergeben.</span>
+            </div>
+            <div class="invoice-grid">
+              <label>Typ
+                <input value="${escapeHtml(invoiceTypeLabelClient(draft.type))}" disabled>
+              </label>
+              <label>Quelle
+                <input value="${escapeHtml(invoiceSourceTypeLabelClient(draft.sourceType))}" disabled>
+              </label>
+              <label>Belegdatum<input data-invoice-field="invoiceDate" type="date" value="${escapeHtml(draft.invoiceDate)}" ${readonly ? "disabled" : ""}></label>
+              <label>Leistungsdatum<input data-invoice-field="serviceDate" type="date" value="${escapeHtml(draft.serviceDate)}" ${readonly ? "disabled" : ""}></label>
+              <label>Zahlungsziel<input data-invoice-field="dueDate" type="date" value="${escapeHtml(draft.dueDate)}" ${readonly ? "disabled" : ""}></label>
+              <label>Zahlungsart
+                <select data-invoice-field="paymentMethod" ${readonly ? "disabled" : ""}>
+                  <option value="" ${!draft.paymentMethod ? "selected" : ""}>Bitte wählen</option>
+                  <option value="Überweisung" ${draft.paymentMethod === "Überweisung" ? "selected" : ""}>Überweisung</option>
+                  <option value="Bar" ${draft.paymentMethod === "Bar" ? "selected" : ""}>Bar</option>
+                  <option value="EC" ${draft.paymentMethod === "EC" ? "selected" : ""}>EC</option>
+                </select>
+              </label>
+              <label>Zahlungsstatus
+                <select data-invoice-field="paymentStatus" ${readonly ? "disabled" : ""}>
+                  <option value="open" ${draft.paymentStatus === "open" ? "selected" : ""}>offen</option>
+                  <option value="paid" ${draft.paymentStatus === "paid" ? "selected" : ""}>bezahlt</option>
+                  <option value="cash-paid" ${draft.paymentStatus === "cash-paid" ? "selected" : ""}>bereits über Kasse bezahlt</option>
+                </select>
+              </label>
+              <label class="invoice-grid-wide">Überschrift<input data-invoice-field="headline" value="${escapeHtml(draft.headline)}" placeholder="Rechnung" ${readonly ? "disabled" : ""}></label>
+              <label class="invoice-grid-wide">Einleitung<textarea data-invoice-field="introText" rows="3" placeholder="Rechnung zu beiliegenden Einzelbelegen" ${readonly ? "disabled" : ""}>${escapeHtml(draft.introText)}</textarea></label>
+            </div>
+          </section>
+
+          <section class="invoice-editor-section">
+            <div class="invoice-section-head">
+              <strong>Positionen</strong>
+              <span>Steuersatz je Position separat pflegen.</span>
+            </div>
+            <div class="invoice-row-list">
+              ${(draft.positions || []).length ? draft.positions.map((position) => renderInvoicePositionEditorRow(position, readonly)).join("") : `<p class="hint">Noch keine Positionen angelegt.</p>`}
+            </div>
+            ${readonly ? "" : `<div class="day-report-actions"><button class="secondary" type="button" data-invoice-add-position>+ Position hinzufügen</button></div>`}
+          </section>
+
+          <section class="invoice-editor-section">
+            <div class="invoice-section-head">
+              <strong>Anlagen / Belege</strong>
+              <span>PDFs und Scans bleiben dauerhaft an der Rechnung hängen.</span>
+            </div>
+            <div class="invoice-row-list">
+              ${(draft.attachments || []).length ? draft.attachments.map((attachment) => renderInvoiceAttachmentEditorRow(attachment, readonly)).join("") : `<p class="hint">Noch keine Anlagen hochgeladen.</p>`}
+            </div>
+            ${readonly ? "" : `<label class="invoice-upload-field">Anlagen hochladen<input data-invoice-file type="file" accept="image/*,application/pdf" multiple capture="environment"></label>`}
+          </section>
+
+          <section class="invoice-editor-section">
+            <div class="invoice-section-head">
+              <strong>Hinweise</strong>
+              <span>Hinweis wird im PDF angezeigt, interne Notiz nur im Backoffice.</span>
+            </div>
+            <div class="invoice-grid invoice-grid-two">
+              <label class="invoice-grid-wide">Hinweis für Rechnung<textarea data-invoice-field="note" rows="3" placeholder="Optionaler Hinweis" ${readonly ? "disabled" : ""}>${escapeHtml(draft.note)}</textarea></label>
+              <label class="invoice-grid-wide">Interne Notiz<textarea data-invoice-field="internalNote" rows="3" placeholder="Nur intern sichtbar" ${readonly ? "disabled" : ""}>${escapeHtml(draft.internalNote)}</textarea></label>
+            </div>
+          </section>
+
+          <section class="invoice-editor-section">
+            <div class="invoice-section-head">
+              <strong>Audit-Log</strong>
+              <span>Nach Finalisierung nur noch Storno oder Korrekturrechnung.</span>
+            </div>
+            ${renderInvoiceAuditLog(draft)}
+            ${draft.status === "draft" ? "" : `<div class="day-report-actions">
+              <button class="secondary" type="button" data-invoice-create-correction>Korrekturrechnung anlegen</button>
+              <button class="secondary" type="button" data-invoice-create-storno>Stornorechnung anlegen</button>
+            </div>`}
+          </section>
+        </div>
+        <aside class="invoice-preview-stack">
+          <div class="invoice-preview-actions">
+            ${draft.pdfData ? `<a class="secondary" href="${escapeHtml(draft.pdfData)}" download="${escapeHtml(draft.pdfFileName || "rechnung.pdf")}">Aktuelle PDF herunterladen</a>` : `<span class="hint">Noch keine PDF gespeichert.</span>`}
+          </div>
+          <div id="invoicePreviewPanel" class="invoice-preview-panel">
+            ${invoicePreviewHtml(draft, state.invoiceSettings)}
+          </div>
+        </aside>
+      </div>
+    </section>
+  `;
+}
+
+function renderAdminInvoices() {
+  const container = $("#adminInvoices");
+  if (!container) return;
+  if (!state.invoiceSkipDomSync && state.invoiceEditorDirty && container.querySelector("[data-invoice-field]")) {
+    state.invoiceSearch = container.querySelector("#invoiceSearch")?.value || state.invoiceSearch || "";
+    state.invoiceEditorDraft = currentInvoiceDraftFromDom();
+    state.invoiceEditorId = state.invoiceEditorDraft.id;
+  }
+  state.invoiceSkipDomSync = false;
+  if (!state.adminUnlocked) {
+    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+    return;
+  }
+  state.invoiceSettings = normalizeInvoiceSettingsClient(state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  state.invoices = normalizeInvoicesClient(state.invoices || [], state.invoiceSettings);
+  const invoices = state.invoices;
+  const draft = ensureInvoiceDraft();
+  const readySources = invoiceReadySources();
+  const query = String(state.invoiceSearch || "").trim();
+  const filtered = invoices.filter((invoice) => invoiceSearchMatches(invoice, query));
+  const drafts = filtered.filter((invoice) => invoice.status === "draft");
+  const finals = filtered.filter((invoice) => invoice.status === "finalized" || invoice.status === "sent");
+  const archived = filtered.filter((invoice) => invoice.status === "archived");
+  const eventInvoices = filtered.filter((invoice) => invoiceMatchesSourceTypeClient(invoice, "event"));
+  const advertisingInvoices = filtered.filter((invoice) => invoiceMatchesSourceTypeClient(invoice, "advertising"));
+  const manualInvoices = filtered.filter((invoice) => invoiceMatchesSourceTypeClient(invoice, "manual"));
+  const eventDrafts = eventInvoices.filter((invoice) => invoice.status === "draft");
+  const eventFinals = eventInvoices.filter((invoice) => invoice.status === "finalized" || invoice.status === "sent");
+  const eventArchived = eventInvoices.filter((invoice) => invoice.status === "archived");
+  const advertisingDrafts = advertisingInvoices.filter((invoice) => invoice.status === "draft");
+  const advertisingFinals = advertisingInvoices.filter((invoice) => invoice.status === "finalized" || invoice.status === "sent");
+  const advertisingArchived = advertisingInvoices.filter((invoice) => invoice.status === "archived");
+  const readonly = draft.status !== "draft";
+  const totals = invoiceTotalsClient(draft);
+  const customerOptions = normalizeCustomerDirectory(state.customerDirectory || []);
+  const eventCustomers = customerOptions.filter((customer) => customerDirectoryMatchesSourceTypeClient(customer, "non-advertising"));
+  const advertisingCustomers = customerOptions.filter((customer) => customerDirectoryMatchesSourceTypeClient(customer, "advertising"));
+  const view = ["overview", "events", "advertising", "directory", "editor"].includes(state.invoiceAdminView)
+    ? state.invoiceAdminView
+    : "overview";
+  const navCounts = {
+    overview: filtered.length,
+    events: readySources.length + eventInvoices.length,
+    advertising: advertisingCustomers.length + advertisingInvoices.length,
+    directory: customerOptions.length,
+    editor: filtered.length
+  };
+  const recentInvoices = filtered.slice(0, 6);
+  const defaultNewButton = view === "advertising"
+    ? `<button class="primary" type="button" data-invoice-new-advertising>+ Werbekunden-Entwurf</button>`
+    : `<button class="primary" type="button" data-invoice-new>+ Neuer Entwurf</button>`;
+  let workspaceMarkup = "";
+  if (view === "overview") {
+    workspaceMarkup = `
+      <div class="invoice-overview-grid">
+        ${renderInvoiceOverviewCard("events", "Veranstaltungen", "Bowling- und Veranstaltungsrechnungen bleiben direkt mit dem Tagesbericht verknüpft.", readySources.length, "Öffnen")}
+        ${renderInvoiceOverviewCard("advertising", "Werbekunden", "Freie Firmen- und Werberechnungen laufen getrennt vom Tagesgeschäft, aber im selben Generator.", advertisingInvoices.length + advertisingCustomers.length, "Öffnen")}
+        ${renderInvoiceOverviewCard("directory", "Kundenstamm", "Alle Kunden zentral pflegen und später gezielt in Rechnungen oder Angebote übernehmen.", customerOptions.length, "Öffnen")}
+        ${renderInvoiceOverviewCard("editor", "Rechnungen", "Entwürfe bearbeiten, finalisieren, mailen und archivieren.", filtered.length, "Öffnen")}
+      </div>
+      <div class="invoice-directory-grid">
+        <section class="invoice-side-section">
+          <div class="invoice-side-head">
+            <strong>Bereit aus Veranstaltungen</strong>
+            <span>${readySources.length}</span>
+          </div>
+          <div class="invoice-source-list">
+            ${readySources.length ? readySources.slice(0, 6).map(renderInvoiceReadySourceItem).join("") : `<p class="hint">Aktuell keine fertigen Veranstaltungskunden.</p>`}
+          </div>
+        </section>
+        <section class="invoice-side-section">
+          <div class="invoice-side-head">
+            <strong>Letzte Rechnungen</strong>
+            <span>${recentInvoices.length}</span>
+          </div>
+          <div class="invoice-list-items">
+            ${recentInvoices.length ? recentInvoices.map((invoice) => renderInvoiceListItem(invoice, draft.id)).join("") : `<p class="hint">Noch keine Rechnungen vorhanden.</p>`}
+          </div>
+        </section>
+      </div>
+    `;
+  } else if (view === "events") {
+    workspaceMarkup = `
+      <div class="invoice-workspace-grid">
+        <aside class="invoice-sidebar">
+          <section class="invoice-side-section">
+            <div class="invoice-side-head">
+              <strong>Veranstaltungen bereit für Rechnung</strong>
+              <span>${readySources.length}</span>
+            </div>
+            <div class="invoice-source-list">
+              ${readySources.length ? readySources.map(renderInvoiceReadySourceItem).join("") : `<p class="hint">Aktuell keine fertigen Veranstaltungskunden.</p>`}
+            </div>
+          </section>
+          <section class="invoice-side-section">
+            <div class="invoice-side-head">
+              <strong>Bowling-Kundenstamm</strong>
+              <span>${eventCustomers.length}</span>
+            </div>
+            <div class="invoice-source-list">
+              ${eventCustomers.length ? eventCustomers.slice(0, 8).map(renderInvoiceDirectoryEntry).join("") : `<p class="hint">Noch keine Veranstaltungskunden im Stamm.</p>`}
+            </div>
+            ${eventCustomers.length > 8 ? `<button class="secondary" type="button" data-invoice-view="directory">Restlichen Kundenstamm öffnen</button>` : ""}
+          </section>
+          <section class="invoice-side-section">
+            <div class="invoice-side-head">
+              <strong>Veranstaltungsrechnungen</strong>
+              <span>${eventInvoices.length}</span>
+            </div>
+            <input id="invoiceSearch" type="search" value="${escapeHtml(query)}" placeholder="Kunde, Nummer, Datum, Betrag">
+            ${renderInvoiceListSection("Entwürfe", eventDrafts, draft.id)}
+            ${renderInvoiceListSection("Final / versendet", eventFinals, draft.id)}
+            ${renderInvoiceListSection("Archiv", eventArchived, draft.id)}
+            ${!eventInvoices.length ? `<p class="hint">Noch keine Veranstaltungsrechnungen vorhanden.</p>` : ""}
+          </section>
+        </aside>
+        ${renderInvoiceEditorShell(draft, totals, readonly)}
+      </div>
+    `;
+  } else if (view === "advertising") {
+    workspaceMarkup = `
+      <div class="invoice-workspace-grid">
+        <aside class="invoice-sidebar">
+          <section class="invoice-side-section">
+            <div class="invoice-side-head">
+              <strong>Werbekunden separat führen</strong>
+              <span>${advertisingInvoices.length}</span>
+            </div>
+            <p class="hint">Hier sammeln wir bewusst alles, was nichts mit dem Tagesbericht zu tun hat: Werbung, Sponsoren, Partner oder freie Firmenrechnungen.</p>
+            <button class="primary" type="button" data-invoice-new-advertising>+ Werbekunden-Entwurf starten</button>
+          </section>
+          <section class="invoice-side-section">
+            <div class="invoice-side-head">
+              <strong>Werbekunden-Stamm</strong>
+              <span>${advertisingCustomers.length}</span>
+            </div>
+            <div class="invoice-source-list">
+              ${advertisingCustomers.length ? advertisingCustomers.map(renderInvoiceDirectoryEntry).join("") : `<p class="hint">Noch keine Werbekunden im Stamm. In Phase 2 bauen wir hier die volle Kundenpflege aus.</p>`}
+            </div>
+          </section>
+          <section class="invoice-side-section">
+            <div class="invoice-side-head">
+              <strong>Werberechnungen</strong>
+              <span>${advertisingInvoices.length + manualInvoices.length}</span>
+            </div>
+            <input id="invoiceSearch" type="search" value="${escapeHtml(query)}" placeholder="Kunde, Nummer, Datum, Betrag">
+            ${renderInvoiceListSection("Entwürfe", advertisingDrafts, draft.id)}
+            ${renderInvoiceListSection("Final / versendet", advertisingFinals, draft.id)}
+            ${renderInvoiceListSection("Archiv", advertisingArchived, draft.id)}
+            ${renderInvoiceListSection("Allgemein / manuell", manualInvoices, draft.id)}
+            ${!(advertisingInvoices.length || manualInvoices.length) ? `<p class="hint">Noch keine Werberechnungen oder freien Entwürfe vorhanden.</p>` : ""}
+          </section>
+        </aside>
+        ${renderInvoiceEditorShell(draft, totals, readonly)}
+      </div>
+    `;
+  } else if (view === "directory") {
+    workspaceMarkup = `
+      <div class="invoice-directory-grid">
+        <section class="invoice-side-section">
+          <div class="invoice-side-head">
+            <strong>Veranstaltungs-Kundenstamm</strong>
+            <span>${eventCustomers.length}</span>
+          </div>
+          <div class="invoice-source-list">
+            ${eventCustomers.length ? eventCustomers.map(renderInvoiceDirectoryEntry).join("") : `<p class="hint">Noch keine Veranstaltungskunden vorhanden.</p>`}
+          </div>
+        </section>
+        <section class="invoice-side-section">
+          <div class="invoice-side-head">
+            <strong>Werbekunden-Stamm</strong>
+            <span>${advertisingCustomers.length}</span>
+          </div>
+          <div class="invoice-source-list">
+            ${advertisingCustomers.length ? advertisingCustomers.map(renderInvoiceDirectoryEntry).join("") : `<p class="hint">Noch keine Werbekunden vorhanden.</p>`}
+          </div>
+        </section>
+      </div>
+    `;
+  } else {
+    workspaceMarkup = `
+      <div class="invoice-workspace-grid">
+        <aside class="invoice-sidebar">
+          <section class="invoice-side-section">
+            <div class="invoice-side-head">
+              <strong>Rechnungen</strong>
+              <span>${filtered.length}</span>
+            </div>
+            <input id="invoiceSearch" type="search" value="${escapeHtml(query)}" placeholder="Kunde, Nummer, Datum, Betrag">
+            ${renderInvoiceListSection("Entwürfe", drafts, draft.id)}
+            ${renderInvoiceListSection("Final / versendet", finals, draft.id)}
+            ${renderInvoiceListSection("Archiv", archived, draft.id)}
+          </section>
+          <section class="invoice-side-section">
+            <div class="invoice-side-head">
+              <strong>Bereit aus Veranstaltungen</strong>
+              <span>${readySources.length}</span>
+            </div>
+            <div class="invoice-source-list">
+              ${readySources.length ? readySources.map(renderInvoiceReadySourceItem).join("") : `<p class="hint">Aktuell keine fertigen Veranstaltungskunden.</p>`}
+            </div>
+          </section>
+          <section class="invoice-side-section">
+            <div class="invoice-side-head">
+              <strong>Kundenstamm</strong>
+              <span>${customerOptions.length}</span>
+            </div>
+            <div class="invoice-source-list">
+              ${customerOptions.length ? customerOptions.slice(0, 8).map(renderInvoiceDirectoryEntry).join("") : `<p class="hint">Noch keine Kunden im Stamm.</p>`}
+            </div>
+            ${customerOptions.length > 8 ? `<button class="secondary" type="button" data-invoice-view="directory">Kompletten Kundenstamm öffnen</button>` : ""}
+          </section>
+        </aside>
+        ${renderInvoiceEditorShell(draft, totals, readonly)}
+      </div>
+    `;
+  }
+  container.innerHTML = `
+    <div class="invoice-toolbar">
+      <div class="invoice-toolbar-actions">
+        ${defaultNewButton}
+        <button class="secondary" type="button" data-invoice-save ${readonly ? "disabled" : ""}>Entwurf speichern</button>
+        <button class="secondary danger-lite" type="button" data-invoice-delete ${readonly ? "disabled" : ""}>Entwurf löschen</button>
+        <button class="secondary" type="button" data-invoice-preview>PDF Vorschau</button>
+        <button class="secondary" type="button" data-invoice-download>PDF herunterladen</button>
+        <button class="secondary" type="button" data-invoice-finalize ${readonly ? "disabled" : ""}>Finalisieren</button>
+        <button class="secondary" type="button" data-invoice-send ${draft.status === "draft" || draft.status === "archived" ? "disabled" : ""}>Per E-Mail senden</button>
+        <button class="secondary" type="button" data-invoice-archive ${draft.status === "draft" || draft.status === "archived" ? "disabled" : ""}>Archivieren</button>
+      </div>
+      <div class="invoice-toolbar-stats">
+        <span><small>Entwürfe</small><strong>${drafts.length}</strong></span>
+        <span><small>Final / versendet</small><strong>${finals.length}</strong></span>
+        <span><small>Archiv</small><strong>${archived.length}</strong></span>
+        <span><small>Rechnungsbetrag</small><strong>${escapeHtml(formatMoney(totals.grossTotal))}</strong></span>
+      </div>
+    </div>
+    ${renderInvoiceAdminViewNav(view, navCounts)}
+    ${workspaceMarkup}
+  `;
+}
+
+function downloadDataUrlFile(dataUrl, fileName = "datei") {
+  if (!dataUrl) return;
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+async function runInvoiceMutation(action, extra = {}, fallbackMessage = "") {
+  const result = await api("/api/state", {
+    method: "POST",
+    headers: { "x-admin-token": state.adminToken },
+    body: JSON.stringify({
+      action,
+      adminToken: state.adminToken,
+      ...extra
+    })
+  });
+  state.invoiceSettings = normalizeInvoiceSettingsClient(result.invoiceSettings || state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  state.invoices = normalizeInvoicesClient(result.invoices || state.invoices || [], state.invoiceSettings);
+  if (result.invoice) {
+    setInvoiceDraftFromInvoice(result.invoice);
+  } else if (state.invoiceEditorDraft) {
+    const refreshed = state.invoices.find((invoice) => invoice.id === state.invoiceEditorDraft.id);
+    if (refreshed) setInvoiceDraftFromInvoice(refreshed);
+  }
+  state.invoiceEditorDirty = false;
+  renderAdminInvoices();
+  if (result.message || fallbackMessage) showToast(result.message || fallbackMessage);
+  return result;
+}
+
+async function createNewInvoiceDraft(button, overrides = null) {
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Erstellt...";
+  }
+  try {
+    state.invoiceAdminView = "editor";
+    const result = await runInvoiceMutation("invoice-new-draft", {}, "Neuer Rechnungsentwurf erstellt.");
+    if (overrides && typeof overrides === "object") {
+      const draft = normalizeInvoiceRecordClient({
+        ...(result.invoice || state.invoiceEditorDraft || createBlankInvoiceDraftClient(state.invoiceSettings)),
+        ...overrides
+      }, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+      await runInvoiceMutation("invoice-save-draft", { invoice: draft }, "Rechnungsentwurf vorbereitet.");
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function importInvoiceReadySource(token, button) {
+  const [sourceDate, sourceCustomerId] = String(token || "").split("|");
+  if (!sourceDate || !sourceCustomerId) return;
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Öffnet...";
+  }
+  try {
+    state.invoiceAdminView = "editor";
+    await runInvoiceMutation("invoice-from-ready-customer", { sourceDate, sourceCustomerId }, "Rechnungskunde übernommen.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function importInvoiceFromCustomerDirectory(button) {
+  const sourceType = String(button?.dataset.invoiceSourceType || "").trim();
+  const selectId = String(button?.dataset.invoiceCustomerSelect || "").trim();
+  const customerId = String(button?.dataset.invoiceCustomerId || "").trim() || (selectId ? ($(`#${selectId}`)?.value || "") : "");
+  if (!customerId) {
+    showToast("Bitte zuerst einen Kunden aus dem Stamm wählen.");
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Übernimmt...";
+  }
+  try {
+    state.invoiceAdminView = "editor";
+    await runInvoiceMutation("invoice-from-customer-directory", {
+      customerId,
+      ...(sourceType ? { sourceType } : {})
+    }, "Kunde aus dem Stamm übernommen.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function saveCurrentInvoiceDraft(button) {
+  const draft = currentInvoiceDraftFromDom();
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Speichert...";
+  }
+  try {
+    await runInvoiceMutation("invoice-save-draft", { invoice: draft }, "Rechnungsentwurf gespeichert.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function deleteCurrentInvoiceDraft(button) {
+  const draft = currentInvoiceDraftFromDom();
+  if (!draft?.id) return;
+  if (!window.confirm("Diesen Rechnungsentwurf wirklich löschen?")) return;
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Löscht...";
+  }
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "invoice-delete-draft",
+        adminToken: state.adminToken,
+        invoiceId: draft.id
+      })
+    });
+    state.invoices = normalizeInvoicesClient(result.invoices || [], state.invoiceSettings || createDefaultInvoiceSettingsClient());
+    state.invoiceEditorDraft = state.invoices[0] ? cloneData(state.invoices[0]) : createBlankInvoiceDraftClient(state.invoiceSettings);
+    state.invoiceEditorId = state.invoiceEditorDraft.id;
+    state.invoiceEditorDirty = false;
+    renderAdminInvoices();
+    showToast(result.message || "Entwurf gelöscht.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function previewCurrentInvoicePdf(button, download = false) {
+  const draft = currentInvoiceDraftFromDom();
+  const oldText = button?.textContent || "";
+  const dirtyState = state.invoiceEditorDirty;
+  if (button) {
+    button.disabled = true;
+    button.textContent = download ? "Erstellt..." : "Lädt...";
+  }
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "invoice-preview-pdf",
+        adminToken: state.adminToken,
+        invoice: draft
+      })
+    });
+    state.invoiceEditorDraft = normalizeInvoiceRecordClient({
+      ...draft,
+      pdfData: result.pdfData || "",
+      pdfFileName: result.pdfFileName || draft.pdfFileName
+    }, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+    state.invoiceEditorId = state.invoiceEditorDraft.id;
+    state.invoiceEditorDirty = dirtyState;
+    state.invoiceSkipDomSync = true;
+    renderAdminInvoices();
+    if (download) {
+      downloadDataUrlFile(result.pdfData, result.pdfFileName || "rechnung.pdf");
+    } else if (result.pdfData) {
+      window.open(result.pdfData, "_blank", "noopener");
+    }
+    showToast(download ? "PDF heruntergeladen." : "PDF Vorschau geöffnet.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function finalizeCurrentInvoice(button) {
+  const draft = currentInvoiceDraftFromDom();
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Finalisiert...";
+  }
+  try {
+    const result = await runInvoiceMutation("invoice-finalize", { invoice: draft }, "Rechnung finalisiert.");
+    if (result.pdfData) {
+      state.invoiceEditorDraft = normalizeInvoiceRecordClient({
+        ...(result.invoice || draft),
+        pdfData: result.pdfData,
+        pdfFileName: result.pdfFileName || result.invoice?.pdfFileName
+      }, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+      state.invoiceEditorId = state.invoiceEditorDraft.id;
+      state.invoiceSkipDomSync = true;
+      renderAdminInvoices();
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function sendCurrentInvoiceEmail(button) {
+  const draft = currentInvoiceDraftFromDom();
+  const oldText = button?.textContent || "";
+  if (!draft.id) return;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Sendet...";
+  }
+  try {
+    await runInvoiceMutation("invoice-send-email", { invoiceId: draft.id }, "Rechnung per E-Mail versendet.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function archiveCurrentInvoice(button) {
+  const draft = currentInvoiceDraftFromDom();
+  if (!draft.id) return;
+  if (!window.confirm("Diese Rechnung wirklich archivieren?")) return;
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Archiviert...";
+  }
+  try {
+    await runInvoiceMutation("invoice-archive", { invoiceId: draft.id }, "Rechnung archiviert.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function createInvoiceFollowUp(type, button) {
+  const draft = currentInvoiceDraftFromDom();
+  if (!draft.id) return;
+  const action = type === "storno" ? "invoice-create-storno" : "invoice-create-correction";
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Erstellt...";
+  }
+  try {
+    await runInvoiceMutation(action, { invoiceId: draft.id }, type === "storno" ? "Stornorechnung angelegt." : "Korrekturrechnung angelegt.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function addInvoiceAttachmentsFromFiles(files = []) {
+  const selected = [...files];
+  if (!selected.length) return;
+  showToast("Anlagen werden vorbereitet...");
+  const newAttachments = [];
+  for (const file of selected) {
+    const data = await fileToDataUrl(file);
+    newAttachments.push(normalizeInvoiceAttachmentClient({
+      id: cryptoId(),
+      label: file.name.replace(/\.[^.]+$/, "") || "Anlage",
+      name: file.name,
+      data,
+      mime: file.type || ""
+    }));
+  }
+  const draft = currentInvoiceDraftFromDom();
+  draft.attachments = [...(draft.attachments || []), ...newAttachments];
+  state.invoiceEditorDraft = normalizeInvoiceRecordClient(draft, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  state.invoiceEditorId = state.invoiceEditorDraft.id;
+  state.invoiceEditorDirty = true;
+  state.invoiceSkipDomSync = true;
+  renderAdminInvoices();
+  showToast(`${newAttachments.length} Anlage${newAttachments.length === 1 ? "" : "n"} hinzugefügt.`);
 }
 
 function renderAdminCorrection() {
@@ -6501,6 +7908,7 @@ function renderTerminal() {
   renderTerminalTabs();
   renderTerminalDayMeta(dateKey, report, reportClosed);
   renderTerminalCorrectionBanner(dateKey, report);
+  renderTerminalOpenDays(dateKey);
   renderTerminalLeaderMessages(report, reportClosed);
   renderTerminalTasks(report, reportClosed);
   renderHandovers(report, reportClosed);
@@ -9359,6 +10767,52 @@ function renderTerminalDayMeta(dateKey, report, reportClosed) {
   $("#saveTerminalDayMeta")?.toggleAttribute("disabled", reportClosed);
 }
 
+function renderTerminalOpenDays(dateKey) {
+  const target = $("#terminalOpenDaysNav");
+  if (!target) return;
+  if (!state.terminalToken) {
+    target.classList.add("hidden");
+    target.innerHTML = "";
+    return;
+  }
+  if (state.terminalCorrectionMode) {
+    target.classList.remove("hidden");
+    target.innerHTML = `
+      <div class="terminal-open-days-head">
+        <strong>Offene Tage</strong>
+        <p>Im Korrekturmodus ist das Datum fix. Für andere offene Tage bitte zuerst den Korrekturmodus schließen.</p>
+      </div>
+    `;
+    return;
+  }
+  const today = todayKey();
+  const dates = [...new Set([...(Array.isArray(state.terminalOpenDates) ? state.terminalOpenDates : []), dateKey].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) && value <= today))].sort((a, b) => b.localeCompare(a));
+  target.classList.remove("hidden");
+  target.innerHTML = `
+    <div class="terminal-open-days-head">
+      <strong>Offene Tage</strong>
+      <p>Nicht abgeschlossene Tage kannst du hier direkt wieder öffnen.</p>
+    </div>
+    <div class="terminal-open-days-controls">
+      <div class="terminal-open-days-list">
+        ${dates.map((item) => `
+          <button
+            class="secondary terminal-open-day-chip ${item === dateKey ? "active" : ""}"
+            type="button"
+            data-open-terminal-date="${escapeHtml(item)}"
+          >${escapeHtml(formatDate(item))}</button>
+        `).join("")}
+      </div>
+      <label class="terminal-open-day-manual">
+        <span>Datum öffnen</span>
+        <input id="terminalJumpDate" type="date" max="${today}" value="${dateKey}">
+      </label>
+      <button id="loadTerminalDate" class="secondary" type="button">Tag laden</button>
+    </div>
+    <p class="terminal-open-days-hint">Abgeschlossene Tage bleiben geschützt und laufen weiter über den Admin-Korrekturmodus.</p>
+  `;
+}
+
 function renderTerminalCorrectionBanner(dateKey, report = {}) {
   const target = $("#terminalCorrectionBanner");
   if (!target) return;
@@ -9748,6 +11202,7 @@ async function refreshTerminalReminderState() {
     });
     const report = result.report || {};
     state.terminalDate = result.date || state.terminalDate || todayKey();
+    state.terminalOpenDates = Array.isArray(result.openTerminalDates) ? result.openTerminalDates : state.terminalOpenDates || [];
     state.terminalTasks = result.tasks || state.terminalTasks || [];
     state.terminalReminders = normalizeReminderTemplates(result.reminders || state.terminalReminders);
     state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.terminalCleaningTemplates);
@@ -9926,37 +11381,96 @@ function renderCustomerInvoiceDesk() {
 
   const report = state.invoiceReport || {};
   const invoices = report.invoiceCustomers || [];
-  const expenses = report.expenses || [];
-  const summary = $("#customerInvoiceDaySummary");
-  if (summary) {
-    const ready = invoices.filter((item) => invoiceIsReady(item) && !item.invoiceDone && !invoiceIsPaid(item)).length;
-    const draft = invoices.filter((item) => !invoiceIsReady(item) && !item.invoiceDone).length;
-    const done = invoices.filter((item) => item.invoiceDone || invoiceIsPaid(item)).length;
-    const total = invoices.reduce((sum, item) => sum + invoiceTotal(item), 0);
-    summary.innerHTML = `
-      <div>
-        <small>${escapeHtml(formatDate(state.invoiceDate || todayKey()))}</small>
-        <strong>${invoices.length} Rechnungskunde${invoices.length === 1 ? "" : "n"}</strong>
-      </div>
-      <span class="invoice-pill is-draft">${draft} offen</span>
-      <span class="invoice-pill is-ready">${ready} zu schreiben</span>
-      <span class="invoice-pill is-done">${done} erledigt</span>
-      <span class="invoice-pill">${formatReportMoney(total)}</span>
-    `;
-  }
   const invoiceList = $("#customerInvoiceWorkList");
   if (invoiceList) {
-    invoiceList.innerHTML = invoices.map((item) => invoiceRowHtml(item)).join("") || `<p class="hint">Noch keine Rechnungskunden für heute.</p>`;
+    invoiceList.innerHTML = invoices.map((item) => invoiceRowHtml(item)).join("") || `<p class="hint">Noch keine geplanten Rechnungen für dieses Datum.</p>`;
   }
+  renderCustomerInvoiceBuilder();
   renderCustomerMaster();
-  const expenseList = $("#customerExpenseWorkList");
-  if (expenseList) {
-    expenseList.innerHTML = expenses.map((item) => expenseRowHtml(item)).join("") || `<p class="hint">Noch keine Ausgaben für heute.</p>`;
-  }
-  renderCustomerInvoiceDocuments(report);
   const status = $("#customerInvoiceStaffStatus");
-  if (status && !status.textContent) status.textContent = "Tagesübersicht geöffnet.";
+  if (status && !status.textContent) status.textContent = "Mitarbeiterbereich geöffnet.";
   normalizeGermanDisplay();
+}
+
+function customerInvoiceLinkedRecord(item = {}) {
+  const sourceCustomerId = String(item.id || "").trim();
+  if (!sourceCustomerId) return null;
+  const sourceDate = state.invoiceDate || todayKey();
+  const settings = state.invoiceSettings || createDefaultInvoiceSettingsClient();
+  return normalizeInvoicesClient(state.invoices || [], settings)
+    .find((invoice) => invoice.sourceDate === sourceDate && invoice.sourceCustomerId === sourceCustomerId && invoice.status !== "archived") || null;
+}
+
+function setInvoiceDeskDraftFromInvoice(invoice) {
+  if (!invoice) {
+    state.invoiceDeskDraft = null;
+    state.invoiceDeskDraftId = "";
+    return null;
+  }
+  const settings = normalizeInvoiceSettingsClient(state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  state.invoiceDeskDraft = normalizeInvoiceRecordClient(invoice, settings);
+  state.invoiceDeskDraftId = state.invoiceDeskDraft.id || "";
+  return state.invoiceDeskDraft;
+}
+
+function clearInvoiceDeskDraft() {
+  state.invoiceDeskDraftId = "";
+  state.invoiceDeskDraft = null;
+}
+
+function currentInvoiceDeskDraft() {
+  const settings = normalizeInvoiceSettingsClient(state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  const localDraft = state.invoiceDeskDraft
+    ? normalizeInvoiceRecordClient(state.invoiceDeskDraft, settings)
+    : null;
+  if (!state.invoiceDeskDraftId) return localDraft;
+  const refreshed = normalizeInvoicesClient(state.invoices || [], settings)
+    .find((invoice) => invoice.id === state.invoiceDeskDraftId);
+  if (!refreshed) return localDraft;
+  state.invoiceDeskDraft = normalizeInvoiceRecordClient({
+    ...refreshed,
+    pdfData: localDraft?.pdfData || refreshed.pdfData || "",
+    pdfFileName: localDraft?.pdfFileName || refreshed.pdfFileName || ""
+  }, settings);
+  return state.invoiceDeskDraft;
+}
+
+function renderCustomerInvoiceBuilder() {
+  const section = $("#customerInvoiceBuilderSection");
+  const panel = $("#customerInvoiceBuilderPanel");
+  if (!section || !panel) return;
+  const draft = currentInvoiceDeskDraft();
+  if (!state.invoiceTerminalToken || !draft?.id) {
+    section.classList.add("hidden");
+    panel.innerHTML = "";
+    return;
+  }
+  const settings = normalizeInvoiceSettingsClient(state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  const totals = invoiceTotalsClient(draft);
+  const readonly = draft.status !== "draft";
+  section.classList.remove("hidden");
+  section.open = true;
+  panel.innerHTML = `
+    <div class="customer-invoice-builder">
+      <div class="customer-invoice-builder-head">
+        <div>
+          <strong>${escapeHtml(draft.customerName || "Rechnung")}</strong>
+          <span>${escapeHtml(draft.invoiceDate ? formatNumericDate(draft.invoiceDate) : formatNumericDate(state.invoiceDate || todayKey()))} · ${escapeHtml(invoiceStatusLabelClient(draft.status))}</span>
+        </div>
+        <span class="invoice-pill ${invoiceStatusClassClient(draft.status)}">${escapeHtml(formatMoney(totals.grossTotal))}</span>
+      </div>
+      <div class="customer-invoice-builder-actions">
+        <button class="secondary" type="button" data-close-customer-invoice-builder>Schließen</button>
+        <button class="secondary" type="button" data-customer-invoice-preview>Vorschau</button>
+        <button class="primary" type="button" data-customer-invoice-finalize ${readonly ? "disabled" : ""}>Festschreiben</button>
+        <button class="secondary" type="button" data-customer-invoice-print ${draft.pdfData ? "" : "disabled"}>Drucken</button>
+      </div>
+      <p class="hint customer-invoice-builder-hint">Rechnung wird direkt aus diesem Rechnungskunden erzeugt: erst prüfen, dann festschreiben und anschließend drucken.</p>
+      <div class="invoice-preview-panel customer-invoice-builder-preview">
+        ${invoicePreviewHtml(draft, settings)}
+      </div>
+    </div>
+  `;
 }
 
 function renderCustomerMaster() {
@@ -10060,12 +11574,14 @@ function renderCustomerInvoiceDocuments(report = {}) {
 function invoiceRowHtml(item = {}) {
   const isSaved = Boolean(item.id);
   const id = item.id || cryptoId();
+  const linkedInvoice = customerInvoiceLinkedRecord({ ...item, id });
   const singleReceipt = invoiceReceipt(item);
   const legacyReceipts = invoiceLegacyReceipts(item);
   const isReady = invoiceIsReady(item);
   const statusClass = invoiceStatusClass(item);
   const total = invoiceTotal(item);
   const pentacodeEntered = invoicePentacodeEntered(item);
+  const workflow = invoiceWorkflowState({ ...item, id }, linkedInvoice);
   const legacyHint = !singleReceipt && legacyReceipts.length
     ? `<span class="hint">Bisherige getrennte Belege: ${legacyReceipts.map(({ label, receipt }) => `${escapeHtml(label)} ${escapeHtml(receipt.receiptName || "")}`).join(" | ")}</span>`
     : "";
@@ -10075,70 +11591,98 @@ function invoiceRowHtml(item = {}) {
         <div>
           <strong>${escapeHtml(item.name || "Neuer Rechnungskunde")}</strong>
           <span>${escapeHtml(item.contact || "Kontakt offen")} · ${escapeHtml(item.email || "E-Mail offen")}</span>
+          <small class="invoice-entry-next-step">${escapeHtml(workflow.title)}: ${escapeHtml(workflow.detail)}</small>
         </div>
         <span class="invoice-pill ${statusClass}">${escapeHtml(invoiceStatusText(item))}</span>
         <span class="invoice-entry-total">${formatReportMoney(total)}</span>
       </summary>
       <div class="invoice-entry-body">
-      <div class="report-entry-grid">
-        <label>Kunde<input data-report-field="name" value="${escapeHtml(item.name || "")}" placeholder="Name/Firma"></label>
-        <label>Ansprechpartner<input data-report-field="contact" value="${escapeHtml(item.contact || "")}" placeholder="optional"></label>
-        <label>Telefon<input data-report-field="phone" type="tel" value="${escapeHtml(item.phone || "")}" placeholder="optional"></label>
-        <label>E-Mail<input data-report-field="email" type="email" value="${escapeHtml(item.email || "")}" placeholder="rechnung@kunde.de"></label>
-        <label>Zahlungsart
-          <select data-report-field="paymentMethod">
-            <option value=""${!item.paymentMethod ? " selected" : ""}>Bitte wählen</option>
-            <option value="Bar"${item.paymentMethod === "Bar" ? " selected" : ""}>Bar</option>
-            <option value="EC"${item.paymentMethod === "EC" ? " selected" : ""}>EC</option>
-            <option value="Überweisung"${item.paymentMethod === "Überweisung" ? " selected" : ""}>Überweisung</option>
-          </select>
-        </label>
-      </div>
-      <div class="report-entry-grid invoice-amount-grid">
-        <label>Bowling Betrag<input data-report-field="bowlingAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.bowlingAmount || (item.area === "bowling" ? item.amount : ""))}" placeholder="0,00"></label>
-        <label>Gastro Getränke<input data-report-field="gastroDrinksAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroDrinksAmount || "")}" placeholder="0,00"></label>
-        <label>Gastro Speisen<input data-report-field="gastroFoodAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroFoodAmount || "")}" placeholder="0,00"></label>
-        <label>Gastro Sonstiges<input data-report-field="gastroOtherAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroOtherAmount || "")}" placeholder="z.B. Raummiete"></label>
-        <label class="invoice-tip-field">Tipp
-          <input data-report-field="tip" value="${escapeHtml(item.tip || "")}" placeholder="optional">
-          <small class="invoice-field-hint">Achtung: Wenn Tip boniert ist, steht er separat auf dem Gastro-Beleg.</small>
-        </label>
-        <label class="invoice-other-note-field">Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="z.B. Raummiete oder Sonderleistung">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
-      </div>
-      <label>Rechnungsadresse<textarea data-report-field="address" rows="2" placeholder="Adresse für Rechnung">${escapeHtml(item.address || "")}</textarea></label>
-      <label>Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
-      <label class="invoice-pentacode-check"><input data-report-field="pentacodeEntered" type="checkbox" value="true" ${pentacodeEntered ? "checked" : ""}> In Pentacode eingetragen</label>
-      <label>Rechnungsbeleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
-      ${singleReceipt?.receiptName ? `<span class="hint">Aktueller Rechnungsbeleg: ${escapeHtml(singleReceipt.receiptName)}</span>` : ""}
-      ${legacyHint}
-      <input type="hidden" data-report-field="gastroAmount" value="${escapeHtml(item.gastroAmount || "")}">
-      <input type="hidden" data-report-field="receiptName" value="${escapeHtml(singleReceipt?.receiptName || item.receiptName || "")}">
-      <input type="hidden" data-report-field="receiptData" value="${escapeHtml(singleReceipt?.receiptData || item.receiptData || "")}">
-      <input type="hidden" data-report-field="receiptPath" value="${escapeHtml(singleReceipt?.receiptPath || item.receiptPath || "")}">
-      <input type="hidden" data-report-field="receiptUrl" value="${escapeHtml(singleReceipt?.receiptUrl || item.receiptUrl || "")}">
-      <input type="hidden" data-report-field="bowlingReceiptName" value="${escapeHtml(item.bowlingReceiptName || "")}">
-      <input type="hidden" data-report-field="bowlingReceiptData" value="${escapeHtml(item.bowlingReceiptData || "")}">
-      <input type="hidden" data-report-field="bowlingReceiptPath" value="${escapeHtml(item.bowlingReceiptPath || "")}">
-      <input type="hidden" data-report-field="bowlingReceiptUrl" value="${escapeHtml(item.bowlingReceiptUrl || "")}">
-      <input type="hidden" data-report-field="gastroReceiptName" value="${escapeHtml(item.gastroReceiptName || "")}">
-      <input type="hidden" data-report-field="gastroReceiptData" value="${escapeHtml(item.gastroReceiptData || "")}">
-      <input type="hidden" data-report-field="gastroReceiptPath" value="${escapeHtml(item.gastroReceiptPath || "")}">
-      <input type="hidden" data-report-field="gastroReceiptUrl" value="${escapeHtml(item.gastroReceiptUrl || "")}">
-      <input type="hidden" data-report-field="invoiceReady" value="${isReady ? "true" : "false"}">
-      <input type="hidden" data-report-field="invoiceReadyAt" value="${escapeHtml(item.invoiceReadyAt || "")}">
-      <input type="hidden" data-report-field="invoiceDone" value="${item.invoiceDone ? "true" : "false"}">
-      <input type="hidden" data-report-field="invoiceDoneAt" value="${escapeHtml(item.invoiceDoneAt || "")}">
-      <input type="hidden" data-report-field="invoicePaid" value="${invoiceIsPaid(item) ? "true" : "false"}">
-      <input type="hidden" data-report-field="invoicePaidAt" value="${escapeHtml(item.invoicePaidAt || "")}">
-      <input type="hidden" data-report-field="invoiceNotificationSentAt" value="${escapeHtml(item.invoiceNotificationSentAt || "")}">
-      <input type="hidden" data-report-field="createdAt" value="${escapeHtml(item.createdAt || "")}">
-      <div class="invoice-entry-actions">
-        <button class="secondary" data-copy-invoice-customer type="button">Kunde kopieren</button>
-        <button class="secondary" data-copy-invoice-total type="button">Betrag kopieren</button>
-        <button class="secondary" data-save-invoice-draft type="button">Zwischenspeichern</button>
-        <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut an Chef senden" : "Fertig für Chef"}</button>
-        <button class="secondary danger-lite" data-remove-report-entry type="button">Vollständig löschen</button>
-      </div>
+        <div class="invoice-workflow-banner">
+          <div>
+            <strong>${escapeHtml(workflow.title)}</strong>
+            <span>${escapeHtml(workflow.detail)}</span>
+          </div>
+          <small>${linkedInvoice && linkedInvoice.status !== "draft" ? "Nicht mehr direkt änderbar" : "Korrigierbar bis Festschreiben"}</small>
+        </div>
+        <section class="invoice-workflow-block">
+          <div class="invoice-workflow-head">
+            <strong>1. Kundendaten prüfen</strong>
+            <span>Hier kannst du Tippfehler jederzeit korrigieren und speichern.</span>
+          </div>
+          <div class="report-entry-grid">
+            <label>Kunde<input data-report-field="name" value="${escapeHtml(item.name || "")}" placeholder="Name/Firma"></label>
+            <label>Ansprechpartner<input data-report-field="contact" value="${escapeHtml(item.contact || "")}" placeholder="optional"></label>
+            <label>Telefon<input data-report-field="phone" type="tel" value="${escapeHtml(item.phone || "")}" placeholder="optional"></label>
+            <label>E-Mail<input data-report-field="email" type="email" value="${escapeHtml(item.email || "")}" placeholder="rechnung@kunde.de"></label>
+            <label class="invoice-grid-wide">Rechnungsadresse<textarea data-report-field="address" rows="2" placeholder="Adresse für Rechnung">${escapeHtml(item.address || "")}</textarea></label>
+            <label class="invoice-grid-wide">Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
+          </div>
+        </section>
+        <section class="invoice-workflow-block">
+          <div class="invoice-workflow-head">
+            <strong>2. Beträge und Zahlungsart</strong>
+            <span>Hier kommt alles rein, was später auf die Rechnung soll.</span>
+          </div>
+          <div class="report-entry-grid">
+            <label>Zahlungsart
+              <select data-report-field="paymentMethod">
+                <option value=""${!item.paymentMethod ? " selected" : ""}>Bitte wählen</option>
+                <option value="Bar"${item.paymentMethod === "Bar" ? " selected" : ""}>Bar</option>
+                <option value="EC"${item.paymentMethod === "EC" ? " selected" : ""}>EC</option>
+                <option value="Überweisung"${item.paymentMethod === "Überweisung" ? " selected" : ""}>Überweisung</option>
+              </select>
+            </label>
+          </div>
+          <div class="report-entry-grid invoice-amount-grid">
+            <label>Bowling Betrag<input data-report-field="bowlingAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.bowlingAmount || (item.area === "bowling" ? item.amount : ""))}" placeholder="0,00"></label>
+            <label>Gastro Getränke<input data-report-field="gastroDrinksAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroDrinksAmount || "")}" placeholder="0,00"></label>
+            <label>Gastro Speisen<input data-report-field="gastroFoodAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroFoodAmount || "")}" placeholder="0,00"></label>
+            <label>Gastro Sonstiges<input data-report-field="gastroOtherAmount" type="number" min="0" step="0.01" value="${escapeHtml(item.gastroOtherAmount || "")}" placeholder="z.B. Raummiete"></label>
+            <label class="invoice-tip-field">Tipp
+              <input data-report-field="tip" value="${escapeHtml(item.tip || "")}" placeholder="optional">
+              <small class="invoice-field-hint">Achtung: Wenn Tip boniert ist, steht er separat auf dem Gastro-Beleg.</small>
+            </label>
+            <label class="invoice-other-note-field">Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="z.B. Raummiete oder Sonderleistung">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
+          </div>
+        </section>
+        <section class="invoice-workflow-block">
+          <div class="invoice-workflow-head">
+            <strong>3. Beleg und Abschluss</strong>
+            <span>Beleg hochladen, Pentacode bestätigen und dann den nächsten Schritt auslösen.</span>
+          </div>
+          <label class="invoice-pentacode-check"><input data-report-field="pentacodeEntered" type="checkbox" value="true" ${pentacodeEntered ? "checked" : ""}> In Pentacode eingetragen</label>
+          <label>Rechnungsbeleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
+          ${singleReceipt?.receiptName ? `<span class="hint">Aktueller Rechnungsbeleg: ${escapeHtml(singleReceipt.receiptName)}</span>` : ""}
+          ${legacyHint}
+          <div class="invoice-entry-actions">
+            <button class="secondary" data-save-invoice-draft type="button">Änderungen speichern</button>
+            <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut an Chef senden" : "Fertig für Chef"}</button>
+            <button class="secondary" data-open-invoice-builder type="button">${linkedInvoice ? "Rechnung öffnen" : "Rechnung erstellen"}</button>
+            <button class="secondary danger-lite" data-remove-report-entry type="button">Vollständig löschen</button>
+          </div>
+        </section>
+        <input type="hidden" data-report-field="gastroAmount" value="${escapeHtml(item.gastroAmount || "")}">
+        <input type="hidden" data-report-field="receiptName" value="${escapeHtml(singleReceipt?.receiptName || item.receiptName || "")}">
+        <input type="hidden" data-report-field="receiptData" value="${escapeHtml(singleReceipt?.receiptData || item.receiptData || "")}">
+        <input type="hidden" data-report-field="receiptPath" value="${escapeHtml(singleReceipt?.receiptPath || item.receiptPath || "")}">
+        <input type="hidden" data-report-field="receiptUrl" value="${escapeHtml(singleReceipt?.receiptUrl || item.receiptUrl || "")}">
+        <input type="hidden" data-report-field="bowlingReceiptName" value="${escapeHtml(item.bowlingReceiptName || "")}">
+        <input type="hidden" data-report-field="bowlingReceiptData" value="${escapeHtml(item.bowlingReceiptData || "")}">
+        <input type="hidden" data-report-field="bowlingReceiptPath" value="${escapeHtml(item.bowlingReceiptPath || "")}">
+        <input type="hidden" data-report-field="bowlingReceiptUrl" value="${escapeHtml(item.bowlingReceiptUrl || "")}">
+        <input type="hidden" data-report-field="gastroReceiptName" value="${escapeHtml(item.gastroReceiptName || "")}">
+        <input type="hidden" data-report-field="gastroReceiptData" value="${escapeHtml(item.gastroReceiptData || "")}">
+        <input type="hidden" data-report-field="gastroReceiptPath" value="${escapeHtml(item.gastroReceiptPath || "")}">
+        <input type="hidden" data-report-field="gastroReceiptUrl" value="${escapeHtml(item.gastroReceiptUrl || "")}">
+        <input type="hidden" data-report-field="invoiceReady" value="${isReady ? "true" : "false"}">
+        <input type="hidden" data-report-field="invoiceReadyAt" value="${escapeHtml(item.invoiceReadyAt || "")}">
+        <input type="hidden" data-report-field="invoiceDone" value="${item.invoiceDone ? "true" : "false"}">
+        <input type="hidden" data-report-field="invoiceDoneAt" value="${escapeHtml(item.invoiceDoneAt || "")}">
+        <input type="hidden" data-report-field="invoiceGeneratedId" value="${escapeHtml(item.invoiceGeneratedId || linkedInvoice?.id || "")}">
+        <input type="hidden" data-report-field="invoicePaid" value="${invoiceIsPaid(item) ? "true" : "false"}">
+        <input type="hidden" data-report-field="invoicePaidAt" value="${escapeHtml(item.invoicePaidAt || "")}">
+        <input type="hidden" data-report-field="invoiceNotificationSentAt" value="${escapeHtml(item.invoiceNotificationSentAt || "")}">
+        <input type="hidden" data-report-field="createdAt" value="${escapeHtml(item.createdAt || "")}">
       </div>
     </details>
   `;
@@ -10530,6 +12074,185 @@ async function saveCustomerInvoiceDeskReportWithOptions(button, successText = "T
       button.disabled = false;
     }
   }
+}
+
+async function runCustomerInvoiceMutation(action, extra = {}, fallbackMessage = "", options = {}) {
+  if (!state.invoiceTerminalToken) {
+    showToast("Bitte Mitarbeiter-Code eingeben.");
+    return null;
+  }
+  const result = await api("/api/state", {
+    method: "POST",
+    body: JSON.stringify({
+      action,
+      terminalToken: state.invoiceTerminalToken,
+      ...extra
+    })
+  });
+  state.invoiceSettings = normalizeInvoiceSettingsClient(result.invoiceSettings || state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  state.invoices = normalizeInvoicesClient(result.invoices || state.invoices || [], state.invoiceSettings);
+  if (result.invoice) {
+    setInvoiceDeskDraftFromInvoice(result.invoice);
+  } else if (state.invoiceDeskDraftId) {
+    const refreshed = state.invoices.find((invoice) => invoice.id === state.invoiceDeskDraftId);
+    if (refreshed) setInvoiceDeskDraftFromInvoice(refreshed);
+  }
+  if (options.refreshReport) {
+    await loadCustomerInvoiceDesk();
+  } else {
+    renderCustomerInvoiceDesk();
+  }
+  const message = result.message || fallbackMessage;
+  if (message) {
+    $("#customerInvoiceStaffStatus").textContent = message;
+    showToast(message);
+  }
+  return result;
+}
+
+async function openCustomerInvoiceBuilderForRow(button) {
+  const row = button.closest('[data-report-entry="invoice"]');
+  if (!row) return;
+  const sourceCustomerId = String(row.dataset.id || "").trim();
+  if (!sourceCustomerId) {
+    showToast("Bitte Rechnungskunde zuerst speichern.");
+    return;
+  }
+  const problems = invoiceRowReadyProblems(row);
+  if (problems.length) {
+    showToast(`Noch offen: ${problems.join(", ")}.`);
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Öffnet...";
+  }
+  const readyWasSet = reportFieldValue(row, "invoiceReady") === "true";
+  if (!readyWasSet) {
+    setReportFieldValue(row, "invoiceReady", "true");
+    if (!reportFieldValue(row, "invoiceReadyAt")) {
+      setReportFieldValue(row, "invoiceReadyAt", new Date().toISOString());
+    }
+  }
+  try {
+    const saved = await saveCustomerInvoiceDeskReport(null, "Rechnungskunde für die Rechnung vorbereitet.");
+    if (!saved) {
+      if (!readyWasSet) setReportFieldValue(row, "invoiceReady", "false");
+      return;
+    }
+    const result = await runCustomerInvoiceMutation(
+      "invoice-from-ready-customer",
+      { sourceDate: state.invoiceDate || todayKey(), sourceCustomerId },
+      "Rechnungsentwurf geöffnet."
+    );
+    if (result?.invoice) {
+      setInvoiceDeskDraftFromInvoice(result.invoice);
+      renderCustomerInvoiceDesk();
+      $("#customerInvoiceBuilderSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  } catch (error) {
+    if (!readyWasSet) setReportFieldValue(row, "invoiceReady", "false");
+    showError(error);
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function previewCurrentDeskInvoicePdf(button, download = false) {
+  const draft = currentInvoiceDeskDraft();
+  if (!draft?.id) {
+    showToast("Bitte zuerst einen Rechnungsentwurf öffnen.");
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = download ? "Erstellt..." : "Lädt...";
+  }
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "invoice-preview-pdf",
+        terminalToken: state.invoiceTerminalToken,
+        invoice: draft
+      })
+    });
+    setInvoiceDeskDraftFromInvoice({
+      ...draft,
+      pdfData: result.pdfData || "",
+      pdfFileName: result.pdfFileName || draft.pdfFileName
+    });
+    renderCustomerInvoiceDesk();
+    if (download) {
+      downloadDataUrlFile(result.pdfData, result.pdfFileName || "rechnung.pdf");
+      showToast("PDF heruntergeladen.");
+    } else if (result.pdfData) {
+      window.open(result.pdfData, "_blank", "noopener");
+      showToast("PDF Vorschau geöffnet.");
+    }
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function finalizeCurrentDeskInvoice(button) {
+  const draft = currentInvoiceDeskDraft();
+  if (!draft?.id) {
+    showToast("Bitte zuerst einen Rechnungsentwurf öffnen.");
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Festschreibt...";
+  }
+  try {
+    const result = await runCustomerInvoiceMutation(
+      "invoice-finalize",
+      { invoice: draft },
+      "Rechnung festgeschrieben.",
+      { refreshReport: true }
+    );
+    if (result?.invoice) {
+      setInvoiceDeskDraftFromInvoice({
+        ...(result.invoice || draft),
+        pdfData: result.pdfData || result.invoice?.pdfData || "",
+        pdfFileName: result.pdfFileName || result.invoice?.pdfFileName || draft.pdfFileName
+      });
+      renderCustomerInvoiceDesk();
+    }
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function printCurrentDeskInvoice(button) {
+  const draft = currentInvoiceDeskDraft();
+  if (!draft?.id) {
+    showToast("Bitte zuerst einen Rechnungsentwurf öffnen.");
+    return;
+  }
+  if (!draft.pdfData) {
+    await previewCurrentDeskInvoicePdf(button, false);
+    return;
+  }
+  window.open(draft.pdfData, "_blank", "noopener");
+  showToast("PDF geöffnet. Dort kannst du direkt drucken.");
 }
 
 async function sendCustomerInvoiceReadyMail(invoiceId, button) {
@@ -11288,6 +13011,7 @@ async function terminalAction(payload) {
   });
   if (result.settings) state.settings = normalizeSettings(result.settings);
   state.terminalDate = result.date || state.terminalDate || isoDate(new Date());
+  state.terminalOpenDates = Array.isArray(result.openTerminalDates) ? result.openTerminalDates : state.terminalOpenDates || [];
   state.terminalEntries = result.entries || {};
   state.terminalReport = result.report || {};
   state.tipOverview = result.tipOverview || state.tipOverview;
@@ -11320,6 +13044,7 @@ async function terminalLogin(code) {
   state.terminalToken = result.token || "";
   state.settings = normalizeSettings(result.settings || state.settings);
   state.terminalDate = result.date || isoDate(new Date());
+  state.terminalOpenDates = Array.isArray(result.openTerminalDates) ? result.openTerminalDates : state.terminalOpenDates || [];
   state.terminalEntries = result.entries || {};
   state.terminalReport = result.report || {};
   state.tipOverview = result.tipOverview || state.tipOverview;
@@ -11374,6 +13099,7 @@ async function openCorrectionReport(button) {
     });
     state.terminalToken = result.token || "";
     state.terminalDate = result.date || date;
+    state.terminalOpenDates = Array.isArray(result.openTerminalDates) ? result.openTerminalDates : state.terminalOpenDates || [];
     state.settings = normalizeSettings(result.settings || state.settings);
     state.terminalEntries = result.entries || {};
     state.terminalReport = result.report || {};
@@ -11433,6 +13159,7 @@ async function closeCorrectionReport(button) {
       })
     });
     state.terminalDate = result.date || date;
+    state.terminalOpenDates = Array.isArray(result.openTerminalDates) ? result.openTerminalDates : state.terminalOpenDates || [];
     state.terminalReport = result.report || state.terminalReport || {};
     state.tipOverview = result.tipOverview || state.tipOverview;
     state.dayReports[state.terminalDate] = state.terminalReport;
@@ -11457,6 +13184,41 @@ async function closeCorrectionReport(button) {
     const status = $("#correctionStatus");
     if (status) status.textContent = error.message || String(error);
     showError(error);
+  } finally {
+    if (button) {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
+  }
+}
+
+async function loadTerminalWorkDate(dateKey, button = null) {
+  const requestedDate = String(dateKey || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    showToast("Bitte Datum wählen.");
+    return null;
+  }
+  if (requestedDate > todayKey()) {
+    showToast("Nur heutige oder vergangene Tage sind möglich.");
+    return null;
+  }
+  const previousDate = state.terminalDate || "";
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Lädt...";
+  }
+  try {
+    const result = await terminalAction({ action: "load", date: requestedDate });
+    if (result.date && result.date !== requestedDate) {
+      showToast("Dieser Tag ist bereits abgeschlossen. Bitte dafür den Admin-Korrekturmodus verwenden.");
+    } else if (previousDate !== requestedDate) {
+      showToast(`Terminal auf ${formatDate(requestedDate)} gewechselt.`);
+    }
+    return result;
+  } catch (error) {
+    showError(error);
+    return null;
   } finally {
     if (button) {
       button.textContent = oldText;
@@ -11789,6 +13551,7 @@ function renderSettings() {
   $("#employeeRolesText").value = rolesToText(state.settings.employeeRoles || {});
   $("#availabilityExemptText").value = (state.settings.availabilityExemptEmployees || []).join("\n");
   $("#positionsText").value = state.settings.positions.join("\n");
+  populateInvoiceSettingsForm();
   renderEmployeeDirectory();
   renderPositionDirectory();
   $$("[data-chef-section]").forEach((input) => {
@@ -11797,6 +13560,147 @@ function renderSettings() {
   $$("[data-day-report-field]").forEach((input) => {
     input.checked = reportFieldEnabled(input.dataset.dayReportField);
   });
+}
+
+function normalizeInvoiceSettingsClient(value = {}) {
+  const base = createDefaultInvoiceSettingsClient();
+  const colors = value && typeof value === "object" ? value.colors || {} : {};
+  return {
+    companyName: String(value.companyName || base.companyName).trim() || base.companyName,
+    companyAddress: String(value.companyAddress || base.companyAddress).trim() || base.companyAddress,
+    taxNumber: String(value.taxNumber || "").trim(),
+    vatId: String(value.vatId || "").trim(),
+    iban: String(value.iban || "").trim(),
+    bankName: String(value.bankName || "").trim(),
+    bic: String(value.bic || "").trim(),
+    paymentDays: Math.max(0, Math.min(120, Number(value.paymentDays ?? base.paymentDays) || base.paymentDays)),
+    defaultText: String(value.defaultText || base.defaultText).trim() || base.defaultText,
+    colors: {
+      primary: normalizeColorHex(colors.primary, base.colors.primary),
+      accent: normalizeColorHex(colors.accent, base.colors.accent),
+      muted: normalizeColorHex(colors.muted, base.colors.muted),
+      line: normalizeColorHex(colors.line, base.colors.line),
+      highlight: normalizeColorHex(colors.highlight, base.colors.highlight)
+    },
+    logoData: String(value.logoData || "").trim()
+  };
+}
+
+function normalizeColorHex(value, fallback = "#111827") {
+  const text = String(value || "").trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(text) ? text : fallback;
+}
+
+function populateInvoiceSettingsForm() {
+  const settings = normalizeInvoiceSettingsClient(state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  if ($("#invoiceCompanyName")) $("#invoiceCompanyName").value = settings.companyName;
+  if ($("#invoiceCompanyAddress")) $("#invoiceCompanyAddress").value = settings.companyAddress;
+  if ($("#invoiceTaxNumber")) $("#invoiceTaxNumber").value = settings.taxNumber;
+  if ($("#invoiceVatId")) $("#invoiceVatId").value = settings.vatId;
+  if ($("#invoiceIban")) $("#invoiceIban").value = settings.iban;
+  if ($("#invoiceBankName")) $("#invoiceBankName").value = settings.bankName;
+  if ($("#invoiceBic")) $("#invoiceBic").value = settings.bic;
+  if ($("#invoicePaymentDays")) $("#invoicePaymentDays").value = String(settings.paymentDays || 14);
+  if ($("#invoiceDefaultText")) $("#invoiceDefaultText").value = settings.defaultText;
+  if ($("#invoiceColorPrimary")) $("#invoiceColorPrimary").value = settings.colors.primary;
+  if ($("#invoiceColorAccent")) $("#invoiceColorAccent").value = settings.colors.accent;
+  if ($("#invoiceColorMuted")) $("#invoiceColorMuted").value = settings.colors.muted;
+  if ($("#invoiceColorLine")) $("#invoiceColorLine").value = settings.colors.line;
+  if ($("#invoiceColorHighlight")) $("#invoiceColorHighlight").value = settings.colors.highlight;
+  renderInvoiceLogoPreview(settings.logoData);
+  if ($("#invoiceSettingsStatus")) $("#invoiceSettingsStatus").textContent = "";
+}
+
+function renderInvoiceLogoPreview(dataUrl = "") {
+  const preview = $("#invoiceLogoPreview");
+  if (!preview) return;
+  const logoData = String(dataUrl || "").trim();
+  preview.innerHTML = logoData
+    ? `<img src="${escapeHtml(logoData)}" alt="Rechnungslogo">`
+    : `<div class="invoice-logo-placeholder"><img src="la-bowling-print-logo.png" alt="LA Bowling"></div>`;
+}
+
+function currentInvoiceSettingsFromDom() {
+  const current = normalizeInvoiceSettingsClient(state.invoiceSettings || createDefaultInvoiceSettingsClient());
+  return normalizeInvoiceSettingsClient({
+    ...current,
+    companyName: $("#invoiceCompanyName")?.value || current.companyName,
+    companyAddress: $("#invoiceCompanyAddress")?.value || current.companyAddress,
+    taxNumber: $("#invoiceTaxNumber")?.value || "",
+    vatId: $("#invoiceVatId")?.value || "",
+    iban: $("#invoiceIban")?.value || "",
+    bankName: $("#invoiceBankName")?.value || "",
+    bic: $("#invoiceBic")?.value || "",
+    paymentDays: $("#invoicePaymentDays")?.value || current.paymentDays,
+    defaultText: $("#invoiceDefaultText")?.value || current.defaultText,
+    colors: {
+      primary: $("#invoiceColorPrimary")?.value || current.colors.primary,
+      accent: $("#invoiceColorAccent")?.value || current.colors.accent,
+      muted: $("#invoiceColorMuted")?.value || current.colors.muted,
+      line: $("#invoiceColorLine")?.value || current.colors.line,
+      highlight: $("#invoiceColorHighlight")?.value || current.colors.highlight
+    },
+    logoData: current.logoData || ""
+  });
+}
+
+async function saveInvoiceSettings(button) {
+  const oldText = button.textContent;
+  const status = $("#invoiceSettingsStatus");
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  if (status) status.textContent = "";
+  try {
+    const invoiceSettings = currentInvoiceSettingsFromDom();
+    const result = await api("/api/settings", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({
+        action: "save-invoice-settings",
+        invoiceSettings
+      })
+    });
+    state.invoiceSettings = normalizeInvoiceSettingsClient(result.invoiceSettings || invoiceSettings);
+    if (state.invoiceEditorDraft) {
+      state.invoiceEditorDraft = normalizeInvoiceRecordClient(state.invoiceEditorDraft, state.invoiceSettings);
+      state.invoiceEditorId = state.invoiceEditorDraft.id;
+    }
+    if (status) status.textContent = "Rechnungseinstellungen gespeichert.";
+    renderSettings();
+    renderAdminInvoices();
+    showToast("Rechnungseinstellungen gespeichert.");
+  } catch (error) {
+    if (status) status.textContent = error.message || String(error);
+    showError(error);
+  } finally {
+    button.disabled = false;
+    button.textContent = oldText;
+  }
+}
+
+function resetInvoiceLogoSelection() {
+  state.invoiceSettings = normalizeInvoiceSettingsClient({
+    ...(state.invoiceSettings || createDefaultInvoiceSettingsClient()),
+    logoData: ""
+  });
+  if ($("#invoiceLogoFile")) $("#invoiceLogoFile").value = "";
+  renderInvoiceLogoPreview("");
+  const status = $("#invoiceSettingsStatus");
+  if (status) status.textContent = "Logo zurückgesetzt. Bitte noch speichern.";
+  showToast("Logo zurückgesetzt. Bitte Rechnungseinstellungen speichern.");
+}
+
+async function applyInvoiceLogoFile(file) {
+  if (!file) return;
+  const dataUrl = await fileToDataUrl(file);
+  state.invoiceSettings = normalizeInvoiceSettingsClient({
+    ...(state.invoiceSettings || createDefaultInvoiceSettingsClient()),
+    ...currentInvoiceSettingsFromDom(),
+    logoData: dataUrl
+  });
+  renderInvoiceLogoPreview(dataUrl);
+  const status = $("#invoiceSettingsStatus");
+  if (status) status.textContent = "Neues Logo geladen. Bitte noch speichern.";
 }
 
 function renderEmployeeDirectory() {
@@ -13077,16 +14981,18 @@ function bindEvents() {
         tip: $("#customerTip").value,
         note: $("#customerNote").value
       };
+      const targetDate = invoiceSafeDate($("#customerInvoiceDate")?.value, state.invoiceDate || todayKey());
       const result = await api("/api/state", {
         method: "POST",
         body: JSON.stringify({
           action: "customer-invoice",
-          date: localDateValue(),
+          date: targetDate,
           customer
         })
       });
+      state.invoiceDate = result.date || targetDate || todayKey();
       event.target.reset();
-      if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = formatDate(localDateValue());
+      if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = invoiceSafeDate(state.invoiceDate, todayKey());
       status.textContent = result.message || "Rechnungskunde gespeichert.";
       showToast(result.message || "Rechnungskunde angelegt.");
       if (state.invoiceTerminalToken) await loadCustomerInvoiceDesk();
@@ -13112,13 +15018,14 @@ function bindEvents() {
     try {
       const result = await api("/api/day-terminal", {
         method: "POST",
-        body: JSON.stringify({ action: "login", code, date: todayKey() })
+        body: JSON.stringify({ action: "login", code, date: invoiceSafeDate($("#customerInvoiceDate")?.value, state.invoiceDate || todayKey()) })
       });
       state.invoiceTerminalToken = result.token || "";
       state.invoiceDate = result.date || todayKey();
       state.invoiceReport = result.report || {};
       state.settings = normalizeSettings(result.settings || state.settings);
       state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
+      clearInvoiceDeskDraft();
       window.localStorage?.setItem("invoiceTerminalToken", state.invoiceTerminalToken);
       $("#customerInvoiceStaffCode").value = "";
       renderCustomerInvoiceDesk();
@@ -13134,6 +15041,7 @@ function bindEvents() {
   $("#lockCustomerInvoiceStaff")?.addEventListener("click", () => {
     state.invoiceTerminalToken = "";
     state.invoiceReport = {};
+    clearInvoiceDeskDraft();
     window.localStorage?.removeItem("invoiceTerminalToken");
     renderCustomerInvoiceDesk();
     showToast("Mitarbeiterbereich gesperrt.");
@@ -13149,7 +15057,7 @@ function bindEvents() {
   $("#customerMasterSearch")?.addEventListener("input", renderCustomerMaster);
   $("#customerMasterSelect")?.addEventListener("change", renderCustomerMaster);
 
-  $("#addCustomerFromMaster")?.addEventListener("click", () => {
+  $("#addCustomerFromMaster")?.addEventListener("click", async () => {
     const selectedId = $("#customerMasterSelect")?.value || "";
     const customer = normalizeCustomerDirectory(state.customerDirectory).find((item) => item.id === selectedId);
     if (!customer) {
@@ -13160,7 +15068,7 @@ function bindEvents() {
     if (!list) return;
     if (list.querySelector(".hint")) list.innerHTML = "";
     list.insertAdjacentHTML("beforeend", invoiceRowHtml(customerMasterToInvoice(customer)));
-    showToast(`${customer.name} wurde in den Tagesbericht übernommen.`);
+    await saveCustomerInvoiceDeskReport(null, `${customer.name} wurde als geplante Rechnung angelegt.`);
   });
 
   $("#addCustomerExpenseWorkRow")?.addEventListener("click", () => {
@@ -13209,6 +15117,32 @@ function bindEvents() {
     const readyButton = event.target.closest("[data-mark-invoice-ready]");
     if (readyButton) {
       saveCustomerInvoiceDeskRow(readyButton, true);
+      return;
+    }
+    const openInvoiceBuilderButton = event.target.closest("[data-open-invoice-builder]");
+    if (openInvoiceBuilderButton) {
+      openCustomerInvoiceBuilderForRow(openInvoiceBuilderButton);
+      return;
+    }
+    const closeInvoiceBuilderButton = event.target.closest("[data-close-customer-invoice-builder]");
+    if (closeInvoiceBuilderButton) {
+      clearInvoiceDeskDraft();
+      renderCustomerInvoiceDesk();
+      return;
+    }
+    const previewInvoiceButton = event.target.closest("[data-customer-invoice-preview]");
+    if (previewInvoiceButton) {
+      previewCurrentDeskInvoicePdf(previewInvoiceButton, false);
+      return;
+    }
+    const finalizeInvoiceButton = event.target.closest("[data-customer-invoice-finalize]");
+    if (finalizeInvoiceButton) {
+      finalizeCurrentDeskInvoice(finalizeInvoiceButton);
+      return;
+    }
+    const printInvoiceButton = event.target.closest("[data-customer-invoice-print]");
+    if (printInvoiceButton) {
+      printCurrentDeskInvoice(printInvoiceButton);
       return;
     }
     const expenseSaveButton = event.target.closest("[data-save-expense-entry]");
@@ -13923,6 +15857,17 @@ function bindEvents() {
     }
   });
 
+  $("#customerInvoiceDate")?.addEventListener("change", async (event) => {
+    const nextDate = invoiceSafeDate(event.target.value, state.invoiceDate || todayKey());
+    state.invoiceDate = nextDate;
+    event.target.value = nextDate;
+    const status = $("#customerInvoiceStatus");
+    if (status) status.textContent = `Ausgewähltes Datum: ${formatDate(nextDate)}.`;
+    if (state.invoiceTerminalToken) {
+      await loadCustomerInvoiceDesk();
+    }
+  });
+
   $("#adminContent")?.addEventListener("input", (event) => {
     const zoneField = event.target.closest("[data-admin-zone-field]");
     if (zoneField) {
@@ -14100,6 +16045,218 @@ function bindEvents() {
     const button = event.target.closest("[data-admin-save-timesheet]");
     if (!button) return;
     saveAdminTimesheet(button);
+  });
+
+  $("#adminInvoices")?.addEventListener("input", (event) => {
+    if (event.target.id === "invoiceSearch") {
+      state.invoiceSearch = event.target.value || "";
+      renderAdminInvoices();
+      $("#invoiceSearch")?.focus();
+      return;
+    }
+    if (
+      event.target.matches("[data-invoice-field]") ||
+      event.target.matches("[data-invoice-position-field]") ||
+      event.target.matches("[data-invoice-attachment-field]")
+    ) {
+      state.invoiceEditorDirty = true;
+      refreshInvoicePreviewOnly();
+    }
+  });
+
+  $("#adminInvoices")?.addEventListener("change", async (event) => {
+    if (
+      event.target.matches("[data-invoice-field]") ||
+      event.target.matches("[data-invoice-position-field]") ||
+      event.target.matches("[data-invoice-attachment-field]")
+    ) {
+      state.invoiceEditorDirty = true;
+      refreshInvoicePreviewOnly();
+      return;
+    }
+    if (event.target.matches("[data-invoice-file]")) {
+      try {
+        await addInvoiceAttachmentsFromFiles(event.target.files || []);
+      } catch (error) {
+        showError(error);
+      } finally {
+        event.target.value = "";
+      }
+    }
+  });
+
+  $("#adminInvoices")?.addEventListener("click", async (event) => {
+    try {
+      const switchView = event.target.closest("[data-invoice-view]");
+      if (switchView) {
+        if (state.invoiceEditorDirty && $("#adminInvoices")?.querySelector("[data-invoice-field]")) {
+          state.invoiceEditorDraft = currentInvoiceDraftFromDom();
+          state.invoiceEditorId = state.invoiceEditorDraft.id;
+        }
+        state.invoiceAdminView = switchView.dataset.invoiceView || "overview";
+        renderAdminInvoices();
+        return;
+      }
+
+      const selectInvoice = event.target.closest("[data-select-invoice]");
+      if (selectInvoice) {
+        if (state.invoiceEditorDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+        const invoice = normalizeInvoicesClient(state.invoices || [], state.invoiceSettings || createDefaultInvoiceSettingsClient()).find((item) => item.id === selectInvoice.dataset.selectInvoice);
+        if (!invoice) return;
+        state.invoiceAdminView = "editor";
+        setInvoiceDraftFromInvoice(invoice);
+        renderAdminInvoices();
+        return;
+      }
+
+      const newInvoice = event.target.closest("[data-invoice-new]");
+      if (newInvoice) {
+        if (state.invoiceEditorDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+        await createNewInvoiceDraft(newInvoice);
+        return;
+      }
+
+      const newAdvertisingInvoice = event.target.closest("[data-invoice-new-advertising]");
+      if (newAdvertisingInvoice) {
+        if (state.invoiceEditorDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+        await createNewInvoiceDraft(newAdvertisingInvoice, { sourceType: "advertising" });
+        return;
+      }
+
+      const importReady = event.target.closest("[data-invoice-import-ready]");
+      if (importReady) {
+        if (state.invoiceEditorDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+        await importInvoiceReadySource(importReady.dataset.invoiceImportReady, importReady);
+        return;
+      }
+
+      const importCustomer = event.target.closest("[data-invoice-import-customer]");
+      if (importCustomer) {
+        if (state.invoiceEditorDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+        await importInvoiceFromCustomerDirectory(importCustomer);
+        return;
+      }
+
+      const saveInvoice = event.target.closest("[data-invoice-save]");
+      if (saveInvoice) {
+        await saveCurrentInvoiceDraft(saveInvoice);
+        return;
+      }
+
+      const deleteInvoice = event.target.closest("[data-invoice-delete]");
+      if (deleteInvoice) {
+        await deleteCurrentInvoiceDraft(deleteInvoice);
+        return;
+      }
+
+      const previewInvoice = event.target.closest("[data-invoice-preview]");
+      if (previewInvoice) {
+        await previewCurrentInvoicePdf(previewInvoice, false);
+        return;
+      }
+
+      const downloadInvoice = event.target.closest("[data-invoice-download]");
+      if (downloadInvoice) {
+        await previewCurrentInvoicePdf(downloadInvoice, true);
+        return;
+      }
+
+      const finalizeInvoice = event.target.closest("[data-invoice-finalize]");
+      if (finalizeInvoice) {
+        await finalizeCurrentInvoice(finalizeInvoice);
+        return;
+      }
+
+      const sendInvoice = event.target.closest("[data-invoice-send]");
+      if (sendInvoice) {
+        await sendCurrentInvoiceEmail(sendInvoice);
+        return;
+      }
+
+      const archiveInvoice = event.target.closest("[data-invoice-archive]");
+      if (archiveInvoice) {
+        await archiveCurrentInvoice(archiveInvoice);
+        return;
+      }
+
+      const addPosition = event.target.closest("[data-invoice-add-position]");
+      if (addPosition) {
+        const draft = currentInvoiceDraftFromDom();
+        draft.positions.push(normalizeInvoicePositionClient({
+          id: cryptoId(),
+          articleNumber: "",
+          description: "",
+          quantity: 1,
+          unit: "Stück",
+          unitPrice: 0,
+          taxRate: 19
+        }));
+        state.invoiceEditorDraft = normalizeInvoiceRecordClient(draft, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+        state.invoiceEditorId = state.invoiceEditorDraft.id;
+        state.invoiceEditorDirty = true;
+        state.invoiceSkipDomSync = true;
+        renderAdminInvoices();
+        return;
+      }
+
+      const removePosition = event.target.closest("[data-invoice-remove-position]");
+      if (removePosition) {
+        const row = removePosition.closest("[data-invoice-position-row]");
+        const positionId = row?.dataset.invoicePositionId;
+        if (!positionId) return;
+        const draft = currentInvoiceDraftFromDom();
+        draft.positions = (draft.positions || []).filter((item) => item.id !== positionId);
+        state.invoiceEditorDraft = normalizeInvoiceRecordClient(draft, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+        state.invoiceEditorId = state.invoiceEditorDraft.id;
+        state.invoiceEditorDirty = true;
+        state.invoiceSkipDomSync = true;
+        renderAdminInvoices();
+        return;
+      }
+
+      const movePosition = event.target.closest("[data-invoice-move-position]");
+      if (movePosition) {
+        const row = movePosition.closest("[data-invoice-position-row]");
+        const positionId = row?.dataset.invoicePositionId;
+        if (!positionId) return;
+        const draft = currentInvoiceDraftFromDom();
+        draft.positions = moveOfferRow(draft.positions || [], positionId, movePosition.dataset.invoiceMovePosition);
+        state.invoiceEditorDraft = normalizeInvoiceRecordClient(draft, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+        state.invoiceEditorId = state.invoiceEditorDraft.id;
+        state.invoiceEditorDirty = true;
+        state.invoiceSkipDomSync = true;
+        renderAdminInvoices();
+        return;
+      }
+
+      const removeAttachment = event.target.closest("[data-invoice-remove-attachment]");
+      if (removeAttachment) {
+        const row = removeAttachment.closest("[data-invoice-attachment-row]");
+        const attachmentId = row?.dataset.invoiceAttachmentId;
+        if (!attachmentId) return;
+        const draft = currentInvoiceDraftFromDom();
+        draft.attachments = (draft.attachments || []).filter((item) => item.id !== attachmentId);
+        state.invoiceEditorDraft = normalizeInvoiceRecordClient(draft, state.invoiceSettings || createDefaultInvoiceSettingsClient());
+        state.invoiceEditorId = state.invoiceEditorDraft.id;
+        state.invoiceEditorDirty = true;
+        state.invoiceSkipDomSync = true;
+        renderAdminInvoices();
+        return;
+      }
+
+      const correction = event.target.closest("[data-invoice-create-correction]");
+      if (correction) {
+        await createInvoiceFollowUp("correction", correction);
+        return;
+      }
+
+      const storno = event.target.closest("[data-invoice-create-storno]");
+      if (storno) {
+        await createInvoiceFollowUp("storno", storno);
+      }
+    } catch (error) {
+      showError(error);
+    }
   });
 
   $("#adminOffers")?.addEventListener("input", (event) => {
@@ -14417,6 +16574,18 @@ function bindEvents() {
   $("#saveSettings").addEventListener("click", () => saveSettings($("#saveSettings")));
   $("#saveEmployees")?.addEventListener("click", () => saveSettings($("#saveEmployees")));
   $("#sendInvoiceTestMail")?.addEventListener("click", () => sendInvoiceTestMail($("#sendInvoiceTestMail")));
+  $("#saveInvoiceSettings")?.addEventListener("click", () => saveInvoiceSettings($("#saveInvoiceSettings")));
+  $("#resetInvoiceLogo")?.addEventListener("click", resetInvoiceLogoSelection);
+  $("#invoiceLogoFile")?.addEventListener("change", async (event) => {
+    const [file] = [...(event.target.files || [])];
+    if (!file) return;
+    try {
+      await applyInvoiceLogoFile(file);
+    } catch (error) {
+      event.target.value = "";
+      showError(error);
+    }
+  });
 
   $("#openCorrectionReport")?.addEventListener("click", (event) => {
     openCorrectionReport(event.currentTarget);
@@ -14447,6 +16616,16 @@ function bindEvents() {
     if (tab) {
       state.terminalTab = tab.dataset.terminalTab;
       renderTerminal();
+      return;
+    }
+    const openTerminalDateButton = event.target.closest("[data-open-terminal-date]");
+    if (openTerminalDateButton) {
+      await loadTerminalWorkDate(openTerminalDateButton.dataset.openTerminalDate || "", openTerminalDateButton);
+      return;
+    }
+    const loadTerminalDateButton = event.target.closest("#loadTerminalDate");
+    if (loadTerminalDateButton) {
+      await loadTerminalWorkDate($("#terminalJumpDate")?.value || "", loadTerminalDateButton);
       return;
     }
     const saveAssignments = event.target.closest("#saveTerminalAssignments");

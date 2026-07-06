@@ -331,19 +331,73 @@ async function closeReport(body, res) {
 function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: appData.cleaningTemplates || [], reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData) };
+  return { date, openTerminalDates: openTerminalDates(appData, date), settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, report, correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: appData.cleaningTemplates || [], reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData) };
 }
 
 function activeTerminalDate(appData, requestedDate) {
   const today = localDate(new Date());
   const requested = cleanDate(requestedDate);
   const requestedReport = appData.dayReports?.[requested];
+  if (requested && requested !== today && !requestedReport) return requested;
   if (requestedReport && !requestedReport.closed && !requestedReport.correctionOpen) return requested;
-  const openDates = Object.entries(appData.dayReports || {})
-    .filter(([dateKey, report]) => dateKey <= today && report && typeof report === "object" && !report.closed && !report.correctionOpen && reportHasActivity(report))
-    .map(([dateKey]) => dateKey)
-    .sort();
+  const openDates = openTerminalDates(appData, requested);
   return openDates.at(-1) || today;
+}
+
+function openTerminalDates(appData, requestedDate) {
+  const today = localDate(new Date());
+  const requested = cleanDate(requestedDate);
+  const openDateSet = new Set();
+  Object.entries(appData.dayReports || {}).forEach(([dateKey, report]) => {
+    if (dateKey > today || !report || typeof report !== "object" || report.closed || report.correctionOpen) return;
+    if (reportHasActivity(report) || dayHasTimesheetActivity(appData, dateKey)) openDateSet.add(dateKey);
+  });
+  timesheetActivityDates(appData).forEach((dateKey) => {
+    if (dateKey > today) return;
+    const report = appData.dayReports?.[dateKey];
+    if (report?.closed || report?.correctionOpen) return;
+    openDateSet.add(dateKey);
+  });
+  if (requested && requested <= today) {
+    const report = appData.dayReports?.[requested];
+    if (!report || (!report.closed && !report.correctionOpen)) openDateSet.add(requested);
+  }
+  return [...openDateSet].sort();
+}
+
+function dayHasTimesheetActivity(appData, dateKey) {
+  const monthEntries = appData?.timesheets?.[String(dateKey || "").slice(0, 7)];
+  if (!monthEntries || typeof monthEntries !== "object") return false;
+  return Object.values(monthEntries).some((employeeEntries) => {
+    const entry = employeeEntries?.[dateKey];
+    if (!entry || typeof entry !== "object") return false;
+    if (Object.keys(entry).length > 0) return true;
+    const segments = Array.isArray(entry.segments) ? entry.segments : [];
+    return segments.some((segment) => String(segment?.from || "").trim() || String(segment?.to || "").trim());
+  });
+}
+
+function timesheetActivityDates(appData) {
+  const result = new Set();
+  Object.values(appData?.timesheets || {}).forEach((monthEntries) => {
+    if (!monthEntries || typeof monthEntries !== "object") return;
+    Object.values(monthEntries).forEach((employeeEntries) => {
+      if (!employeeEntries || typeof employeeEntries !== "object") return;
+      Object.entries(employeeEntries).forEach(([dateKey, entry]) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return;
+        if (!entry || typeof entry !== "object") return;
+        if (Object.keys(entry).length > 0) {
+          result.add(dateKey);
+          return;
+        }
+        const segments = Array.isArray(entry.segments) ? entry.segments : [];
+        if (segments.some((segment) => String(segment?.from || "").trim() || String(segment?.to || "").trim())) {
+          result.add(dateKey);
+        }
+      });
+    });
+  });
+  return result;
 }
 
 async function reportIsInCorrection(body) {

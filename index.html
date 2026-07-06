@@ -148,6 +148,7 @@
           </div>
           <div id="terminalDayMetaDisplay" class="terminal-day-meta-display hidden"></div>
           <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
+          <div id="terminalOpenDaysNav" class="terminal-open-days hidden"></div>
           <div id="terminalLeaderMessages" class="terminal-leader-messages hidden"></div>
           <nav class="terminal-tabs" aria-label="Terminal-Bereiche">
             <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
@@ -439,78 +440,66 @@
       <section id="customerInvoice" class="panel customer-invoice-panel">
         <div class="section-head">
           <div>
-            <h2>Neuer Rechnungskunde</h2>
+            <h2>Veranstaltungen auf Rechnung</h2>
           </div>
         </div>
-        <form id="customerInvoiceForm" class="customer-invoice-form">
-          <p class="customer-firming-hint">Bitte auf korrekte Firmierung achten.</p>
-          <label>Datum<input id="customerInvoiceDate" readonly></label>
-          <div class="form-grid">
-            <label>Firma / Name<input id="customerName" required autocomplete="organization"></label>
-            <label>Ansprechpartner<input id="customerContact" required autocomplete="name"></label>
+        <details class="report-subsection customer-invoice-create-section" open>
+          <summary>Neue Veranstaltungsrechnung</summary>
+          <div class="customer-invoice-create-body">
+            <p class="hint customer-invoice-create-hint">Veranstaltungskunde direkt anlegen. Betrag, Zahlungsart und Beleg ergänzt ihr danach im Mitarbeiterbereich.</p>
+            <form id="customerInvoiceForm" class="customer-invoice-form">
+              <p class="customer-firming-hint">Bitte auf korrekte Firmierung achten.</p>
+              <label>Datum<input id="customerInvoiceDate" type="date"></label>
+              <div class="form-grid">
+                <label>Firma / Name<input id="customerName" required autocomplete="organization"></label>
+                <label>Ansprechpartner<input id="customerContact" required autocomplete="name"></label>
+              </div>
+              <div class="form-grid">
+                <label>Telefonnummer<input id="customerPhone" type="tel" required autocomplete="tel"></label>
+                <label>E-Mail für Rechnung<input id="customerEmail" type="email" required autocomplete="email"></label>
+              </div>
+              <label>Rechnungsadresse<textarea id="customerAddress" rows="4" required autocomplete="street-address"></textarea></label>
+              <div class="form-grid">
+                <label>Tipp<input id="customerTip" placeholder="optional"></label>
+                <label>Notiz<textarea id="customerNote" rows="3"></textarea></label>
+              </div>
+              <button id="submitCustomerInvoice" class="primary" type="submit">Neue Rechnung anlegen</button>
+              <p id="customerInvoiceStatus" class="action-status"></p>
+            </form>
           </div>
-          <div class="form-grid">
-            <label>Telefonnummer<input id="customerPhone" type="tel" required autocomplete="tel"></label>
-            <label>E-Mail für Rechnung<input id="customerEmail" type="email" required autocomplete="email"></label>
-          </div>
-          <label>Rechnungsadresse<textarea id="customerAddress" rows="4" required autocomplete="street-address"></textarea></label>
-          <div class="form-grid">
-            <label>Tipp<input id="customerTip" placeholder="optional"></label>
-            <label>Notiz<textarea id="customerNote" rows="3"></textarea></label>
-          </div>
-          <button id="submitCustomerInvoice" class="primary" type="submit">Rechnungskunde speichern</button>
-          <p id="customerInvoiceStatus" class="action-status"></p>
-        </form>
+        </details>
         <section class="customer-invoice-staff">
           <div class="customer-invoice-staff-head">
             <div>
-              <h3>Tagesübersicht Mitarbeiter</h3>
-              <p>Rechnungskunden, Belege und Abschlussdokumente für den heutigen Tagesbericht ergänzen.</p>
+              <h3>Geplante Veranstaltungsrechnungen</h3>
+              <p>Bestehende Veranstaltungsrechnungen ergänzen oder neue direkt aus dem Bowling-Kundenstamm anlegen.</p>
             </div>
             <button id="lockCustomerInvoiceStaff" class="secondary hidden" type="button">Sperren</button>
           </div>
           <div id="customerInvoiceStaffLogin" class="form-grid">
             <label>Mitarbeiter-Code<input id="customerInvoiceStaffCode" type="password" inputmode="numeric" placeholder="Code"></label>
-            <button id="unlockCustomerInvoiceStaff" class="primary" type="button">Tagesübersicht öffnen</button>
+            <button id="unlockCustomerInvoiceStaff" class="primary" type="button">Mitarbeiterbereich öffnen</button>
           </div>
           <div id="customerInvoiceStaffArea" class="customer-invoice-staff-area hidden">
-            <div class="invoice-day-overview" id="customerInvoiceDaySummary"></div>
             <details class="report-subsection customer-master-section" open>
-              <summary>Kundenstamm</summary>
+              <summary>Aus Bowling-Kundenstamm</summary>
               <div class="customer-master-tools">
                 <label>Kunde suchen<input id="customerMasterSearch" placeholder="Name, Firma, Ansprechpartner"></label>
                 <label>Kunde auswählen<select id="customerMasterSelect"></select></label>
               </div>
               <div id="customerMasterPreview" class="customer-master-preview"></div>
               <div class="day-report-actions">
-                <button id="addCustomerFromMaster" class="primary" type="button">Neue Rechnung mit diesem Kunden</button>
+                <button id="addCustomerFromMaster" class="primary" type="button">Neue Rechnung aus Kundenstamm anlegen</button>
               </div>
-              <p class="hint customer-master-hint">Neue Rechnungskunden werden nach dem Speichern automatisch in diese Kartei übernommen.</p>
+              <p class="hint customer-master-hint">Bestehende Kundendaten übernehmen und direkt als neue geplante Rechnung anlegen.</p>
             </details>
             <details class="report-subsection" open>
-              <summary>Rechnungskunden vervollständigen</summary>
+              <summary>Geplante Veranstaltungsrechnungen</summary>
               <div id="customerInvoiceWorkList" class="report-entry-list"></div>
-              <div class="day-report-actions">
-                <button id="addCustomerInvoiceWorkRow" class="secondary" type="button">Rechnungskunde hinzufügen</button>
-                <button id="saveCustomerInvoiceWork" class="primary" type="button">Rechnungen speichern</button>
-              </div>
             </details>
-            <details class="report-subsection">
-              <summary>Ausgaben aus der Kasse</summary>
-              <div id="customerExpenseWorkList" class="report-entry-list"></div>
-              <div class="day-report-actions">
-                <button id="addCustomerExpenseWorkRow" class="secondary" type="button">Ausgabe hinzufügen</button>
-                <button id="saveCustomerExpenses" class="primary" type="button">Ausgaben speichern</button>
-              </div>
-            </details>
-            <details class="report-subsection">
-              <summary>Abschlussdokumente</summary>
-              <div class="report-entry-grid">
-                <label>Penta scannen/fotografieren<input id="customerReportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>Handschrift scannen/fotografieren<input id="customerReportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>EC-Schnitt scannen/fotografieren<input id="customerReportDocumentEcCut" type="file" accept="image/*,application/pdf" capture="environment"></label>
-              </div>
-              <div id="customerReportDocumentStatus" class="report-entry-list"></div>
+            <details id="customerInvoiceBuilderSection" class="report-subsection hidden">
+              <summary>Veranstaltungsrechnung erstellen</summary>
+              <div id="customerInvoiceBuilderPanel"></div>
             </details>
             <p id="customerInvoiceStaffStatus" class="action-status"></p>
           </div>
@@ -570,6 +559,7 @@
         <nav class="admin-workspace-tabs" aria-label="Admin-Arbeitsbereiche">
           <button class="admin-workspace-tab active" type="button" data-admin-workspace-tab="planning">Planung</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="reports">Tagesberichte</button>
+          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="invoices">Rechnungen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="employees">Mitarbeiter Sicht</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="numbers">Monatszahlen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
@@ -597,6 +587,13 @@
         <details class="settings-box admin-priority" open>
           <summary>Tagesberichte</summary>
           <div id="adminReports" class="chef-dashboard"></div>
+        </details>
+        </section>
+
+        <section class="admin-workspace" data-admin-workspace="invoices">
+        <details class="settings-box admin-priority" open>
+          <summary>Rechnungszentrale</summary>
+          <div id="adminInvoices" class="invoice-workspace"></div>
         </details>
         </section>
 
@@ -1045,6 +1042,79 @@
               <p id="invoiceTestMailStatus" class="action-status"></p>
             </div>
           </div>
+          </details>
+          <details class="settings-sub">
+            <summary>Firmeneinstellungen Rechnung</summary>
+            <div class="form-grid">
+              <label>
+                Firmenname
+                <input id="invoiceCompanyName" type="text" placeholder="LA-Bowling Peter Vorholzer">
+              </label>
+              <label>
+                Standard-Zahlungsziel (Tage)
+                <input id="invoicePaymentDays" type="number" min="0" max="120" step="1" placeholder="14">
+              </label>
+              <label class="offer-grid-wide">
+                Firmenadresse
+                <textarea id="invoiceCompanyAddress" rows="3" placeholder="Röntgenstraße 12 a&#10;84030 Landshut"></textarea>
+              </label>
+              <label>
+                Steuernummer
+                <input id="invoiceTaxNumber" type="text" placeholder="Steuernummer">
+              </label>
+              <label>
+                USt-ID
+                <input id="invoiceVatId" type="text" placeholder="DE...">
+              </label>
+              <label>
+                IBAN
+                <input id="invoiceIban" type="text" placeholder="DE...">
+              </label>
+              <label>
+                Bankname
+                <input id="invoiceBankName" type="text" placeholder="Bankname">
+              </label>
+              <label>
+                BIC
+                <input id="invoiceBic" type="text" placeholder="BIC">
+              </label>
+              <label class="offer-grid-wide">
+                Standard-Rechnungstext
+                <textarea id="invoiceDefaultText" rows="3" placeholder="Rechnung zu beiliegenden Einzelbelegen"></textarea>
+              </label>
+              <label>
+                Primärfarbe
+                <input id="invoiceColorPrimary" type="color">
+              </label>
+              <label>
+                Akzentfarbe
+                <input id="invoiceColorAccent" type="color">
+              </label>
+              <label>
+                Text hell
+                <input id="invoiceColorMuted" type="color">
+              </label>
+              <label>
+                Linien
+                <input id="invoiceColorLine" type="color">
+              </label>
+              <label>
+                Flächen
+                <input id="invoiceColorHighlight" type="color">
+              </label>
+              <label class="offer-grid-wide">
+                Rechnungslogo
+                <input id="invoiceLogoFile" type="file" accept="image/png,image/jpeg,image/webp">
+              </label>
+              <div class="invoice-logo-settings offer-grid-wide">
+                <div id="invoiceLogoPreview" class="invoice-logo-preview"></div>
+                <div class="day-report-actions">
+                  <button id="saveInvoiceSettings" class="secondary" type="button">Rechnungseinstellungen speichern</button>
+                  <button id="resetInvoiceLogo" class="secondary" type="button">Logo zurücksetzen</button>
+                  <p id="invoiceSettingsStatus" class="action-status"></p>
+                </div>
+              </div>
+            </div>
           </details>
           <details class="settings-sub">
             <summary>Mitarbeiter und PINs</summary>

@@ -776,7 +776,7 @@ function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
   const assignmentDates = terminalAssignmentDates(date);
-  return { date, settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), assignmentAvailability: assignmentAvailabilityForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory), tablePlanConfig: normalizeTablePlanConfig(appData.tablePlanConfig), tablePlanInfo: tablePlanInfo(appData, date) };
+  return { date, openTerminalDates: openTerminalDates(appData, date), settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), assignmentAvailability: assignmentAvailabilityForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory), tablePlanConfig: normalizeTablePlanConfig(appData.tablePlanConfig), tablePlanInfo: tablePlanInfo(appData, date) };
 }
 
 function terminalAssignmentDates(dateKey) {
@@ -854,13 +854,66 @@ function activeTerminalDate(appData, requestedDate) {
   const today = localDate(new Date());
   const requested = cleanDate(requestedDate);
   const requestedReport = appData.dayReports?.[requested];
-  if (requested && !requestedReport) return requested;
+  if (requested && requested !== today && !requestedReport) return requested;
   if (requestedReport && !requestedReport.closed && !requestedReport.correctionOpen) return requested;
-  const openDates = Object.entries(appData.dayReports || {})
-    .filter(([dateKey, report]) => dateKey <= today && report && typeof report === "object" && !report.closed && !report.correctionOpen && reportHasActivity(report))
-    .map(([dateKey]) => dateKey)
-    .sort();
+  const openDates = openTerminalDates(appData, requested);
   return openDates.at(-1) || today;
+}
+
+function openTerminalDates(appData, requestedDate) {
+  const today = localDate(new Date());
+  const requested = cleanDate(requestedDate);
+  const openDateSet = new Set();
+  Object.entries(appData.dayReports || {}).forEach(([dateKey, report]) => {
+    if (dateKey > today || !report || typeof report !== "object" || report.closed || report.correctionOpen) return;
+    if (reportHasActivity(report) || dayHasTimesheetActivity(appData, dateKey)) openDateSet.add(dateKey);
+  });
+  timesheetActivityDates(appData).forEach((dateKey) => {
+    if (dateKey > today) return;
+    const report = appData.dayReports?.[dateKey];
+    if (report?.closed || report?.correctionOpen) return;
+    openDateSet.add(dateKey);
+  });
+  if (requested && requested <= today) {
+    const report = appData.dayReports?.[requested];
+    if (!report || (!report.closed && !report.correctionOpen)) openDateSet.add(requested);
+  }
+  return [...openDateSet].sort();
+}
+
+function dayHasTimesheetActivity(appData, dateKey) {
+  const monthEntries = appData?.timesheets?.[String(dateKey || "").slice(0, 7)];
+  if (!monthEntries || typeof monthEntries !== "object") return false;
+  return Object.values(monthEntries).some((employeeEntries) => {
+    const entry = employeeEntries?.[dateKey];
+    if (!entry || typeof entry !== "object") return false;
+    if (Object.keys(entry).length > 0) return true;
+    const segments = Array.isArray(entry.segments) ? entry.segments : [];
+    return segments.some((segment) => String(segment?.from || "").trim() || String(segment?.to || "").trim());
+  });
+}
+
+function timesheetActivityDates(appData) {
+  const result = new Set();
+  Object.values(appData?.timesheets || {}).forEach((monthEntries) => {
+    if (!monthEntries || typeof monthEntries !== "object") return;
+    Object.values(monthEntries).forEach((employeeEntries) => {
+      if (!employeeEntries || typeof employeeEntries !== "object") return;
+      Object.entries(employeeEntries).forEach(([dateKey, entry]) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return;
+        if (!entry || typeof entry !== "object") return;
+        if (Object.keys(entry).length > 0) {
+          result.add(dateKey);
+          return;
+        }
+        const segments = Array.isArray(entry.segments) ? entry.segments : [];
+        if (segments.some((segment) => String(segment?.from || "").trim() || String(segment?.to || "").trim())) {
+          result.add(dateKey);
+        }
+      });
+    });
+  });
+  return result;
 }
 
 async function reportIsInCorrection(body) {
@@ -1553,6 +1606,7 @@ async function cleanReportItems(items, type, date) {
       invoiceReadyAt: cleanText(raw.invoiceReadyAt, 80),
       invoiceDone,
       invoiceDoneAt: cleanText(raw.invoiceDoneAt, 80),
+      invoiceGeneratedId: cleanText(raw.invoiceGeneratedId, 120),
       invoicePaid: raw.invoicePaid === true || raw.invoicePaid === "true",
       invoicePaidAt: cleanText(raw.invoicePaidAt, 80),
       invoiceNotificationSentAt,
@@ -1742,6 +1796,9 @@ function normalizeCustomerDirectory(customers) {
   return [...byKey.values()].filter((customer) => customer.name).sort((a, b) => a.name.localeCompare(b.name, "de")).slice(0, 500);
 }
 function customerDirectoryEntry(item = {}) {
+  const sourceType = ["event", "advertising", "manual"].includes(String(item.sourceType || "").trim())
+    ? String(item.sourceType || "").trim()
+    : "event";
   return {
     id: cleanText(item.id || customerDirectoryKey(item) || `customer-${Date.now()}-${Math.random().toString(16).slice(2)}`, 120),
     name: cleanText(item.name, 160),
@@ -1750,6 +1807,7 @@ function customerDirectoryEntry(item = {}) {
     email: cleanText(item.email, 180),
     address: cleanText(item.address, 600),
     paymentMethod: cleanText(item.paymentMethod, 40),
+    sourceType,
     tip: cleanText(item.tip, 160),
     note: cleanText(item.note, 600),
     createdAt: cleanText(item.createdAt || new Date().toISOString(), 80),

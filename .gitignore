@@ -1,6 +1,9 @@
 ﻿# Lokale Geheimnisse
 .env.local
 
+# Lokale Abhängigkeiten
+node_modules/
+
 # Lokale Logs
 *.log
 codex-*.log
