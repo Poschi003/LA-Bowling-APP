@@ -862,7 +862,6 @@ function activeTerminalDate(appData, requestedDate) {
 
 function openTerminalDates(appData, requestedDate) {
   const today = localDate(new Date());
-  const requested = cleanDate(requestedDate);
   const openDateSet = new Set();
   Object.entries(appData.dayReports || {}).forEach(([dateKey, report]) => {
     if (dateKey > today || !report || typeof report !== "object" || report.closed || report.correctionOpen) return;
@@ -874,10 +873,6 @@ function openTerminalDates(appData, requestedDate) {
     if (report?.closed || report?.correctionOpen) return;
     openDateSet.add(dateKey);
   });
-  if (requested && requested <= today) {
-    const report = appData.dayReports?.[requested];
-    if (!report || (!report.closed && !report.correctionOpen)) openDateSet.add(requested);
-  }
   return [...openDateSet].sort();
 }
 
@@ -1559,8 +1554,11 @@ async function cleanReportItems(items, type, date) {
   const invoiceDone = raw.invoiceDone === true || raw.invoiceDone === "true";
   const invoiceNotificationSentAt = cleanText(raw.invoiceNotificationSentAt, 80);
   const hasPentacodeFlag = Object.prototype.hasOwnProperty.call(raw || {}, "pentacodeEntered");
+  const hasPentacodeChoice = raw.pentacodeEntered === true || raw.pentacodeEntered === "true"
+    || raw.pentacodeEntered === false || raw.pentacodeEntered === "false";
+  const legacyPentacodeChoice = !hasPentacodeFlag && (invoiceReadyRequested || invoiceDone || invoiceNotificationSentAt);
   const pentacodeEntered = raw.pentacodeEntered === true || raw.pentacodeEntered === "true"
-    || (!hasPentacodeFlag && (invoiceReadyRequested || invoiceDone || invoiceNotificationSentAt));
+    || legacyPentacodeChoice;
   const hasGastroSplit = [String(raw.gastroDrinksAmount ?? "").trim(), String(raw.gastroFoodAmount ?? "").trim(), String(raw.gastroOtherAmount ?? "").trim()].some(Boolean);
   const gastroAmount = hasGastroSplit
       ? cleanMoney(String(
@@ -1598,11 +1596,11 @@ async function cleanReportItems(items, type, date) {
       phone: String(raw.phone || "").trim().slice(0, 80),
       paymentMethod: String(raw.paymentMethod || "").trim().slice(0, 40),
       tip: String(raw.tip || "").trim().slice(0, 160),
-      pentacodeEntered,
+      pentacodeEntered: hasPentacodeChoice || legacyPentacodeChoice ? pentacodeEntered : "",
       email: String(raw.email || "").trim().slice(0, 180),
       category: String(raw.category || "").trim().slice(0, 120),
       createdAt: cleanText(raw.createdAt || new Date().toISOString(), 80),
-      invoiceReady: invoiceReadyRequested && pentacodeEntered,
+      invoiceReady: invoiceReadyRequested && (hasPentacodeChoice || legacyPentacodeChoice),
       invoiceReadyAt: cleanText(raw.invoiceReadyAt, 80),
       invoiceDone,
       invoiceDoneAt: cleanText(raw.invoiceDoneAt, 80),

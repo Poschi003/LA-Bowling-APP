@@ -3929,10 +3929,21 @@ function invoiceIsPaid(item = {}) {
   return item.invoicePaid === true || item.invoicePaid === "true";
 }
 
+function invoicePentacodeChoice(item = {}) {
+  if (item.pentacodeEntered === true || item.pentacodeEntered === "true") return "yes";
+  if (item.pentacodeEntered === false || item.pentacodeEntered === "false") return "no";
+  return item.invoiceDone || item.invoiceReady || item.invoiceNotificationSentAt || item.invoicePaid ? "yes" : "";
+}
+
 function invoicePentacodeEntered(item = {}) {
-  if (item.pentacodeEntered === true || item.pentacodeEntered === "true") return true;
-  if (item.pentacodeEntered === false || item.pentacodeEntered === "false") return false;
-  return Boolean(item.invoiceDone || item.invoiceReady || item.invoiceNotificationSentAt || item.invoicePaid);
+  return invoicePentacodeChoice(item) === "yes";
+}
+
+function invoicePentacodeLabel(item = {}) {
+  const choice = invoicePentacodeChoice(item);
+  if (choice === "yes") return "Ja";
+  if (choice === "no") return "Nein, nachträgliche Rechnung";
+  return "Noch nicht gewählt";
 }
 
 function invoiceStatusText(item = {}) {
@@ -3968,7 +3979,7 @@ function invoiceReadyProblemsFromData(item = {}) {
   if (!String(item.name || "").trim()) problems.push("Firma oder Name fehlt");
   if (!String(item.address || "").trim()) problems.push("Rechnungsadresse fehlt");
   if (!String(item.email || "").trim()) problems.push("Rechnungs-E-Mail fehlt");
-  if (!invoicePentacodeEntered(item)) problems.push("Pentacode-Haken fehlt");
+  if (!invoicePentacodeChoice(item)) problems.push("Pentacode-Status fehlt");
   const amount = reportMoneyNumber(item.bowlingAmount) + invoiceGastroSplit(item).total;
   if (amount <= 0) problems.push("Beträge fehlen");
   if (reportMoneyNumber(item.gastroOtherAmount) > 0 && !String(item.gastroOtherNote || "").trim()) problems.push("Notiz für Sonstiges fehlt");
@@ -4065,7 +4076,7 @@ function reportInvoiceCustomersHtml(items = []) {
           <span>${escapeHtml(item.email || "Keine E-Mail")}</span>
           ${item.gastroOtherNote ? `<span>Sonstiges Notiz: ${escapeHtml(item.gastroOtherNote)}</span>` : ""}
           ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
-          <span>In Pentacode eingetragen: ${invoicePentacodeEntered(item) ? "Ja" : "Nein"}</span>
+          <span>In Pentacode eingetragen: ${invoicePentacodeLabel(item)}</span>
           ${invoiceReceiptLinksHtml(item)}
         </article>
       `).join("")}
@@ -10787,7 +10798,7 @@ function renderTerminalOpenDays(dateKey) {
     return;
   }
   const today = todayKey();
-  const dates = [...new Set([...(Array.isArray(state.terminalOpenDates) ? state.terminalOpenDates : []), dateKey].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) && value <= today))].sort((a, b) => b.localeCompare(a));
+  const dates = [...new Set((Array.isArray(state.terminalOpenDates) ? state.terminalOpenDates : []).filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) && value <= today))].sort((a, b) => b.localeCompare(a));
   target.classList.remove("hidden");
   target.innerHTML = `
     <details id="terminalOpenDaysDetails" class="terminal-open-days-details" ${state.terminalOpenDaysExpanded ? "open" : ""}>
@@ -11531,7 +11542,7 @@ function customerMasterToInvoice(customer = {}) {
     paymentMethod: customer.paymentMethod || "",
     tip: customer.tip || "",
     note: customer.note || "",
-    pentacodeEntered: false,
+    pentacodeEntered: "",
     createdAt: new Date().toISOString(),
     invoiceReady: false,
     invoiceReadyAt: "",
@@ -11585,7 +11596,7 @@ function invoiceRowHtml(item = {}) {
   const isReady = invoiceIsReady(item);
   const statusClass = invoiceStatusClass(item);
   const total = invoiceTotal(item);
-  const pentacodeEntered = invoicePentacodeEntered(item);
+  const pentacodeChoice = invoicePentacodeChoice(item);
   const workflow = invoiceWorkflowState({ ...item, id }, linkedInvoice);
   const legacyHint = !singleReceipt && legacyReceipts.length
     ? `<span class="hint">Bisherige getrennte Belege: ${legacyReceipts.map(({ label, receipt }) => `${escapeHtml(label)} ${escapeHtml(receipt.receiptName || "")}`).join(" | ")}</span>`
@@ -11653,9 +11664,15 @@ function invoiceRowHtml(item = {}) {
         <section class="invoice-workflow-block">
           <div class="invoice-workflow-head">
             <strong>3. Beleg und Abschluss</strong>
-            <span>Beleg hochladen, Pentacode bestätigen und dann den nächsten Schritt auslösen.</span>
+            <span>Beleg hochladen, Pentacode-Status wählen und dann den nächsten Schritt auslösen.</span>
           </div>
-          <label class="invoice-pentacode-check"><input data-report-field="pentacodeEntered" type="checkbox" value="true" ${pentacodeEntered ? "checked" : ""}> In Pentacode eingetragen</label>
+          <label class="invoice-pentacode-choice">In Pentacode eingetragen
+            <select data-report-field="pentacodeEntered">
+              <option value=""${!pentacodeChoice ? " selected" : ""}>Bitte wählen</option>
+              <option value="true"${pentacodeChoice === "yes" ? " selected" : ""}>Ja, eingetragen</option>
+              <option value="false"${pentacodeChoice === "no" ? " selected" : ""}>Nein, nachträgliche Rechnung</option>
+            </select>
+          </label>
           <label>Rechnungsbeleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
           ${singleReceipt?.receiptName ? `<span class="hint">Aktueller Rechnungsbeleg: ${escapeHtml(singleReceipt.receiptName)}</span>` : ""}
           ${legacyHint}
@@ -12374,7 +12391,7 @@ function invoiceRowReadyProblems(row) {
   if (!reportFieldValue(row, "name")) problems.push("Firma/Name fehlt");
   if (!reportFieldValue(row, "address")) problems.push("Rechnungsadresse fehlt");
   if (!reportFieldValue(row, "email")) problems.push("E-Mail fehlt");
-  if (!reportFieldValue(row, "pentacodeEntered")) problems.push("In Pentacode eingetragen fehlt");
+  if (!reportFieldValue(row, "pentacodeEntered")) problems.push("Pentacode-Status fehlt");
   const gastroAmount = reportFieldValue(row, "gastroAmount");
   const gastroDrinks = reportFieldValue(row, "gastroDrinksAmount");
   const gastroFood = reportFieldValue(row, "gastroFoodAmount");

@@ -6287,6 +6287,20 @@ button:disabled {
   height: 18px;
 }
 
+.invoice-pentacode-choice {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.invoice-pentacode-choice select {
+  width: 100%;
+}
+
 @media (max-width: 900px) {
   .invoice-amount-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -894,7 +894,11 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
   const totalAmount = invoiceTotalForSync(customer);
   const tipAmount = tipMoneyNumber(customer.tip);
   const paymentMethod = String(customer.paymentMethod || "").trim() || "-";
-  const pentacodeText = customer.pentacodeEntered === true || customer.pentacodeEntered === "true" ? "Ja" : "Nein";
+  const pentacodeText = customer.pentacodeEntered === true || customer.pentacodeEntered === "true"
+    ? "Ja"
+    : customer.pentacodeEntered === false || customer.pentacodeEntered === "false"
+      ? "Nein, nachträgliche Rechnung"
+      : "Nicht angegeben";
   const gastroLines = gastroSplit.hasSplit
     ? [
       `Essen: ${formatInvoiceMoney(gastroSplit.food)}`,
@@ -961,7 +965,11 @@ function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
   const totalAmount = invoiceTotalForSync(customer);
   const tipAmount = tipMoneyNumber(customer.tip);
   const paymentMethod = String(customer.paymentMethod || "").trim() || "-";
-  const pentacodeText = customer.pentacodeEntered === true || customer.pentacodeEntered === "true" ? "Ja" : "Nein";
+  const pentacodeText = customer.pentacodeEntered === true || customer.pentacodeEntered === "true"
+    ? "Ja"
+    : customer.pentacodeEntered === false || customer.pentacodeEntered === "false"
+      ? "Nein, nachträgliche Rechnung"
+      : "Nicht angegeben";
   const amountRows = [
     { label: "Bowling Betrag", value: mailMoneyValue(bowlingAmount) },
     { label: "Essen", value: mailMoneyValue(gastroSplit.food) },
