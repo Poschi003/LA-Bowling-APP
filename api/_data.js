@@ -1,10 +1,44 @@
 ﻿const crypto = require("crypto");
 
-const {
-  DEFAULT_INVOICE_SETTINGS,
-  normalizeInvoiceSettings,
-  normalizeInvoices
-} = require("../server/invoice-engine");
+let DEFAULT_INVOICE_SETTINGS = {
+  companyName: "LA-Bowling Peter Vorholzer",
+  companyAddress: "Röntgenstraße 12 a\n84030 Landshut",
+  taxNumber: "",
+  vatId: "",
+  iban: "",
+  bankName: "",
+  bic: "",
+  paymentDays: 14,
+  defaultText: "Rechnung zu beiliegenden Einzelbelegen",
+  colors: {
+    primary: "#111827",
+    accent: "#d71e28",
+    muted: "#6b7280",
+    line: "#dbe2ea",
+    highlight: "#f4f6f8"
+  },
+  logoData: ""
+};
+
+let normalizeInvoiceSettings = (value = {}) => ({
+  ...DEFAULT_INVOICE_SETTINGS,
+  ...(value && typeof value === "object" ? value : {}),
+  colors: {
+    ...DEFAULT_INVOICE_SETTINGS.colors,
+    ...(value?.colors && typeof value.colors === "object" ? value.colors : {})
+  }
+});
+
+let normalizeInvoices = (value = []) => Array.isArray(value) ? value : [];
+
+try {
+  const invoiceEngine = require("../server/invoice-engine");
+  if (invoiceEngine?.DEFAULT_INVOICE_SETTINGS) DEFAULT_INVOICE_SETTINGS = invoiceEngine.DEFAULT_INVOICE_SETTINGS;
+  if (typeof invoiceEngine?.normalizeInvoiceSettings === "function") normalizeInvoiceSettings = invoiceEngine.normalizeInvoiceSettings;
+  if (typeof invoiceEngine?.normalizeInvoices === "function") normalizeInvoices = invoiceEngine.normalizeInvoices;
+} catch (error) {
+  console.warn("invoice-engine konnte nicht geladen werden. Fallback fuer _data.js aktiv.", error?.message || String(error));
+}
 
 const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
