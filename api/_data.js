@@ -1,5 +1,11 @@
 ﻿const crypto = require("crypto");
 
+const {
+  DEFAULT_INVOICE_SETTINGS,
+  normalizeInvoiceSettings,
+  normalizeInvoices
+} = require("../server/invoice-engine");
+
 const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
 const defaultPins = {
@@ -171,6 +177,8 @@ const defaultData = {
   messages: [],
   terminalMessages: [],
   customerDirectory: [],
+  invoiceSettings: DEFAULT_INVOICE_SETTINGS,
+  invoices: [],
   offers: [],
   swaps: [],
   availabilityChangeRequests: [],
@@ -251,6 +259,8 @@ function mergeData(value) {
     messages: Array.isArray(value?.messages) ? value.messages : base.messages,
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     customerDirectory: Array.isArray(value?.customerDirectory) ? value.customerDirectory : base.customerDirectory,
+    invoiceSettings: normalizeInvoiceSettings(value?.invoiceSettings || base.invoiceSettings),
+    invoices: normalizeInvoices(Array.isArray(value?.invoices) ? value.invoices : base.invoices, value?.invoiceSettings || base.invoiceSettings),
     offers: Array.isArray(value?.offers) ? value.offers : base.offers,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests,
@@ -848,14 +858,14 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
   const gastroSplit = invoiceGastroSplit(customer);
   const gastroAmount = gastroSplit.total;
   const totalAmount = invoiceTotalForSync(customer);
-  const tipText = String(customer.tip || "").trim() || "-";
+  const tipAmount = tipMoneyNumber(customer.tip);
   const paymentMethod = String(customer.paymentMethod || "").trim() || "-";
   const pentacodeText = customer.pentacodeEntered === true || customer.pentacodeEntered === "true" ? "Ja" : "Nein";
   const gastroLines = gastroSplit.hasSplit
     ? [
-      `Gastro Getränke: ${formatInvoiceMoney(gastroSplit.drinks)}`,
-      `Gastro Speisen: ${formatInvoiceMoney(gastroSplit.food)}`,
-      `Gastro Sonstiges: ${formatInvoiceMoney(gastroSplit.other)}`,
+      `Essen: ${formatInvoiceMoney(gastroSplit.food)}`,
+      `Getränke: ${formatInvoiceMoney(gastroSplit.drinks)}`,
+      `Sonstiges: ${formatInvoiceMoney(gastroSplit.other)}`,
       `Gastro Gesamt: ${formatInvoiceMoney(gastroAmount)}`
     ]
     : [`Gastro Gesamt: ${formatInvoiceMoney(gastroAmount)}`];
@@ -867,12 +877,12 @@ function buildInvoiceNotificationText({ date, customer = {} } = {}) {
     `Rechnungsadresse: ${String(customer.address || "").trim() || "-"}`,
     `Bowling Betrag: ${formatInvoiceMoney(bowlingAmount)}`,
     ...gastroLines,
+    `Tipp: ${formatInvoiceMoney(tipAmount)}`,
     `Gesamtbetrag: ${formatInvoiceMoney(totalAmount)}`,
     `Zahlungsart: ${paymentMethod}`,
     `Ansprechpartner: ${String(customer.contact || "").trim() || "-"}`,
     `Telefonnummer: ${String(customer.phone || "").trim() || "-"}`,
     `E-Mail für Rechnung: ${String(customer.email || "").trim() || "-"}`,
-    `Trinkgeld: ${tipText}`,
     ...(gastroSplit.note ? [`Sonstiges Notiz: ${gastroSplit.note}`] : []),
     `Notiz: ${String(customer.note || "").trim() || "-"}`,
     `In Pentacode eingetragen: ${pentacodeText}`,
@@ -915,15 +925,16 @@ function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
   const gastroSplit = invoiceGastroSplit(customer);
   const gastroAmount = gastroSplit.total;
   const totalAmount = invoiceTotalForSync(customer);
-  const tipText = String(customer.tip || "").trim() || "-";
+  const tipAmount = tipMoneyNumber(customer.tip);
   const paymentMethod = String(customer.paymentMethod || "").trim() || "-";
   const pentacodeText = customer.pentacodeEntered === true || customer.pentacodeEntered === "true" ? "Ja" : "Nein";
   const amountRows = [
-    ["Bowling Betrag", mailMoneyValue(bowlingAmount)],
-    ["Gastro Getränke", mailMoneyValue(gastroSplit.drinks)],
-    ["Gastro Speisen", mailMoneyValue(gastroSplit.food)],
-    ["Gastro Sonstiges", mailMoneyValue(gastroSplit.other)],
-    ["Gastro Gesamt", mailMoneyValue(gastroAmount)]
+    { label: "Bowling Betrag", value: mailMoneyValue(bowlingAmount) },
+    { label: "Essen", value: mailMoneyValue(gastroSplit.food) },
+    { label: "Getränke", value: mailMoneyValue(gastroSplit.drinks) },
+    { label: "Sonstiges", value: mailMoneyValue(gastroSplit.other) },
+    { label: "Gastro Gesamt", value: mailMoneyValue(gastroAmount), accent: true },
+    { label: "Tipp", value: mailMoneyValue(tipAmount) }
   ];
   const dayReference = String(customer.reportDate || customer.dayDate || customer.date || date || "").trim();
   const attachments = invoiceAttachmentSources(customer)
@@ -943,12 +954,23 @@ function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
         ${extra}
       </div>
     `;
-  const amountHtml = amountRows.map(([label, value], index) => `
+  const amountHtml = amountRows.map((row, index) => {
+    const accent = row.accent === true;
+    const borderColor = accent ? "#d7dee7" : "#edf1f5";
+    const labelColor = accent ? "#111827" : "#5f6b76";
+    const valueColor = "#111827";
+    const labelWeight = accent ? "700" : "400";
+    const valueWeight = accent ? "800" : "700";
+    const labelSize = accent ? "15px" : "14px";
+    const valueSize = accent ? "17px" : "15px";
+    const background = accent ? "#f8fafc" : "transparent";
+    return `
       <tr>
-        <td style="width:64%;padding:10px 10px 10px 0;border-bottom:${index === amountRows.length - 1 ? "0" : "1px solid #edf1f5"};color:#5f6b76;font-size:14px;vertical-align:top;">${escapeMailHtml(label)}</td>
-        <td style="width:36%;padding:10px 0;border-bottom:${index === amountRows.length - 1 ? "0" : "1px solid #edf1f5"};color:#111827;font-size:15px;vertical-align:top;text-align:right;white-space:nowrap;">${value}</td>
+        <td style="width:64%;padding:10px 10px 10px 0;border-bottom:${index === amountRows.length - 1 ? "0" : `1px solid ${borderColor}`};color:${labelColor};font-size:${labelSize};font-weight:${labelWeight};vertical-align:top;background:${background};">${escapeMailHtml(row.label)}</td>
+        <td style="width:36%;padding:10px 0;border-bottom:${index === amountRows.length - 1 ? "0" : `1px solid ${borderColor}`};color:${valueColor};font-size:${valueSize};font-weight:${valueWeight};vertical-align:top;text-align:right;white-space:nowrap;background:${background};">${row.value}</td>
       </tr>
-    `).join("");
+    `;
+  }).join("");
   const attachmentHtml = attachments.length
     ? `<div style="margin-top:14px;padding:16px 18px;background:#fafbfc;border:1px solid #e8edf2;border-radius:12px;">
         <div style="font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:10px;">Mitgesendete Belege</div>
@@ -990,7 +1012,6 @@ function buildInvoiceNotificationHtml({ date, customer = {} } = {}) {
           </div>
           ${infoBlock("Zahlungsart", mailValue(paymentMethod))}
           ${infoBlock("Ansprechpartner", mailValue(customer.contact), `<div style="margin-top:12px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:8px;">Telefon</div><div style="font-size:15px;line-height:1.5;color:#111827;">${mailValue(customer.phone)}</div><div style="margin-top:12px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:8px;">E-Mail für Rechnung</div><div style="font-size:15px;line-height:1.5;color:#111827;">${mailValue(customer.email)}</div>`)}
-          ${infoBlock("Trinkgeld", mailValue(tipText))}
           ${infoBlock("Notiz", mailValue(customer.note), `<div style="margin-top:12px;font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:#7b8794;margin-bottom:8px;">Sonstiges Notiz</div><div style="font-size:15px;line-height:1.5;color:#111827;">${mailValue(gastroSplit.note)}</div>`)}
           ${infoBlock("In Pentacode eingetragen", mailValue(pentacodeText))}
           ${attachmentHtml}
