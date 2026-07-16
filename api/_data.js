@@ -1183,6 +1183,12 @@ async function sendInvoiceNotificationEmail(payload = {}) {
 
   try {
     const attachments = await invoiceMailAttachments(payload.customer || {});
+    console.info("Rechnungskunden-Mailversand gestartet.", {
+      date: String(payload.date || ""),
+      recipient: to,
+      customer: String(payload.customer?.name || ""),
+      attachments: attachments.length
+    });
     const info = await transport.sendMail({
       from: String(process.env.EMAIL_FROM || smtpUser).trim(),
       to,
@@ -1190,6 +1196,12 @@ async function sendInvoiceNotificationEmail(payload = {}) {
       text: buildInvoiceNotificationText(payload),
       html: buildInvoiceNotificationHtml(payload),
       attachments
+    });
+    console.info("Rechnungskunden-Mailversand an Mailserver uebergeben.", {
+      recipient: to,
+      customer: String(payload.customer?.name || ""),
+      messageId: info.messageId || "",
+      accepted: info.accepted || []
     });
     return {
       ok: true,

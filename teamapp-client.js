@@ -14622,14 +14622,23 @@ async function sendInvoiceTestMail(button) {
   button.disabled = true;
   button.textContent = "Sendet...";
   const status = $("#invoiceTestMailStatus");
+  const recipient = $("#invoiceNotificationTo")?.value.trim() || "";
   if (status) status.textContent = "";
   try {
+    if (recipient) {
+      const savedSettings = await api("/api/settings", {
+        method: "POST",
+        headers: { "x-admin-token": state.adminToken },
+        body: JSON.stringify({ invoiceNotificationTo: recipient })
+      });
+      state.settings = normalizeSettings(savedSettings.settings || state.settings);
+    }
     const result = await api("/api/settings", {
       method: "POST",
       headers: { "x-admin-token": state.adminToken },
       body: JSON.stringify({
         action: "send-invoice-test-mail",
-        to: $("#invoiceNotificationTo")?.value.trim()
+        to: recipient
       })
     });
     const message = result.message || (result.sent ? "Test-Mail versendet." : "Test-Mail nicht versendet.");
