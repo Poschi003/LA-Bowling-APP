@@ -15345,7 +15345,8 @@ function bindEvents() {
     saveCustomerInvoiceDeskReport(input, `${reportDocumentLabelForInput(input)} gespeichert.`);
   });
 
-  $("#customerInvoiceStaffArea")?.addEventListener("click", (event) => {
+  [$("#customerInvoiceStaffArea"), $("#terminalFinanceSection")].filter(Boolean).forEach((invoiceActionRoot) => {
+    invoiceActionRoot.addEventListener("click", (event) => {
     const copyCustomerButton = event.target.closest("[data-copy-invoice-customer]");
     if (copyCustomerButton) {
       const row = copyCustomerButton.closest('[data-report-entry="invoice"]');
@@ -16109,6 +16110,7 @@ function bindEvents() {
     } catch (error) {
       showError(error);
     }
+    });
   });
 
   $("#customerInvoiceDate")?.addEventListener("change", async (event) => {
