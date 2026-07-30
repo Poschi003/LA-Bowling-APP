@@ -1,6 +1,20 @@
 ﻿const fs = require("fs");
 const path = require("path");
 const {
+  archiveInvoiceRecord,
+  buildInvoicePdfBuffer,
+  createAuditEntry,
+  createBlankInvoiceDraft,
+  createFollowUpInvoice,
+  createInvoiceDraftFromCustomer,
+  finalizeInvoiceRecord,
+  invoiceTotals,
+  normalizeInvoiceRecord,
+  normalizeInvoiceSettings,
+  normalizeInvoices,
+  sendInvoiceEmail
+} = require("../server/invoice-engine");
+const {
   applyPushTemplate,
   collectEmployeeTimesheets,
   defaultData,
@@ -56,6 +70,8 @@ module.exports = async function handler(req, res) {
         messages: appData.messages || [],
         terminalMessages: appData.terminalMessages || [],
         customerDirectory: appData.customerDirectory || [],
+        invoiceSettings: normalizeInvoiceSettings(appData.invoiceSettings || {}),
+        invoices: normalizeInvoices(appData.invoices || [], appData.invoiceSettings || {}),
         offers: normalizeOffers(appData.offers || []),
         tablePlanConfig: appData.tablePlanConfig || {},
         pushPublicKey: pushPublicKey(),
@@ -85,6 +101,8 @@ module.exports = async function handler(req, res) {
           ? (appData.timesheets?.[month] || {})
           : { [employeeSession.employee]: collectEmployeeTimesheets(appData, month, employeeSession.employee) },
         dayReports: isChef ? (appData.dayReports || {}) : {},
+        invoices: isChef ? normalizeInvoices(appData.invoices || [], appData.invoiceSettings || {}) : [],
+        invoiceSettings: isChef ? normalizeInvoiceSettings(appData.invoiceSettings || {}) : null,
         messages: messagesForEmployee(appData.messages || [], appData.settings, employeeSession.employee),
         pushPublicKey: pushPublicKey(),
         pushSubscriptionActive: pushSubscriptionActive(appData, employeeSession.employee),
@@ -130,6 +148,9 @@ async function handlePost(req, res) {
   }
   if (action === "delete-offer") {
     return deleteOffer(body, res);
+  }
+  if (action.startsWith("invoice-")) {
+    return handleInvoiceMutation(body, res);
   }
   if (action.startsWith("schedule-")) {
     return handleScheduleMutation(req, res, body);
@@ -337,6 +358,315 @@ async function deleteInvoiceCustomer(body, res) {
   report.updatedAt = new Date().toISOString();
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true });
+}
+
+async function handleInvoiceMutation(body, res) {
+  const appData = await readAppData();
+  const session = invoiceSession(appData, body);
+  if (!session.ok) return sendJson(res, 401, { error: session.error });
+
+  appData.invoiceSettings = normalizeInvoiceSettings(appData.invoiceSettings || {});
+  appData.invoices = normalizeInvoices(appData.invoices || [], appData.invoiceSettings);
+
+  const action = String(body.action || "").trim();
+
+  if (action === "invoice-new-draft") {
+    const invoice = createBlankInvoiceDraft(appData.invoiceSettings, session.actor);
+    appData.invoices.unshift(invoice);
+    await writeAppData(appData);
+    return sendJson(res, 200, invoiceResponse(appData, invoice, "Leerer Rechnungsentwurf erstellt."));
+  }
+
+  if (action === "invoice-from-ready-customer") {
+    const sourceDate = cleanInvoiceDateValue(body.sourceDate);
+    const sourceCustomerId = String(body.sourceCustomerId || "").trim();
+    const source = findReadyCustomerSource(appData, sourceDate, sourceCustomerId);
+    if (!source.customer) return sendJson(res, 404, { error: "Rechnungskunde nicht gefunden." });
+    const existing = findInvoiceBySource(appData.invoices, sourceDate, sourceCustomerId);
+    if (existing) {
+      if (existing.status === "draft") {
+        const fresh = createInvoiceDraftFromCustomer(source.customer, sourceDate, appData.invoiceSettings, session.actor);
+        const refreshed = normalizeInvoiceRecord({
+          ...existing,
+          sourceDate: fresh.sourceDate,
+          sourceCustomerId: fresh.sourceCustomerId,
+          sourceCustomerStatus: fresh.sourceCustomerStatus,
+          customerName: fresh.customerName,
+          customerContact: fresh.customerContact,
+          customerEmail: fresh.customerEmail,
+          customerPhone: fresh.customerPhone,
+          customerAddress: fresh.customerAddress,
+          paymentMethod: fresh.paymentMethod,
+          paymentStatus: fresh.paymentStatus,
+          positions: fresh.positions,
+          attachments: fresh.attachments,
+          updatedAt: new Date().toISOString(),
+          auditLog: [
+            ...(existing.auditLog || []),
+            createAuditEntry("source-refreshed", session.actor, "Entwurf aus Tagesbericht aktualisiert.")
+          ]
+        }, appData.invoiceSettings);
+        appData.invoices = upsertInvoice(appData.invoices, refreshed, appData.invoiceSettings);
+        await writeAppData(appData);
+        return sendJson(res, 200, invoiceResponse(appData, refreshed, "Vorhandener Entwurf aktualisiert."));
+      }
+      return sendJson(res, 200, invoiceResponse(appData, existing, "Vorhandene Rechnung geöffnet."));
+    }
+    const invoice = createInvoiceDraftFromCustomer(source.customer, sourceDate, appData.invoiceSettings, session.actor);
+    appData.invoices.unshift(invoice);
+    await writeAppData(appData);
+    return sendJson(res, 200, invoiceResponse(appData, invoice, "Rechnung aus Tagesbericht übernommen."));
+  }
+
+  if (action === "invoice-from-customer-directory") {
+    const customerId = String(body.customerId || "").trim();
+    const customer = (appData.customerDirectory || []).find((item) => String(item.id || "") === customerId);
+    if (!customer) return sendJson(res, 404, { error: "Kunde nicht gefunden." });
+    const base = createBlankInvoiceDraft(appData.invoiceSettings, session.actor);
+    const invoice = normalizeInvoiceRecord({
+      ...base,
+      sourceType: String(body.sourceType || customer.sourceType || "event").trim() || "event",
+      customerName: customer.name || "",
+      customerContact: customer.contact || "",
+      customerEmail: customer.email || "",
+      customerPhone: customer.phone || "",
+      customerAddress: customer.address || "",
+      paymentMethod: customer.paymentMethod || "",
+      note: customer.note || "",
+      auditLog: [...(base.auditLog || []), createAuditEntry("customer-directory", session.actor, "Kunde aus Stamm übernommen.")]
+    }, appData.invoiceSettings);
+    appData.invoices.unshift(invoice);
+    await writeAppData(appData);
+    return sendJson(res, 200, invoiceResponse(appData, invoice, "Kunde aus Stamm übernommen."));
+  }
+
+  if (action === "invoice-save-draft") {
+    const incoming = normalizeInvoiceRecord(body.invoice || {}, appData.invoiceSettings);
+    if (!incoming.id) return sendJson(res, 400, { error: "Entwurf fehlt." });
+    const current = findInvoice(appData.invoices, incoming.id);
+    if (current && current.status !== "draft") {
+      return sendJson(res, 400, { error: "Finalisierte Rechnungen können nicht mehr überschrieben werden." });
+    }
+    const merged = normalizeInvoiceRecord({
+      ...(current || createBlankInvoiceDraft(appData.invoiceSettings, session.actor)),
+      ...incoming,
+      status: "draft",
+      updatedAt: new Date().toISOString(),
+      auditLog: [
+        ...(current?.auditLog || incoming.auditLog || []),
+        createAuditEntry("draft-saved", session.actor, "Entwurf gespeichert.")
+      ]
+    }, appData.invoiceSettings);
+    appData.invoices = upsertInvoice(appData.invoices, merged, appData.invoiceSettings);
+    await writeAppData(appData);
+    return sendJson(res, 200, invoiceResponse(appData, merged, "Entwurf gespeichert."));
+  }
+
+  if (action === "invoice-delete-draft") {
+    const invoiceId = String(body.invoiceId || "").trim();
+    const current = findInvoice(appData.invoices, invoiceId);
+    if (!current) return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
+    if (current.status !== "draft") return sendJson(res, 400, { error: "Nur Entwürfe können gelöscht werden." });
+    appData.invoices = appData.invoices.filter((invoice) => invoice.id !== invoiceId);
+    await writeAppData(appData);
+    return sendJson(res, 200, { ok: true, invoices: normalizeInvoices(appData.invoices, appData.invoiceSettings), message: "Entwurf gelöscht." });
+  }
+
+  if (action === "invoice-preview-pdf") {
+    const previewInvoice = normalizeInvoiceRecord(body.invoice || findInvoice(appData.invoices, String(body.invoiceId || "").trim()) || {}, appData.invoiceSettings);
+    const validation = validateInvoice(previewInvoice, { requireEmail: false, requireNumber: false });
+    if (validation.length) return sendJson(res, 400, { error: validation.join(", ") });
+    const pdf = await buildInvoicePdfBuffer(previewInvoice, appData.invoiceSettings);
+    return sendJson(res, 200, {
+      ok: true,
+      pdfData: bufferToPdfDataUrl(pdf.buffer),
+      pdfFileName: pdf.fileName
+    });
+  }
+
+  if (action === "invoice-finalize") {
+    const invoiceId = String((body.invoice && body.invoice.id) || body.invoiceId || "").trim();
+    const current = findInvoice(appData.invoices, invoiceId);
+    if (!current) return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
+    if (current.status !== "draft") return sendJson(res, 400, { error: "Nur Entwürfe können finalisiert werden." });
+    const mergedDraft = normalizeInvoiceRecord({
+      ...current,
+      ...(body.invoice || {}),
+      id: current.id
+    }, appData.invoiceSettings);
+    const validation = validateInvoice(mergedDraft, { requireEmail: false, requireNumber: false });
+    if (validation.length) return sendJson(res, 400, { error: validation.join(", ") });
+    let finalized = finalizeInvoiceRecord(mergedDraft, appData.invoices, appData.invoiceSettings, session.actor);
+    const pdf = await buildInvoicePdfBuffer(finalized, appData.invoiceSettings);
+    finalized = normalizeInvoiceRecord({
+      ...finalized,
+      pdfData: bufferToPdfDataUrl(pdf.buffer),
+      pdfFileName: pdf.fileName,
+      updatedAt: new Date().toISOString(),
+      auditLog: [...(finalized.auditLog || []), createAuditEntry("pdf-stored", session.actor, "Original-PDF gespeichert.")]
+    }, appData.invoiceSettings);
+    appData.invoices = upsertInvoice(appData.invoices, finalized, appData.invoiceSettings);
+    markSourceCustomerDone(appData, finalized);
+    await writeAppData(appData);
+    return sendJson(res, 200, {
+      ...invoiceResponse(appData, finalized, "Rechnung finalisiert."),
+      pdfData: finalized.pdfData,
+      pdfFileName: finalized.pdfFileName
+    });
+  }
+
+  if (action === "invoice-send-email") {
+    const invoiceId = String(body.invoiceId || "").trim();
+    const current = findInvoice(appData.invoices, invoiceId);
+    if (!current) return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
+    if (current.status === "draft") return sendJson(res, 400, { error: "Bitte Rechnung zuerst finalisieren." });
+    const validation = validateInvoice(current, { requireEmail: true, requireNumber: true });
+    if (validation.length) return sendJson(res, 400, { error: validation.join(", ") });
+    let invoice = current;
+    if (!invoice.pdfData) {
+      const pdf = await buildInvoicePdfBuffer(invoice, appData.invoiceSettings);
+      invoice = normalizeInvoiceRecord({
+        ...invoice,
+        pdfData: bufferToPdfDataUrl(pdf.buffer),
+        pdfFileName: pdf.fileName,
+        updatedAt: new Date().toISOString()
+      }, appData.invoiceSettings);
+    }
+    const mail = await sendInvoiceEmail(invoice, appData.invoiceSettings);
+    if (!mail.ok) return sendJson(res, 500, { error: mail.error || "Rechnung konnte nicht versendet werden." });
+    const sentInvoice = normalizeInvoiceRecord({
+      ...invoice,
+      status: "sent",
+      sentAt: new Date().toISOString(),
+      emailMessageId: mail.messageId || "",
+      updatedAt: new Date().toISOString(),
+      auditLog: [...(invoice.auditLog || []), createAuditEntry("mail-sent", session.actor, `Rechnung an ${invoice.customerEmail} versendet.`)]
+    }, appData.invoiceSettings);
+    appData.invoices = upsertInvoice(appData.invoices, sentInvoice, appData.invoiceSettings);
+    await writeAppData(appData);
+    return sendJson(res, 200, invoiceResponse(appData, sentInvoice, "Rechnung per E-Mail versendet."));
+  }
+
+  if (action === "invoice-archive") {
+    const invoiceId = String(body.invoiceId || "").trim();
+    const current = findInvoice(appData.invoices, invoiceId);
+    if (!current) return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
+    if (current.status === "draft") return sendJson(res, 400, { error: "Entwürfe bitte löschen statt archivieren." });
+    const archived = archiveInvoiceRecord(current, session.actor);
+    appData.invoices = upsertInvoice(appData.invoices, archived, appData.invoiceSettings);
+    await writeAppData(appData);
+    return sendJson(res, 200, invoiceResponse(appData, archived, "Rechnung archiviert."));
+  }
+
+  if (action === "invoice-create-correction" || action === "invoice-create-storno") {
+    const invoiceId = String(body.invoiceId || "").trim();
+    const current = findInvoice(appData.invoices, invoiceId);
+    if (!current) return sendJson(res, 404, { error: "Rechnung nicht gefunden." });
+    if (current.status === "draft") return sendJson(res, 400, { error: "Bitte zuerst die Originalrechnung finalisieren." });
+    const type = action === "invoice-create-storno" ? "storno" : "correction";
+    const draft = createFollowUpInvoice(current, type, session.actor, appData.invoiceSettings);
+    appData.invoices.unshift(draft);
+    await writeAppData(appData);
+    return sendJson(res, 200, invoiceResponse(appData, draft, type === "storno" ? "Stornorechnung als Entwurf angelegt." : "Korrekturrechnung als Entwurf angelegt."));
+  }
+
+  return sendJson(res, 400, { error: "Unbekannte Rechnungsaktion." });
+}
+
+function invoiceSession(appData, body) {
+  const adminSession = verifyToken(body.adminToken || "", "admin");
+  if (adminSession) return { ok: true, actor: "Admin" };
+  const employeeSession = verifyToken(body.employeeToken || "", "employee");
+  const employee = employeeSession?.employee || "";
+  if (employee && employeeIsChef(appData.settings, employee)) {
+    return { ok: true, actor: employee };
+  }
+  const terminalSession = verifyToken(body.terminalToken || "", "terminal");
+  if (terminalSession?.terminal) {
+    return { ok: true, actor: "Terminal" };
+  }
+  return { ok: false, error: "Bitte als Chef oder Admin anmelden." };
+}
+
+function invoiceResponse(appData, invoice, message = "") {
+  return {
+    ok: true,
+    message,
+    invoice: normalizeInvoiceRecord(invoice, appData.invoiceSettings || {}),
+    invoices: normalizeInvoices(appData.invoices || [], appData.invoiceSettings || {}),
+    invoiceSettings: normalizeInvoiceSettings(appData.invoiceSettings || {})
+  };
+}
+
+function findInvoice(invoices = [], invoiceId = "") {
+  return normalizeInvoices(invoices).find((invoice) => invoice.id === invoiceId) || null;
+}
+
+function upsertInvoice(invoices = [], invoice, settings) {
+  const normalized = normalizeInvoiceRecord(invoice, settings);
+  const list = normalizeInvoices(invoices, settings).filter((item) => item.id !== normalized.id);
+  list.unshift(normalized);
+  return normalizeInvoices(list, settings);
+}
+
+function findReadyCustomerSource(appData, sourceDate = "", sourceCustomerId = "") {
+  const report = appData.dayReports?.[sourceDate];
+  if (!report || !Array.isArray(report.invoiceCustomers)) return { report: null, customer: null };
+  const customer = report.invoiceCustomers.find((item, index) => String(item.id || index) === sourceCustomerId);
+  return { report, customer: customer || null };
+}
+
+function findInvoiceBySource(invoices = [], sourceDate = "", sourceCustomerId = "") {
+  return normalizeInvoices(invoices).find((invoice) => invoice.sourceDate === sourceDate && invoice.sourceCustomerId === sourceCustomerId && invoice.status !== "archived") || null;
+}
+
+function markSourceCustomerDone(appData, invoice) {
+  const sourceDate = cleanInvoiceDateValue(invoice.sourceDate);
+  const sourceCustomerId = String(invoice.sourceCustomerId || "").trim();
+  const report = appData.dayReports?.[sourceDate];
+  if (!report || !Array.isArray(report.invoiceCustomers) || !sourceCustomerId) return;
+  report.invoiceCustomers = report.invoiceCustomers.map((customer, index) => {
+    if (String(customer.id || index) !== sourceCustomerId) return customer;
+    return {
+      ...customer,
+      invoiceReady: true,
+      invoiceDone: true,
+      invoiceDoneAt: String(customer.invoiceDoneAt || "").trim() || new Date().toISOString(),
+      invoiceGeneratedId: invoice.id || ""
+    };
+  });
+  report.updatedAt = new Date().toISOString();
+}
+
+function validateInvoice(invoice, options = {}) {
+  const issues = [];
+  if (!safeField(invoice.customerName)) issues.push("Kundenname fehlt");
+  if (!safeField(invoice.customerAddress)) issues.push("Kundenadresse fehlt");
+  if (!cleanInvoiceDateValue(invoice.invoiceDate)) issues.push("Belegdatum fehlt");
+  if (!cleanInvoiceDateValue(invoice.serviceDate)) issues.push("Leistungsdatum fehlt");
+  if (!Array.isArray(invoice.positions) || !invoice.positions.some((position) => safeField(position.description) && moneyNumber(position.unitPrice) > 0 && moneyNumber(position.quantity) > 0)) {
+    issues.push("Mindestens eine Rechnungsposition mit Betrag fehlt");
+  }
+  if (options.requireEmail && !safeField(invoice.customerEmail)) issues.push("Rechnungsmail fehlt");
+  if (options.requireNumber && !safeField(invoice.invoiceNumber)) issues.push("Rechnungsnummer fehlt");
+  return issues;
+}
+
+function safeField(value) {
+  return String(value || "").trim();
+}
+
+function cleanInvoiceDateValue(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim()) ? String(value).trim() : "";
+}
+
+function moneyNumber(value) {
+  const number = Number(String(value == null ? "" : value).replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(number) ? Math.round(number * 100) / 100 : 0;
+}
+
+function bufferToPdfDataUrl(buffer) {
+  return `data:application/pdf;base64,${Buffer.from(buffer).toString("base64")}`;
 }
 
 async function saveOffer(body, res) {
@@ -630,6 +960,9 @@ function upsertCustomerDirectory(appData, customers) {
 }
 
 function customerDirectoryEntry(item = {}) {
+  const sourceType = ["event", "advertising", "manual"].includes(String(item.sourceType || "").trim())
+    ? String(item.sourceType || "").trim()
+    : "event";
   return {
     id: String(item.id || customerDirectoryKey(item) || `customer-${Date.now()}-${Math.random().toString(16).slice(2)}`),
     name: String(item.name || "").trim().slice(0, 160),
@@ -638,6 +971,7 @@ function customerDirectoryEntry(item = {}) {
     email: String(item.email || "").trim().slice(0, 180),
     address: String(item.address || "").trim().slice(0, 600),
     paymentMethod: String(item.paymentMethod || "").trim().slice(0, 40),
+    sourceType,
     tip: String(item.tip || "").trim().slice(0, 160),
     note: String(item.note || "").trim().slice(0, 600),
     createdAt: String(item.createdAt || new Date().toISOString()).slice(0, 80),
