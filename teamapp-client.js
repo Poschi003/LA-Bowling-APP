@@ -12341,6 +12341,12 @@ function openCustomerInvoiceBuilderForRow(button) {
   const bowling = parseMoneyInput(value("bowlingAmount"));
   const tip = parseMoneyInput(value("tip"));
   const total = bowling + gastro.total + tip;
+  const receiptSourceRaw = value("receiptData") || value("receiptUrl") || value("receiptPath") || value("bowlingReceiptData") || value("bowlingReceiptUrl") || value("bowlingReceiptPath");
+  const receiptSource = receiptSourceRaw && !receiptSourceRaw.startsWith("data:")
+    ? new URL(receiptSourceRaw, window.location.href).href
+    : receiptSourceRaw;
+  const receiptIsPdf = /^data:application\/pdf/i.test(receiptSource) || /\.pdf(?:$|[?#])/i.test(receiptSource);
+  const receiptSourceJson = JSON.stringify(receiptSource || "").replace(/</g, "\\u003c");
   const dateKey = state.invoiceDate || todayKey();
   const dateLabel = new Date(`${dateKey}T12:00:00`).toLocaleDateString("de-DE", {
     weekday: "long",
@@ -12364,6 +12370,16 @@ function openCustomerInvoiceBuilderForRow(button) {
       @page { size: A4; margin: 18mm; }
       * { box-sizing: border-box; }
       body { margin: 0; color: #172033; font: 14px/1.45 Arial, sans-serif; }
+      .toolbar { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; padding: 14px 18px; background: #111827; }
+      .toolbar button { border: 0; border-radius: 7px; padding: 11px 16px; color: #fff; background: #e30613; font-weight: 700; cursor: pointer; }
+      .toolbar button.secondary { background: #fff; color: #172033; }
+      .toolbar button:disabled { opacity: .45; cursor: not-allowed; }
+      .page { width: 210mm; min-height: 297mm; margin: 18px auto; padding: 18mm; background: #fff; box-shadow: 0 4px 22px #0002; }
+      #receipt-page { display: none; }
+      body.show-receipt #info-page { display: none; }
+      body.show-receipt #receipt-page { display: block; }
+      .receipt-image { display: block; width: 100%; height: auto; max-height: 245mm; object-fit: contain; }
+      .receipt-missing { padding: 30px; text-align: center; color: #667085; background: #f5f7fa; }
       header { padding-bottom: 18px; border-bottom: 3px solid #e30613; }
       h1 { margin: 0; font-size: 25px; }
       header p { margin: 5px 0 0; color: #667085; }
@@ -12376,7 +12392,17 @@ function openCustomerInvoiceBuilderForRow(button) {
       .line.total { margin-top: 8px; padding: 13px 12px; border: 0; background: #fff1f2; color: #c90012; font-size: 18px; }
       .notes { white-space: pre-line; }
       footer { margin-top: 28px; color: #667085; font-size: 11px; }
+      @media print {
+        body { background: #fff; }
+        .toolbar { display: none !important; }
+        .page { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+      }
     </style></head><body>
+      <nav class="toolbar">
+        <button type="button" onclick="printInformation()">1. Rechnungsinformationen als PDF</button>
+        <button class="secondary" type="button" onclick="printReceipt()" ${receiptSource ? "" : "disabled"}>2. Gescannten Beleg als PDF</button>
+      </nav>
+      <main class="page" id="info-page">
       <header><h1>LA-Bowling · Rechnungsinformationen</h1><p>Unterlage zum Erstellen und Versenden der Rechnung</p></header>
       <section><h2>Kunde</h2><div class="address"><b>${escapeHtml(value("name") || "Kunde")}</b><br>${escapeHtml(value("address") || "Keine Rechnungsadresse eingetragen")}</div>
         ${line("Rechnungsdatum", dateLabel)}
@@ -12401,10 +12427,31 @@ function openCustomerInvoiceBuilderForRow(button) {
         <p class="notes"><b>Notiz:</b> ${escapeHtml(value("note") || "-")}</p>
       </section>
       <footer>Kunde auf Rechnung wurde in der LA-Bowling TeamApp erfasst.</footer>
-      <script>window.addEventListener("load", () => setTimeout(() => window.print(), 150));<\/script>
+      </main>
+      <main class="page" id="receipt-page">
+        <header><h1>LA-Bowling · Rechnungsbeleg</h1><p>${escapeHtml(value("name") || "Kunde")} · ${escapeHtml(dateLabel)}</p></header>
+        <section>${receiptSource && !receiptIsPdf ? `<img class="receipt-image" src="${escapeHtml(receiptSource)}" alt="Gescanntes Rechnungsdokument">` : receiptIsPdf ? `<p class="receipt-missing">Der Beleg liegt bereits als PDF vor und wird über die zweite Schaltfläche direkt geöffnet.</p>` : `<p class="receipt-missing">Kein gescannter Beleg vorhanden.</p>`}</section>
+      </main>
+      <script>
+        const receiptSource = ${receiptSourceJson};
+        const receiptIsPdf = ${receiptIsPdf ? "true" : "false"};
+        function printInformation() {
+          document.body.classList.remove("show-receipt");
+          setTimeout(() => window.print(), 50);
+        }
+        function printReceipt() {
+          if (!receiptSource) return;
+          if (receiptIsPdf) {
+            window.open(receiptSource, "_blank");
+            return;
+          }
+          document.body.classList.add("show-receipt");
+          setTimeout(() => window.print(), 50);
+        }
+      <\/script>
     </body></html>`);
   printWindow.document.close();
-  showToast("PDF-Ansicht geöffnet. Im Druckfenster 'Als PDF speichern' wählen.");
+  showToast("PDF-Ausgabe geöffnet. Dort Rechnungsinfos und Beleg getrennt speichern.");
 }
 
 async function previewCurrentDeskInvoicePdf(button, download = false) {
