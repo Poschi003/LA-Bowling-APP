@@ -12367,7 +12367,24 @@ async function openCustomerInvoiceBuilderForRow(button) {
     if (result?.invoice) {
       setInvoiceDeskDraftFromInvoice(result.invoice);
       renderCustomerInvoiceDesk();
-      $("#customerInvoiceBuilderSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const pdfResult = await api("/api/state", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "invoice-preview-pdf",
+          terminalToken: state.invoiceTerminalToken,
+          invoice: result.invoice
+        })
+      });
+      if (!pdfResult?.pdfData) {
+        throw new Error("Die Rechnung wurde vorbereitet, aber die PDF konnte nicht erzeugt werden.");
+      }
+      setInvoiceDeskDraftFromInvoice({
+        ...result.invoice,
+        pdfData: pdfResult.pdfData,
+        pdfFileName: pdfResult.pdfFileName || result.invoice.pdfFileName
+      });
+      downloadDataUrlFile(pdfResult.pdfData, pdfResult.pdfFileName || "rechnung.pdf");
+      showToast("Rechnung als PDF erstellt und heruntergeladen.");
     }
   } catch (error) {
     if (!readyWasSet) setReportFieldValue(row, "invoiceReady", "false");
