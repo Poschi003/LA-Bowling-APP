@@ -11875,7 +11875,7 @@ function invoiceRowHtml(item = {}) {
           <div class="invoice-entry-actions">
             <button class="secondary" data-save-invoice-draft type="button">Änderungen speichern</button>
             <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut an Chef senden" : "Fertig für Chef"}</button>
-            <button class="secondary" data-open-invoice-builder type="button">${linkedInvoice ? "Rechnung/PDF öffnen" : "Rechnung als PDF erstellen"}</button>
+            <button class="secondary" data-open-invoice-builder type="button">Rechnungsinformationen als PDF</button>
             <button class="secondary danger-lite" data-remove-report-entry type="button">Vollständig löschen</button>
           </div>
         </section>
@@ -12328,73 +12328,83 @@ async function runCustomerInvoiceMutation(action, extra = {}, fallbackMessage = 
   return result;
 }
 
-async function openCustomerInvoiceBuilderForRow(button) {
+function openCustomerInvoiceBuilderForRow(button) {
   const row = button.closest('[data-report-entry="invoice"]');
   if (!row) return;
-  const sourceCustomerId = String(row.dataset.id || "").trim();
-  if (!sourceCustomerId) {
-    showToast("Bitte Rechnungskunde zuerst speichern.");
+  const value = (name) => String(reportFieldValue(row, name) || "").trim();
+  const gastro = invoiceGastroSplit({
+    gastroAmount: value("gastroAmount"),
+    gastroDrinksAmount: value("gastroDrinksAmount"),
+    gastroFoodAmount: value("gastroFoodAmount"),
+    gastroOtherAmount: value("gastroOtherAmount")
+  });
+  const bowling = parseMoneyInput(value("bowlingAmount"));
+  const tip = parseMoneyInput(value("tip"));
+  const total = bowling + gastro.total + tip;
+  const dateKey = state.invoiceDate || todayKey();
+  const dateLabel = new Date(`${dateKey}T12:00:00`).toLocaleDateString("de-DE", {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  });
+  const line = (label, content, strong = false) => `
+    <div class="line${strong ? " total" : ""}">
+      <span>${escapeHtml(label)}</span><b>${escapeHtml(content || "-")}</b>
+    </div>`;
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    showToast("Bitte Pop-ups erlauben, damit die PDF-Ansicht geöffnet werden kann.");
     return;
   }
-  const problems = invoiceRowReadyProblems(row);
-  if (problems.length) {
-    showToast(`Noch offen: ${problems.join(", ")}.`);
-    return;
-  }
-  const oldText = button?.textContent || "";
-  if (button) {
-    button.disabled = true;
-    button.textContent = "Öffnet...";
-  }
-  const readyWasSet = reportFieldValue(row, "invoiceReady") === "true";
-  if (!readyWasSet) {
-    setReportFieldValue(row, "invoiceReady", "true");
-    if (!reportFieldValue(row, "invoiceReadyAt")) {
-      setReportFieldValue(row, "invoiceReadyAt", new Date().toISOString());
-    }
-  }
-  try {
-    const saved = await saveCustomerInvoiceDeskReport(null, "Rechnungskunde für die Rechnung vorbereitet.");
-    if (!saved) {
-      if (!readyWasSet) setReportFieldValue(row, "invoiceReady", "false");
-      return;
-    }
-    const result = await runCustomerInvoiceMutation(
-      "invoice-from-ready-customer",
-      { sourceDate: state.invoiceDate || todayKey(), sourceCustomerId },
-      "Rechnungsentwurf geöffnet."
-    );
-    if (result?.invoice) {
-      setInvoiceDeskDraftFromInvoice(result.invoice);
-      renderCustomerInvoiceDesk();
-      const pdfResult = await api("/api/state", {
-        method: "POST",
-        body: JSON.stringify({
-          action: "invoice-preview-pdf",
-          terminalToken: state.invoiceTerminalToken,
-          invoice: result.invoice
-        })
-      });
-      if (!pdfResult?.pdfData) {
-        throw new Error("Die Rechnung wurde vorbereitet, aber die PDF konnte nicht erzeugt werden.");
-      }
-      setInvoiceDeskDraftFromInvoice({
-        ...result.invoice,
-        pdfData: pdfResult.pdfData,
-        pdfFileName: pdfResult.pdfFileName || result.invoice.pdfFileName
-      });
-      downloadDataUrlFile(pdfResult.pdfData, pdfResult.pdfFileName || "rechnung.pdf");
-      showToast("Rechnung als PDF erstellt und heruntergeladen.");
-    }
-  } catch (error) {
-    if (!readyWasSet) setReportFieldValue(row, "invoiceReady", "false");
-    showError(error);
-  } finally {
-    if (button?.isConnected) {
-      button.disabled = false;
-      button.textContent = oldText;
-    }
-  }
+  printWindow.opener = null;
+  printWindow.document.write(`<!doctype html>
+    <html lang="de"><head><meta charset="utf-8"><title>Rechnungsinformationen ${escapeHtml(value("name") || "Kunde")}</title>
+    <style>
+      @page { size: A4; margin: 18mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #172033; font: 14px/1.45 Arial, sans-serif; }
+      header { padding-bottom: 18px; border-bottom: 3px solid #e30613; }
+      h1 { margin: 0; font-size: 25px; }
+      header p { margin: 5px 0 0; color: #667085; }
+      section { margin-top: 22px; }
+      h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: .04em; }
+      .address { padding: 15px; background: #f5f7fa; border-radius: 8px; white-space: pre-line; }
+      .line { display: flex; justify-content: space-between; gap: 24px; padding: 8px 0; border-bottom: 1px solid #e3e7ed; }
+      .line span { color: #667085; }
+      .line b { text-align: right; }
+      .line.total { margin-top: 8px; padding: 13px 12px; border: 0; background: #fff1f2; color: #c90012; font-size: 18px; }
+      .notes { white-space: pre-line; }
+      footer { margin-top: 28px; color: #667085; font-size: 11px; }
+    </style></head><body>
+      <header><h1>LA-Bowling · Rechnungsinformationen</h1><p>Unterlage zum Erstellen und Versenden der Rechnung</p></header>
+      <section><h2>Kunde</h2><div class="address"><b>${escapeHtml(value("name") || "Kunde")}</b><br>${escapeHtml(value("address") || "Keine Rechnungsadresse eingetragen")}</div>
+        ${line("Rechnungsdatum", dateLabel)}
+        ${line("Rechnungs-E-Mail", value("email"))}
+        ${line("Ansprechpartner", value("contact"))}
+        ${line("Telefon", value("phone"))}
+      </section>
+      <section><h2>Beträge</h2>
+        ${line("Bowling", formatReportMoney(bowling))}
+        ${line("Speisen", formatReportMoney(gastro.food))}
+        ${line("Getränke", formatReportMoney(gastro.drinks))}
+        ${line("Sonstiges", formatReportMoney(gastro.other))}
+        ${line("Gastro gesamt", formatReportMoney(gastro.total), true)}
+        ${line("Tipp", formatReportMoney(tip))}
+        ${line("Rechnungsbetrag", formatReportMoney(total), true)}
+        ${line("Zahlungsart", value("paymentMethod"))}
+      </section>
+      <section><h2>Zusatzinformationen</h2>
+        ${line("In Pentacode eingetragen", value("pentacodeEntered") === "true" ? "Ja" : value("pentacodeEntered") === "false" ? "Nein" : "Nicht angegeben")}
+        ${line("Rechnungsbeleg", value("receiptName") || value("bowlingReceiptName") || "Kein Belegname")}
+        <p class="notes"><b>Sonstiges:</b> ${escapeHtml(value("gastroOtherNote") || "-")}</p>
+        <p class="notes"><b>Notiz:</b> ${escapeHtml(value("note") || "-")}</p>
+      </section>
+      <footer>Kunde auf Rechnung wurde in der LA-Bowling TeamApp erfasst.</footer>
+      <script>window.addEventListener("load", () => setTimeout(() => window.print(), 150));<\/script>
+    </body></html>`);
+  printWindow.document.close();
+  showToast("PDF-Ansicht geöffnet. Im Druckfenster 'Als PDF speichern' wählen.");
 }
 
 async function previewCurrentDeskInvoicePdf(button, download = false) {
