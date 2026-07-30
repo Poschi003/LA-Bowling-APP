@@ -40,7 +40,7 @@
   weather: null,
   weatherLoading: false,
   terminalToken: "",
-  terminalTab: "tasks",
+  terminalTab: "today",
   terminalDate: "",
   terminalOpenDates: [],
   terminalOpenDaysExpanded: false,
@@ -63,6 +63,8 @@
   tipOverview: { employees: [], totalEarned: "0.00", totalPaid: "0.00", totalOpen: "0.00" },
   terminalSchedule: {},
   terminalTasks: [],
+  terminalTasksExpanded: false,
+  terminalMessagesExpanded: false,
   terminalReminders: [],
   terminalCleaningTemplates: [],
   terminalWeeklyCleaningCompletions: {},
@@ -400,6 +402,12 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function formatShortTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
 }
 
 function taskFrequencyLabel(task = {}) {
@@ -7889,24 +7897,77 @@ function reportPreviewFromForm() {
   };
 }
 
+function terminalWorkspaceTab(value) {
+  const legacyTabs = {
+    tasks: "today",
+    checks: "today",
+    assignments: "employees",
+    service: "employees",
+    tables: "tables",
+    finance: "closing",
+    tips: "closing",
+    report: "closing",
+    cleaning: "today"
+  };
+  const tab = legacyTabs[String(value || "")] || String(value || "");
+  return ["today", "tables", "employees", "closing", "orders", "offers"].includes(tab) ? tab : "today";
+}
+
+function terminalRelativeDate(offset = 0) {
+  const date = new Date(`${todayKey()}T12:00:00`);
+  date.setDate(date.getDate() + Number(offset || 0));
+  return isoDate(date);
+}
+
+function terminalIsFuturePreview(dateKey) {
+  return String(dateKey || "") > todayKey();
+}
+
+function renderTerminalDateNavigator(dateKey) {
+  const picker = $("#terminalDatePicker");
+  const sidebarPicker = $("#terminalSidebarDatePicker");
+  const tomorrow = terminalRelativeDate(1);
+  if (picker) {
+    picker.value = dateKey;
+    picker.max = tomorrow;
+  }
+  if (sidebarPicker) {
+    sidebarPicker.value = dateKey;
+    sidebarPicker.max = tomorrow;
+  }
+  $$('[data-terminal-date-shortcut]').forEach((button) => {
+    const targetDate = button.dataset.terminalDateShortcut === "tomorrow" ? tomorrow : todayKey();
+    button.classList.toggle("active", targetDate === dateKey);
+  });
+  const futureHint = $("#terminalFuturePreview");
+  if (futureHint) {
+    const preview = terminalIsFuturePreview(dateKey);
+    futureHint.classList.toggle("hidden", !preview);
+    futureHint.textContent = preview
+      ? `${formatDate(dateKey)} · Vorschau`
+      : "";
+  }
+}
+
 function renderTerminal() {
   const panel = $("#terminal");
   if (!panel) return;
   const todoMode = isTodoMode();
-  if (todoMode && !["tasks", "checks"].includes(state.terminalTab)) state.terminalTab = "tasks";
+  panel.classList.toggle("terminal-dashboard-mode", Boolean(state.terminalToken) && isTerminalMode() && !todoMode);
+  if (todoMode) state.terminalTab = "today";
   if ($("#terminalTitle")) $("#terminalTitle").textContent = "Tages-Terminal";
   if ($("#terminalCodeLabel")) $("#terminalCodeLabel").textContent = todoMode ? "TO-DO-Code" : "Terminal-Code";
   if ($("#terminalLoginHint")) $("#terminalLoginHint").textContent = todoMode
     ? "Willkommen bei der LA-Bowling To-do-App! Bitte melden Sie sich an."
     : "Willkommen bei der LA-Bowling TerminalApp! Bitte melden Sie sich an.";
   if ($("#unlockTerminal")) $("#unlockTerminal").textContent = "Login";
-  $(".terminal-tabs")?.classList.remove("hidden");
   document.body.classList.toggle("terminal-login-mode", (isTerminalMode() || todoMode) && !state.terminalToken);
   $("#terminalLoginBrand")?.classList.toggle("hidden", Boolean(state.terminalToken));
   $("#terminalLogin")?.classList.toggle("hidden", Boolean(state.terminalToken));
   $("#terminalContent")?.classList.toggle("hidden", !state.terminalToken);
   const dateKey = state.terminalDate || todayKey();
   state.terminalDate = dateKey;
+  state.terminalTab = terminalWorkspaceTab(state.terminalTab);
   $("#terminalDate").textContent = formatLongDate(dateKey);
   if (!state.terminalToken) {
     normalizeGermanDisplay();
@@ -7917,13 +7978,15 @@ function renderTerminal() {
   const entries = state.terminalEntries || {};
   const report = state.terminalReport || {};
   const reportClosed = Boolean(report.closed);
+  const reportLocked = reportClosed || terminalIsFuturePreview(dateKey);
   renderTerminalTabs();
-  renderTerminalDayMeta(dateKey, report, reportClosed);
+  renderTerminalDateNavigator(dateKey);
+  renderTerminalDayMeta(dateKey, report, reportLocked);
   renderTerminalCorrectionBanner(dateKey, report);
   renderTerminalOpenDays(dateKey);
-  renderTerminalLeaderMessages(report, reportClosed);
-  renderTerminalTasks(report, reportClosed);
-  renderHandovers(report, reportClosed);
+  renderTerminalLeaderMessages(report, reportLocked);
+  renderTerminalTasks(report, reportLocked);
+  renderHandovers(report, reportLocked);
   renderToiletStatus(report);
   renderTerminalChecks(report);
   renderTerminalAssignments(dateKey);
@@ -7931,10 +7994,18 @@ function renderTerminal() {
   checkTerminalReminders(report, reportClosed);
   renderTerminalCosts(dateKey, employees);
   renderTipDistribution();
-  $(".terminal-add")?.classList.remove("hidden");
+  $(".terminal-add")?.classList.toggle("hidden", reportLocked);
+  const activeEmployees = employees.filter((employee) => {
+    const entry = entries[employee]?.[dateKey] || {};
+    return Boolean(entry.from && !entry.to);
+  });
+  renderTerminalWorktimePreview(dateKey, employees, entries, reportLocked);
+  const activeEmployeeCount = $("#terminalActiveEmployeeCount");
+  if (activeEmployeeCount) activeEmployeeCount.textContent = `${activeEmployees.length} ${activeEmployees.length === 1 ? "aktiv" : "aktiv"}`;
   $("#terminalEmployees").innerHTML = employees.length ? employees.map((employee) => {
     const entry = entries[employee]?.[dateKey] || {};
     const hours = paidHours(entry);
+    const hasOpenBreak = (entry.breaks || []).some((item) => item?.from && !item?.to);
     const planned = terminalIsPlanned(employee);
     const plannedShift = terminalPlannedShiftFor(employee);
     const shiftText = dayReportShiftText(entry);
@@ -7952,18 +8023,19 @@ function renderTerminal() {
           <div class="terminal-time-toolbar">
             <strong>Arbeitszeiten</strong>
             <div class="terminal-time-toolbar-actions">
-              <button class="secondary terminal-add-segment-button" type="button" data-add-time-segment="${escapeHtml(employee)}" title="Arbeitszeit hinzufügen" aria-label="Arbeitszeit hinzufügen" ${reportClosed ? "disabled" : ""}>+</button>
-              <button class="secondary terminal-save-times-button" data-terminal-adjust="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Speichern</button>
+              <button class="secondary terminal-add-segment-button" type="button" data-add-time-segment="${escapeHtml(employee)}" title="Arbeitszeit hinzufügen" aria-label="Arbeitszeit hinzufügen" ${reportLocked ? "disabled" : ""}>+</button>
+              <button class="secondary terminal-save-times-button" data-terminal-adjust="${escapeHtml(employee)}" ${reportLocked ? "disabled" : ""}>Speichern</button>
             </div>
           </div>
           <div class="terminal-time-segments">
-            ${timeSegmentsForEdit(entry).map((segment, index) => terminalTimeSegmentRowHtml(segment, index, reportClosed)).join("")}
+            ${timeSegmentsForEdit(entry).map((segment, index) => terminalTimeSegmentRowHtml(segment, index, reportLocked)).join("")}
           </div>
         </div>
         <div class="terminal-actions">
-          <button class="primary" data-terminal-punch="start" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstbeginn</button>
-          <button class="secondary" data-terminal-punch="end" data-terminal-employee="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Dienstende</button>
-          <button class="secondary danger-lite terminal-remove-button" data-terminal-remove="${escapeHtml(employee)}" ${reportClosed ? "disabled" : ""}>Entfernen</button>
+          <button class="primary" data-terminal-punch="start" data-terminal-employee="${escapeHtml(employee)}" ${reportLocked ? "disabled" : ""}>Eintragen</button>
+          <button class="secondary" data-terminal-punch="end" data-terminal-employee="${escapeHtml(employee)}" ${reportLocked ? "disabled" : ""}>Ausstempeln</button>
+          <button class="secondary" data-terminal-break="${hasOpenBreak ? "end" : "start"}" data-terminal-employee="${escapeHtml(employee)}" ${reportLocked || !entry.from || Boolean(entry.to) ? "disabled" : ""}>${hasOpenBreak ? "Pause beenden" : "Pause"}</button>
+          <button class="secondary danger-lite terminal-remove-button" data-terminal-remove="${escapeHtml(employee)}" ${reportLocked ? "disabled" : ""}>Entfernen</button>
         </div>
       </article>
     `;
@@ -7984,7 +8056,7 @@ function renderTerminal() {
   renderReportEntryLists(report);
   renderReportDocuments(report);
   renderDayReportA4Summary(dateKey, report);
-  setDayReportLocked(reportClosed, report);
+  setDayReportLocked(reportLocked, report);
   applyDayReportVisibility();
 
   const select = $("#terminalAddEmployee");
@@ -8005,6 +8077,33 @@ function terminalTimeSegmentRowHtml(segment = {}, index = 0, disabled = false) {
       <button class="secondary terminal-remove-segment-button" type="button" data-remove-time-segment title="Arbeitszeit entfernen" aria-label="Arbeitszeit entfernen" ${disabled || index === 0 ? "disabled" : ""}>×</button>
     </div>
   `;
+}
+
+function renderTerminalWorktimePreview(dateKey, employees = [], entries = {}, reportLocked = false) {
+  const target = $("#terminalWorktimePreviewList");
+  const count = $("#terminalWorktimePreviewCount");
+  if (!target) return;
+  const active = employees.map((employee) => {
+    const entry = entries[employee]?.[dateKey] || {};
+    if (!entry.from || entry.to) return null;
+    const openSegment = [...timeSegmentsForEdit(entry)].reverse().find((segment) => segment.from && !segment.to);
+    return { employee, start: openSegment?.from || entry.from };
+  }).filter(Boolean);
+  if (count) count.textContent = `${active.length} aktiv`;
+  target.innerHTML = active.length ? `
+    <div class="terminal-worktime-preview-people">
+      ${active.slice(0, 3).map((item) => `
+        <div class="terminal-worktime-preview-person">
+          <strong>${escapeHtml(item.employee)}</strong>
+          <span>seit ${escapeHtml(item.start)}</span>
+        </div>
+      `).join("")}
+    </div>
+    ${active.length > 3 ? `<p class="hint">+ ${active.length - 3} weitere aktiv</p>` : ""}
+  ` : `<p class="terminal-worktime-empty">Niemand aktiv</p>`;
+  $$('[data-terminal-worktime-focus]').forEach((button) => {
+    button.disabled = reportLocked;
+  });
 }
 
 function collectTerminalTimeSegments(card) {
@@ -8036,17 +8135,20 @@ function applyDayReportVisibility() {
 }
 
 function renderTerminalTabs() {
-  const active = state.terminalTab === "cleaning" ? "tasks" : state.terminalTab || "tasks";
+  const active = terminalWorkspaceTab(state.terminalTab);
   state.terminalTab = active;
   $$(".terminal-tab").forEach((button) => button.classList.toggle("active", button.dataset.terminalTab === active));
-  $("#terminalTasksSection")?.classList.toggle("hidden", active !== "tasks");
-  $("#terminalChecksSection")?.classList.toggle("hidden", active !== "checks");
-  $("#terminalAssignmentsSection")?.classList.toggle("hidden", active !== "assignments");
+  $("#terminalTodaySection")?.classList.toggle("hidden", active !== "today");
+  $("#terminalTasksSection")?.classList.toggle("hidden", active !== "today");
+  $("#terminalChecksSection")?.classList.toggle("hidden", active !== "today");
+  $("#terminalAssignmentsSection")?.classList.toggle("hidden", active !== "employees");
   $("#terminalTablesSection")?.classList.toggle("hidden", active !== "tables");
-  $("#terminalServiceSection")?.classList.toggle("hidden", active !== "service");
-  $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "finance");
-  $("#terminalTipsSection")?.classList.toggle("hidden", active !== "tips");
-  $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "report");
+  $("#terminalServiceSection")?.classList.toggle("hidden", active !== "employees");
+  $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "closing");
+  $("#terminalTipsSection")?.classList.toggle("hidden", active !== "closing");
+  $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "closing");
+  $("#terminalOrdersSection")?.classList.toggle("hidden", active !== "orders");
+  $("#terminalOffersSection")?.classList.toggle("hidden", active !== "offers");
 }
 
 function normalizeTerminalTableConfig(value = {}) {
@@ -10740,25 +10842,40 @@ function renderTerminalDayMeta(dateKey, report, reportClosed) {
   const openingInput = $("#terminalOpeningHours");
   const leaderSelect = $("#terminalShiftLeader");
   const hasSavedDayHead = Boolean(report.openingHours || report.shiftLeader);
-  const showForm = !hasSavedDayHead || state.terminalDayMetaEditing;
+  const showForm = Boolean(state.terminalDayMetaEditing);
   $("#terminalDayHeadForm")?.classList.toggle("hidden", !showForm);
   const display = $("#terminalDayMetaDisplay");
+  const opening = report.openingHours || openingHoursFor(dateKey) || "Öffnung offen";
+  const leader = report.shiftLeader || "Nicht festgelegt";
+  const day = new Date(`${dateKey}T12:00:00`);
+  if ($("#terminalSidebarWeekday")) {
+    $("#terminalSidebarWeekday").textContent = dateKey === todayKey()
+      ? "Heute"
+      : day.toLocaleDateString("de-DE", { weekday: "long" });
+  }
+  if ($("#terminalSidebarDate")) {
+    $("#terminalSidebarDate").textContent = day.toLocaleDateString("de-DE", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric"
+    });
+  }
+  if ($("#terminalSidebarOpening")) $("#terminalSidebarOpening").textContent = opening;
   if (display) {
-    const opening = report.openingHours || openingHoursFor(dateKey) || "Öffnungszeit offen";
-    const leader = report.shiftLeader || "Schichtleitung offen";
-    display.classList.toggle("hidden", showForm);
+    display.classList.remove("hidden");
     display.innerHTML = `
-      <div>
-        <h3>${escapeHtml(formatLongDate(dateKey))}</h3>
-        <p><strong>${escapeHtml(leader)}</strong>${opening ? ` · ${escapeHtml(opening)}` : ""}</p>
-      </div>
-      <button id="editTerminalDayMeta" class="secondary" type="button" ${reportClosed ? "disabled" : ""}>Tageskopf ändern</button>
+      <button id="editTerminalDayMeta" class="terminal-shift-leader-card" type="button" ${reportClosed ? "disabled" : ""}>
+        <span class="terminal-shift-leader-icon" aria-hidden="true">S</span>
+        <span class="terminal-shift-leader-copy">
+          <small>Schichtleitung</small>
+          <strong>${escapeHtml(leader)}</strong>
+        </span>
+        <span class="terminal-shift-leader-arrow" aria-hidden="true">&gt;</span>
+      </button>
     `;
   }
   const summary = $("#terminalDayMetaSummary");
   if (summary) {
-    const opening = report.openingHours || openingHoursFor(dateKey) || "Öffnungszeit offen";
-    const leader = report.shiftLeader || "Schichtleitung offen";
     summary.textContent = hasSavedDayHead
       ? `${formatLongDate(dateKey)} | ${leader} | ${opening}`
       : "Tageskopf speichern, dann die Aufgaben des Tages abarbeiten.";
@@ -10783,6 +10900,11 @@ function renderTerminalOpenDays(dateKey) {
   const target = $("#terminalOpenDaysNav");
   if (!target) return;
   if (!state.terminalToken) {
+    target.classList.add("hidden");
+    target.innerHTML = "";
+    return;
+  }
+  if (!state.terminalCorrectionMode) {
     target.classList.add("hidden");
     target.innerHTML = "";
     return;
@@ -10851,19 +10973,25 @@ function renderTerminalCorrectionBanner(dateKey, report = {}) {
 function renderTerminalLeaderMessages(report = {}, reportClosed = false) {
   const target = $("#terminalLeaderMessages");
   if (!target) return;
+  const section = $("#terminalLeaderMessageSection");
   const checked = new Set((report.terminalMessageChecks || []).map((item) => item.messageId));
   const messages = (state.terminalMessages || []).filter((message) => message && message.active !== false && !checked.has(message.id));
-  target.classList.toggle("hidden", !messages.length);
+  section?.classList.toggle("hidden", terminalWorkspaceTab(state.terminalTab) !== "today");
   if (!messages.length) {
-    target.innerHTML = "";
+    target.innerHTML = `
+      <div class="terminal-message-summary">
+        <strong class="terminal-message-count is-empty">0 neu</strong>
+      </div>
+      <p class="terminal-empty-state">Keine Hinweise</p>
+    `;
     return;
   }
+  const visibleMessages = state.terminalMessagesExpanded ? messages : messages.slice(0, 2);
   target.innerHTML = `
-    <div class="terminal-leader-message-head">
-      <strong>Nachricht an Schichtleitung</strong>
-      <span>${messages.length === 1 ? "1 offene Nachricht" : `${messages.length} offene Nachrichten`}</span>
+    <div class="terminal-message-summary">
+      <strong class="terminal-message-count">${messages.length} neu</strong>
     </div>
-    ${messages.map((message) => `
+    ${visibleMessages.map((message) => `
       <article class="terminal-leader-message">
         <p>${escapeHtml(message.text)}</p>
         <div>
@@ -10872,6 +11000,7 @@ function renderTerminalLeaderMessages(report = {}, reportClosed = false) {
         </div>
       </article>
     `).join("")}
+    ${messages.length > 2 ? `<div class="terminal-message-toggle"><button class="secondary" type="button" data-terminal-toggle-messages="${state.terminalMessagesExpanded ? "compact" : "all"}">${state.terminalMessagesExpanded ? "Weniger" : "Nachrichten öffnen"}</button></div>` : ""}
   `;
 }
 
@@ -10904,11 +11033,48 @@ function renderTerminalTasks(report, reportClosed) {
     ["running", "Laufender Betrieb"],
     ["closing", "Schlussdienst"]
   ];
+  const compactLimit = 3;
+  const allOpenCount = tasks.filter((task) => !done[task.id]).length + cleaningTasks.length;
+  const allCompletedCount = tasks.filter((task) => done[task.id]).length + cleaningCompleted;
+  if (!state.terminalTasksExpanded) {
+    const standardOpenTasks = tasks.filter((task) => !done[task.id]);
+    const previewTasks = standardOpenTasks.slice(0, compactLimit);
+    const remainingPreviewSlots = Math.max(0, compactLimit - previewTasks.length);
+    const previewCleaningTasks = cleaningTasks.slice(0, remainingPreviewSlots);
+    target.innerHTML = `
+      <div class="terminal-task-preview-counts">
+        <span><strong>${allOpenCount}</strong> offen</span>
+        <span><strong>${allCompletedCount}</strong> erledigt</span>
+      </div>
+      <div class="terminal-task-preview-list">
+        ${previewTasks.map((task) => `
+          <article class="terminal-task terminal-task-preview-item">
+            <label>
+              <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
+              <span><strong>${escapeHtml(task.title)}</strong></span>
+            </label>
+          </article>
+        `).join("")}
+        ${previewCleaningTasks.map((task) => `
+          <article class="terminal-task-preview-item terminal-task-preview-cleaning">
+            <span><strong>${escapeHtml(task.title)}</strong><small>Wöchentliche Reinigung</small></span>
+          </article>
+        `).join("")}
+        ${allOpenCount ? "" : `<p class="terminal-empty-state is-done">Alles erledigt</p>`}
+      </div>
+      ${allOpenCount ? `<div class="terminal-task-toggle"><button class="secondary" type="button" data-terminal-toggle-tasks="all">Aufgaben öffnen</button></div>` : ""}
+    `;
+    return;
+  }
+  let visibleRemaining = state.terminalTasksExpanded ? Number.MAX_SAFE_INTEGER : compactLimit;
   const taskHtml = groups.map(([category, label]) => {
     const items = tasks.filter((task) => (task.category || "running") === category);
     const openItems = items.filter((task) => !done[task.id]);
     const completed = items.filter((task) => done[task.id]).length;
     if (!openItems.length) return "";
+    const visibleItems = openItems.slice(0, visibleRemaining);
+    visibleRemaining -= visibleItems.length;
+    if (!visibleItems.length) return "";
     return `
       <section class="terminal-task-group terminal-task-${category}">
         <div class="terminal-task-group-head">
@@ -10916,7 +11082,7 @@ function renderTerminalTasks(report, reportClosed) {
           <span>${completed}/${items.length} erledigt · ${openItems.length} offen</span>
         </div>
         <div class="terminal-task-items">
-          ${openItems.map((task) => `
+          ${visibleItems.map((task) => `
               <article class="terminal-task">
                 <label>
                   <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
@@ -10932,14 +11098,15 @@ function renderTerminalTasks(report, reportClosed) {
       </section>
     `;
   }).join("");
-  const cleaningHtml = cleaningTasks.length ? `
+  const visibleCleaningTasks = cleaningTasks.slice(0, visibleRemaining);
+  const cleaningHtml = visibleCleaningTasks.length ? `
     <section class="terminal-task-group terminal-task-cleaning">
       <div class="terminal-task-group-head">
         <h4>Wöchentliche Reinigung</h4>
         <span>${cleaningCompleted}/${cleaningTotal} diese Woche erledigt · ${cleaningTasks.length} offen</span>
       </div>
       <div class="terminal-task-items">
-        ${cleaningTasks.map((task) => `
+        ${visibleCleaningTasks.map((task) => `
           <article class="terminal-task terminal-cleaning-todo">
             <label>
               <input type="checkbox" data-cleaning-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
@@ -10956,7 +11123,12 @@ function renderTerminalTasks(report, reportClosed) {
       </div>
     </section>
   ` : "";
-  target.innerHTML = taskHtml + cleaningHtml || `<p class="hint">Alle To Do Aufgaben sind erledigt.</p>`;
+  const toggle = allOpenCount ? `
+    <div class="terminal-task-toggle">
+      <button class="secondary" type="button" data-terminal-toggle-tasks="compact">Vorschau anzeigen</button>
+    </div>
+  ` : "";
+  target.innerHTML = taskHtml + cleaningHtml + toggle || `<p class="hint">Alle To Do Aufgaben sind erledigt.</p>`;
 }
 
 function weeklyCleaningTasksForTerminal() {
@@ -11092,20 +11264,44 @@ function renderTerminalChecks(report = {}) {
   const entries = [...reminderChecks, ...toiletOnly]
     .filter((item) => item.checkedAt || item.key)
     .sort((a, b) => String(a.checkedAt || a.key).localeCompare(String(b.checkedAt || b.key)));
-  target.innerHTML = entries.length ? `
-    <div class="terminal-check-list">
-      ${entries.map((item) => `
-        <article class="terminal-check-entry">
-          <div>
-            <strong>${escapeHtml(item.type)}</strong>
-            <span>${escapeHtml(item.text)}</span>
-            ${item.employee ? `<small>${escapeHtml(item.employee)}</small>` : ""}
-          </div>
-          <time>${escapeHtml(item.checkedAt ? formatDateTime(item.checkedAt) : checkTimeFromKey(item.key))}</time>
-        </article>
-      `).join("")}
-    </div>
-  ` : `<p class="hint">Heute wurde noch keine Kontrolle quittiert.</p>`;
+  const controlCards = [
+    { id: "toilet", label: "Toiletten", icon: "T", matches: (item) => /toilet|toilette/.test(`${item.text} ${item.key}`.toLowerCase()) },
+    { id: "lanes", label: "Bahnen", icon: "B", matches: (item) => /bahn|bahnen|lane/.test(`${item.text} ${item.key}`.toLowerCase()) },
+    { id: "kitchen", label: "Küche", icon: "K", matches: (item) => /küche|kueche|kitchen/.test(`${item.text} ${item.key}`.toLowerCase()) }
+  ].map((control) => {
+    const latest = entries.filter(control.matches).slice().sort((a, b) => String(b.checkedAt || "").localeCompare(String(a.checkedAt || "")))[0];
+    const pending = state.pendingReminder && control.matches(state.pendingReminder);
+    const status = latest ? "ok" : pending ? "überfällig" : "offen";
+    const statusClass = latest ? "is-ok" : pending ? "is-overdue" : "is-open";
+    return `
+      <article class="terminal-control-card ${statusClass}">
+        <div>
+          <span class="terminal-control-icon" aria-hidden="true">${control.icon}</span>
+          <strong>${control.label}</strong>
+          <span class="terminal-control-status">${status}</span>
+        </div>
+        <small>${latest?.checkedAt ? `Zuletzt ${escapeHtml(formatShortTime(latest.checkedAt))}` : "Keine Kontrolle"}</small>
+      </article>
+    `;
+  }).join("");
+  const history = entries.length ? `
+    <details class="terminal-check-history">
+      <summary>Kontrollverlauf anzeigen</summary>
+      <div class="terminal-check-list">
+        ${entries.map((item) => `
+          <article class="terminal-check-entry">
+            <div>
+              <strong>${escapeHtml(item.type)}</strong>
+              <span>${escapeHtml(item.text)}</span>
+              ${item.employee ? `<small>${escapeHtml(item.employee)}</small>` : ""}
+            </div>
+            <time>${escapeHtml(item.checkedAt ? formatDateTime(item.checkedAt) : checkTimeFromKey(item.key))}</time>
+          </article>
+        `).join("")}
+      </div>
+    </details>
+  ` : "";
+  target.innerHTML = `<div class="terminal-control-grid">${controlCards}</div>${history}`;
 }
 
 function checkLogType(item = {}) {
@@ -11478,7 +11674,7 @@ function renderCustomerInvoiceBuilder() {
       <div class="customer-invoice-builder-actions">
         <button class="secondary" type="button" data-close-customer-invoice-builder>Schließen</button>
         <button class="secondary" type="button" data-customer-invoice-preview>Vorschau</button>
-        <button class="primary" type="button" data-customer-invoice-finalize ${readonly ? "disabled" : ""}>Festschreiben</button>
+        <button class="primary" type="button" data-customer-invoice-finalize-download ${readonly ? "disabled" : ""}>Festschreiben &amp; PDF herunterladen</button>
         <button class="secondary" type="button" data-customer-invoice-print ${draft.pdfData ? "" : "disabled"}>Drucken</button>
       </div>
       <p class="hint customer-invoice-builder-hint">Rechnung wird direkt aus diesem Rechnungskunden erzeugt: erst prüfen, dann festschreiben und anschließend drucken.</p>
@@ -11679,7 +11875,7 @@ function invoiceRowHtml(item = {}) {
           <div class="invoice-entry-actions">
             <button class="secondary" data-save-invoice-draft type="button">Änderungen speichern</button>
             <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut an Chef senden" : "Fertig für Chef"}</button>
-            <button class="secondary" data-open-invoice-builder type="button">${linkedInvoice ? "Rechnung öffnen" : "Rechnung erstellen"}</button>
+            <button class="secondary" data-open-invoice-builder type="button">${linkedInvoice ? "Rechnung/PDF öffnen" : "Rechnung als PDF erstellen"}</button>
             <button class="secondary danger-lite" data-remove-report-entry type="button">Vollständig löschen</button>
           </div>
         </section>
@@ -12227,7 +12423,7 @@ async function previewCurrentDeskInvoicePdf(button, download = false) {
   }
 }
 
-async function finalizeCurrentDeskInvoice(button) {
+async function finalizeCurrentDeskInvoice(button, download = false) {
   const draft = currentInvoiceDeskDraft();
   if (!draft?.id) {
     showToast("Bitte zuerst einen Rechnungsentwurf öffnen.");
@@ -12246,12 +12442,17 @@ async function finalizeCurrentDeskInvoice(button) {
       { refreshReport: true }
     );
     if (result?.invoice) {
-      setInvoiceDeskDraftFromInvoice({
+      const finalizedInvoice = {
         ...(result.invoice || draft),
         pdfData: result.pdfData || result.invoice?.pdfData || "",
         pdfFileName: result.pdfFileName || result.invoice?.pdfFileName || draft.pdfFileName
-      });
+      };
+      setInvoiceDeskDraftFromInvoice(finalizedInvoice);
       renderCustomerInvoiceDesk();
+      if (download && finalizedInvoice.pdfData) {
+        downloadDataUrlFile(finalizedInvoice.pdfData, finalizedInvoice.pdfFileName || "rechnung.pdf");
+        showToast("Rechnung festgeschrieben und als PDF heruntergeladen.");
+      }
     }
   } catch (error) {
     showError(error);
@@ -13220,8 +13421,8 @@ async function loadTerminalWorkDate(dateKey, button = null) {
     showToast("Bitte Datum wählen.");
     return null;
   }
-  if (requestedDate > todayKey()) {
-    showToast("Nur heutige oder vergangene Tage sind möglich.");
+  if (requestedDate > terminalRelativeDate(1)) {
+    showToast("Bitte höchstens morgen wählen.");
     return null;
   }
   const previousDate = state.terminalDate || "";
@@ -15171,6 +15372,11 @@ function bindEvents() {
       finalizeCurrentDeskInvoice(finalizeInvoiceButton);
       return;
     }
+    const finalizeDownloadInvoiceButton = event.target.closest("[data-customer-invoice-finalize-download]");
+    if (finalizeDownloadInvoiceButton) {
+      finalizeCurrentDeskInvoice(finalizeDownloadInvoiceButton, true);
+      return;
+    }
     const printInvoiceButton = event.target.closest("[data-customer-invoice-print]");
     if (printInvoiceButton) {
       printCurrentDeskInvoice(printInvoiceButton);
@@ -16643,10 +16849,47 @@ function bindEvents() {
   });
 
   $("#terminalContent")?.addEventListener("click", async (event) => {
+    const dateShortcut = event.target.closest("[data-terminal-date-shortcut]");
+    if (dateShortcut) {
+      const date = dateShortcut.dataset.terminalDateShortcut === "tomorrow" ? terminalRelativeDate(1) : todayKey();
+      await loadTerminalWorkDate(date, dateShortcut);
+      return;
+    }
+    const openEmployees = event.target.closest("[data-open-terminal-employees]");
+    if (openEmployees) {
+      const focusAction = openEmployees.dataset.terminalWorktimeFocus || "";
+      state.terminalTab = "employees";
+      renderTerminalTabs();
+      window.requestAnimationFrame(() => {
+        const serviceSection = $("#terminalServiceSection");
+        serviceSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const selector = focusAction === "start"
+          ? '[data-terminal-punch="start"]:not(:disabled)'
+          : focusAction === "end"
+            ? '[data-terminal-punch="end"]:not(:disabled)'
+            : focusAction === "break"
+              ? '[data-terminal-break]:not(:disabled)'
+              : "";
+        if (selector) serviceSection?.querySelector(selector)?.focus();
+      });
+      return;
+    }
     const tab = event.target.closest("[data-terminal-tab]");
     if (tab) {
       state.terminalTab = tab.dataset.terminalTab;
       renderTerminal();
+      return;
+    }
+    const toggleTasks = event.target.closest("[data-terminal-toggle-tasks]");
+    if (toggleTasks) {
+      state.terminalTasksExpanded = toggleTasks.dataset.terminalToggleTasks === "all";
+      renderTerminalTasks(state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const toggleMessages = event.target.closest("[data-terminal-toggle-messages]");
+    if (toggleMessages) {
+      state.terminalMessagesExpanded = toggleMessages.dataset.terminalToggleMessages === "all";
+      renderTerminalLeaderMessages(state.terminalReport || {}, Boolean(state.terminalReport?.closed));
       return;
     }
     const openTerminalDateButton = event.target.closest("[data-open-terminal-date]");
@@ -16883,6 +17126,11 @@ function bindEvents() {
   }, true);
 
   $("#terminalContent")?.addEventListener("change", async (event) => {
+    const datePicker = event.target.closest("#terminalDatePicker, #terminalSidebarDatePicker");
+    if (datePicker) {
+      await loadTerminalWorkDate(datePicker.value, datePicker);
+      return;
+    }
     const taskInput = event.target.closest("[data-terminal-task]");
     if (!taskInput) return;
     const taskId = taskInput.dataset.terminalTask;
@@ -17172,6 +17420,26 @@ function bindEvents() {
       } finally {
         adjustButton.textContent = oldText;
         adjustButton.disabled = false;
+      }
+      return;
+    }
+    const breakButton = event.target.closest("[data-terminal-break]");
+    if (breakButton) {
+      const oldText = breakButton.textContent;
+      breakButton.disabled = true;
+      breakButton.textContent = "Speichert...";
+      try {
+        const result = await terminalAction({
+          action: "break-punch",
+          employee: breakButton.dataset.terminalEmployee,
+          breakType: breakButton.dataset.terminalBreak
+        });
+        showToast(result.message || "Pause gespeichert.");
+      } catch (error) {
+        showError(error);
+      } finally {
+        breakButton.textContent = oldText;
+        breakButton.disabled = false;
       }
       return;
     }
