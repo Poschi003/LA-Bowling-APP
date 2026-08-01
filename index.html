@@ -139,45 +139,179 @@
           </label>
           <button id="unlockTerminal" class="primary">Login</button>
         </div>
-        <div id="terminalContent" class="terminal-content hidden">
-          <div id="terminalDayHeadForm" class="terminal-day-head">
-            <label>Datum<input id="terminalWorkDate" type="date" readonly></label>
-            <label>Öffnungszeit<input id="terminalOpeningHours" placeholder="z.B. 16:00 bis 00:00 Uhr"></label>
-            <label>Schichtleitung<select id="terminalShiftLeader"></select></label>
-            <button id="saveTerminalDayMeta" class="secondary" type="button">Tageskopf speichern</button>
-          </div>
-          <div id="terminalDayMetaDisplay" class="terminal-day-meta-display hidden"></div>
-          <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
-          <div id="terminalOpenDaysNav" class="terminal-open-days hidden"></div>
-          <div id="terminalLeaderMessages" class="terminal-leader-messages hidden"></div>
-          <nav class="terminal-tabs" aria-label="Terminal-Bereiche">
-            <button class="terminal-tab active" data-terminal-tab="tasks" type="button">TO DO</button>
-            <button class="terminal-tab" data-terminal-tab="checks" type="button">Kontrollen</button>
-            <button class="terminal-tab" data-terminal-tab="assignments" type="button">Einteilung</button>
-            <button class="terminal-tab" data-terminal-tab="tables" type="button">Tischplan</button>
-            <button class="terminal-tab" data-terminal-tab="service" type="button">Arbeitszeit</button>
-            <button class="terminal-tab" data-terminal-tab="finance" type="button">Finanz</button>
-            <button class="terminal-tab" data-terminal-tab="tips" type="button">Trinkgeld</button>
-            <button class="terminal-tab" data-terminal-tab="report" type="button">Tagesbericht</button>
-          </nav>
-          <section id="terminalTasksSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Tagesaufgaben Schichtleitung</h3>
-                <p id="terminalDayMetaSummary" class="hint">Vorbereitung, laufender Betrieb und Schlussdienst sauber abhaken.</p>
+          <div id="terminalContent" class="terminal-content hidden">
+            <div class="terminal-workspace">
+              <nav class="terminal-side-nav" aria-label="Tages-Terminal Navigation">
+                <div class="terminal-side-brand">
+                  <img src="la-bowling-print-logo.png" alt="LA Bowling">
+                </div>
+                <div class="terminal-sidebar-day-card">
+                  <div class="terminal-sidebar-day-head">
+                    <span class="terminal-sidebar-day-icon" aria-hidden="true">&#9638;</span>
+                    <div>
+                      <span id="terminalSidebarWeekday">Heute</span>
+                      <strong id="terminalSidebarDate">Datum</strong>
+                    </div>
+                    <label class="terminal-sidebar-date-control" aria-label="Terminal-Tag wählen">
+                      <input id="terminalSidebarDatePicker" type="date">
+                    </label>
+                  </div>
+                  <div class="terminal-sidebar-opening">
+                    <span aria-hidden="true">&#9719;</span>
+                    <strong id="terminalSidebarOpening">Öffnung offen</strong>
+                  </div>
+                </div>
+                <div class="terminal-nav-group">
+                  <span class="terminal-nav-label">Tagesablauf</span>
+                  <button class="terminal-tab active" data-terminal-tab="today" type="button"><span aria-hidden="true">&#9638;</span>Tagesübersicht</button>
+                  <button class="terminal-tab" data-terminal-tab="employees" type="button"><span aria-hidden="true">&#9719;</span>Arbeitszeit</button>
+                  <button class="terminal-tab" data-terminal-tab="tables" type="button"><span aria-hidden="true">&#9633;</span>Tischplan</button>
+                  <button class="terminal-tab" data-terminal-tab="closing" type="button"><span aria-hidden="true">&#10003;</span>Abschluss</button>
+                </div>
+                <div class="terminal-nav-group terminal-nav-tools">
+                  <span class="terminal-nav-label">Tools</span>
+                  <button class="terminal-tab" data-terminal-tab="orders" type="button"><span aria-hidden="true">&#9776;</span>Bestellungen</button>
+                  <button class="terminal-tab" data-terminal-tab="offers" type="button"><span aria-hidden="true">&#9671;</span>Angebote</button>
+                </div>
+              </nav>
+              <div class="terminal-workspace-main">
+                <section id="terminalTodaySection" class="terminal-today-section">
+                  <section class="terminal-hero-card">
+                    <div id="terminalDayMetaDisplay" class="terminal-day-meta-display"></div>
+                    <div id="terminalDayHeadForm" class="terminal-day-head terminal-day-head-editor hidden">
+                      <label>Öffnungszeit<input id="terminalOpeningHours" placeholder="z.B. 16:00 bis 00:00 Uhr"></label>
+                      <label>Schichtleitung<select id="terminalShiftLeader"></select></label>
+                      <button id="saveTerminalDayMeta" class="primary" type="button">Speichern</button>
+                    </div>
+                  </section>
+                  <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
+                  <div id="terminalOpenDaysNav" class="terminal-open-days hidden"></div>
+                  <section class="terminal-section terminal-overview-card">
+                    <div class="terminal-section-head">
+                      <div class="terminal-card-heading">
+                        <span class="terminal-card-icon" aria-hidden="true">T</span>
+                        <div>
+                        <h3>Tagesübersicht</h3>
+                        <p class="terminal-card-subtitle">Was steht an?</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="terminal-date-navigator" aria-label="Tagesauswahl">
+                      <div class="terminal-date-shortcuts">
+                        <button class="secondary" data-terminal-date-shortcut="today" type="button">Heute</button>
+                        <button class="secondary" data-terminal-date-shortcut="tomorrow" type="button">Morgen</button>
+                      </div>
+                      <label class="terminal-date-picker-label">Datum
+                        <input id="terminalDatePicker" type="date">
+                      </label>
+                    </div>
+                    <div id="terminalFuturePreview" class="terminal-future-preview hidden"></div>
+                    <div id="terminalEventOverview" class="terminal-event-overview">
+                      <p>Keine Veranstaltungen</p>
+                    </div>
+                  </section>
+                  <section id="terminalWorktimePreviewSection" class="terminal-section terminal-worktime-preview" data-open-terminal-employees>
+                    <div class="terminal-section-head terminal-staff-section-head">
+                      <div class="terminal-card-heading">
+                        <span class="terminal-card-icon" aria-hidden="true">A</span>
+                        <div>
+                        <h3>Arbeitszeit</h3>
+                        </div>
+                      </div>
+                      <strong id="terminalWorktimePreviewCount" class="terminal-active-employee-count">0 aktiv</strong>
+                    </div>
+                    <div class="terminal-worktime-quick-actions" aria-label="Arbeitszeit Schnellaktionen">
+                      <button class="primary" type="button" data-open-terminal-employees data-terminal-worktime-focus="start">Eintragen</button>
+                      <button class="secondary" type="button" data-open-terminal-employees data-terminal-worktime-focus="end">Ausstempeln</button>
+                      <button class="secondary" type="button" data-open-terminal-employees data-terminal-worktime-focus="break">Pause</button>
+                    </div>
+                    <div id="terminalWorktimePreviewList" class="terminal-worktime-preview-list"></div>
+                    <button class="terminal-card-link" type="button" data-open-terminal-employees>Arbeitszeit öffnen</button>
+                  </section>
+                  <section id="terminalChecksSection" class="terminal-section hidden">
+                    <div class="terminal-section-head">
+                      <div class="terminal-card-heading">
+                        <span class="terminal-card-icon" aria-hidden="true">K</span>
+                        <div>
+                        <h3>Kontrollen</h3>
+                        </div>
+                      </div>
+                    </div>
+                    <div id="terminalCheckLog" class="terminal-check-log"></div>
+                  </section>
+                  <section id="terminalTasksSection" class="terminal-section hidden">
+                    <div class="terminal-section-head">
+                      <div class="terminal-card-heading">
+                        <span class="terminal-card-icon" aria-hidden="true">✓</span>
+                        <div>
+                        <h3>Aufgaben</h3>
+                        <p id="terminalDayMetaSummary" class="hint">Vorbereitung, laufender Betrieb und Schlussdienst sauber abhaken.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div id="terminalTaskList" class="terminal-task-list"></div>
+                    <div id="toiletCheckStatus" class="toilet-check-status"></div>
+                  </section>
+                  <section id="terminalLeaderMessageSection" class="terminal-day-messages hidden">
+                    <div class="terminal-section-head">
+                      <div class="terminal-card-heading">
+                        <span class="terminal-card-icon" aria-hidden="true">N</span>
+                        <div>
+                        <h3>Nachrichten</h3>
+                        </div>
+                      </div>
+                    </div>
+                    <div id="terminalLeaderMessages" class="terminal-leader-messages"></div>
+                  </section>
+                </section>
+          <section id="terminalServiceSection" class="terminal-section hidden">
+            <div class="terminal-section-head terminal-staff-section-head">
+              <div class="terminal-card-heading">
+                <span class="terminal-card-icon" aria-hidden="true">A</span>
+                <div>
+                  <p class="terminal-card-kicker">Mitarbeiter</p>
+                  <h3>Arbeitszeiten verwalten</h3>
+                </div>
               </div>
+              <strong id="terminalActiveEmployeeCount" class="terminal-active-employee-count">0 aktiv</strong>
             </div>
-            <div id="terminalTaskList" class="terminal-task-list"></div>
-            <div id="toiletCheckStatus" class="toilet-check-status"></div>
-          </section>
-          <section id="terminalChecksSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Kontrollen & Popups</h3>
-                <p class="hint">Hier steht, wann Toiletten-Kontrollen und Aufgaben-Popups quittiert wurden.</p>
+            <details class="terminal-add terminal-add-compact">
+              <summary aria-label="Ungeplanten Mitarbeiter hinzufügen"><span>+</span></summary>
+              <div class="form-grid">
+                <label>
+                  Schicht hinzufügen
+                  <select id="terminalAddEmployee"></select>
+                </label>
+                <button id="addTerminalEmployee" class="secondary">Hinzufügen</button>
               </div>
+            </details>
+            <div id="terminalCostSummary" class="terminal-cost-summary"></div>
+            <div id="terminalEmployees" class="terminal-employees"></div>
+            <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
+              <div class="terminal-task-group-head">
+                <div>
+                  <h4>Übergabe</h4>
+                  <span id="handoverCount">0 Übergaben</span>
+                </div>
+                <button id="openHandover" class="secondary" type="button">Übergabe eintragen</button>
+              </div>
+              <div id="handoverList" class="terminal-handover-list"></div>
+            </section>
+            <div id="handoverModal" class="handover-modal hidden" role="dialog" aria-modal="true">
+              <section class="terminal-handover">
+                <div class="terminal-task-group-head">
+                  <h4>Übergabe Schichtleitung</h4>
+                  <button id="closeHandover" class="secondary" type="button">Schließen</button>
+                </div>
+                <div class="terminal-handover-form form-grid">
+                  <label>Von<select id="handoverFrom"></select></label>
+                  <label>An<select id="handoverTo"></select></label>
+                  <label>Uhrzeit<input id="handoverTime" type="time"></label>
+                  <label>Offene Punkte<textarea id="handoverNote" rows="3" placeholder="Was muss die nächste Schicht wissen?"></textarea></label>
+                  <button id="saveHandover" class="primary" type="button">Übergabe speichern</button>
+                </div>
+              </section>
             </div>
-            <div id="terminalCheckLog" class="terminal-check-log"></div>
           </section>
           <section id="terminalAssignmentsSection" class="terminal-section hidden">
             <div class="terminal-section-head">
@@ -299,49 +433,10 @@
               </aside>
             </div>
           </section>
-          <section id="terminalServiceSection" class="terminal-section hidden">
-            <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
-              <div class="terminal-task-group-head">
-                <div>
-                  <h4>Übergabe</h4>
-                  <span id="handoverCount">0 Übergaben</span>
-                </div>
-                <button id="openHandover" class="secondary" type="button">Übergabe eintragen</button>
-              </div>
-              <div id="handoverList" class="terminal-handover-list"></div>
-            </section>
-            <div id="handoverModal" class="handover-modal hidden" role="dialog" aria-modal="true">
-              <section class="terminal-handover">
-                <div class="terminal-task-group-head">
-                  <h4>Übergabe Schichtleitung</h4>
-                  <button id="closeHandover" class="secondary" type="button">Schließen</button>
-                </div>
-                <div class="terminal-handover-form form-grid">
-                <label>Von<select id="handoverFrom"></select></label>
-                <label>An<select id="handoverTo"></select></label>
-                <label>Uhrzeit<input id="handoverTime" type="time"></label>
-                <label>Offene Punkte<textarea id="handoverNote" rows="3" placeholder="Was muss die nächste Schicht wissen?"></textarea></label>
-                <button id="saveHandover" class="primary" type="button">Übergabe speichern</button>
-                </div>
-              </section>
-            </div>
-            <details class="terminal-add terminal-add-compact">
-              <summary aria-label="Ungeplanten Mitarbeiter hinzufügen"><span>+</span></summary>
-              <div class="form-grid">
-                <label>
-                  Schicht hinzufügen
-                  <select id="terminalAddEmployee"></select>
-                </label>
-                <button id="addTerminalEmployee" class="secondary">Hinzufügen</button>
-              </div>
-            </details>
-            <div id="terminalCostSummary" class="terminal-cost-summary"></div>
-            <div id="terminalEmployees" class="terminal-employees"></div>
-          </section>
           <section id="terminalFinanceSection" class="terminal-section hidden">
             <div class="terminal-section-head">
               <div>
-                <h3>Finanz</h3>
+                <h3>Abschluss: Finanz &amp; Unterlagen</h3>
                 <p class="hint">Kassenabrechnung, Trinkgeld, Rechnungskunden, Ausgaben und Abschlussdokumente.</p>
               </div>
             </div>
@@ -423,6 +518,27 @@
               <button id="closeDayReport" class="secondary danger-button" type="button">Tagesabschluss</button>
             </div>
           </details>
+          <section id="terminalOrdersSection" class="terminal-section terminal-tool-placeholder hidden">
+            <div class="terminal-card-heading">
+              <span class="terminal-card-icon" aria-hidden="true">B</span>
+              <div>
+                <p class="terminal-card-kicker">Tool</p>
+                <h3>Bestellungen</h3>
+              </div>
+            </div>
+            <p>Bestellungen werden später eingerichtet.</p>
+          </section>
+          <section id="terminalOffersSection" class="terminal-section terminal-tool-placeholder hidden">
+            <div class="terminal-card-heading">
+              <span class="terminal-card-icon" aria-hidden="true">A</span>
+              <div>
+                <p class="terminal-card-kicker">Tool</p>
+                <h3>Angebote</h3>
+              </div>
+            </div>
+            <p>Die bestehende Angebotsverwaltung bleibt geschützt im Backoffice.</p>
+            <a class="primary terminal-tool-link" href="./?bereich=offers">Angebote im Backoffice öffnen</a>
+          </section>
           <div id="toiletReminder" class="toilet-reminder hidden" role="dialog" aria-modal="true">
             <div>
               <h3 id="terminalReminderTitle">Erinnerung</h3>
@@ -432,6 +548,8 @@
                 <select id="toiletCheckEmployee"></select>
               </label>
               <button id="confirmToiletCheck" class="primary" type="button">Quittieren</button>
+            </div>
+          </div>
             </div>
           </div>
         </div>
@@ -1241,6 +1359,18 @@
           section.classList.toggle("active", section.dataset.adminWorkspace === target);
         });
       });
+      const requestedAdminWorkspace = new URLSearchParams(window.location.search).get("bereich");
+      if (adminContent && requestedAdminWorkspace) {
+        const requestedTab = adminContent.querySelector(`[data-admin-workspace-tab="${requestedAdminWorkspace}"]`);
+        if (requestedTab) {
+          adminContent.querySelectorAll("[data-admin-workspace-tab]").forEach((tab) => {
+            tab.classList.toggle("active", tab === requestedTab);
+          });
+          adminContent.querySelectorAll("[data-admin-workspace]").forEach((section) => {
+            section.classList.toggle("active", section.dataset.adminWorkspace === requestedAdminWorkspace);
+          });
+        }
+      }
     </script>
     <script src="teamapp-client.js?v=20260602-einteilung-reiter-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
