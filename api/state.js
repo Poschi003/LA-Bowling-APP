@@ -2,6 +2,8 @@
 const path = require("path");
 const {
   archiveInvoiceRecord,
+  buildInvoiceAttachmentsPdfBuffer,
+  buildInvoiceInfoPdfBuffer,
   buildInvoicePdfBuffer,
   createAuditEntry,
   createBlankInvoiceDraft,
@@ -484,6 +486,26 @@ async function handleInvoiceMutation(body, res) {
     });
   }
 
+  if (action === "invoice-export-package") {
+    const sourceDate = cleanInvoiceDateValue(body.sourceDate);
+    const sourceCustomerId = String(body.sourceCustomerId || "").trim();
+    const source = findReadyCustomerSource(appData, sourceDate, sourceCustomerId);
+    if (!source.customer) return sendJson(res, 404, { error: "Rechnungskunde nicht gefunden." });
+    const previewInvoice = createInvoiceDraftFromCustomer(source.customer, sourceDate, appData.invoiceSettings, session.actor);
+    const validation = validateInvoice(previewInvoice, { requireEmail: false, requireNumber: false });
+    if (validation.length) return sendJson(res, 400, { error: validation.join(", ") });
+    const infoPdf = await buildInvoiceInfoPdfBuffer(previewInvoice, appData.invoiceSettings);
+    const receiptsPdf = await buildInvoiceAttachmentsPdfBuffer(previewInvoice, appData.invoiceSettings);
+    return sendJson(res, 200, {
+      ok: true,
+      infoPdfData: bufferToPdfDataUrl(infoPdf.buffer),
+      infoPdfFileName: infoPdf.fileName,
+      receiptsPdfData: bufferToPdfDataUrl(receiptsPdf.buffer),
+      receiptsPdfFileName: receiptsPdf.fileName,
+      customerName: previewInvoice.customerName || "Rechnungskunde"
+    });
+  }
+
   if (action === "invoice-finalize") {
     const invoiceId = String((body.invoice && body.invoice.id) || body.invoiceId || "").trim();
     const current = findInvoice(appData.invoices, invoiceId);
@@ -670,8 +692,8 @@ function bufferToPdfDataUrl(buffer) {
 }
 
 async function saveOffer(body, res) {
-  const session = verifyToken(body.adminToken || "", "admin");
-  if (!session) return sendJson(res, 401, { error: "Bitte Admin erneut entsperren." });
+  const session = verifyToken(body.adminToken || "", "admin") || verifyToken(body.terminalToken || "", "terminal");
+  if (!session) return sendJson(res, 401, { error: "Bitte Admin oder Terminal erneut anmelden." });
   const offer = normalizeOffer(body.offer || body);
   if (!offer.customerName && !offer.title) {
     return sendJson(res, 400, { error: "Angebot fehlt." });
@@ -705,8 +727,8 @@ async function saveOffer(body, res) {
 }
 
 async function deleteOffer(body, res) {
-  const session = verifyToken(body.adminToken || "", "admin");
-  if (!session) return sendJson(res, 401, { error: "Bitte Admin erneut entsperren." });
+  const session = verifyToken(body.adminToken || "", "admin") || verifyToken(body.terminalToken || "", "terminal");
+  if (!session) return sendJson(res, 401, { error: "Bitte Admin oder Terminal erneut anmelden." });
   const offerId = String(body.offerId || body.id || "").trim();
   if (!offerId) return sendJson(res, 400, { error: "Angebot fehlt." });
   const appData = await readAppData();

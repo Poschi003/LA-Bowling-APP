@@ -41,12 +41,22 @@
   weatherLoading: false,
   terminalToken: "",
   terminalTab: "today",
+  terminalClosingStep: 1,
+  terminalPentacodeCopied: {},
+  terminalPentacodeComplete: false,
+  terminalManualReportCopied: {},
+  terminalManualReportComplete: false,
+  terminalDocumentsComplete: false,
   terminalDate: "",
+  terminalInvoiceToolView: "current",
+  terminalInvoiceDate: "",
+  terminalInvoiceHistory: [],
   terminalOpenDates: [],
   terminalOpenDaysExpanded: false,
   terminalEntries: {},
   terminalReport: {},
   terminalTableDraft: null,
+  terminalTableQuickEntry: false,
   terminalTableGroupDraft: null,
   terminalTableCustomDraft: null,
   adminTablePlanDraft: null,
@@ -55,14 +65,26 @@
   terminalTableInfo: { todayDate: "", todayAvailable: false, todayItems: 0, selectedItems: 0, selectedAvailable: false },
   terminalTableSort: "time",
   terminalTableDragId: "",
+  terminalTablePlanInteraction: null,
+  terminalTablePlanSuppressClickUntil: 0,
   terminalTableStaffDraft: null,
-  terminalTableView: "manage",
+  terminalTableView: "work",
+  terminalSettingsModule: "controls",
   terminalTableFullscreen: false,
   adminTablePlanInteraction: null,
   adminTablePlanSuppressClickUntil: 0,
   tipOverview: { employees: [], totalEarned: "0.00", totalPaid: "0.00", totalOpen: "0.00" },
   terminalSchedule: {},
   terminalTasks: [],
+  terminalTaskTemplates: [],
+  terminalTaskAreas: [],
+  terminalTaskCalendarMonth: currentMonthValue(),
+  terminalTaskCalendarDate: todayKey(),
+  terminalTaskCalendarView: "month",
+  terminalTaskAreaFilter: "all",
+  terminalTaskTypeFilter: "all",
+  terminalTaskStatusFilter: "active",
+  terminalTaskSearch: "",
   terminalTasksExpanded: false,
   terminalMessagesExpanded: false,
   terminalReminders: [],
@@ -72,6 +94,10 @@
   pendingReminder: null,
   terminalReminderRefreshInFlight: false,
   timesheetRefreshInFlight: false,
+  terminalControls: [],
+  terminalControlDraftId: "",
+  terminalControlDeleteId: "",
+  terminalManualToiletCheckKey: "",
   terminalDayMetaEditing: false,
   terminalCorrectionMode: false,
   invoiceTerminalToken: window.localStorage?.getItem("invoiceTerminalToken") || "",
@@ -98,6 +124,9 @@
   reminderTemplates: [],
   plannerEditWeeks: []
 };
+
+const loadedTimesheetMonths = new Set();
+const NEW_INVOICE_PROGRAM_ENABLED = false;
 
 const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const defaultReminderTemplates = [
@@ -131,15 +160,95 @@ const defaultCleaningTemplates = defaultCleaningPlans.flatMap((group) =>
     createdAt: "2026-05-20T00:00:00.000Z"
   }))
 );
+const TERMINAL_CONTROL_STORAGE_KEY = "la-bowling-terminal-controls-v1";
+const defaultTerminalControls = [
+  {
+    id: "control-toilets",
+    name: "Toiletten",
+    icon: "WC",
+    area: "Sanitär",
+    intervalType: "hourly",
+    intervalValue: 1,
+    startTime: "17:00",
+    responsible: "Service",
+    active: true,
+    status: "overdue",
+    lastLabel: "13:25 Uhr",
+    nextLabel: "14:25 Uhr"
+  },
+  {
+    id: "control-softener",
+    name: "Wasserenthärtung",
+    icon: "◉",
+    area: "Technik",
+    intervalType: "daily",
+    intervalValue: 1,
+    startTime: "07:40",
+    responsible: "Schichtleitung",
+    active: true,
+    status: "ok",
+    lastLabel: "heute 07:40 Uhr",
+    nextLabel: "morgen 07:40 Uhr"
+  },
+  {
+    id: "control-compressor",
+    name: "PC Kompressor",
+    icon: "⚙",
+    area: "Technik",
+    intervalType: "weekly",
+    intervalValue: 1,
+    startTime: "10:00",
+    responsible: "Mechanik",
+    active: true,
+    status: "ok",
+    lastLabel: "Montag 10:00 Uhr",
+    nextLabel: "nächsten Montag 10:00 Uhr"
+  }
+];
+
+function normalizeTerminalControl(control = {}) {
+  const status = ["ok", "due", "overdue"].includes(control.status) ? control.status : "due";
+  return {
+    id: String(control.id || `control-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+    name: String(control.name || "Neue Kontrolle").trim(),
+    icon: String(control.icon || "✓"),
+    area: String(control.area || "").trim(),
+    intervalType: ["once", "hourly", "daily", "weekly", "monthly"].includes(control.intervalType)
+      ? control.intervalType
+      : "daily",
+    intervalValue: Math.max(1, Number(control.intervalValue || 1)),
+    startTime: String(control.startTime || ""),
+    responsible: String(control.responsible || "").trim(),
+    active: control.active !== false,
+    status,
+    lastLabel: String(control.lastLabel || "noch nicht"),
+    nextLabel: String(control.nextLabel || "offen")
+  };
+}
+
+function loadTerminalControls() {
+  if (state.terminalControls.length) return state.terminalControls;
+  try {
+    const stored = JSON.parse(window.localStorage?.getItem(TERMINAL_CONTROL_STORAGE_KEY) || "[]");
+    state.terminalControls = (Array.isArray(stored) && stored.length ? stored : defaultTerminalControls)
+      .map(normalizeTerminalControl);
+  } catch (error) {
+    state.terminalControls = defaultTerminalControls.map(normalizeTerminalControl);
+  }
+  return state.terminalControls;
+}
+
+function saveTerminalControls() {
+  window.localStorage?.setItem(TERMINAL_CONTROL_STORAGE_KEY, JSON.stringify(state.terminalControls));
+}
 const TERMINAL_TABLE_ZONES = [
   { id: "lanes", label: "Bahnen 1-14", x: 1.5, y: 4, w: 13, h: 76, className: "is-lanes" },
   { id: "nz-small", label: "T50 · NZ Klein", x: 17, y: 4, w: 20, h: 10, className: "is-room" },
   { id: "main-left", label: "Gastraum", x: 17, y: 16, w: 21, h: 33, className: "is-open" },
-  { id: "dj", label: "DJ-Bereich", x: 42, y: 17, w: 9, h: 31, className: "is-open" },
-  { id: "main-bottom", label: "Gastraum unten", x: 17, y: 54, w: 20, h: 17, className: "is-open" },
-  { id: "nz-big", label: "T60 · NZ Groß", x: 56, y: 4, w: 27, h: 10, className: "is-room" },
-  { id: "hut", label: "Hütte Außen · T70", x: 84.5, y: 4, w: 13, h: 10, className: "is-room" },
-  { id: "billiard", label: "Billardtische", x: 60, y: 26, w: 26, h: 28, className: "is-open" }
+  { id: "dj", label: "DJ-Bereich", x: 39.5, y: 19.5, w: 14, h: 37, className: "is-open" },
+  { id: "main-bottom", label: "Gastraum unten", x: 17, y: 53, w: 24, h: 24, className: "is-open" },
+  { id: "nz-big", label: "NZ groß", x: 55, y: 3, w: 43, h: 42, className: "is-room" },
+  { id: "hut", label: "Hütte", x: 55, y: 50, w: 43, h: 45, className: "is-room" }
 ];
 const TERMINAL_TABLE_LAYOUT = [
   ...Array.from({ length: 14 }, (_, index) => ({
@@ -164,20 +273,20 @@ const TERMINAL_TABLE_LAYOUT = [
   { id: "T26", label: "T26", area: "Gastraum", seats: 4, x: 30, y: 32.5, w: 6.4, h: 5.4, shape: "table" },
   { id: "T25", label: "T25", area: "Gastraum", seats: 4, x: 30, y: 40, w: 6.4, h: 5.4, shape: "table" },
   { id: "T24", label: "T24", area: "Gastraum", seats: 4, x: 30, y: 47.5, w: 6.4, h: 5.4, shape: "table" },
-  { id: "T30", label: "T30", area: "DJ-Bereich", seats: 4, x: 41.5, y: 19.5, w: 6.6, h: 5.4, shape: "table" },
-  { id: "T31", label: "T31", area: "DJ-Bereich", seats: 4, x: 41.5, y: 27.5, w: 6.6, h: 5.4, shape: "table" },
-  { id: "T32", label: "T32", area: "DJ-Bereich", seats: 4, x: 41.5, y: 35.5, w: 6.6, h: 5.4, shape: "table" },
-  { id: "T33", label: "T33", area: "DJ-Bereich", seats: 4, x: 41.5, y: 43.5, w: 6.6, h: 5.4, shape: "table" },
+  { id: "T30", label: "T30", area: "DJ-Bereich", seats: 4, x: 41.5, y: 23.5, w: 6.6, h: 5.4, shape: "table" },
+  { id: "T31", label: "T31", area: "DJ-Bereich", seats: 4, x: 41.5, y: 31.5, w: 6.6, h: 5.4, shape: "table" },
+  { id: "T32", label: "T32", area: "DJ-Bereich", seats: 4, x: 41.5, y: 39.5, w: 6.6, h: 5.4, shape: "table" },
+  { id: "T33", label: "T33", area: "DJ-Bereich", seats: 4, x: 41.5, y: 47.5, w: 6.6, h: 5.4, shape: "table" },
   { id: "T20", label: "T20", area: "Gastraum", seats: 4, x: 20.5, y: 56.5, w: 6.2, h: 5.6, shape: "table" },
   { id: "T21", label: "T21", area: "Gastraum", seats: 4, x: 20.5, y: 64.5, w: 6.2, h: 5.6, shape: "table" },
   { id: "T23", label: "T23", area: "Gastraum", seats: 4, x: 29.5, y: 56.5, w: 6.2, h: 5.6, shape: "table" },
   { id: "T22", label: "T22", area: "Gastraum", seats: 4, x: 29.5, y: 64.5, w: 6.2, h: 5.6, shape: "table" },
-  { id: "T60", label: "T60", area: "Nebenraum groß", seats: 32, x: 57.5, y: 5.5, w: 24, h: 8.5, shape: "room" },
-  { id: "T70", label: "T70", area: "Hütte außen", seats: 18, x: 86, y: 5.5, w: 10.5, h: 8.5, shape: "room" },
-  { id: "T104", label: "T104", area: "Billard", seats: 4, x: 63.5, y: 29, w: 8.7, h: 6.1, shape: "table" },
-  { id: "T101", label: "T101", area: "Billard", seats: 4, x: 77.5, y: 29, w: 8.7, h: 6.1, shape: "table" },
-  { id: "T103", label: "T103", area: "Billard", seats: 4, x: 63.5, y: 43.5, w: 8.7, h: 6.1, shape: "table" },
-  { id: "T102", label: "T102", area: "Billard", seats: 4, x: 77.5, y: 43.5, w: 8.7, h: 6.1, shape: "table" }
+  { id: "T60", label: "T60", area: "Nebenraum groß", seats: 4, x: 58, y: 10, w: 6.6, h: 6.2, shape: "table" },
+  { id: "T70", label: "T70", area: "Hütte", seats: 4, x: 58, y: 57, w: 6.6, h: 6.2, shape: "table" },
+  { id: "T104", label: "T104", area: "Billard", seats: 4, x: 62, y: 76, w: 8.7, h: 6.1, shape: "table" },
+  { id: "T101", label: "T101", area: "Billard", seats: 4, x: 79, y: 76, w: 8.7, h: 6.1, shape: "table" },
+  { id: "T103", label: "T103", area: "Billard", seats: 4, x: 62, y: 86, w: 8.7, h: 6.1, shape: "table" },
+  { id: "T102", label: "T102", area: "Billard", seats: 4, x: 79, y: 86, w: 8.7, h: 6.1, shape: "table" }
 ];
 const TERMINAL_TABLE_LOOKUP = Object.fromEntries(TERMINAL_TABLE_LAYOUT.map((table) => [table.id, table]));
 const TERMINAL_TABLE_ZONE_LOOKUP = Object.fromEntries(TERMINAL_TABLE_ZONES.map((zone) => [zone.id, zone]));
@@ -615,6 +724,33 @@ async function api(path, options = {}) {
   return text ? JSON.parse(text) : null;
 }
 
+function mergeTimesheetMonths(current = {}, incoming = {}) {
+  const merged = { ...(current || {}) };
+  Object.entries(incoming || {}).forEach(([employee, entries]) => {
+    merged[employee] = {
+      ...(merged[employee] || {}),
+      ...(entries || {})
+    };
+  });
+  return merged;
+}
+
+async function ensureTimesheetsForReportDate(dateKey = "") {
+  const month = String(dateKey || "").slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(month) || loadedTimesheetMonths.has(month)) return;
+  if (!state.adminToken && !state.employeeToken) return;
+  const params = new URLSearchParams({
+    month,
+    nextMonth: availabilityMonthValue(),
+    availabilityMonth: availabilityMonthValue()
+  });
+  if (state.employeeToken) params.set("employeeToken", state.employeeToken);
+  if (state.adminToken) params.set("adminToken", state.adminToken);
+  const data = await api(`/api/state?${params.toString()}`);
+  state.timesheets = mergeTimesheetMonths(state.timesheets, data.timesheets || {});
+  loadedTimesheetMonths.add(month);
+}
+
 async function loadState() {
   state.settings = state.settings || cloneData(defaultData.settings);
   state.availability = state.availability || {};
@@ -629,7 +765,12 @@ async function loadState() {
   state.availability = data.availability || {};
   state.schedule = data.schedule || { month: state.selectedMonth, published: false, days: {} };
   state.allSchedules = data.schedules || {};
-  state.timesheets = data.timesheets || {};
+  state.timesheets = mergeTimesheetMonths(state.timesheets, data.timesheets || {});
+  // Public state responses intentionally contain no timesheets. Do not cache
+  // that empty response, otherwise the month is skipped after login.
+  if (Object.prototype.hasOwnProperty.call(data, "timesheets")) {
+    loadedTimesheetMonths.add(state.selectedMonth);
+  }
   state.messages = data.messages || [];
   state.terminalMessages = data.terminalMessages || [];
   state.pushPublicKey = data.pushPublicKey || "";
@@ -660,6 +801,10 @@ async function loadState() {
   state.isChef = Boolean(data.isChef);
   state.missingAvailability = data.missingAvailability || [];
   state.availabilityChangeRequests = data.availabilityChangeRequests || [];
+  if (state.adminToken || state.isChef) {
+    const reportDate = ensureChefReportDateSelection();
+    if (reportDate) await ensureTimesheetsForReportDate(reportDate);
+  }
   await ensurePushSubscriptionSynced();
   renderAll();
   if (!state.weather || state.weather.error) loadWeather().catch(() => {});
@@ -1344,8 +1489,15 @@ function setOfferDraftFromOffer(offer) {
   state.offerDraftDirty = false;
 }
 
+function offerWorkspaceRoot() {
+  if (state.terminalToken && state.terminalTab === "offers" && $("#terminalOffersWorkspace")) {
+    return $("#terminalOffersWorkspace");
+  }
+  return $("#adminOffers") || $("#terminalOffersWorkspace");
+}
+
 function currentOfferDraftFromDom() {
-  const root = $("#adminOffers");
+  const root = offerWorkspaceRoot();
   if (!root) return normalizeOfferClient(state.offerDraft || createBlankOfferDraft());
   const base = cloneData(state.offerDraft || createBlankOfferDraft());
   const field = (name) => root.querySelector(`[data-offer-field="${cssEscape(name)}"]`);
@@ -3990,7 +4142,6 @@ function invoiceReadyProblemsFromData(item = {}) {
   if (!invoicePentacodeChoice(item)) problems.push("Pentacode-Status fehlt");
   const amount = reportMoneyNumber(item.bowlingAmount) + invoiceGastroSplit(item).total;
   if (amount <= 0) problems.push("Beträge fehlen");
-  if (reportMoneyNumber(item.gastroOtherAmount) > 0 && !String(item.gastroOtherNote || "").trim()) problems.push("Notiz für Sonstiges fehlt");
   if (!invoiceItemHasReceipt(item)) problems.push("Rechnungsbeleg fehlt");
   return problems;
 }
@@ -5440,15 +5591,15 @@ function renderAdminAvailabilityPreview() {
 }
 
 function renderAdminOffers() {
-  const container = $("#adminOffers");
+  const container = offerWorkspaceRoot();
   if (!container) return;
   if (state.offerDraftDirty && container.querySelector("[data-offer-field]")) {
     state.offerCustomerSearch = container.querySelector("#offerCustomerSearch")?.value || state.offerCustomerSearch || "";
     state.offerDraft = currentOfferDraftFromDom();
     state.offerDraftId = state.offerDraft.id;
   }
-  if (!state.adminUnlocked) {
-    container.innerHTML = `<p class="hint">Admin-Rechte erforderlich.</p>`;
+  if (!state.adminUnlocked && !state.terminalToken) {
+    container.innerHTML = `<p class="hint">Bitte Admin oder Terminal anmelden.</p>`;
     return;
   }
   const draft = ensureOfferDraft();
@@ -5461,11 +5612,27 @@ function renderAdminOffers() {
   const customerOptions = normalizeCustomerDirectory(state.customerDirectory).filter((customer) => offerCustomerDirectoryMatches(customer, customerQuery));
   const offers = normalizeOffersClient(state.offers || []);
   const activeId = state.offerDraft?.id || draft.id;
-  const listHtml = offers.length ? offers.map((offer) => renderOfferListItem(offer, activeId)).join("") : `<p class="hint">Noch keine Angebote angelegt.</p>`;
+  const fixedYears = [2024, 2025, 2026];
+  const offerYear = (offer) => Number(String(offer.offerDate || offer.eventDate || offer.createdAt || "2026").slice(0, 4)) || 2026;
+  const years = [...new Set([...fixedYears, ...offers.map(offerYear)])].sort((a, b) => a - b);
+  const listHtml = years.map((year) => {
+    const yearOffers = offers.filter((offer) => offerYear(offer) === year);
+    return `
+      <details class="offer-year-folder" ${year === 2026 ? "open" : ""}>
+        <summary><span>${year}</span><small>${yearOffers.length} Angebot${yearOffers.length === 1 ? "" : "e"}</small></summary>
+        <div class="offer-year-list">
+          ${yearOffers.length ? yearOffers.map((offer) => renderOfferListItem(offer, activeId)).join("") : `<p class="hint">Noch keine Angebote in ${year}.</p>`}
+        </div>
+      </details>
+    `;
+  }).join("");
   container.innerHTML = `
+    <nav class="offer-main-actions" aria-label="Angebotsnavigation">
+      <button class="primary" type="button" data-offer-new>+ Neues Angebot erstellen</button>
+      <button class="secondary" type="button" data-offer-scroll-saved>Gespeicherte Angebote ansehen</button>
+    </nav>
     <div class="offer-toolbar">
       <div class="offer-toolbar-actions">
-        <button class="primary" type="button" data-offer-new>+ Neues Angebot</button>
         <button class="secondary" type="button" data-offer-save>Speichern</button>
         <button class="secondary" type="button" data-offer-duplicate>Duplizieren</button>
         <button class="secondary" type="button" data-offer-toggle-archive>${draft.archived ? "Archivierung aufheben" : "Archivieren"}</button>
@@ -5483,8 +5650,8 @@ function renderAdminOffers() {
     </div>
     <div class="offer-workspace-grid">
       <aside class="offer-sidebar">
-        <div class="offer-sidebar-head">
-          <strong>Angebotsliste</strong>
+        <div id="offerSavedFolders" class="offer-sidebar-head">
+          <strong>Gespeicherte Angebote</strong>
           <span>${offers.length} Einträge</span>
         </div>
         <div class="offer-list">${listHtml}</div>
@@ -5777,6 +5944,234 @@ function renderOfferCostRow(item) {
   `;
 }
 
+function terminalTaskAreaById(id) {
+  return (state.terminalTaskAreas || []).find((area) => area.id === id) || null;
+}
+
+function terminalTaskFilteredTemplates() {
+  const query = String(state.terminalTaskSearch || "").trim().toLowerCase();
+  return sortTaskTemplates(state.terminalTaskTemplates || []).filter((task) => {
+    if (state.terminalTaskAreaFilter !== "all" && String(task.areaId || "") !== state.terminalTaskAreaFilter) return false;
+    const recurring = !["once", "next-day"].includes(task.frequency);
+    if (state.terminalTaskTypeFilter === "once" && recurring) return false;
+    if (state.terminalTaskTypeFilter === "recurring" && !recurring) return false;
+    if (state.terminalTaskStatusFilter === "active" && task.active === false) return false;
+    if (state.terminalTaskStatusFilter === "inactive" && task.active !== false) return false;
+    return !query || `${task.title || ""} ${task.note || ""} ${task.assignee || ""}`.toLowerCase().includes(query);
+  });
+}
+
+function terminalTaskChipHtml(task) {
+  const area = terminalTaskAreaById(task.areaId);
+  const color = area?.color || "#7c3aed";
+  return `<button class="terminal-task-chip" style="--task-area-color:${escapeHtml(color)}" type="button" data-terminal-task-edit="${escapeHtml(task.id)}"><span>${escapeHtml(task.dueTime || "")}</span>${escapeHtml(task.title)}</button>`;
+}
+
+function renderTerminalTaskCalendar() {
+  const root = $("#terminalTaskCalendarSection");
+  if (!root) return;
+  const month = normalizeMonthValue(state.terminalTaskCalendarMonth) || currentMonthValue();
+  const selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(state.terminalTaskCalendarDate) ? state.terminalTaskCalendarDate : todayKey();
+  const tasks = terminalTaskFilteredTemplates();
+  const editorAreaValue = $("#terminalTaskArea")?.value || "";
+  const areaOptions = [`<option value="all">Alle Bereiche</option>`, ...(state.terminalTaskAreas || []).map((area) => `<option value="${escapeHtml(area.id)}">${escapeHtml(area.name)}${area.active === false ? " (inaktiv)" : ""}</option>`)].join("");
+  if ($("#terminalTaskAreaFilter")) {
+    $("#terminalTaskAreaFilter").innerHTML = areaOptions;
+    $("#terminalTaskAreaFilter").value = state.terminalTaskAreaFilter || "all";
+  }
+  const activeAreas = (state.terminalTaskAreas || []).filter((area) => area.active !== false);
+  if ($("#terminalTaskWeekday") && !$("#terminalTaskWeekday").options.length) {
+    $("#terminalTaskWeekday").innerHTML = [1, 2, 3, 4, 5, 6, 0].map((day) => `<option value="${day}">${escapeHtml(weekdays[day])}</option>`).join("");
+  }
+  if ($("#terminalTaskArea")) {
+    $("#terminalTaskArea").innerHTML = `<option value="">Ohne Bereich</option>${activeAreas.map((area) => `<option value="${escapeHtml(area.id)}">${escapeHtml(area.name)}</option>`).join("")}`;
+    $("#terminalTaskArea").value = editorAreaValue;
+  }
+  if ($("#terminalTaskAssignee")) {
+    const value = $("#terminalTaskAssignee").value;
+    $("#terminalTaskAssignee").innerHTML = `<option value="">Nicht festgelegt</option>${(state.settings?.employees || []).map((employee) => `<option value="${escapeHtml(employee)}">${escapeHtml(employee)}</option>`).join("")}`;
+    $("#terminalTaskAssignee").value = value;
+  }
+  if ($("#terminalTaskAreaCount")) $("#terminalTaskAreaCount").textContent = String(activeAreas.length);
+  if ($("#terminalTaskAreaList")) $("#terminalTaskAreaList").innerHTML = activeAreas.map((area) => `<button type="button" data-terminal-area-filter="${escapeHtml(area.id)}"><i style="background:${escapeHtml(area.color)}"></i><span>${escapeHtml(area.name)}</span><b>${tasks.filter((task) => task.areaId === area.id).length}</b></button>`).join("") || `<p class="task-empty-line">Keine Bereiche</p>`;
+  if ($("#terminalTaskMonthTitle")) $("#terminalTaskMonthTitle").textContent = new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(new Date(`${month}-01T12:00:00`));
+  $$("[data-task-calendar-view]").forEach((button) => button.classList.toggle("active", button.dataset.taskCalendarView === state.terminalTaskCalendarView));
+  const calendar = $("#terminalTaskCalendar");
+  if (calendar) {
+    if (state.terminalTaskCalendarView === "list") {
+      calendar.innerHTML = `<div class="terminal-task-list-view">${tasks.map((task) => `<article><div>${terminalTaskChipHtml(task)}<small>${escapeHtml(taskFrequencyLabel(task))}${task.assignee ? ` · ${escapeHtml(task.assignee)}` : ""}</small></div><button type="button" data-terminal-task-edit="${escapeHtml(task.id)}">Bearbeiten</button></article>`).join("") || `<p class="task-empty-line">Keine Aufgaben gefunden</p>`}</div>`;
+    } else {
+      let days = calendarWeeksForMonth(month).flat();
+      if (state.terminalTaskCalendarView === "week") {
+        const chosen = new Date(`${selectedDate}T12:00:00`);
+        const start = weekStart(chosen);
+        days = Array.from({ length: 7 }, (_, index) => { const date = addDays(start, index); return { date, inMonth: true }; });
+      }
+      calendar.innerHTML = `<div class="terminal-task-weekdays">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((day) => `<span>${day}</span>`).join("")}</div><div class="terminal-task-month-grid">${days.map((day) => {
+        const dateKey = isoDate(day.date);
+        const dayTasks = tasks.filter((task) => taskAppliesToDate(task, dateKey));
+        return `<article class="terminal-task-day ${day.inMonth ? "" : "outside"} ${dateKey === selectedDate ? "selected" : ""} ${dateKey === todayKey() ? "today" : ""}" data-terminal-task-date="${dateKey}"><strong>${day.date.getDate()}</strong><div>${dayTasks.slice(0, 3).map(terminalTaskChipHtml).join("")}${dayTasks.length > 3 ? `<small>+${dayTasks.length - 3} weitere</small>` : ""}</div></article>`;
+      }).join("")}</div>`;
+    }
+  }
+  const selectedTasks = tasks.filter((task) => taskAppliesToDate(task, selectedDate));
+  if ($("#terminalTaskSelectedDate")) $("#terminalTaskSelectedDate").textContent = formatLongDate(selectedDate);
+  if ($("#terminalTaskSelectedList")) $("#terminalTaskSelectedList").innerHTML = selectedTasks.map((task) => {
+    const area = terminalTaskAreaById(task.areaId);
+    return `<button type="button" data-terminal-task-edit="${escapeHtml(task.id)}"><i style="background:${escapeHtml(area?.color || "#7c3aed")}"></i><span><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(task.dueTime || "Ohne Uhrzeit")}${area ? ` · ${escapeHtml(area.name)}` : ""}</small></span><b>&rsaquo;</b></button>`;
+  }).join("") || `<p class="task-empty-line">Keine Aufgaben an diesem Tag</p>`;
+  renderTerminalTaskAreaManager();
+  updateTerminalTaskEditorFields();
+}
+
+function renderTerminalTaskAreaManager() {
+  const target = $("#terminalTaskAreaManageList");
+  if (!target) return;
+  target.innerHTML = (state.terminalTaskAreas || []).map((area) => `<article><i style="background:${escapeHtml(area.color)}"></i><span><strong>${escapeHtml(area.name)}</strong><small>${area.active === false ? "Inaktiv" : "Aktiv"}</small></span><button type="button" data-terminal-task-area-edit="${escapeHtml(area.id)}">Bearbeiten</button><button class="danger-lite" type="button" data-terminal-task-area-delete="${escapeHtml(area.id)}">Löschen</button></article>`).join("");
+}
+
+function updateTerminalTaskEditorFields() {
+  const frequency = $("#terminalTaskFrequency")?.value || "once";
+  $("#terminalTaskDateField")?.classList.toggle("hidden", !["once", "interval"].includes(frequency));
+  $("#terminalTaskWeekdayField")?.classList.toggle("hidden", frequency !== "weekly");
+  $("#terminalTaskMonthdayField")?.classList.toggle("hidden", frequency !== "monthly");
+  $("#terminalTaskIntervalField")?.classList.toggle("hidden", frequency !== "interval");
+}
+
+function resetTerminalTaskEditor(dateKey = state.terminalTaskCalendarDate || todayKey()) {
+  if ($("#terminalTaskEditId")) $("#terminalTaskEditId").value = "";
+  if ($("#terminalTaskTitle")) $("#terminalTaskTitle").value = "";
+  if ($("#terminalTaskDescription")) $("#terminalTaskDescription").value = "";
+  if ($("#terminalTaskFrequency")) $("#terminalTaskFrequency").value = "once";
+  if ($("#terminalTaskDate")) $("#terminalTaskDate").value = dateKey;
+  if ($("#terminalTaskDueTime")) $("#terminalTaskDueTime").value = "";
+  if ($("#terminalTaskArea")) $("#terminalTaskArea").value = "";
+  if ($("#terminalTaskAssignee")) $("#terminalTaskAssignee").value = "";
+  if ($("#terminalTaskActive")) $("#terminalTaskActive").checked = true;
+  $("#deleteTerminalTask")?.classList.add("hidden");
+  if ($("#terminalTaskEditorKicker")) $("#terminalTaskEditorKicker").textContent = "Neue Aufgabe";
+  if ($("#terminalTaskEditorTitle")) $("#terminalTaskEditorTitle").textContent = "Aufgabe planen";
+  updateTerminalTaskEditorFields();
+}
+
+function loadTerminalTaskEditor(id) {
+  const task = (state.terminalTaskTemplates || []).find((item) => item.id === id);
+  if (!task) return;
+  $("#terminalTaskEditId").value = task.id;
+  $("#terminalTaskTitle").value = task.title || "";
+  $("#terminalTaskDescription").value = task.note || "";
+  $("#terminalTaskFrequency").value = ["next-day"].includes(task.frequency) ? "once" : task.frequency || "once";
+  $("#terminalTaskDate").value = task.date || task.startDate || state.terminalTaskCalendarDate || todayKey();
+  $("#terminalTaskWeekday").value = String(task.weekdays?.[0] ?? 1);
+  $("#terminalTaskMonthday").value = String(task.dayOfMonth || 1);
+  $("#terminalTaskInterval").value = String(task.intervalDays || 14);
+  $("#terminalTaskDueTime").value = task.dueTime || task.popupTime || "";
+  $("#terminalTaskArea").value = task.areaId || "";
+  $("#terminalTaskAssignee").value = task.assignee || "";
+  $("#terminalTaskActive").checked = task.active !== false;
+  $("#deleteTerminalTask")?.classList.remove("hidden");
+  $("#terminalTaskEditorKicker").textContent = "Aufgabe bearbeiten";
+  $("#terminalTaskEditorTitle").textContent = task.title || "Aufgabe";
+  updateTerminalTaskEditorFields();
+}
+
+function currentTerminalTaskEditorPayload() {
+  const id = $("#terminalTaskEditId")?.value || `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const existing = (state.terminalTaskTemplates || []).find((task) => task.id === id) || {};
+  const frequency = $("#terminalTaskFrequency")?.value || "once";
+  const date = $("#terminalTaskDate")?.value || state.terminalTaskCalendarDate || todayKey();
+  return {
+    ...existing,
+    id,
+    title: $("#terminalTaskTitle")?.value.trim() || "",
+    note: $("#terminalTaskDescription")?.value.trim() || "",
+    category: existing.category || "running",
+    frequency,
+    date: frequency === "once" ? date : "",
+    startDate: frequency === "interval" ? date : "",
+    endDate: existing.endDate || "",
+    weekdays: frequency === "weekly" ? [Number($("#terminalTaskWeekday")?.value || 1)] : [],
+    dayOfMonth: frequency === "monthly" ? Number($("#terminalTaskMonthday")?.value || 1) : 1,
+    intervalDays: frequency === "interval" ? Number($("#terminalTaskInterval")?.value || 14) : 1,
+    dueTime: $("#terminalTaskDueTime")?.value || "",
+    areaId: $("#terminalTaskArea")?.value || "",
+    assignee: $("#terminalTaskAssignee")?.value || "",
+    active: $("#terminalTaskActive")?.checked !== false,
+    createdAt: existing.createdAt || new Date().toISOString()
+  };
+}
+
+async function saveTerminalCalendarTask(button) {
+  const task = currentTerminalTaskEditorPayload();
+  if (!task.title) return showToast("Bitte Aufgabenname eingeben.");
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Speichert...";
+  try {
+    await terminalAction({ action: "save-task-template", task });
+    resetTerminalTaskEditor(task.date || task.startDate || state.terminalTaskCalendarDate);
+    renderTerminalTaskCalendar();
+    showToast("Aufgabe gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.disabled = false;
+    button.textContent = oldText;
+  }
+}
+
+async function deleteTerminalCalendarTask(button) {
+  const id = $("#terminalTaskEditId")?.value || "";
+  const task = (state.terminalTaskTemplates || []).find((item) => item.id === id);
+  if (!task || !confirm(`Aufgabe "${task.title}" löschen?`)) return;
+  button.disabled = true;
+  try {
+    await terminalAction({ action: "delete-task-template", id });
+    resetTerminalTaskEditor();
+    renderTerminalTaskCalendar();
+    showToast("Aufgabe gelöscht.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function openTerminalTaskAreaManager() {
+  renderTerminalTaskAreaManager();
+  $("#terminalTaskAreaModal")?.classList.remove("hidden");
+}
+
+function closeTerminalTaskAreaManager() {
+  $("#terminalTaskAreaModal")?.classList.add("hidden");
+  if ($("#terminalTaskAreaId")) $("#terminalTaskAreaId").value = "";
+  if ($("#terminalTaskAreaName")) $("#terminalTaskAreaName").value = "";
+  if ($("#terminalTaskAreaColor")) $("#terminalTaskAreaColor").value = "#7c3aed";
+  if ($("#terminalTaskAreaActive")) $("#terminalTaskAreaActive").checked = true;
+}
+
+async function saveTerminalTaskArea(button) {
+  const area = {
+    id: $("#terminalTaskAreaId")?.value || `area-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: $("#terminalTaskAreaName")?.value.trim() || "",
+    color: $("#terminalTaskAreaColor")?.value || "#7c3aed",
+    active: $("#terminalTaskAreaActive")?.checked !== false
+  };
+  if (!area.name) return showToast("Bitte Bereichsname eingeben.");
+  button.disabled = true;
+  try {
+    await terminalAction({ action: "save-task-area", area });
+    closeTerminalTaskAreaManager();
+    openTerminalTaskAreaManager();
+    renderTerminalTaskCalendar();
+    showToast("Bereich gespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderOfferTextBlockEditor(key, block) {
   return `
     <article class="offer-text-block">
@@ -5820,7 +6215,7 @@ function offerFieldNeedsLiveRefresh(target) {
 }
 
 function refreshOfferEditorComputedView(focusSelector = "") {
-  const container = $("#adminOffers");
+  const container = offerWorkspaceRoot();
   if (container?.querySelector("[data-offer-field]")) {
     state.offerCustomerSearch = container.querySelector("#offerCustomerSearch")?.value || state.offerCustomerSearch || "";
     state.offerDraft = currentOfferDraftFromDom();
@@ -5828,7 +6223,7 @@ function refreshOfferEditorComputedView(focusSelector = "") {
   }
   renderAdminOffers();
   if (focusSelector) {
-    const focusTarget = $("#adminOffers")?.querySelector(focusSelector);
+    const focusTarget = offerWorkspaceRoot()?.querySelector(focusSelector);
     focusTarget?.focus();
   }
 }
@@ -5847,6 +6242,7 @@ async function saveCurrentOffer(button) {
       body: JSON.stringify({
         action: "save-offer",
         adminToken: state.adminToken,
+        terminalToken: state.terminalToken,
         offer: draft
       })
     });
@@ -5882,6 +6278,7 @@ async function deleteCurrentOffer(button) {
       body: JSON.stringify({
         action: "delete-offer",
         adminToken: state.adminToken,
+        terminalToken: state.terminalToken,
         offerId: draft.id
       })
     });
@@ -5961,24 +6358,10 @@ function offerTimelineScaleMarkup(events = []) {
   const minMinutes = Math.min(...minutes);
   const maxMinutes = Math.max(...minutes);
   const span = Math.max(60, maxMinutes - minMinutes);
-  const rawPositions = grouped.map((group) => {
+  const points = grouped.map((group, index) => {
     const value = offerTimeMinutesValue(group.time) ?? minMinutes;
     const ratio = grouped.length === 1 ? 0.5 : (value - minMinutes) / span;
-    return 4 + Math.max(0, Math.min(1, ratio)) * 92;
-  });
-  const minGap = grouped.length > 1 ? Math.min(18, 88 / (grouped.length - 1)) : 0;
-  const positions = [...rawPositions];
-  for (let index = 1; index < positions.length; index += 1) {
-    positions[index] = Math.max(positions[index], positions[index - 1] + minGap);
-  }
-  if (positions.at(-1) > 96) {
-    positions[positions.length - 1] = 96;
-    for (let index = positions.length - 2; index >= 0; index -= 1) {
-      positions[index] = Math.min(rawPositions[index], positions[index + 1] - minGap);
-    }
-  }
-  const points = grouped.map((group, index) => {
-    const left = positions[index];
+    const left = 4 + Math.max(0, Math.min(1, ratio)) * 92;
     const palette = index % 3 === 1 ? "gold" : index % 3 === 2 ? "dark" : "red";
     const items = group.events.map((item) => `
       <div class="scale-entry">
@@ -6040,8 +6423,8 @@ function printOfferDraft() {
   `).join("");
   const costs = (draft.costs || []).map((item) => `
     <tr>
-      <td></td>
-      <td>${escapeHtml(item.label || "—")}</td>
+      <td><span class="cost-icon">+</span>${escapeHtml(item.label || "—")}</td>
+      <td>${escapeHtml(item.note || item.label || "Zusatzleistung")}</td>
       <td>${escapeHtml(item.quantity || 0)}</td>
       <td>${formatMoney(item.unitPrice || 0)}</td>
       <td>${formatMoney((cleanOfferMoneyValue(item.quantity) * cleanOfferMoneyValue(item.unitPrice)))}</td>
@@ -6066,33 +6449,37 @@ function printOfferDraft() {
     : "";
   const bowlingCostRows = bowling.laneCost > 0 || bowling.shoeCost > 0 || bowling.tournamentCost > 0
     ? `
-      ${bowling.laneCost > 0 ? `<tr><td></td><td>Bowling Bahnen<br><small>${escapeHtml(`${draft.bowling?.lanes || 0} Bahn(en) · ${bowling.durationLabel}`)}</small></td><td>${escapeHtml(String(draft.bowling?.lanes || 0))}</td><td>laut Tarif</td><td>${formatMoney(bowling.laneCost)}</td></tr>` : ""}
-      ${bowling.shoeCost > 0 ? `<tr><td></td><td>Leihschuhe</td><td>${escapeHtml(String(draft.bowling?.shoePersons || 0))}</td><td>${formatMoney(OFFER_BOWLING_SHOE_PRICE)}</td><td>${formatMoney(bowling.shoeCost)}</td></tr>` : ""}
-      ${bowling.tournamentCost > 0 ? `<tr><td></td><td>${escapeHtml(bowling.tournamentPackageLabel || "Turnierpaket")}<br><small>${escapeHtml(bowling.tournamentPackageDescription || "Zusatzpaket")}</small></td><td>1</td><td>${formatMoney(bowling.tournamentCost)}</td><td>${formatMoney(bowling.tournamentCost)}</td></tr>` : ""}
+      ${bowling.laneCost > 0 ? `<tr><td><span class="cost-icon">B</span>Bowling</td><td>${escapeHtml(`${bowling.durationLabel} inkl. Bahnmiete`)}</td><td>${escapeHtml(`${draft.bowling?.lanes || 0} Bahn(en)`)}</td><td>laut Tarif</td><td>${formatMoney(bowling.laneCost)}</td></tr>` : ""}
+      ${bowling.shoeCost > 0 ? `<tr><td><span class="cost-icon">S</span>Leihschuhe</td><td>Leihschuhe für die Gäste</td><td>${escapeHtml(`${draft.bowling?.shoePersons || 0} Pers.`)}</td><td>${formatMoney(OFFER_BOWLING_SHOE_PRICE)}</td><td>${formatMoney(bowling.shoeCost)}</td></tr>` : ""}
+      ${bowling.tournamentCost > 0 ? `<tr><td><span class="cost-icon">T</span>${escapeHtml(bowling.tournamentPackageLabel || "Turnierpaket")}</td><td>${escapeHtml(bowling.tournamentPackageDescription || "Zusatzpaket")}</td><td>1</td><td>${formatMoney(bowling.tournamentCost)}</td><td>${formatMoney(bowling.tournamentCost)}</td></tr>` : ""}
     `
     : "";
   const buffetCostRows = buffetPricing.buffetBaseTotal > 0 || buffetPricing.sparklingReceptionTotal > 0
     ? `
-      ${buffetPricing.adults > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td></td><td>Buffet Erwachsene</td><td>${escapeHtml(String(buffetPricing.adults))}</td><td>${formatMoney(buffetPricing.pricePerPerson)}</td><td>${formatMoney(buffetPricing.adults * buffetPricing.pricePerPerson)}</td></tr>` : ""}
-      ${buffetPricing.children > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td></td><td>Buffet Kinder unter 12</td><td>${escapeHtml(String(buffetPricing.children))}</td><td>${formatMoney(buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
-      ${draft.buffet?.sparklingReception && buffetPricing.adults > 0 ? `<tr><td></td><td>Sektempfang Erwachsene</td><td>${escapeHtml(String(buffetPricing.adults))}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE)}</td><td>${formatMoney(buffetPricing.adults * OFFER_SPARKLING_RECEPTION_PRICE)}</td></tr>` : ""}
-      ${draft.buffet?.sparklingReception && buffetPricing.children > 0 ? `<tr><td></td><td>Sektempfang Kinder unter 12</td><td>${escapeHtml(String(buffetPricing.children))}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
+      ${buffetPricing.adults > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td><span class="cost-icon">F</span>Buffet</td><td>${escapeHtml(draft.buffet?.name || "Buffet laut Beschreibung")}</td><td>${escapeHtml(`${buffetPricing.adults} Pers.`)}</td><td>${formatMoney(buffetPricing.pricePerPerson)}</td><td>${formatMoney(buffetPricing.adults * buffetPricing.pricePerPerson)}</td></tr>` : ""}
+      ${buffetPricing.children > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td><span class="cost-icon">K</span>Buffet Kinder</td><td>Kinder unter 12 Jahren</td><td>${escapeHtml(`${buffetPricing.children} Pers.`)}</td><td>${formatMoney(buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
+      ${draft.buffet?.sparklingReception && buffetPricing.adults > 0 ? `<tr><td><span class="cost-icon">W</span>Sektempfang</td><td>Welcome Drink bei Ankunft</td><td>${escapeHtml(`${buffetPricing.adults} Pers.`)}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE)}</td><td>${formatMoney(buffetPricing.adults * OFFER_SPARKLING_RECEPTION_PRICE)}</td></tr>` : ""}
+      ${draft.buffet?.sparklingReception && buffetPricing.children > 0 ? `<tr><td><span class="cost-icon">W</span>Sektempfang Kinder</td><td>Kinder unter 12 Jahren</td><td>${escapeHtml(`${buffetPricing.children} Pers.`)}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
     `
     : "";
   const reservedAreaCostRows = reservedAreaPricing.roomFee > 0 || reservedAreaPricing.campfireFee > 0
     ? `
-      ${reservedAreaPricing.roomFee > 0 ? `<tr><td></td><td>${escapeHtml(reservedAreaPricing.roomFeeLabel || "Raummiete")}</td><td>1</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td></tr>` : ""}
-      ${reservedAreaPricing.campfireFee > 0 ? `<tr><td></td><td>Lagerfeuerstelle mit Feuerholz</td><td>1</td><td>${formatMoney(OFFER_CAMPFIRE_PRICE)}</td><td>${formatMoney(reservedAreaPricing.campfireFee)}</td></tr>` : ""}
+      ${reservedAreaPricing.roomFee > 0 ? `<tr><td><span class="cost-icon">R</span>Raumreservierung</td><td>${escapeHtml(reservedAreaPricing.roomFeeLabel || "Reservierter Bereich")}</td><td>1</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td></tr>` : ""}
+      ${reservedAreaPricing.campfireFee > 0 ? `<tr><td><span class="cost-icon">L</span>Lagerfeuerstelle</td><td>Inklusive Feuerholz</td><td>1</td><td>${formatMoney(OFFER_CAMPFIRE_PRICE)}</td><td>${formatMoney(reservedAreaPricing.campfireFee)}</td></tr>` : ""}
     `
     : "";
   const personsSummary = totals.children ? `${totals.adults} + ${totals.children} Kinder` : `${totals.personCount || 0}`;
   const venueInfo = [reservedAreaPricing.reservedAreaLabel, draft.additionalInfo].filter(Boolean).join("\n\n");
-  const includedServices = [
-    bowling.total > 0 ? ["Bowling", [draft.bowling?.lanes ? `${draft.bowling.lanes} Bahn(en)` : "", bowling.durationLabel].filter(Boolean).join(" · ")] : null,
-    buffetPricing.buffetBaseTotal > 0 ? ["Buffet", [draft.buffet?.name || "Buffet", `${personsSummary} Personen`].filter(Boolean).join(" · ")] : null,
-    reservedAreaPricing.reservedAreaLabel ? ["Reservierter Bereich", reservedAreaPricing.reservedAreaLabel] : null,
-    bowling.tournamentCost > 0 ? [bowling.tournamentPackageLabel || "Turnierpaket", bowling.tournamentPackageDescription || ""] : null,
-    reservedAreaPricing.campfireFee > 0 ? ["Lagerfeuerstelle", "inklusive Feuerholz"] : null
+  const offerValidUntil = (() => {
+    if (!draft.offerDate) return "-";
+    const value = new Date(`${draft.offerDate}T12:00:00`);
+    value.setDate(value.getDate() + 14);
+    return formatDate(value.toISOString().slice(0, 10));
+  })();
+  const includedItems = [
+    bowling.total > 0 ? { icon: "B", title: "Bowling", text: `${bowling.durationLabel}${draft.bowling?.lanes ? ` · ${draft.bowling.lanes} Bahn(en)` : ""}` } : null,
+    buffetPricing.buffetBaseTotal > 0 ? { icon: "F", title: "Buffet", text: `${draft.buffet?.name || "Buffet"} · ${formatMoney(draft.buffet?.pricePerPerson || 0)} pro Person` } : null,
+    reservedAreaPricing.reservedAreaLabel ? { icon: "R", title: "Reservierter Bereich", text: reservedAreaPricing.reservedAreaLabel } : null
   ].filter(Boolean);
   win.document.write(`
     <!doctype html>
@@ -6105,80 +6492,89 @@ function printOfferDraft() {
           @page { size: A4 portrait; margin: 0; }
           * { box-sizing: border-box; }
           html, body { margin: 0; padding: 0; }
-          body { font-family: Inter, Arial, Helvetica, sans-serif; color: #121a2a; background: #eef1f5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .sheet { width: 210mm; min-height: 297mm; height: 297mm; margin: 0 auto; padding: 0 12mm 9mm; position: relative; background: #fff; display: flex; flex-direction: column; gap: 4mm; overflow: hidden; }
+          body { font-family: Arial, Helvetica, sans-serif; color: #161616; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          :root { --navy: #071b31; --navy-soft: #102b48; --red: #e30613; --line: #dce4ec; --muted: #64748b; }
+          .sheet { width: 210mm; min-height: 297mm; height: 297mm; padding: 0 10mm 8mm; position: relative; background: #fff; display: flex; flex-direction: column; gap: 4mm; overflow: hidden; }
           .sheet + .sheet { page-break-before: always; margin-top: 0; }
-          .header { margin: 0 -12mm 4mm; height: 29mm; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(54mm, .7fr); overflow: hidden; border-bottom: 1.5mm solid #e30613; background: #0b1c2e; color: #fff; }
-          .header.compact { height: 23mm; }
-          .header-left { display: flex; align-items: center; min-width: 0; padding: 4mm 7mm 3mm 12mm; }
-          .header-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding: 5mm 12mm 4mm 6mm; text-align: right; border-left: 1px solid rgba(255,255,255,.14); }
-          .header-logo { width: 61mm; max-width: 100%; max-height: 18mm; object-fit: contain; filter: brightness(0) invert(1); }
-          .header-contact { margin-top: 1.5mm; max-width: 60mm; font-size: 8.2px; line-height: 1.45; color: #dbe5ef; }
-          .title-row { display: flex; justify-content: space-between; align-items: flex-end; margin: 0 0 1mm; }
-          .page-title { margin: 0; font-size: 21px; line-height: 1.15; font-weight: 750; color: #0b1c2e; }
-          .offer-date { font-size: 9px; color: #667085; }
+          .header { margin: 0 -10mm 5mm; height: 31mm; padding: 6mm 10mm; display: flex; align-items: center; justify-content: space-between; overflow: hidden; background: linear-gradient(135deg, var(--navy) 0%, #0a233d 65%, #061425 100%); color: #fff; }
+          .header-left { display: flex; align-items: center; }
+          .header-right { min-width: 68mm; display: grid; gap: 1.4mm; font-size: 9px; line-height: 1.3; }
+          .header-right span { display: flex; gap: 2.5mm; align-items: center; }
+          .header-logo { width: 62mm; max-width: 100%; filter: brightness(0) invert(1); }
+          .title-row { display: flex; align-items: center; justify-content: space-between; margin: 1mm 0 3mm; }
+          .page-title { margin: 0; color: var(--navy); font-size: 25px; line-height: 1; font-weight: 800; }
+          .date-card { display: flex; align-items: center; gap: 3mm; padding: 3mm 4mm; border: 1px solid var(--line); border-radius: 3mm; min-width: 50mm; }
+          .date-icon, .round-icon { width: 9mm; height: 9mm; border-radius: 50%; background: var(--red); color: #fff; display: inline-grid; place-items: center; font-size: 11px; font-weight: 800; flex: none; }
+          .date-card small { display: block; color: var(--muted); font-size: 8px; }
+          .date-card strong { display: block; color: var(--navy); font-size: 11px; margin-top: 0.6mm; }
           .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 4.5mm; }
-          .template-card { border: 1px solid #dfe5ec; border-radius: 2.5mm; padding: 4mm 4.5mm; background: #fff; page-break-inside: avoid; }
+          .template-card { border: 1px solid var(--line); border-radius: 3mm; padding: 4mm 4.5mm; background: #fff; page-break-inside: avoid; }
           .template-card + .template-card { margin-top: 4.5mm; }
-          .section-title { display: flex; align-items: center; gap: 7px; margin: 0 0 2.5mm; font-size: 13px; font-weight: 750; color: #0b1c2e; }
-          .section-title::before { content: ""; width: 3px; height: 15px; border-radius: 2px; background: #e30613; display: inline-block; flex: none; }
-          .muted { color: #667085; }
+          .section-title { display: flex; align-items: center; gap: 2.5mm; margin: 0 0 3mm; color: var(--navy); font-size: 13px; font-weight: 800; }
+          .section-title::before { content: attr(data-icon); width: 9mm; height: 9mm; border-radius: 50%; background: var(--red); color: #fff; display: inline-grid; place-items: center; flex: none; font-size: 10px; }
+          .muted { color: var(--muted); }
           .event-grid { display: grid; grid-template-columns: 100px 1fr; row-gap: 4px; column-gap: 10px; font-size: 11px; }
-          .event-grid strong { color: #667085; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; }
-          .scale-wrap { position: relative; margin-top: 1mm; min-height: 39mm; padding: 5mm 3mm 0; }
-          .scale-line { position: absolute; left: 4%; right: 4%; top: 15.5mm; height: 1px; background: #aeb9c6; }
-          .scale-point { position: absolute; top: 0; transform: translateX(-50%); width: clamp(22mm, 16%, 30mm); text-align: center; }
-          .scale-time { font-size: 9.5px; font-weight: 750; color: #0b1c2e; margin-bottom: 4.7mm; }
-          .scale-dot { width: 5mm; height: 5mm; border-radius: 50%; margin: 0 auto 3.5mm; border: 1.2mm solid #fff; background: #e30613; box-shadow: 0 0 0 .5mm #e30613; }
-          .scale-dot.is-red, .scale-dot.is-gold, .scale-dot.is-dark { background: #e30613; }
-          .scale-stack { display: grid; gap: 2mm; padding: 1.8mm; border: 1px solid #e4e9ef; border-radius: 1.8mm; background: #f8fafc; }
+          .event-grid strong { color: #77716a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
+          .scale-wrap { position: relative; margin-top: 2.5mm; min-height: 46mm; padding: 6mm 3mm 0; }
+          .scale-line { position: absolute; left: 4%; right: 4%; top: 18mm; height: 1px; background: var(--navy-soft); }
+          .scale-point { position: absolute; top: 0; transform: translateX(-50%); width: 30mm; text-align: center; }
+          .scale-time { font-size: 10px; font-weight: 700; margin-bottom: 6mm; }
+          .scale-dot { width: 8mm; height: 8mm; border-radius: 999px; margin: 0 auto 4.5mm; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
+          .scale-dot.is-red, .scale-dot.is-gold, .scale-dot.is-dark { background: var(--red); }
+          .scale-stack { display: grid; gap: 2.5mm; }
           .scale-entry { display: grid; gap: 1px; }
-          .scale-label { font-size: 9px; font-weight: 700; line-height: 1.2; }
-          .scale-note { font-size: 8px; color: #667085; line-height: 1.2; }
+          .scale-label { font-size: 9.6px; font-weight: 700; line-height: 1.25; }
+          .scale-note { font-size: 8.7px; color: #6d6b68; line-height: 1.25; }
           .buffet-layout { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4mm; align-items: start; }
           .buffet-col h4 { margin: 0 0 2mm; font-size: 12px; text-align: center; }
           .buffet-col ul { list-style: none; margin: 0; padding: 0; font-size: 10px; line-height: 1.45; text-align: center; }
           .buffet-col li + li { margin-top: 2.5mm; }
           .buffet-col span { display: block; font-size: 9px; color: #6d6b68; }
           .buffet-meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 3mm; }
-          .buffet-heading { display: flex; align-items: center; gap: 3mm; flex-wrap: wrap; }
-          .buffet-badge { padding: 1.8mm 4mm; border-radius: 999px; background: #f2f4f7; color: #344054; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-          .buffet-price { min-width: 33mm; text-align: right; color: #0b1c2e; font-size: 14px; font-weight: 750; }
-          .buffet-price small { display: block; margin-top: .5mm; color: #667085; font-size: 8px; font-weight: 500; }
-          .services-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; }
-          .service-item { padding-left: 3mm; border-left: 2px solid #e30613; font-size: 9px; line-height: 1.35; }
-          .service-item strong { display: block; margin-bottom: .8mm; color: #0b1c2e; font-size: 10px; }
+          .buffet-badge { padding: 2.5mm 8mm; border-radius: 999px; background: #efe7da; color: #7c6962; font-size: 10px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; }
+          .price-pill { margin-top: 4mm; text-align: right; font-size: 10px; font-weight: 700; }
+          .price-pill small { display: block; font-size: 9px; color: #6d6b68; font-weight: 400; }
           .details-copy { white-space: pre-line; font-size: 10px; line-height: 1.45; }
-          .footer { margin-top: auto; padding-top: 3mm; border-top: 1px solid #dfe5ec; display: flex; justify-content: space-between; font-size: 8.5px; color: #667085; }
+          .footer { margin-top: auto; padding-top: 3mm; border-top: 1px solid #ddd3c8; display: flex; justify-content: space-between; font-size: 9px; color: #6d6b68; }
           .cost-card { margin-top: 0; }
-          .cost-table { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 10px; counter-reset: offer-position; }
-          .cost-table th { text-align: left; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; color: #fff; padding: 2.2mm 1.5mm; background: #0b1c2e; border-bottom: 1px solid #0b1c2e; }
-          .cost-table td { padding: 1.8mm 1.5mm; vertical-align: top; border-bottom: 1px solid #e7ebf0; }
-          .cost-table tbody tr { counter-increment: offer-position; page-break-inside: avoid; }
-          .cost-table tbody td:first-child::before { content: counter(offer-position); }
-          .cost-table small { color: #667085; font-size: 8px; line-height: 1.3; }
+          .cost-table { width: 100%; border: 1px solid var(--line); border-collapse: separate; border-spacing: 0; border-radius: 3mm; overflow: hidden; margin-top: 3mm; font-size: 10px; }
+          .cost-table th { text-align: left; font-size: 9px; color: var(--navy); background: #f5f8fb; padding: 2.7mm 2.5mm; border-bottom: 1px solid var(--line); }
+          .cost-table td { padding: 2.7mm 2.5mm; vertical-align: middle; border-bottom: 1px solid var(--line); }
+          .cost-table tbody tr:last-child td { border-bottom: 0; }
           .cost-table td:last-child, .cost-table th:last-child { text-align: right; }
-          .cost-table td:nth-child(1), .cost-table th:nth-child(1),
-          .cost-table td:nth-child(3), .cost-table th:nth-child(3) { text-align: center; }
-          .cost-table td:nth-child(4), .cost-table th:nth-child(4) { text-align: right; }
+          .cost-table td:nth-child(3), .cost-table th:nth-child(3), .cost-table td:nth-child(4), .cost-table th:nth-child(4) { text-align: center; }
+          .cost-icon { width: 7mm; height: 7mm; margin-right: 2mm; display: inline-grid; place-items: center; border-radius: 50%; background: var(--red); color: #fff; font-size: 8px; font-weight: 800; vertical-align: middle; }
           .cost-note { margin-top: 3mm; font-size: 9px; color: #6d6b68; }
-          .total-line { width: 100%; margin: 4mm 0 0; padding: 3.2mm 4mm; display: flex; justify-content: space-between; align-items: center; background: #0b1c2e; color: #fff; font-size: 15px; font-weight: 750; }
+          .total-line { margin-top: 0; padding: 4mm 5mm; display: flex; justify-content: space-between; align-items: center; border-radius: 0 0 3mm 3mm; background: var(--navy); color: #fff; font-size: 13px; font-weight: 700; }
+          .total-line strong { font-size: 22px; }
           .big-heading { margin: 1mm 0 3mm; font-size: 22px; font-weight: 700; }
-          .summary-strip { width: 100%; margin: 0 0 4mm; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #dfe5ec; border-radius: 2.5mm; overflow: hidden; }
+          .summary-strip { width: 100%; margin: 0 0 4mm; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #ddd3c8; border-radius: 5mm; overflow: hidden; }
           .summary-strip > div { padding: 3mm 4mm; text-align: center; }
-          .summary-strip > div + div { border-left: 1px solid #dfe5ec; }
+          .summary-strip > div + div { border-left: 1px solid #e7ded2; }
           .summary-strip small { display: block; font-size: 9px; color: #77716a; text-transform: uppercase; margin-bottom: 1.5mm; }
           .summary-strip strong { font-size: 10px; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; align-items: stretch; }
-          .info-card { border: 1px solid #dfe5ec; border-radius: 2.5mm; padding: 3.5mm 4mm; margin: 0; width: 100%; background: #fbfcfd; }
+          .info-card { border: 1px solid #ddd3c8; border-radius: 5mm; padding: 4mm 5mm; margin: 0 0 4mm; width: 100%; }
           .info-card p { margin: 0; white-space: pre-line; font-size: 10px; line-height: 1.45; }
-          .signature-card { width: 100%; margin: 0 0 4mm; border: 1px solid #dfe5ec; border-radius: 2.5mm; padding: 4mm 5mm 6mm; }
-          .signature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5mm; margin-top: 8mm; }
+          .signature-card { width: 100%; margin: 0 0 4mm; border: 1px solid #ddd3c8; border-radius: 5mm; padding: 4mm 5mm 6mm; }
+          .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin-top: 8mm; }
           .signature-line { border-top: 1px solid #9f9b96; padding-top: 2mm; font-size: 9px; color: #6d6b68; min-height: 13mm; }
           .closing { width: 100%; margin: 2mm 0 0; font-size: 10px; }
           .closing strong { display: block; margin-top: 2mm; font-size: 13px; color: #161616; }
-          @media screen and (max-width: 850px) { body { overflow-x: auto; } .sheet { transform-origin: top left; } }
-          @media print { body { background: #fff; } .sheet { margin: 0; } }
+          .buffet-highlight { display: flex; align-items: center; justify-content: space-between; gap: 5mm; border-color: #f2b4b9; background: #fffafa; }
+          .buffet-highlight-main { display: flex; align-items: center; gap: 3mm; }
+          .buffet-highlight h3 { margin: 0 0 1mm; color: var(--navy); font-size: 14px; }
+          .buffet-highlight p { margin: 0; font-size: 9px; color: var(--muted); }
+          .buffet-price { color: var(--red); font-size: 20px; font-weight: 800; text-align: right; white-space: nowrap; }
+          .buffet-price small { display: block; color: var(--navy); font-size: 8px; font-weight: 400; }
+          .included-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+          .included-item { display: flex; gap: 2.5mm; padding: 1mm 3mm; min-height: 20mm; }
+          .included-item + .included-item { border-left: 1px solid var(--line); }
+          .included-item strong { display: block; margin: 1mm 0; color: var(--navy); font-size: 10px; }
+          .included-item span:last-child { color: var(--muted); font-size: 8.5px; line-height: 1.35; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+          .info-grid .info-card { margin: 0; min-height: 28mm; }
+          .info-card .section-title { font-size: 11px; margin-bottom: 2mm; }
+          .signature-grid { grid-template-columns: repeat(4, 1fr); gap: 7mm; }
         </style>
       </head>
       <body>
@@ -6188,81 +6584,58 @@ function printOfferDraft() {
               <img class="header-logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
             </div>
             <div class="header-right">
-              <strong>LA-Bowling</strong>
-              <div class="header-contact">Röntgenstr. 12 · 84030 Landshut</div>
+              <span>⌖ Röntgenstraße 12 · 84030 Landshut</span>
+              <span>☎ LA-Bowling Veranstaltungsservice</span>
             </div>
           </div>
           <div class="title-row">
             <h2 class="page-title">Angebot</h2>
-            <div class="offer-date">Angebotsdatum: ${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "-")}</div>
+            <div class="date-card"><span class="date-icon">D</span><span><small>Angebotsdatum</small><strong>${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "-")}</strong></span></div>
           </div>
           <div class="grid-two">
             <section class="template-card">
-              <h3 class="section-title">Kunde</h3>
-              <div class="details-copy">${escapeHtml(draft.customerName || "-")}${draft.customerContact ? `\n${escapeHtml(draft.customerContact)}` : ""}${draft.customerEmail ? `\n${escapeHtml(draft.customerEmail)}` : ""}${draft.customerPhone ? `\n${escapeHtml(draft.customerPhone)}` : ""}</div>
+              <h3 class="section-title" data-icon="K">Kundendaten</h3>
+              <div class="details-copy"><strong>${escapeHtml(draft.customerName || "-")}</strong>${draft.customerContact ? `\n${escapeHtml(draft.customerContact)}` : ""}${draft.customerAddress ? `\n${escapeHtml(draft.customerAddress)}` : ""}${draft.customerPhone ? `\n\n☎ ${escapeHtml(draft.customerPhone)}` : ""}${draft.customerEmail ? `\n✉ ${escapeHtml(draft.customerEmail)}` : ""}</div>
             </section>
             <section class="template-card">
-              <h3 class="section-title">Veranstaltung</h3>
+              <h3 class="section-title" data-icon="V">Veranstaltungsdetails</h3>
               <div class="event-grid">
                 <strong>Datum</strong><span>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</span>
                 <strong>Anlass</strong><span>${escapeHtml(draft.occasion || "-")}</span>
                 <strong>Personen</strong><span>${escapeHtml(personsSummary)}</span>
-                <strong>Bowling</strong><span>${escapeHtml(draft.bowling?.fromTime || "-")}${draft.bowling?.toTime ? ` - ${escapeHtml(draft.bowling?.toTime)}` : ""}</span>
-                <strong>Essen</strong><span>${escapeHtml(draft.mealTime || "offen")}</span>
+                <strong>Beginn</strong><span>${escapeHtml(draft.startTime || draft.bowling?.fromTime || "-")} Uhr</span>
+                <strong>Bereich</strong><span>${escapeHtml(reservedAreaPricing.reservedAreaLabel || "LA-Bowling")}</span>
               </div>
             </section>
           </div>
-          ${timelineScale ? `<section class="template-card"><h3 class="section-title">Ablauf</h3>${timelineScale}</section>` : ""}
-          <section class="template-card">
-            <div class="buffet-meta">
-              <div class="buffet-heading">
-                <h3 class="section-title">Buffet</h3>
-                ${templateBadge ? `<span class="buffet-badge">${escapeHtml(templateBadge)}</span>` : ""}
-              </div>
-              ${buffetPricing.pricePerPerson > 0 ? `<div class="buffet-price">${formatMoney(buffetPricing.pricePerPerson)}<small>pro Person</small></div>` : ""}
+          ${timelineScale ? `<section class="template-card"><h3 class="section-title" data-icon="Z">Zeitskala / Ablauf</h3>${timelineScale}</section>` : ""}
+          ${buffetPricing.buffetBaseTotal > 0 ? `<section class="template-card buffet-highlight">
+            <div class="buffet-highlight-main">
+              <span class="round-icon">F</span>
+              <div><h3>${escapeHtml(draft.buffet?.name || templateBadge || "Buffet")}</h3><p>${escapeHtml(draft.buffet?.name ? "Buffet laut ausgewählter Zusammenstellung" : "Buffet laut Beschreibung")}</p></div>
             </div>
-            ${draft.buffet?.name ? `<p class="muted">${escapeHtml(draft.buffet.name)}</p>` : ""}
-            <div class="buffet-layout">
-              ${OFFER_CATEGORY_ORDER.map((category) => {
-                const items = draft.buffet?.categories?.[category] || [];
-                if (!items.length) return "";
-                return `
-                  <div class="buffet-col">
-                    <h4>${escapeHtml(OFFER_CATEGORY_LABELS[category] || category)}</h4>
-                    <ul>${items.map((item) => `<li>${escapeHtml(item.name)}${item.note ? `<span>${escapeHtml(item.note)}</span>` : ""}</li>`).join("")}</ul>
-                  </div>
-                `;
-              }).filter(Boolean).join("")}
-            </div>
-          </section>
-          ${includedServices.length ? `<section class="template-card">
-            <h3 class="section-title">Inklusive Leistungen</h3>
-            <div class="services-grid">${includedServices.map(([title, detail]) => `<div class="service-item"><strong>${escapeHtml(title)}</strong>${escapeHtml(detail || "")}</div>`).join("")}</div>
-            ${draft.additionalInfo ? `<div class="details-copy muted" style="margin-top:3mm;">${escapeHtml(draft.additionalInfo)}</div>` : ""}
+            <div class="buffet-price">${formatMoney(draft.buffet?.pricePerPerson || 0)}<small>pro Person</small></div>
           </section>` : ""}
+          ${includedItems.length ? `<section class="template-card"><h3 class="section-title" data-icon="+">Inklusive im Angebot</h3><div class="included-grid">${includedItems.map((item) => `<div class="included-item"><span class="round-icon">${escapeHtml(item.icon)}</span><span><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.text)}</span></span></div>`).join("")}</div></section>` : ""}
           <div class="footer">
             <span>LA Bowling · Röntgenstr. 12 · 84030 Landshut</span>
             <span>Seite 1 von 2</span>
           </div>
         </div>
         <div class="sheet">
-          <div class="header compact">
+          <div class="header">
             <div class="header-left">
               <img class="header-logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
             </div>
             <div class="header-right">
-              <strong>LA-Bowling</strong>
-              <div class="header-contact">Röntgenstr. 12 · 84030 Landshut</div>
+              <span>⌖ Röntgenstraße 12 · 84030 Landshut</span>
+              <span>☎ LA-Bowling Veranstaltungsservice</span>
             </div>
           </div>
-          <div class="title-row">
-            <h2 class="page-title">Kosten &amp; Vereinbarung</h2>
-            <div class="offer-date">Angebot für ${escapeHtml(draft.customerName || "-")}</div>
-          </div>
           <section class="template-card cost-card">
-            <h3 class="section-title">Kostenübersicht</h3>
+            <h2 class="page-title">Kostenübersicht</h2>
             <table class="cost-table">
-              <thead><tr><th>Pos.</th><th>Beschreibung</th><th>Anzahl</th><th>Einzelpreis</th><th>Gesamtpreis</th></tr></thead>
+              <thead><tr><th>Position</th><th>Beschreibung</th><th>Anzahl</th><th>Einzelpreis</th><th>Gesamtpreis</th></tr></thead>
               <tbody>
                 ${buffetCostRows}
                 ${bowlingCostRows}
@@ -6271,16 +6644,18 @@ function printOfferDraft() {
               </tbody>
             </table>
             ${vatNoticeText ? `<div class="cost-note">${escapeHtml(vatNoticeText)}</div>` : ""}
-            <div class="total-line"><span>Gesamtbetrag</span><span>${formatMoney(totals.total)}</span></div>
+            <div class="total-line"><span>Gesamtbetrag</span><strong>${formatMoney(totals.total)}</strong></div>
           </section>
           <div class="info-grid">
-            ${pricingNoticeText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.pricingNotice.label)}</h3><p>${escapeHtml(pricingNoticeText)}</p></section>` : ""}
-            ${cancellationText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.cancellationTerms.label)}</h3><p>${escapeHtml(cancellationText)}</p></section>` : ""}
-            ${reservationText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.reservationConfirmation.label)}</h3><p>${escapeHtml(reservationText)}</p></section>` : ""}
+            <section class="info-card"><h3 class="section-title" data-icon="D">Angebotsgültigkeit</h3><p>Dieses Angebot ist gültig bis ${escapeHtml(offerValidUntil)}.</p></section>
+            ${vatNoticeText ? `<section class="info-card"><h3 class="section-title" data-icon="i">Hinweise</h3><p>${escapeHtml(vatNoticeText)}</p></section>` : ""}
+            ${cancellationText ? `<section class="info-card"><h3 class="section-title" data-icon="S">Stornierungsbedingungen</h3><p>${escapeHtml(cancellationText)}</p></section>` : ""}
+            ${reservationText ? `<section class="info-card"><h3 class="section-title" data-icon="✓">Reservierung / Bestätigung</h3><p>${escapeHtml(reservationText)}</p></section>` : ""}
+            ${pricingNoticeText ? `<section class="info-card"><h3 class="section-title" data-icon="i">Preisgrundlage</h3><p>${escapeHtml(pricingNoticeText)}</p></section>` : ""}
           </div>
           <section class="signature-card">
-            <h3 class="section-title">Angebot angenommen</h3>
-            ${reservationText ? `<p class="muted" style="font-size:9px; margin:0;">Bitte senden Sie das unterschriebene Angebot als Bestätigung zurück.</p>` : ""}
+            <h3 class="section-title" data-icon="✓">Angebot angenommen</h3>
+            <p class="muted" style="font-size:9px;">Mit der Unterschrift bestätigen wir die Annahme dieses Angebots und die verbindliche Buchung.</p>
             <div class="signature-grid">
               <div class="signature-line">Ort</div>
               <div class="signature-line">Datum</div>
@@ -6288,11 +6663,6 @@ function printOfferDraft() {
               <div class="signature-line">Unterschrift</div>
             </div>
           </section>
-          <div class="closing">
-            <div>Mit freundlichen Grüßen</div>
-            <strong>Christian Poschenrieder</strong>
-            <div class="muted">Geschäftsleitung</div>
-          </div>
           <div class="footer">
             <span>LA Bowling · Röntgenstr. 12 · 84030 Landshut</span>
             <span>Seite 2 von 2</span>
@@ -7044,6 +7414,10 @@ function renderInvoiceEditorShell(draft, totals, readonly) {
 function renderAdminInvoices() {
   const container = $("#adminInvoices");
   if (!container) return;
+  if (!NEW_INVOICE_PROGRAM_ENABLED) {
+    container.innerHTML = "";
+    return;
+  }
   if (!state.invoiceSkipDomSync && state.invoiceEditorDirty && container.querySelector("[data-invoice-field]")) {
     state.invoiceSearch = container.querySelector("#invoiceSearch")?.value || state.invoiceSearch || "";
     state.invoiceEditorDraft = currentInvoiceDraftFromDom();
@@ -7871,6 +8245,8 @@ function updateGastroTotalField() {
 }
 
 function cashExpensesFromFormOrReport(report = state.terminalReport || {}) {
+  const expenseList = $("#expensesList");
+  if (expenseList) return expenseRowsTotalFromDom();
   const field = $("#reportCashExpenses");
   if (field && String(field.value || "").trim()) return parseMoneyInput(field.value);
   if (report.cashExpenses !== "" && report.cashExpenses != null) return reportMoneyNumber(report.cashExpenses);
@@ -7896,7 +8272,12 @@ function updateReportBarTotal() {
   updateEcTotalField();
   updateGastroTotalField();
   renderTipDistribution();
+  renderFinanceExpensePreview();
   renderDayReportA4Summary(state.terminalDate || todayKey(), reportPreviewFromForm());
+}
+
+function bowlingCashRevenueFromFormOrReport(report = state.terminalReport || {}) {
+  return parseMoneyInput($("#reportBowlingCashRevenue")?.value || report.bowlingCashRevenue || "");
 }
 
 function reportPreviewFromForm() {
@@ -7906,6 +8287,7 @@ function reportPreviewFromForm() {
   const revenueDrinks = $("#reportRevenueDrinks")?.value || state.terminalReport?.revenueDrinks || "";
   const revenueFood = $("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "";
   const revenueOther = $("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || "";
+  const bowlingCashRevenue = $("#reportBowlingCashRevenue")?.value || state.terminalReport?.bowlingCashRevenue || "";
   const revenueGastro = gastroRevenueFromFormOrReport().toFixed(2);
   const personalConsumption = $("#reportPersonalConsumption")?.value || state.terminalReport?.personalConsumption || "";
   const tipResult = calculateTipDistribution(state.terminalDate || todayKey());
@@ -7921,6 +8303,7 @@ function reportPreviewFromForm() {
     revenueDrinks,
     revenueFood,
     revenueOther,
+    bowlingCashRevenue,
     revenueGastro,
     barBowling: revenueBowling,
     barGastro: revenueGastro,
@@ -7940,12 +8323,19 @@ function terminalWorkspaceTab(value) {
     service: "employees",
     tables: "tables",
     finance: "closing",
-    tips: "closing",
+    tips: "tips",
     report: "closing",
     cleaning: "today"
   };
   const tab = legacyTabs[String(value || "")] || String(value || "");
-  return ["today", "tables", "employees", "closing", "orders", "offers"].includes(tab) ? tab : "today";
+  return ["today", "tables", "employees", "closing", "orders", "offers", "task-calendar", "invoices", "tips", "settings"].includes(tab) ? tab : "today";
+}
+
+function terminalCanManageSettings() {
+  const managerText = `${state.terminalReport?.shiftLeader || ""} ${state.activeEmployee || ""}`.toLowerCase();
+  return Boolean(state.terminalToken)
+    || Boolean(state.adminToken)
+    || /(christian|poschenrieder|kevin|dennis|schichtleitung|betriebsleitung)/i.test(managerText);
 }
 
 function terminalRelativeDate(offset = 0) {
@@ -8012,6 +8402,7 @@ function renderTerminal() {
   const employees = terminalEmployeesForDay(dateKey);
   const entries = state.terminalEntries || {};
   const report = state.terminalReport || {};
+  loadTerminalControls();
   const reportClosed = Boolean(report.closed);
   const reportLocked = reportClosed || terminalIsFuturePreview(dateKey);
   renderTerminalTabs();
@@ -8024,19 +8415,31 @@ function renderTerminal() {
   renderHandovers(report, reportLocked);
   renderToiletStatus(report);
   renderTerminalChecks(report);
+  renderTerminalTableLite();
   renderTerminalAssignments(dateKey);
   renderTerminalTablePlan(dateKey, report, reportClosed);
   checkTerminalReminders(report, reportClosed);
-  renderTerminalCosts(dateKey, employees);
   renderTipDistribution();
   $(".terminal-add")?.classList.toggle("hidden", reportLocked);
+  const breakEmployees = employees.filter((employee) => (entries[employee]?.[dateKey]?.breaks || []).some((item) => item?.from && !item?.to));
   const activeEmployees = employees.filter((employee) => {
     const entry = entries[employee]?.[dateKey] || {};
-    return Boolean(entry.from && !entry.to);
+    return Boolean(entry.from && !entry.to && !(entry.breaks || []).some((item) => item?.from && !item?.to));
   });
+  const finishedEmployees = employees.filter((employee) => Boolean(entries[employee]?.[dateKey]?.to));
+  const openEmployees = employees.filter((employee) => !entries[employee]?.[dateKey]?.from);
   renderTerminalWorktimePreview(dateKey, employees, entries, reportLocked);
+  if ($("#terminalWorktimeDate")) $("#terminalWorktimeDate").textContent = formatLongDate(dateKey);
+  if ($("#terminalWorktimeLeader")) $("#terminalWorktimeLeader").textContent = report.shiftLeader || "Nicht festgelegt";
+  $$('[data-worktime-date-step="1"]').forEach((button) => {
+    button.disabled = dateKey >= terminalRelativeDate(1);
+  });
+  if ($("#terminalPlannedEmployeeCount")) $("#terminalPlannedEmployeeCount").textContent = String(employees.filter((employee) => terminalIsPlanned(employee)).length);
   const activeEmployeeCount = $("#terminalActiveEmployeeCount");
-  if (activeEmployeeCount) activeEmployeeCount.textContent = `${activeEmployees.length} ${activeEmployees.length === 1 ? "aktiv" : "aktiv"}`;
+  if (activeEmployeeCount) activeEmployeeCount.textContent = String(activeEmployees.length);
+  if ($("#terminalBreakEmployeeCount")) $("#terminalBreakEmployeeCount").textContent = String(breakEmployees.length);
+  if ($("#terminalOpenEmployeeCount")) $("#terminalOpenEmployeeCount").textContent = String(openEmployees.length);
+  if ($("#terminalFinishedEmployeeCount")) $("#terminalFinishedEmployeeCount").textContent = String(finishedEmployees.length);
   $("#terminalEmployees").innerHTML = employees.length ? employees.map((employee) => {
     const entry = entries[employee]?.[dateKey] || {};
     const hours = paidHours(entry);
@@ -8044,21 +8447,27 @@ function renderTerminal() {
     const planned = terminalIsPlanned(employee);
     const plannedShift = terminalPlannedShiftFor(employee);
     const shiftText = dayReportShiftText(entry);
+    const area = terminalWorktimeArea(employee);
+    const initials = employee.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0)).join("").toUpperCase();
+    const status = entry.to ? "Beendet" : hasOpenBreak ? "Pause" : entry.from ? "Im Dienst" : planned ? "Geplant" : "Offen";
+    const statusClass = entry.to ? "is-finished" : hasOpenBreak ? "is-break" : entry.from ? "is-active" : "is-planned";
     return `
-      <article class="terminal-employee ${reportClosed ? "is-locked" : ""}">
+      <article class="terminal-employee ${reportClosed ? "is-locked" : ""}" data-terminal-employee-card="${escapeHtml(employee)}">
         <div class="terminal-employee-head">
-          <div>
-          <strong>${escapeHtml(employee)}</strong>
-            <span>${planned ? "Geplant" : "Zusätzlich"}${plannedShift.label ? ` · Plan ${escapeHtml(plannedShift.label)}` : ""}</span>
+          <span class="worktime-avatar" aria-hidden="true">${escapeHtml(initials)}</span>
+          <div class="worktime-employee-copy">
+            <strong>${escapeHtml(employee)}</strong>
+            <span>${escapeHtml(area)}${plannedShift.label ? ` · Plan ${escapeHtml(plannedShift.label)}` : ""}</span>
           </div>
-          <strong class="terminal-shift-time">${escapeHtml(shiftText)}</strong>
+          <span class="worktime-status-chip ${statusClass}">${escapeHtml(status)}</span>
+          <span class="terminal-shift-time">${escapeHtml(shiftText)}</span>
           ${hours ? `<span class="terminal-hours">${formatHours(hours)}</span>` : ""}
         </div>
         <div class="terminal-time-edit">
           <div class="terminal-time-toolbar">
             <strong>Arbeitszeiten</strong>
             <div class="terminal-time-toolbar-actions">
-              <button class="secondary terminal-add-segment-button" type="button" data-add-time-segment="${escapeHtml(employee)}" title="Arbeitszeit hinzufügen" aria-label="Arbeitszeit hinzufügen" ${reportLocked ? "disabled" : ""}>+</button>
+              <button class="secondary terminal-add-segment-button" type="button" data-add-time-segment="${escapeHtml(employee)}" title="Zeitspanne hinzufügen" ${reportLocked ? "disabled" : ""}><span aria-hidden="true">+</span> Zeitspanne</button>
               <button class="secondary terminal-save-times-button" data-terminal-adjust="${escapeHtml(employee)}" ${reportLocked ? "disabled" : ""}>Speichern</button>
             </div>
           </div>
@@ -8070,7 +8479,7 @@ function renderTerminal() {
           <button class="primary" data-terminal-punch="start" data-terminal-employee="${escapeHtml(employee)}" ${reportLocked ? "disabled" : ""}>Eintragen</button>
           <button class="secondary" data-terminal-punch="end" data-terminal-employee="${escapeHtml(employee)}" ${reportLocked ? "disabled" : ""}>Ausstempeln</button>
           <button class="secondary" data-terminal-break="${hasOpenBreak ? "end" : "start"}" data-terminal-employee="${escapeHtml(employee)}" ${reportLocked || !entry.from || Boolean(entry.to) ? "disabled" : ""}>${hasOpenBreak ? "Pause beenden" : "Pause"}</button>
-          <button class="secondary danger-lite terminal-remove-button" data-terminal-remove="${escapeHtml(employee)}" ${reportLocked ? "disabled" : ""}>Entfernen</button>
+          <button class="secondary danger-lite terminal-remove-button" data-terminal-remove="${escapeHtml(employee)}" title="Mitarbeiter entfernen" aria-label="${escapeHtml(employee)} entfernen" ${reportLocked ? "disabled" : ""}>&times;</button>
         </div>
       </article>
     `;
@@ -8085,6 +8494,7 @@ function renderTerminal() {
   $("#reportRevenueDrinks").value = report.revenueDrinks || "";
   $("#reportRevenueFood").value = report.revenueFood || "";
   $("#reportRevenueOther").value = report.revenueOther || "";
+  $("#reportBowlingCashRevenue").value = report.bowlingCashRevenue || "";
   $("#reportRevenueGastro").value = report.revenueGastro || report.barGastro || "";
   updateReportBarTotal();
   $("#reportNotes").value = report.notes || "";
@@ -8116,29 +8526,67 @@ function terminalTimeSegmentRowHtml(segment = {}, index = 0, disabled = false) {
 
 function renderTerminalWorktimePreview(dateKey, employees = [], entries = {}, reportLocked = false) {
   const target = $("#terminalWorktimePreviewList");
-  const count = $("#terminalWorktimePreviewCount");
   if (!target) return;
-  const active = employees.map((employee) => {
-    const entry = entries[employee]?.[dateKey] || {};
-    if (!entry.from || entry.to) return null;
-    const openSegment = [...timeSegmentsForEdit(entry)].reverse().find((segment) => segment.from && !segment.to);
-    return { employee, start: openSegment?.from || entry.from };
-  }).filter(Boolean);
-  if (count) count.textContent = `${active.length} aktiv`;
-  target.innerHTML = active.length ? `
-    <div class="terminal-worktime-preview-people">
-      ${active.slice(0, 3).map((item) => `
-        <div class="terminal-worktime-preview-person">
-          <strong>${escapeHtml(item.employee)}</strong>
-          <span>seit ${escapeHtml(item.start)}</span>
-        </div>
+  const groups = [
+    ["Counter", []],
+    ["Service", []],
+    ["Küche", []],
+    ["Reinigung", []],
+    ["Nebenarbeiten", []]
+  ];
+  const groupMap = Object.fromEntries(groups);
+  employees.forEach((employee) => {
+    const area = terminalWorktimeArea(employee);
+    groupMap[area].push(employee);
+  });
+  target.innerHTML = `
+    <div class="terminal-worktime-groups">
+      ${groups.map(([label, names]) => `
+        <section class="terminal-worktime-group">
+          <header>
+            <strong>${escapeHtml(label)}</strong>
+            <span>${names.length}</span>
+          </header>
+          ${names.length ? names.map((employee) => {
+            const entry = entries[employee]?.[dateKey] || {};
+            const start = timeSegments(entry).find((segment) => segment.from)?.from || "";
+            return `
+              <button class="terminal-dashboard-name" type="button" data-open-terminal-employees data-terminal-preview-employee="${escapeHtml(employee)}">
+                <span aria-hidden="true"></span>
+                <strong>${escapeHtml(employee)}</strong>
+                <small>${start ? `seit ${escapeHtml(start)}` : "nicht aktiv"}</small>
+              </button>
+            `;
+          }).join("") : `<p class="terminal-worktime-empty">Nicht besetzt</p>`}
+        </section>
       `).join("")}
     </div>
-    ${active.length > 3 ? `<p class="hint">+ ${active.length - 3} weitere aktiv</p>` : ""}
-  ` : `<p class="terminal-worktime-empty">Niemand aktiv</p>`;
-  $$('[data-terminal-worktime-focus]').forEach((button) => {
-    button.disabled = reportLocked;
-  });
+  `;
+}
+
+function terminalWorktimeArea(employee) {
+  for (const [position, value] of Object.entries(state.terminalSchedule || {})) {
+    if (position.includes("__") || value !== employee) continue;
+    return terminalWorktimeAreaFromText(position);
+  }
+  const extra = (state.terminalReport?.extraEmployees || [])
+    .map((item) => typeof item === "string" ? { employee: item, role: "" } : item)
+    .find((item) => item.employee === employee);
+  if (extra?.role) return terminalWorktimeAreaFromText(extra.role);
+  const source = [
+    state.settings?.employeeRoles?.[employee] || "",
+    ...(state.settings?.employeeDepartments?.[employee] || [])
+  ].join(" ");
+  return terminalWorktimeAreaFromText(source);
+}
+
+function terminalWorktimeAreaFromText(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("counter")) return "Counter";
+  if (text.includes("service")) return "Service";
+  if (text.includes("küche") || text.includes("kueche") || text.includes("koch") || text.includes("spül")) return "Küche";
+  if (text.includes("reinigung")) return "Reinigung";
+  return "Nebenarbeiten";
 }
 
 function collectTerminalTimeSegments(card) {
@@ -8158,9 +8606,13 @@ function refreshTerminalSegmentNumbers(card) {
 }
 
 function renderDayReportA4Summary(dateKey, report = {}) {
+  const html = dayReportA4Html(dateKey, report);
   const target = $("#dayReportA4Summary");
-  if (!target) return;
-  target.innerHTML = dayReportA4Html(dateKey, report);
+  if (target) target.innerHTML = html;
+  const preview = $("#financeDayReportPreview");
+  if (preview) preview.innerHTML = html;
+  const modalPreview = $("#dayReportModalPreview");
+  if (modalPreview) modalPreview.innerHTML = html;
 }
 
 function applyDayReportVisibility() {
@@ -8170,20 +8622,463 @@ function applyDayReportVisibility() {
 }
 
 function renderTerminalTabs() {
-  const active = terminalWorkspaceTab(state.terminalTab);
+  const canManage = terminalCanManageSettings();
+  $("#terminalSettingsNav")?.classList.toggle("hidden", !canManage);
+  $("#openTablePlanSettings")?.classList.toggle("hidden", !canManage);
+  const requested = terminalWorkspaceTab(state.terminalTab);
+  const active = requested === "settings" && !canManage ? "today" : requested;
+  const tablePlanSettingsActive = active === "settings" && state.terminalSettingsModule === "table-plan";
   state.terminalTab = active;
   $$(".terminal-tab").forEach((button) => button.classList.toggle("active", button.dataset.terminalTab === active));
   $("#terminalTodaySection")?.classList.toggle("hidden", active !== "today");
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "today");
   $("#terminalChecksSection")?.classList.toggle("hidden", active !== "today");
-  $("#terminalAssignmentsSection")?.classList.toggle("hidden", active !== "employees");
-  $("#terminalTablesSection")?.classList.toggle("hidden", active !== "tables");
+  $("#terminalAssignmentsSection")?.classList.toggle("hidden", !(active === "closing" && Number(state.terminalClosingStep || 1) === 7));
+  $("#terminalTablesSection")?.classList.toggle("hidden", active !== "tables" && !tablePlanSettingsActive);
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "employees");
   $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "closing");
-  $("#terminalTipsSection")?.classList.toggle("hidden", active !== "closing");
+  $("#terminalTipsSection")?.classList.toggle("hidden", active !== "tips");
+  $("#terminalInvoicesToolSection")?.classList.toggle("hidden", active !== "invoices");
   $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "closing");
   $("#terminalOrdersSection")?.classList.toggle("hidden", active !== "orders");
   $("#terminalOffersSection")?.classList.toggle("hidden", active !== "offers");
+  $("#terminalTaskCalendarSection")?.classList.toggle("hidden", active !== "task-calendar");
+  $("#terminalSettingsSection")?.classList.toggle("hidden", active !== "settings");
+  $("#terminalSettingsSection")?.classList.toggle("is-table-plan-settings", tablePlanSettingsActive);
+  $(".terminal-workspace-main")?.classList.toggle("is-table-plan-settings-active", tablePlanSettingsActive);
+  $(".terminal-control-management")?.classList.toggle("hidden", active === "settings" && state.terminalSettingsModule !== "controls");
+  $$(".terminal-settings-module[data-terminal-settings-module]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.terminalSettingsModule === state.terminalSettingsModule);
+  });
+  if (active === "settings" && state.terminalSettingsModule === "controls") renderTerminalControlManagement();
+  if (tablePlanSettingsActive) {
+    state.terminalTableView = "manage";
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+  }
+  if (active === "task-calendar") renderTerminalTaskCalendar();
+  if (active === "offers") renderAdminOffers();
+  if (active === "invoices") mountTerminalInvoiceTool();
+  if (active === "closing") renderTerminalClosingSteps();
+}
+
+function mountTerminalInvoiceTool() {
+  const mount = $("#terminalInvoiceToolMount");
+  const list = $("#invoiceCustomersList");
+  const addButton = $("#addInvoiceCustomer");
+  if (!mount || !list || !addButton) return;
+  if (list.parentElement !== mount) mount.append(list);
+  if (addButton.parentElement !== mount) mount.append(addButton);
+  const date = $("#terminalInvoicesToolDate");
+  if (!state.terminalInvoiceDate) state.terminalInvoiceDate = todayKey();
+  if (date) {
+    date.max = todayKey();
+    date.value = state.terminalInvoiceDate;
+  }
+  renderTerminalInvoiceToolView();
+}
+
+function renderInvoicesForToolDate() {
+  const list = $("#invoiceCustomersList");
+  if (!list) return;
+  const date = state.terminalInvoiceDate || todayKey();
+  const customers = date === state.terminalDate
+    ? (state.terminalReport?.invoiceCustomers || [])
+    : (state.terminalInvoiceHistory || []).filter((entry) => entry.date === date).map((entry) => entry.customer);
+  list.innerHTML = customers.length
+    ? customers.map((customer) => invoiceRowHtml({ ...customer, sourceDate: date })).join("")
+    : '<p class="hint">Keine Rechnungskunden für diesen Tag.</p>';
+}
+
+function renderTerminalInvoiceToolView() {
+  const historyActive = state.terminalInvoiceToolView === "history";
+  $("#terminalInvoiceToolMount")?.classList.toggle("hidden", historyActive);
+  $("#terminalInvoiceHistory")?.classList.toggle("hidden", !historyActive);
+  $$('[data-invoice-tool-view]').forEach((button) => {
+    const active = button.dataset.invoiceToolView === state.terminalInvoiceToolView;
+    button.classList.toggle("primary", active);
+    button.classList.toggle("secondary", !active);
+  });
+  if (historyActive) renderTerminalInvoiceHistory();
+  else renderInvoicesForToolDate();
+}
+
+function renderTerminalInvoiceHistory() {
+  const target = $("#terminalInvoiceHistory");
+  if (!target) return;
+  const entries = Array.isArray(state.terminalInvoiceHistory) ? state.terminalInvoiceHistory : [];
+  target.innerHTML = entries.length ? `
+    <div class="terminal-invoice-history-head"><div><h3>Archiv</h3><p>Alle gespeicherten Rechnungskunden nach Datum.</p></div><strong>${entries.length} Einträge</strong></div>
+    <div class="terminal-invoice-history-list">${entries.map((entry) => {
+      const item = entry.customer || {};
+      const total = invoiceTotal(item);
+      const receipt = invoiceReceipt(item);
+      return `<details class="terminal-invoice-history-item">
+        <summary><span><strong>${escapeHtml(item.name || "Rechnungskunde")}</strong><small>${escapeHtml(formatDate(entry.date))}</small></span><b>${escapeHtml(formatReportMoney(total))}</b></summary>
+        <div class="terminal-invoice-history-details">
+          <section><small>Rechnungsadresse</small><strong>${escapeHtml(item.address || "-")}</strong></section>
+          <section><small>Kontakt</small><strong>${escapeHtml(item.contact || "-")}</strong><span>${escapeHtml([item.phone, item.email].filter(Boolean).join(" · ") || "-")}</span></section>
+          <section><small>Zahlungsart</small><strong>${escapeHtml(item.paymentMethod || "-")}</strong></section>
+          <section class="history-invoice-amounts"><small>Positionen</small><span>Bowling <b>${formatReportMoney(item.bowlingAmount)}</b></span><span>Getränke <b>${formatReportMoney(item.gastroDrinksAmount)}</b></span><span>Speisen <b>${formatReportMoney(item.gastroFoodAmount)}</b></span><span>Sonstiges <b>${formatReportMoney(item.gastroOtherAmount)}</b></span><span>Tipp <b>${formatReportMoney(item.tip)}</b></span></section>
+          ${item.note || item.gastroOtherNote ? `<section><small>Notizen</small><span>${escapeHtml([item.note, item.gastroOtherNote].filter(Boolean).join(" · "))}</span></section>` : ""}
+          <section><small>Beleg</small><span>${receipt?.receiptName ? escapeHtml(receipt.receiptName) : "Kein Beleg hinterlegt"}</span>${receipt ? receiptLinkHtml(receipt, "Beleg öffnen") : ""}</section>
+          <div class="invoice-entry-actions"><button class="primary" data-history-invoice-pdf data-invoice-date="${escapeHtml(entry.date)}" data-invoice-id="${escapeHtml(item.id || "")}" type="button">2 PDFs &amp; Outlook vorbereiten</button></div>
+        </div>
+      </details>`;
+    }).join("")}</div>
+  ` : `<div class="terminal-invoice-history-empty"><strong>Archiv ist leer</strong><span>Gespeicherte Rechnungskunden erscheinen hier automatisch.</span></div>`;
+}
+
+function showInvoiceWizardStep(row, step) {
+  if (!row) return;
+  const targetStep = Math.min(3, Math.max(1, Number(step || 1)));
+  if (targetStep > 1 && !String(row.querySelector('[data-report-field="name"]')?.value || "").trim()) {
+    showToast("Bitte zuerst einen Kunden auswählen oder einen Namen eintragen.");
+    row.querySelector('[data-report-field="name"]')?.focus();
+    return;
+  }
+  row.querySelectorAll("[data-invoice-step-panel]").forEach((panel) => {
+    panel.classList.toggle("hidden", Number(panel.dataset.invoiceStepPanel) !== targetStep);
+  });
+  const progress = row.querySelector("[data-invoice-current-step]");
+  if (progress) progress.dataset.invoiceCurrentStep = String(targetStep);
+  row.querySelectorAll("[data-invoice-step-go]").forEach((button) => {
+    button.classList.toggle("is-active", Number(button.dataset.invoiceStepGo) === targetStep);
+  });
+}
+
+function applyCustomerMasterToInvoiceRow(row) {
+  const selectedId = row?.querySelector("[data-invoice-customer-master]")?.value || "";
+  const customer = normalizeCustomerDirectory(state.customerDirectory).find((item) => item.id === selectedId);
+  if (!row || !customer) {
+    showToast("Bitte zuerst einen Kunden aus dem Kundenstamm wählen.");
+    return;
+  }
+  const values = customerMasterToInvoice(customer);
+  ["name", "contact", "phone", "email", "address", "note", "paymentMethod"].forEach((field) => {
+    const input = row.querySelector(`[data-report-field="${field}"]`);
+    if (input) input.value = values[field] || "";
+  });
+  showToast(`${customer.name || "Kunde"} wurde übernommen.`);
+}
+
+function renderTerminalClosingSteps() {
+  const dayReportMount = $("#terminalDayReportClosingMount");
+  if (dayReportMount) {
+    const preview = $(".finance-day-report-section");
+    const actions = $(".finance-action-bar");
+    if (preview && preview.parentElement !== dayReportMount) dayReportMount.append(preview);
+    if (actions && actions.parentElement !== dayReportMount) dayReportMount.append(actions);
+  }
+
+  const tomorrowAssignmentsMount = $("#terminalTomorrowAssignmentsMount");
+  const assignmentsSection = $("#terminalAssignmentsSection");
+  if (tomorrowAssignmentsMount && assignmentsSection && assignmentsSection.parentElement !== tomorrowAssignmentsMount) {
+    tomorrowAssignmentsMount.append(assignmentsSection);
+  }
+
+  const activeStep = Math.min(7, Math.max(1, Number(state.terminalClosingStep || 1)));
+  assignmentsSection?.classList.toggle("hidden", activeStep !== 7);
+  $$('[data-closing-step]').forEach((button) => {
+    const step = Number(button.dataset.closingStep || 1);
+    button.classList.toggle("is-active", step === activeStep);
+    button.classList.toggle("is-complete", (step === 2 && Boolean(state.terminalPentacodeComplete)) || (step === 3 && Boolean(state.terminalManualReportComplete)) || (step === 4 && Boolean(state.terminalDocumentsComplete)));
+    button.setAttribute("aria-current", step === activeStep ? "step" : "false");
+  });
+  $$('[data-closing-step-content]').forEach((section) => {
+    section.classList.toggle("hidden", Number(section.dataset.closingStepContent || 1) !== activeStep);
+  });
+  if (activeStep === 2) renderPentacodeTransfer();
+  if (activeStep === 3) renderManualReportTransfer();
+  if (activeStep === 4) renderClosingDocumentsStep();
+  if (activeStep === 6) renderDailyTipDistribution();
+  if (activeStep === 7) {
+    const tomorrow = assignmentDateKeys(state.terminalDate || todayKey())[1];
+    if ($("#terminalTomorrowDate")) $("#terminalTomorrowDate").textContent = formatLongDate(tomorrow);
+    if ($("#terminalTomorrowTableDate")) $("#terminalTomorrowTableDate").textContent = formatLongDate(tomorrow);
+    renderTerminalAssignments(state.terminalDate || todayKey());
+  }
+}
+
+function reportDocumentAttachments() {
+  return Array.isArray(state.terminalReport?.documents?.attachments)
+    ? state.terminalReport.documents.attachments
+    : [];
+}
+
+function closingDocumentFixedKey(category = "") {
+  return {
+    Penta: "penta",
+    Handschrift: "handwriting",
+    "EC-Schnitt": "ecCut"
+  }[category] || "";
+}
+
+function closingDocumentEntries() {
+  const documents = state.terminalReport?.documents || {};
+  const fixed = [
+    ["Penta", "penta"],
+    ["Handschrift", "handwriting"],
+    ["EC-Schnitt", "ecCut"]
+  ].flatMap(([category, key]) => {
+    const document = documents[key] || {};
+    return document.name || document.path || document.url || document.data
+      ? [{ ...document, id: `fixed-${key}`, category, fixedKey: key }]
+      : [];
+  });
+  return [...fixed, ...reportDocumentAttachments()];
+}
+
+function closingDocumentFormat(document = {}) {
+  const format = String(document.format || document.name?.split(".").pop() || "Datei").toUpperCase();
+  return format === "JPG" ? "JPEG" : format;
+}
+
+function renderClosingDocumentsStep() {
+  const target = $("#closingDocumentsList");
+  if (!target) return;
+  const documents = closingDocumentEntries();
+  const date = state.terminalDate || todayKey();
+  if ($("#closingDocumentsDate")) $("#closingDocumentsDate").textContent = formatLongDate(date);
+  if ($("#closingDocumentsCount")) $("#closingDocumentsCount").textContent = `${documents.length} Dokument${documents.length === 1 ? "" : "e"} gespeichert`;
+  target.innerHTML = documents.length ? documents.map((document) => {
+    const time = document.createdAt ? new Date(document.createdAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : "";
+    const href = document.url || document.data || "";
+    return `<article class="closing-document-row">
+      ${href ? `<a class="closing-document-icon" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="Vorschau öffnen">${escapeHtml(closingDocumentFormat(document).slice(0, 4))}</a>` : `<span class="closing-document-icon">${escapeHtml(closingDocumentFormat(document).slice(0, 4))}</span>`}
+      <div class="closing-document-copy"><strong>${escapeHtml(document.name || "Dokument")}</strong><small>${escapeHtml(document.category || "Sonstiges")} · ${escapeHtml(time)} · ${escapeHtml(closingDocumentFormat(document))}</small></div>
+      <span class="closing-document-saved">Gespeichert</span>
+      <button class="danger-lite closing-document-remove" type="button" data-remove-closing-document="${escapeHtml(document.id || "")}" title="Dokument entfernen" aria-label="Dokument entfernen">&times;</button>
+    </article>`;
+  }).join("") : `<p class="closing-documents-empty">Noch keine Dokumente hinzugefügt.</p>`;
+}
+
+function newClosingDocument(file, data, extra = {}) {
+  return {
+    id: extra.id || `document-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: extra.name || file?.name || "Dokument",
+    category: extra.category || "Ausgabenbeleg",
+    format: extra.format || file?.name?.split(".").pop() || file?.type?.split("/").pop() || "Datei",
+    createdAt: extra.createdAt || new Date().toISOString(),
+    data: data || extra.data || "",
+    path: extra.path || "",
+    url: extra.url || ""
+  };
+}
+
+async function saveClosingDocument(document, source) {
+  state.terminalReport.documents ||= {};
+  state.terminalReport.documents.attachments ||= [];
+  const fixedKey = closingDocumentFixedKey(document.category);
+  const previous = fixedKey ? cloneData(state.terminalReport.documents[fixedKey] || {}) : null;
+  if (fixedKey) {
+    state.terminalReport.documents[fixedKey] = document;
+  } else {
+    state.terminalReport.documents.attachments.push(document);
+  }
+  renderClosingDocumentsStep();
+  const saved = await saveReportDocumentsNow(source, "Dokument gespeichert.");
+  if (!saved) {
+    if (fixedKey) state.terminalReport.documents[fixedKey] = previous;
+    else state.terminalReport.documents.attachments = state.terminalReport.documents.attachments.filter((item) => item.id !== document.id);
+    renderClosingDocumentsStep();
+  }
+}
+
+async function addClosingDocumentFiles(input, category = "Ausgabenbeleg") {
+  const files = [...(input.files || [])];
+  if (!files.length) return;
+  input.disabled = true;
+  try {
+    for (const file of files) {
+      const data = await fileToDataUrl(file);
+      await saveClosingDocument(newClosingDocument(file, data, { category }), input);
+    }
+  } finally {
+    input.value = "";
+    input.disabled = false;
+  }
+}
+
+function showClosingDocumentsHint(message) {
+  const hint = $("#closingDocumentsHint");
+  if (!hint) return;
+  hint.textContent = message;
+  hint.classList.remove("hidden");
+}
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== "http://localhost:5055" || event.data?.type !== "la-bowling-scanner-document") return;
+  const invoiceRow = event.data.invoiceId
+    ? $$("#invoiceCustomersList [data-report-entry='invoice']").find((item) => item.dataset.id === event.data.invoiceId)
+    : null;
+  const expectedDate = invoiceRow?.dataset.invoiceDate || state.terminalDate || todayKey();
+  if (event.data.date && event.data.date !== expectedDate) {
+    showClosingDocumentsHint("Das gescannte Dokument gehört zu einem anderen Tagesdatum und wurde nicht übernommen.");
+    return;
+  }
+  const raw = event.data.document || {};
+  if (!raw.data) {
+    showClosingDocumentsHint("Der Scanner hat keine Datei zurückgegeben.");
+    return;
+  }
+  if (event.data.invoiceId) {
+    const row = invoiceRow;
+    if (!row) {
+      showToast("Der Rechnungskunde für diesen Beleg wurde nicht gefunden.");
+      return;
+    }
+    const values = {
+      receiptName: raw.name || "Rechnungsbeleg",
+      receiptData: raw.data,
+      receiptPath: raw.path || "",
+      receiptUrl: raw.url || ""
+    };
+    Object.entries(values).forEach(([field, value]) => {
+      const input = row.querySelector(`[data-report-field="${field}"]`);
+      if (input) input.value = value;
+    });
+    const hint = row.querySelector("[data-invoice-receipt-status]");
+    if (hint) hint.textContent = `Beleg übernommen: ${values.receiptName}`;
+    const saveButton = row.querySelector("[data-save-invoice-draft]");
+    if (saveButton) saveInvoiceRow(saveButton, false);
+    return;
+  }
+  const document = newClosingDocument(null, raw.data, raw);
+  saveClosingDocument(document, null).catch(showError);
+});
+
+function currentCashExpenseTransferItems() {
+  const rows = $$("#expensesList [data-report-entry='expense']");
+  const expenses = rows.length
+    ? rows.map((row) => ({
+        id: row.dataset.id || cryptoId(),
+        name: row.querySelector("[data-report-field='name']")?.value || "Ausgabe",
+        category: row.querySelector("[data-report-field='category']")?.value || "",
+        amount: parseMoneyInput(row.querySelector("[data-report-field='amount']")?.value || "")
+      }))
+    : (state.terminalReport?.expenses || []).map((item) => ({
+        id: item.id || cryptoId(),
+        name: item.name || "Ausgabe",
+        category: item.category || "",
+        amount: reportMoneyNumber(item.amount)
+      }));
+  return expenses;
+}
+
+function manualReportTransferItems() {
+  const result = calculateTipDistribution(state.terminalDate || todayKey());
+  const expenses = currentCashExpenseTransferItems();
+  const expenseItems = expenses.length
+    ? expenses.map((item, index) => ({
+        key: `receipt:${item.id || index}`,
+        label: item.name || `Kassenbeleg ${index + 1}`,
+        note: ["Beleg aus Kasse", item.category].filter(Boolean).join(" · "),
+        value: item.amount,
+        available: true
+      }))
+    : [{ key: "receipts", label: "Belege aus Kasse", value: result.cashExpenses, available: true }];
+  return [
+    { key: "drinks", label: "Getränke", value: result.revenueDrinks, available: true },
+    { key: "food", label: "Speisen", value: result.revenueFood, available: true },
+    { key: "rent", label: "Raummiete", value: result.revenueOther, available: true },
+    { key: "cashBowling", label: "Bar-Umsatz Bowling", value: bowlingCashRevenueFromFormOrReport(), available: true },
+    { key: "consumption", label: "Personalverzehr", value: result.personalConsumption, available: true },
+    ...expenseItems
+  ];
+}
+
+function renderManualReportTransfer() {
+  const target = $("#manualReportTransferList");
+  if (!target) return;
+  const items = manualReportTransferItems();
+  const copied = state.terminalManualReportCopied || {};
+  const completeCount = items.filter((item) => copied[item.key]).length;
+  const nextItem = items.find((item) => !copied[item.key]);
+  target.innerHTML = items.map((item, index) => {
+    const isCopied = Boolean(copied[item.key]);
+    return `<article class="manual-report-row ${isCopied ? "is-copied" : ""} ${nextItem?.key === item.key ? "is-next" : ""}">
+      <span>${index + 1}</span>
+      <div><strong>${escapeHtml(item.label)}</strong>${item.note ? `<small>${escapeHtml(item.note)}</small>` : ""}</div>
+      <b>${item.available ? escapeHtml(formatMoney(item.value || 0)) : "Noch nicht verfügbar"}</b>
+      <button class="${isCopied ? "is-copied" : ""}" type="button" data-check-manual-report="${escapeHtml(item.key)}">${isCopied ? "✓ übertragen" : item.available ? "Übertragen" : "Bestätigen"}</button>
+    </article>`;
+  }).join("");
+  if ($("#manualReportProgressText")) $("#manualReportProgressText").textContent = `${completeCount} von ${items.length} übertragen`;
+  if ($("#manualReportProgressBar")) $("#manualReportProgressBar").style.width = `${completeCount / items.length * 100}%`;
+  if ($("#completeManualReport")) $("#completeManualReport").disabled = completeCount !== items.length;
+}
+
+function pentacodeTransferItems() {
+  const result = calculateTipDistribution(state.terminalDate || todayKey());
+  const expenses = currentCashExpenseTransferItems();
+  const expenseItems = expenses.length
+    ? expenses.map((item, index) => ({
+        key: `expense:${item.id || index}`,
+        group: "Ausgaben",
+        label: item.name || `Kassenbeleg ${index + 1}`,
+        detail: ["Beleg aus Kasse", item.category].filter(Boolean).join(" · "),
+        value: item.amount,
+        available: true
+      }))
+    : [{ key: "expenses", group: "Ausgaben", label: "Ausgaben aus der Kasse", value: result.cashExpenses, available: true }];
+  const financeItems = [
+    { key: "drinks", group: "Einnahmen", label: "Getränke", value: result.revenueDrinks, available: true },
+    { key: "food", group: "Einnahmen", label: "Speisen", value: result.revenueFood, available: true },
+    { key: "bowling", group: "Einnahmen", label: "Bowling", value: result.revenueBowling, available: true },
+    { key: "rent", group: "Einnahmen", label: "Raummiete", value: result.revenueOther, available: true },
+    { key: "card", group: "Unbare Zahlungen", label: "Kartenzahlung", value: result.ecTotal, available: true },
+    { key: "consumption", group: "Unbare Zahlungen", label: "Personalverzehr", value: result.personalConsumption, available: true },
+    { key: "invoice", group: "Auf Rechnung", label: "Rechnung / Überweisung", value: result.invoiceTotal, available: true },
+    ...expenseItems,
+    { key: "salaryAdvance", group: "Gehaltsvorschüsse", label: "Gehaltsvorschüsse", value: null, available: false },
+    { key: "cashBalance", group: "Kassenstand", label: "Kassenstand Ist", value: null, available: false }
+  ];
+  const dateKey = state.terminalDate || todayKey();
+  const entries = state.terminalEntries || {};
+  const worktimeItems = terminalEmployeesForDay(dateKey).flatMap((employee) => {
+    const segments = timeSegments(entries[employee]?.[dateKey] || {});
+    const rows = segments.length ? segments : [{ from: "", to: "" }];
+    return rows.map((segment, index) => ({
+      key: `worktime:${employee}:${index}`,
+      group: "Arbeitszeiten",
+      label: rows.length > 1 ? `${employee} · Zeitspanne ${index + 1}` : employee,
+      detail: terminalWorktimeArea(employee),
+      value: segment.from && segment.to ? `${segment.from}-${segment.to}` : "",
+      displayValue: segment.from || segment.to ? `${segment.from || "offen"} – ${segment.to || "offen"}` : "Noch keine Zeit erfasst",
+      available: Boolean(segment.from && segment.to),
+      kind: "worktime"
+    }));
+  });
+  return [...financeItems, ...worktimeItems];
+}
+
+function pentacodeCopyValue(item) {
+  if (item.kind === "worktime") return String(item.value || "");
+  return reportMoneyNumber(item.value).toFixed(2).replace(".", ",");
+}
+
+function renderPentacodeTransfer() {
+  const target = $("#pentacodeTransferList");
+  if (!target) return;
+  const items = pentacodeTransferItems();
+  const copied = state.terminalPentacodeCopied || {};
+  const completeCount = items.filter((item) => copied[item.key]).length;
+  const nextItem = items.find((item) => !copied[item.key]);
+  let currentGroup = "";
+  target.innerHTML = items.map((item, index) => {
+    const group = item.group !== currentGroup ? `<h5>${escapeHtml(item.group)}</h5>` : "";
+    currentGroup = item.group;
+    const isCopied = Boolean(copied[item.key]);
+    return `${group}<article class="pentacode-transfer-row ${isCopied ? "is-copied" : ""} ${nextItem?.key === item.key ? "is-next" : ""}">
+      <span class="pentacode-position">${index + 1}</span>
+      <div><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.detail || (item.available ? "Wert aus Schritt 1" : "Noch nicht verfügbar"))}</small></div>
+      <b>${item.kind === "worktime" ? escapeHtml(item.displayValue) : item.available ? escapeHtml(formatMoney(item.value || 0)) : "–"}</b>
+      <button class="${isCopied ? "is-copied" : ""}" type="button" data-copy-pentacode-value="${escapeHtml(item.key)}">${isCopied ? "✓ kopiert" : item.available ? "Kopieren" : "Bestätigen"}</button>
+    </article>`;
+  }).join("");
+  if ($("#pentacodeProgressText")) $("#pentacodeProgressText").textContent = `${completeCount} von ${items.length} übertragen`;
+  if ($("#pentacodeProgressBar")) $("#pentacodeProgressBar").style.width = `${completeCount / items.length * 100}%`;
+  if ($("#completePentacodeTransfer")) $("#completePentacodeTransfer").disabled = completeCount !== items.length;
 }
 
 function normalizeTerminalTableConfig(value = {}) {
@@ -8279,7 +9174,57 @@ function normalizeTerminalTableZone(value = {}) {
 function terminalVisibleTableLayout(config = state.terminalTableConfig) {
   const tableOverrides = config?.tableOverrides || {};
   const customTables = Array.isArray(config?.customTables) ? config.customTables : [];
-  return [...TERMINAL_TABLE_LAYOUT.map((table) => ({ ...table, ...(tableOverrides[table.id] || {}) })), ...customTables]
+  const layout = [...TERMINAL_TABLE_LAYOUT.map((table) => ({ ...table, ...(tableOverrides[table.id] || {}) })), ...customTables];
+  const nzBigIds = layout
+    .filter((table) => String(table.area || "").toLocaleLowerCase("de").match(/nebenraum (?:groß|gross)/))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), "de", { numeric: true }))
+    .map((table) => table.id);
+  const hutIds = layout
+    .filter((table) => String(table.area || "").toLocaleLowerCase("de").includes("hütte"))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), "de", { numeric: true }))
+    .map((table) => table.id);
+  return layout
+    .filter((table) => {
+      const area = String(table.area || "").toLocaleLowerCase("de");
+      return !["T101", "T102", "T103", "T104"].includes(String(table.id || ""))
+        && !area.includes("billard");
+    })
+    .map((table) => {
+      const area = String(table.area || "").toLocaleLowerCase("de");
+      const legacyDjY = { T30: 19.5, T31: 27.5, T32: 35.5, T33: 43.5 };
+      if (Object.prototype.hasOwnProperty.call(legacyDjY, table.id)
+        && Math.abs(Number(table.x) - 41.5) < 0.2
+        && Math.abs(Number(table.y) - legacyDjY[table.id]) < 0.2) {
+        return { ...table, y: legacyDjY[table.id] + 4 };
+      }
+      const isLegacyNzBig = area.match(/nebenraum (?:groß|gross)/)
+        && (Number(table.y) < 8 || Number(table.w) > 8 || Number(table.x) > 83);
+      const isLegacyHut = area.includes("hütte")
+        && (Number(table.y) < 50 || Number(table.w) > 8 || Number(table.x) > 98);
+      if (isLegacyNzBig) {
+        const index = Math.max(0, nzBigIds.indexOf(table.id));
+        return {
+          ...table,
+          x: 58 + ((index % 5) * 7.7),
+          y: 10 + (Math.floor(index / 5) * 9),
+          w: 6.6,
+          h: 6.2,
+          shape: "table"
+        };
+      }
+      if (isLegacyHut) {
+        const index = Math.max(0, hutIds.indexOf(table.id));
+        return {
+          ...table,
+          x: 58 + ((index % 5) * 7.7),
+          y: 57 + (Math.floor(index / 5) * 9),
+          w: 6.6,
+          h: 6.2,
+          shape: "table"
+        };
+      }
+      return table;
+    })
     .map((table) => ({
       ...table,
       x: cleanTerminalPercent(table.x, 0, 96),
@@ -8300,8 +9245,59 @@ function terminalVisibleZones(config = state.terminalTableConfig, options = {}) 
   const zoneOverrides = config?.zoneOverrides || {};
   const includeHidden = options.includeHidden === true;
   return TERMINAL_TABLE_ZONES
-    .map((zone) => ({ ...zone, ...(zoneOverrides[zone.id] || {}) }))
+    .map((zone) => {
+      const merged = { ...zone, ...(zoneOverrides[zone.id] || {}) };
+      if (zone.id === "nz-big" && (Number(merged.w) <= 28 || Number(merged.h) < 40)) {
+        return { ...merged, x: 55, y: 3, w: 43, h: 42 };
+      }
+      if (zone.id === "hut" && (Number(merged.w) <= 20 || Number(merged.y) < 45 || Number(merged.h) < 40)) {
+        return { ...merged, x: 55, y: 50, w: 43, h: 45 };
+      }
+      if (zone.id === "dj" && (Number(merged.y) < 19.5 || Number(merged.w) < 14 || Number(merged.h) < 37)) {
+        return { ...merged, x: 39.5, y: 19.5, w: 14, h: 37 };
+      }
+      if (zone.id === "main-bottom" && (Number(merged.w) < 24 || Number(merged.h) < 24)) {
+        return { ...merged, x: 17, y: 53, w: 24, h: 24 };
+      }
+      return merged;
+    })
+    .filter((zone) => zone.id !== "billiard")
     .filter((zone) => includeHidden || zone.visible !== false);
+}
+
+function terminalTableZoneClassNames(zone = {}) {
+  return [zone.className || "", `is-zone-${zone.id || "area"}`].filter(Boolean).join(" ");
+}
+
+function terminalTableZoneArchitectureHtml(zone = {}) {
+  if (zone.id === "nz-big") {
+    return `
+      ${zone.hideArchitectureName ? "" : `<span class="table-plan-zone-name">${escapeHtml(zone.label || "NZ groß")}</span>`}
+      <span class="table-plan-zone-window" aria-hidden="true">Fenster</span>
+      <span class="table-plan-zone-door" aria-hidden="true">Tür</span>
+    `;
+  }
+  if (zone.id === "hut") {
+    return `
+      ${zone.hideArchitectureName ? "" : `<span class="table-plan-zone-name">${escapeHtml(zone.label || "Hütte")}</span>`}
+      <span class="table-plan-zone-door" aria-hidden="true">Tür</span>
+    `;
+  }
+  return "";
+}
+
+function terminalTableIsLane(table = {}) {
+  const id = String(table.id || "").trim();
+  const area = String(table.area || "").trim().toLocaleLowerCase("de");
+  return /^(?:[1-9]|1[0-4])$/.test(id) || area.includes("bahn");
+}
+
+function terminalPlanVisibleTables(config = state.terminalTableConfig) {
+  return terminalVisibleTableLayout(config).filter((table) => !terminalTableIsLane(table));
+}
+
+function terminalPlanVisibleZones(config = state.terminalTableConfig) {
+  return terminalVisibleZones(config).filter((zone) => zone.className !== "is-lanes" && zone.id !== "lanes");
 }
 
 function terminalTableLookup(config = state.terminalTableConfig) {
@@ -8335,6 +9331,9 @@ function terminalTableStaffPreset(id) {
 }
 
 function terminalTableStaffPresetTableIds(presetId) {
+  if (String(presetId || "").trim() === "nz-gross") {
+    return terminalNzBigTables().map((table) => table.id);
+  }
   return sortTerminalTableIds(terminalTableStaffPreset(presetId)?.tableIds || []);
 }
 
@@ -8896,6 +9895,149 @@ async function endAdminTablePlanInteraction(event) {
   }
 }
 
+function beginTerminalTablePlanInteraction(event, tableValue = "", mode = "move") {
+  if (state.terminalTableView !== "manage" || state.terminalReport?.closed) return;
+  const tableIds = terminalTableIdsFromValue(tableValue);
+  const tables = tableIds.map((id) => terminalTableDef(id)).filter(Boolean);
+  const canvas = $("#tablePlanBoard .table-plan-canvas");
+  if (!tables.length || !canvas) return;
+  const canvasRect = canvas.getBoundingClientRect();
+  state.terminalTablePlanInteraction = {
+    tableIds,
+    mode: mode === "resize" ? "resize" : "move",
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    canvasWidth: Math.max(1, canvasRect.width || 1),
+    canvasHeight: Math.max(1, canvasRect.height || 1),
+    origins: Object.fromEntries(tables.map((table) => [table.id, {
+      x: Number(table.x || 0),
+      y: Number(table.y || 0),
+      w: Number(table.w || 6),
+      h: Number(table.h || 6)
+    }])),
+    moved: false
+  };
+  event.currentTarget?.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+}
+
+function updateTerminalTablePlanInteraction(event) {
+  const interaction = state.terminalTablePlanInteraction;
+  if (!interaction || interaction.pointerId !== event.pointerId) return;
+  const deltaX = ((event.clientX - interaction.startClientX) / interaction.canvasWidth) * 100;
+  const deltaY = ((event.clientY - interaction.startClientY) / interaction.canvasHeight) * 100;
+  if (!interaction.moved && (Math.abs(event.clientX - interaction.startClientX) > 3 || Math.abs(event.clientY - interaction.startClientY) > 3)) {
+    interaction.moved = true;
+  }
+  if (!interaction.moved) return;
+  interaction.tableIds.forEach((tableId) => {
+    const origin = interaction.origins[tableId];
+    if (!origin) return;
+    const resizing = interaction.mode === "resize";
+    const w = resizing
+      ? Math.min(cleanTerminalPercent(origin.w + deltaX, 3.8, 40), Math.max(3.8, 98 - origin.x))
+      : origin.w;
+    const h = resizing
+      ? Math.min(cleanTerminalPercent(origin.h + deltaY, 4.8, 30), Math.max(4.8, 98 - origin.y))
+      : origin.h;
+    const x = resizing ? origin.x : Math.min(cleanTerminalPercent(origin.x + deltaX, 0, 98), Math.max(0, 98 - origin.w));
+    const y = resizing ? origin.y : Math.min(cleanTerminalPercent(origin.y + deltaY, 0, 98), Math.max(0, 98 - origin.h));
+    const customIndex = (state.terminalTableConfig?.customTables || []).findIndex((table) => table.id === tableId);
+    if (customIndex >= 0) {
+      state.terminalTableConfig.customTables[customIndex] = {
+        ...state.terminalTableConfig.customTables[customIndex],
+        x,
+        y,
+        w,
+        h
+      };
+    } else {
+      state.terminalTableConfig.tableOverrides ||= {};
+      state.terminalTableConfig.tableOverrides[tableId] = {
+        ...(terminalTableDef(tableId) || {}),
+        ...(state.terminalTableConfig.tableOverrides[tableId] || {}),
+        x,
+        y,
+        w,
+        h
+      };
+    }
+  });
+  renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+}
+
+async function endTerminalTablePlanInteraction(event) {
+  const interaction = state.terminalTablePlanInteraction;
+  if (!interaction || interaction.pointerId !== event.pointerId) return;
+  state.terminalTablePlanInteraction = null;
+  if (!interaction.moved) return;
+  state.terminalTablePlanSuppressClickUntil = Date.now() + 300;
+  const tables = interaction.tableIds.map((tableId) => terminalTableDef(tableId)).filter(Boolean);
+  if (!tables.length) return;
+  try {
+    for (const table of tables) {
+      await terminalAction({
+        action: "save-table-config",
+        tableId: table.id,
+        seats: Number(table.seats || terminalTableSeats(table.id) || 4),
+        x: table.x,
+        y: table.y,
+        w: table.w,
+        h: table.h,
+        label: table.label,
+        area: table.area,
+        shape: table.shape
+      });
+    }
+    const actionText = interaction.mode === "resize" ? "Größe gespeichert" : "Position gespeichert";
+    showToast(tables.length > 1 ? `${actionText}: Tafel.` : `${actionText}: ${tables[0].label || tables[0].id}.`);
+  } catch (error) {
+    showError(error);
+    await terminalAction({ action: "load" }).catch(() => {});
+  }
+}
+
+async function rotateTerminalTable(tableId) {
+  const table = terminalTableDef(tableId);
+  if (!table || state.terminalReport?.closed) return;
+  const next = {
+    ...table,
+    w: Math.max(3.8, Number(table.h || 6)),
+    h: Math.max(3.8, Number(table.w || 6))
+  };
+  const customIndex = (state.terminalTableConfig?.customTables || []).findIndex((item) => item.id === table.id);
+  if (customIndex >= 0) {
+    state.terminalTableConfig.customTables[customIndex] = { ...state.terminalTableConfig.customTables[customIndex], w: next.w, h: next.h };
+  } else {
+    state.terminalTableConfig.tableOverrides ||= {};
+    state.terminalTableConfig.tableOverrides[table.id] = {
+      ...table,
+      ...(state.terminalTableConfig.tableOverrides[table.id] || {}),
+      w: next.w,
+      h: next.h
+    };
+  }
+  renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+  try {
+    await terminalAction({
+      action: "save-table-config",
+      tableId: table.id,
+      seats: Number(table.seats || terminalTableSeats(table.id) || 4),
+      x: table.x,
+      y: table.y,
+      w: next.w,
+      h: next.h,
+      label: table.label,
+      area: table.area,
+      shape: table.shape
+    });
+    showToast(`${table.label || table.id} gedreht.`);
+  } catch (error) {
+    showError(error);
+  }
+}
+
 function adminTablePlanSummaryText(draft = state.adminTablePlanDraft || {}) {
   const current = emptyAdminTablePlanDraft(draft);
   if (current.originalId && current.baseTable) return `Grundtisch ${current.originalId} bearbeiten`;
@@ -8988,8 +10130,9 @@ function adminTablePlanBoardHtml(draft = state.adminTablePlanDraft || {}) {
   return `
     <div class="table-plan-canvas admin-table-plan-canvas">
       ${visibleZones.map((zone) => `
-        <button class="table-plan-zone admin-table-plan-zone ${escapeHtml(zone.className || "")} ${selectedZoneId === zone.id ? "is-selected" : ""} ${zone.visible === false ? "is-hidden" : ""}" type="button" data-admin-zone-select="${escapeHtml(zone.id)}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;">
+        <button class="table-plan-zone admin-table-plan-zone ${escapeHtml(terminalTableZoneClassNames(zone))} ${selectedZoneId === zone.id ? "is-selected" : ""} ${zone.visible === false ? "is-hidden" : ""}" type="button" data-admin-zone-select="${escapeHtml(zone.id)}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;">
           <span class="admin-table-plan-inline-edit" data-admin-inline-edit="1" data-admin-zone-quick="label" data-admin-zone-id="${escapeHtml(zone.id)}" title="Bereichsname ändern">${escapeHtml(zone.label)}</span>
+          ${terminalTableZoneArchitectureHtml({ ...zone, hideArchitectureName: true })}
           <i class="admin-table-plan-resize-handle" data-admin-zone-resize="${escapeHtml(zone.id)}" aria-hidden="true"></i>
         </button>
       `).join("")}
@@ -9157,9 +10300,11 @@ function emptyTerminalTableDraft(value = {}) {
     id: reservation.id || "",
     tableIds: reservation.tableIds || [],
     time: reservation.time || "",
+    timeEnd: reservation.timeEnd || "",
     name: reservation.name || "",
     people: reservation.people ? String(reservation.people) : "",
     marker: reservation.marker || "normal",
+    status: reservation.status || "reserved",
     note: reservation.note || "",
     createdAt: reservation.createdAt || "",
     updatedAt: reservation.updatedAt || ""
@@ -9178,9 +10323,11 @@ function normalizeTerminalTableReservation(value = {}) {
     id: String(value.id || "").trim(),
     tableIds: sortTerminalTableIds(value.tableIds),
     time: String(value.time || "").trim().slice(0, 5),
+    timeEnd: String(value.timeEnd || "").trim().slice(0, 5),
     name: String(value.name || "").trim().slice(0, 160),
     people: cleanTerminalTablePeople(value.people),
     marker: cleanTerminalTableMarker(value.marker),
+    status: cleanTerminalTableReservationStatus(value.status),
     note: String(value.note || "").trim().slice(0, 500),
     createdAt: String(value.createdAt || "").trim(),
     updatedAt: String(value.updatedAt || "").trim()
@@ -9231,6 +10378,18 @@ function cleanTerminalTableMarker(value) {
   return TERMINAL_TABLE_MARKERS[marker] ? marker : "normal";
 }
 
+function cleanTerminalTableReservationStatus(value) {
+  const status = String(value || "").trim().toLowerCase();
+  return ["reserved", "arrived", "blocked"].includes(status) ? status : "reserved";
+}
+
+function terminalTableReservationStatusLabel(value) {
+  const status = cleanTerminalTableReservationStatus(value);
+  if (status === "arrived") return "Abgerufen";
+  if (status === "blocked") return "Gesperrt";
+  return "Reserviert";
+}
+
 function terminalTableMarkerConfig(value) {
   return TERMINAL_TABLE_MARKERS[cleanTerminalTableMarker(value)] || TERMINAL_TABLE_MARKERS.normal;
 }
@@ -9240,6 +10399,13 @@ function terminalTableMarkerOptionsHtml(selected = "normal") {
   return Object.values(TERMINAL_TABLE_MARKERS).map((item) => (
     `<option value="${escapeHtml(item.id)}"${item.id === marker ? " selected" : ""}>${escapeHtml(item.hint)} · ${escapeHtml(item.label)}</option>`
   )).join("");
+}
+
+function terminalTableQuickMarkerOptionsHtml(selected = "normal") {
+  return ["normal", "birthday"].map((id) => {
+    const item = TERMINAL_TABLE_MARKERS[id];
+    return `<option value="${escapeHtml(id)}"${id === cleanTerminalTableMarker(selected) ? " selected" : ""}>${escapeHtml(item.label)}</option>`;
+  }).join("");
 }
 
 function terminalTableMarkerLegendHtml() {
@@ -9528,6 +10694,7 @@ function syncTerminalTableDraftFromReport(report = state.terminalReport) {
 
 function resetTerminalTableDraft() {
   state.terminalTableDraft = emptyTerminalTableDraft();
+  state.terminalTableQuickEntry = false;
 }
 
 function updateTerminalTableDraftField(field, value) {
@@ -9551,6 +10718,21 @@ function toggleTerminalTableSelection(value) {
   const tableIds = terminalTableIdsFromValue(value);
   if (!tableIds.length) return;
   const previousDraft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
+  if (previousDraft.id && tableIds.some((tableId) => previousDraft.tableIds.includes(tableId))) {
+    state.terminalTableDraft = emptyTerminalTableDraft();
+    syncTerminalTableGroupDraftSelection([]);
+    return;
+  }
+  const booked = sortTerminalTableReservations(
+    terminalTableReservations().filter((reservation) => reservation.tableIds.some((tableId) => tableIds.includes(tableId))),
+    "time"
+  );
+  if (booked.length) {
+    state.terminalTableDraft = emptyTerminalTableDraft(booked[0]);
+    state.terminalTableQuickEntry = false;
+    syncTerminalTableGroupDraftSelection(booked[0].tableIds);
+    return;
+  }
   const selected = new Set(previousDraft.tableIds);
   const isCompleteSelection = tableIds.every((tableId) => selected.has(tableId));
   if (isCompleteSelection) tableIds.forEach((tableId) => selected.delete(tableId));
@@ -9566,6 +10748,7 @@ function toggleTerminalTableSelection(value) {
     nextDraft = emptyTerminalTableDraft();
   }
   state.terminalTableDraft = normalizeTerminalTableDraft(nextDraft);
+  state.terminalTableQuickEntry = !state.terminalTableDraft.id && Boolean(nextIds.length);
   syncTerminalTableGroupDraftSelection(nextIds);
 }
 
@@ -9604,6 +10787,7 @@ function connectTerminalTablesByDrag(sourceId, targetId) {
 function loadTerminalTableDraft(id) {
   const reservation = terminalTableReservations().find((item) => item.id === id);
   state.terminalTableDraft = reservation ? emptyTerminalTableDraft(reservation) : emptyTerminalTableDraft();
+  state.terminalTableQuickEntry = false;
 }
 
 function currentTerminalTablePayload() {
@@ -9635,7 +10819,7 @@ function terminalTableInsetRect(rect, inset = 0) {
 function terminalTableGroupSummaryText(draft = {}) {
   if (draft?.id) return `Bearbeiten · ${draft.label || "Tafel"}`;
   if ((draft?.tableIds || []).length >= 2) return `${draft.tableIds.length} Tische für neue Tafel ausgewählt`;
-  return "Mindestens 2 benachbarte Tische auswählen";
+  return "Mindestens 2 Tische auswählen";
 }
 
 function terminalTableSelectionCanConnect(tableIds = []) {
@@ -9744,8 +10928,8 @@ function terminalTableSelectionBookingsHtml(draft = {}, reservations = []) {
       ${matches.map((reservation) => `
         <article class="table-plan-selection-booking ${state.terminalTableDraft?.id === reservation.id ? "is-active" : ""}">
           <div>
-            <strong>${escapeHtml(reservation.time || "--:--")} · ${escapeHtml(reservation.name || "Reservierung")}</strong>
-            <span>${escapeHtml(String(reservation.people || 0))} Personen · ${escapeHtml(terminalTableLabelText(reservation.tableIds))}</span>
+            <strong>${escapeHtml(terminalTableTimeRange(reservation))} · ${escapeHtml(reservation.name || "Reservierung")}</strong>
+            <span>${escapeHtml(String(reservation.people || 0))} Personen · ${escapeHtml(terminalTableLabelText(reservation.tableIds))} · ${escapeHtml(terminalTableReservationStatusLabel(reservation.status))}</span>
             ${reservation.note ? `<small>${escapeHtml(reservation.note)}</small>` : ""}
           </div>
           <button class="secondary" type="button" data-table-plan-edit="${escapeHtml(reservation.id)}">Öffnen</button>
@@ -9808,6 +10992,189 @@ function terminalTableBookingSummaryHtml(booked = [], compact = false) {
         <span class="table-plan-table-booking-name">${escapeHtml(primary.name || "Reservierung")}</span>
       </span>
       ${booked.length > 1 ? `<span class="table-plan-table-booking is-more">+${booked.length - 1}</span>` : ""}
+    </div>
+  `;
+}
+
+function terminalTableTimeRange(reservation = {}) {
+  const start = reservation.time || "--:--";
+  return reservation.timeEnd ? `${start}–${reservation.timeEnd}` : start;
+}
+
+function terminalTableOverviewReservation(draft = {}, reservations = []) {
+  if (draft.id) {
+    const exact = reservations.find((reservation) => reservation.id === draft.id);
+    if (exact) return exact;
+  }
+  return terminalTableSelectedReservations(draft, reservations)[0] || null;
+}
+
+function terminalTableSelectedDetailHtml(draft = {}, reservations = []) {
+  const reservation = terminalTableOverviewReservation(draft, reservations);
+  if (!reservation) {
+    if (draft.tableIds?.length || state.terminalTableQuickEntry) {
+      return `
+        <form class="table-plan-quick-form" data-table-plan-quick-form>
+          <div class="table-plan-quick-tables">
+            <span>Ausgewählte Tische</span>
+            <strong>${draft.tableIds?.length ? escapeHtml(terminalTableLabelText(draft.tableIds)) : "Tisch im Plan auswählen"}</strong>
+            <small>${draft.tableIds?.length ? `${escapeHtml(String(terminalTableSeatCount(draft.tableIds) || 0))} Plätze` : "Danach Uhrzeit und Name eintragen"}</small>
+          </div>
+          <div class="table-plan-quick-grid">
+            <label>Von<input data-table-plan-field="time" type="time" value="${escapeHtml(draft.time || "")}"></label>
+            <label>Bis<input data-table-plan-field="timeEnd" type="time" value="${escapeHtml(draft.timeEnd || "")}"></label>
+            <label class="is-wide">Name<input data-table-plan-field="name" value="${escapeHtml(draft.name || "")}" placeholder="Name / Anlass"></label>
+            <label>Personen<input data-table-plan-field="people" type="number" min="1" step="1" value="${escapeHtml(draft.people || "")}" placeholder="0"></label>
+            <label>Typ<select data-table-plan-field="marker">${terminalTableQuickMarkerOptionsHtml(draft.marker || "normal")}</select></label>
+          </div>
+          <div class="table-plan-quick-actions">
+            <button class="secondary" type="button" data-table-plan-quick-cancel>Abbrechen</button>
+            <button class="primary" type="button" id="saveQuickTableReservation">Speichern</button>
+          </div>
+        </form>
+      `;
+    }
+    return "";
+  }
+  const status = cleanTerminalTableReservationStatus(reservation.status);
+  return `
+    <article class="table-plan-reservation-detail is-${escapeHtml(status)}">
+      <div class="table-plan-reservation-detail-head">
+        <div>
+          <span>${escapeHtml(terminalTableTimeRange(reservation))}</span>
+          <h5>${escapeHtml(reservation.name || "Reservierung")}</h5>
+        </div>
+        <div class="table-plan-detail-badges">
+          <span class="table-plan-status-chip is-${escapeHtml(status)}">${escapeHtml(terminalTableReservationStatusLabel(status))}</span>
+          ${reservation.marker === "birthday" ? `<span class="table-plan-status-chip is-birthday">Kindergeburtstag</span>` : ""}
+        </div>
+      </div>
+      <dl>
+        <div><dt>Personen</dt><dd>${escapeHtml(String(reservation.people || 0))}</dd></div>
+        <div><dt>Tisch</dt><dd>${escapeHtml(terminalTableLabelText(reservation.tableIds))}</dd></div>
+        <div><dt>Bereich</dt><dd>${escapeHtml(terminalTableAreaText(reservation.tableIds))}</dd></div>
+        <div><dt>Typ</dt><dd>${escapeHtml(terminalTableMarkerConfig(reservation.marker).label)}</dd></div>
+      </dl>
+      ${reservation.note ? `<p>${escapeHtml(reservation.note)}</p>` : ""}
+      <div class="table-plan-detail-actions">
+        <button class="secondary" type="button" data-table-plan-edit-manage="${escapeHtml(reservation.id)}">Bearbeiten</button>
+        <button class="primary" type="button" data-table-plan-status-action="${status === "arrived" ? "reserved" : "arrived"}">${status === "arrived" ? "Zurück auf reserviert" : "Abrufen / Kunde ist da"}</button>
+        <button class="secondary" type="button" data-table-plan-print-detail>Drucken</button>
+        <button class="secondary danger-lite" type="button" data-table-plan-delete-detail>Löschen</button>
+      </div>
+    </article>
+  `;
+}
+
+function terminalTableReservationOverviewHtml(reservations = []) {
+  if (!reservations.length) {
+    return `<div class="table-plan-empty-state"><strong>Keine Reservierungen</strong><span>Der Plan ist für diesen Tag frei.</span></div>`;
+  }
+  return `
+    <div class="table-plan-overview-list">
+      ${sortTerminalTableReservations(reservations, "time").map((reservation) => `
+        <button class="table-plan-overview-row ${state.terminalTableDraft?.id === reservation.id ? "is-active" : ""}" type="button" data-table-plan-edit="${escapeHtml(reservation.id)}">
+          <span class="table-plan-row-time">${escapeHtml(terminalTableTimeRange(reservation))}</span>
+          <span class="table-plan-row-main">
+            <strong>${escapeHtml(reservation.name || "Reservierung")}</strong>
+            <small>${escapeHtml(String(reservation.people || 0))} Pers. · ${escapeHtml(terminalTableLabelText(reservation.tableIds))}</small>
+          </span>
+          <i class="table-plan-status-dot is-${escapeHtml(cleanTerminalTableReservationStatus(reservation.status))}" aria-hidden="true"></i>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function terminalTableServiceOverviewHtml(assignments = [], employeeMeta = new Map()) {
+  if (!assignments.length) {
+    return `<div class="table-plan-empty-state"><strong>Noch nicht zugewiesen</strong><span>Servicebereiche in „Verwalten“ festlegen.</span></div>`;
+  }
+  return `
+    <div class="table-plan-service-list">
+      ${assignments.map((assignment) => {
+        const preset = terminalTableStaffPreset(assignment.presetId);
+        const meta = employeeMeta.get(assignment.employee) || {};
+        return `
+          <article style="--staff-color:${escapeHtml(assignment.color)};">
+            <i aria-hidden="true"></i>
+            <div>
+              <strong>${escapeHtml(assignment.employee)}</strong>
+              <span>${escapeHtml(preset?.label || assignment.presetId)}${meta.time?.from ? ` · ab ${escapeHtml(meta.time.from)}` : ""}</span>
+            </div>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function terminalTableStatusLegendHtml() {
+  return `
+    <div class="table-plan-status-legend">
+      <span><i class="is-free"></i>Frei</span>
+      <span><i class="is-reserved"></i>Reserviert</span>
+      <span><i class="is-arrived"></i>Kunde da</span>
+      <span><i class="is-birthday"></i>Kindergeburtstag</span>
+      <span><i class="is-service"></i>Servicebereich</span>
+    </div>
+  `;
+}
+
+function terminalNzBigTables() {
+  return terminalVisibleTableLayout()
+    .filter((table) => {
+      const area = String(table.area || "").trim().toLocaleLowerCase("de");
+      const label = String(table.label || "").trim().toUpperCase();
+      return table.id === "T60"
+        || /^T6[1-9]$/.test(table.id)
+        || /^T6[1-9]$/.test(label)
+        || /^T60-K/i.test(table.id)
+        || area.includes("nebenraum groß")
+        || area.includes("nebenraum gross");
+    })
+    .sort((left, right) => String(left.label || left.id).localeCompare(String(right.label || right.id), "de", { numeric: true }));
+}
+
+function terminalTableNzBigListHtml(tables = [], reportClosed = false) {
+  return `
+    <div class="table-plan-nz-chips">
+      ${tables.map((table) => `
+        <span>
+          <strong>${escapeHtml(table.label || table.id)}</strong>
+          <small>${escapeHtml(String(terminalTableSeats(table.id) || table.seats || 0))} P</small>
+          ${table.id === "T60" ? "" : `<button type="button" data-remove-nz-big-table="${escapeHtml(table.id)}" aria-label="${escapeHtml(table.label || table.id)} entfernen"${reportClosed ? " disabled" : ""}>×</button>`}
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function terminalHutTables() {
+  return terminalVisibleTableLayout()
+    .filter((table) => {
+      const area = String(table.area || "").trim().toLocaleLowerCase("de");
+      const label = String(table.label || "").trim().toUpperCase();
+      return table.id === "T70"
+        || /^T7[1-9]$/.test(table.id)
+        || /^T7[1-9]$/.test(label)
+        || /^T70-K/i.test(table.id)
+        || area.includes("hütte")
+        || area.includes("huette");
+    })
+    .sort((left, right) => String(left.label || left.id).localeCompare(String(right.label || right.id), "de", { numeric: true }));
+}
+
+function terminalTableHutListHtml(tables = [], reportClosed = false) {
+  return `
+    <div class="table-plan-nz-chips">
+      ${tables.map((table) => `
+        <span>
+          <strong>${escapeHtml(table.label || table.id)}</strong>
+          <small>${escapeHtml(String(terminalTableSeats(table.id) || table.seats || 0))} P</small>
+          ${table.id === "T70" ? "" : `<button type="button" data-remove-hut-table="${escapeHtml(table.id)}" aria-label="${escapeHtml(table.label || table.id)} entfernen"${reportClosed ? " disabled" : ""}>×</button>`}
+        </span>
+      `).join("")}
     </div>
   `;
 }
@@ -9883,6 +11250,7 @@ function terminalTableDraftOverlayHtml(draft = {}, groups = []) {
   const ids = sortTerminalTableIds(draft.tableIds || []);
   if (ids.length < 2) return "";
   if (terminalTableGroupForTableIds(ids, groups)) return "";
+  if (!terminalTableSelectionCanConnect(ids)) return "";
   const rect = terminalTableGroupRect({ tableIds: ids });
   if (!rect) return "";
   return `
@@ -9974,7 +11342,10 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   const singleTable = terminalTableDef(singleTableId);
   const selectedGroup = terminalTableGroupForTableIds(draft.tableIds, groups);
   const shell = $(".table-plan-shell");
-  if (shell) shell.classList.toggle("is-work-view", state.terminalTableView === "work");
+  if (shell) {
+    shell.classList.toggle("is-work-view", state.terminalTableView === "work");
+    shell.classList.toggle("is-manage-view", state.terminalTableView === "manage");
+  }
   document.body.classList.toggle("table-plan-fullscreen", Boolean(state.terminalTableFullscreen));
   const boardMeta = $("#tablePlanBoardMeta");
   if (boardMeta) {
@@ -9988,16 +11359,12 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
         <strong>${reservations.length}</strong>
       </article>
       <article>
-        <small>Tafeln</small>
-        <strong>${groups.length}</strong>
-      </article>
-      <article>
         <small>Personalbereiche</small>
         <strong>${staffAssignments.length}</strong>
       </article>
       <article>
-        <small>Ausgewählte Plätze</small>
-        <strong>${selectedSeatCount || 0}</strong>
+        <small>Freie Tische</small>
+        <strong>${Math.max(0, terminalPlanVisibleTables().length - new Set(reservations.flatMap((item) => item.tableIds).filter((id) => !terminalTableIsLane(terminalTableDef(id)))).size)}</strong>
       </article>
       <article>
         <small>Status</small>
@@ -10007,6 +11374,23 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   }
   const board = $("#tablePlanBoard");
   if (board) board.innerHTML = terminalTableBoardHtml(reservations, groups, draft, staffAssignments, employeeMeta);
+  const overviewReservation = $("#tablePlanReservationOverview");
+  if (overviewReservation) overviewReservation.innerHTML = terminalTableReservationOverviewHtml(reservations);
+  const manageReservationList = $("#tablePlanManageReservationList");
+  if (manageReservationList) manageReservationList.innerHTML = terminalTableReservationOverviewHtml(reservations);
+  if ($("#tablePlanReservationCount")) $("#tablePlanReservationCount").textContent = String(reservations.length);
+  const selectedDetail = $("#tablePlanSelectedDetail");
+  if (selectedDetail) selectedDetail.innerHTML = terminalTableSelectedDetailHtml(draft, reservations);
+  const selectedCard = $(".table-plan-selected-card");
+  const hasReservationSelection = Boolean(terminalTableOverviewReservation(draft, reservations));
+  const hasQuickSelection = !hasReservationSelection && (Boolean(draft.tableIds.length) || state.terminalTableQuickEntry);
+  if (selectedCard) selectedCard.classList.toggle("hidden", !hasReservationSelection && !hasQuickSelection);
+  if ($("#tablePlanSelectedKicker")) $("#tablePlanSelectedKicker").textContent = hasQuickSelection ? "Schnell-Erfassung" : "Auswahl";
+  if ($("#tablePlanSelectedTitle")) $("#tablePlanSelectedTitle").textContent = hasQuickSelection ? "Neue Reservierung" : "Ausgewählte Reservierung";
+  const serviceOverview = $("#tablePlanServiceOverview");
+  if (serviceOverview) serviceOverview.innerHTML = terminalTableServiceOverviewHtml(staffAssignments, employeeMeta);
+  const statusLegend = $("#tablePlanStatusLegend");
+  if (statusLegend) statusLegend.innerHTML = terminalTableStatusLegendHtml();
   if ($("#tablePlanDate")) $("#tablePlanDate").value = dateKey;
   const dateHint = $("#tablePlanDateHint");
   if (dateHint) {
@@ -10030,7 +11414,7 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   const selectionBookings = $("#tablePlanSelectionBookings");
   if (selectionBookings) selectionBookings.innerHTML = terminalTableSelectionBookingsHtml(draft, reservations);
   const reservationPanel = $("#tablePlanReservationPanel");
-  if (reservationPanel && (draft.tableIds.length || draft.id)) reservationPanel.open = true;
+  if (reservationPanel && state.terminalTableView === "manage" && (draft.tableIds.length || draft.id)) reservationPanel.open = true;
   if ($("#tablePlanGroupSummary")) $("#tablePlanGroupSummary").textContent = terminalTableGroupSummaryText(groupDraft);
   const groupDraftSummary = $("#tablePlanGroupDraftSummary");
   if (groupDraftSummary) groupDraftSummary.innerHTML = terminalTableGroupDraftSummaryHtml(groupDraft);
@@ -10062,15 +11446,23 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   const customList = $("#tablePlanCustomList");
   if (customList) customList.innerHTML = terminalTableCustomListHtml(state.terminalTableConfig?.customTables || []);
   if ($("#tablePlanTime")) $("#tablePlanTime").value = draft.time || "";
+  if ($("#tablePlanTimeEnd")) $("#tablePlanTimeEnd").value = draft.timeEnd || "";
   if ($("#tablePlanName")) $("#tablePlanName").value = draft.name || "";
   if ($("#tablePlanPeople")) $("#tablePlanPeople").value = draft.people || "";
   if ($("#tablePlanMarker")) $("#tablePlanMarker").innerHTML = terminalTableMarkerOptionsHtml(draft.marker || "normal");
+  const statusDisplay = $("#tablePlanStatusDisplay");
+  if (statusDisplay) {
+    const currentStatus = cleanTerminalTableReservationStatus(draft.status);
+    statusDisplay.textContent = terminalTableReservationStatusLabel(currentStatus);
+    statusDisplay.className = `table-plan-status-chip is-${currentStatus}`;
+  }
   if ($("#tablePlanNote")) $("#tablePlanNote").value = draft.note || "";
+  if ($("#tablePlanReservationTitle")) $("#tablePlanReservationTitle").textContent = draft.id ? "Reservierung bearbeiten" : "Neue Reservierung";
   const markerLegend = $("#tablePlanMarkerLegend");
   if (markerLegend) markerLegend.innerHTML = terminalTableMarkerLegendHtml();
   if ($("#newTablePlanReservationForSelection")) $("#newTablePlanReservationForSelection").disabled = reportClosed || !draft.tableIds.length;
   if ($("#connectSelectedTables")) {
-    $("#connectSelectedTables").disabled = reportClosed || draft.tableIds.length < 2 || !terminalTableSelectionCanConnect(draft.tableIds);
+    $("#connectSelectedTables").disabled = reportClosed || draft.tableIds.length < 2;
     $("#connectSelectedTables").textContent = selectedGroup ? "Verbindung anpassen" : "Tische verbinden";
   }
   if ($("#disconnectSelectedTables")) {
@@ -10088,6 +11480,16 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   if ($("#deleteTablePlanStaff")) $("#deleteTablePlanStaff").disabled = reportClosed || !staffDraft.id;
   const staffList = $("#tablePlanStaffList");
   if (staffList) staffList.innerHTML = terminalTableStaffListHtml(dateKey, staffAssignments, employeeMeta);
+  const nzBigTables = terminalNzBigTables();
+  if ($("#tablePlanNzBigSummary")) $("#tablePlanNzBigSummary").textContent = `${nzBigTables.length} Tisch${nzBigTables.length === 1 ? "" : "e"}`;
+  if ($("#tablePlanNzBigCount")) $("#tablePlanNzBigCount").textContent = `${nzBigTables.length} Tisch${nzBigTables.length === 1 ? "" : "e"}`;
+  if ($("#tablePlanNzBigList")) $("#tablePlanNzBigList").innerHTML = terminalTableNzBigListHtml(nzBigTables, reportClosed);
+  if ($("#addNzBigTable")) $("#addNzBigTable").disabled = reportClosed || nzBigTables.length >= 10;
+  const hutTables = terminalHutTables();
+  if ($("#tablePlanHutSummary")) $("#tablePlanHutSummary").textContent = `${hutTables.length} Tisch${hutTables.length === 1 ? "" : "e"}`;
+  if ($("#tablePlanHutCount")) $("#tablePlanHutCount").textContent = `${hutTables.length} Tisch${hutTables.length === 1 ? "" : "e"}`;
+  if ($("#tablePlanHutList")) $("#tablePlanHutList").innerHTML = terminalTableHutListHtml(hutTables, reportClosed);
+  if ($("#addHutTable")) $("#addHutTable").disabled = reportClosed || hutTables.length >= 10;
   if ($("#tablePlanSort")) $("#tablePlanSort").value = state.terminalTableSort || "time";
   if ($("#saveTablePlanReservation")) $("#saveTablePlanReservation").disabled = reportClosed;
   if ($("#deleteTablePlanReservation")) $("#deleteTablePlanReservation").disabled = reportClosed || !draft.id;
@@ -10102,20 +11504,39 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
   const occupancy = terminalTableOccupancyMap(reservations);
   const staffByTable = terminalTableStaffAssignmentsByTable(staffAssignments);
   const selected = new Set(sortTerminalTableIds(draft.tableIds));
-  const groupedIds = terminalTableGroupedIds(groups);
-  const visibleTables = terminalVisibleTableLayout();
-  const visibleZones = terminalVisibleZones();
+  const reservationGroups = reservations
+    .filter((reservation) => (
+      reservation.tableIds.length >= 2
+      && terminalTableSelectionCanConnect(reservation.tableIds)
+      && !groups.some((group) => group.tableIds.some((tableId) => reservation.tableIds.includes(tableId)))
+    ))
+    .map((reservation) => ({
+      id: `reservation-${reservation.id}`,
+      label: terminalTableLabels(reservation.tableIds).join("/"),
+      tableIds: reservation.tableIds,
+      reservationGroup: true
+    }));
+  const mergedGroups = [...groups, ...reservationGroups];
+  const groupedIds = terminalTableGroupedIds(mergedGroups);
+  const visibleTables = terminalPlanVisibleTables();
+  const visibleZones = terminalPlanVisibleZones();
   return `
     <div class="table-plan-canvas">
       ${visibleZones.map((zone) => `
-        <div class="table-plan-zone ${escapeHtml(zone.className || "")}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;"></div>
+        <div class="table-plan-zone ${escapeHtml(terminalTableZoneClassNames(zone))}" data-zone-label="${escapeHtml(zone.label || "")}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;">
+          ${terminalTableZoneArchitectureHtml(zone)}
+        </div>
       `).join("")}
       ${terminalTableDraftOverlayHtml(draft, groups)}
       ${terminalTableStaffOverlayHtml(staffAssignments, employeeMeta)}
-      ${groups.map((group) => {
+      ${mergedGroups.map((group) => {
         const rect = terminalTableGroupRect(group);
         if (!rect) return "";
         const booked = reservations.filter((reservation) => reservation.tableIds.some((tableId) => group.tableIds.includes(tableId)));
+        const primary = booked[0] || null;
+        const status = primary ? cleanTerminalTableReservationStatus(primary.status) : "free";
+        const staff = group.tableIds.flatMap((tableId) => staffByTable.get(tableId) || []);
+        const staffAssignment = staff[0] || null;
         const reservationTheme = terminalTableReservationThemeStyle(booked[0]);
         const isSelected = group.tableIds.every((tableId) => selected.has(tableId));
         const classes = [
@@ -10124,6 +11545,9 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
           `is-${terminalTableGroupShape(group)}`,
           booked.length ? "is-occupied" : "",
           booked.length ? "has-booking" : "",
+          `is-status-${status}`,
+          booked.some((reservation) => reservation.marker === "birthday") ? "has-birthday" : "",
+          staffAssignment ? "has-staff-area" : "",
           isSelected ? "is-selected" : ""
         ].filter(Boolean).join(" ");
         const style = [
@@ -10133,12 +11557,18 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
           `height:${rect.height}%`
         ];
         if (reservationTheme) style.push(reservationTheme);
+        if (staffAssignment) style.push(`--staff-color:${staffAssignment.color}`);
         return `
-          <button class="${classes}" type="button" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
+          <button class="${classes}" type="button" draggable="${state.terminalTableView === "work"}" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
+            ${primary ? `<span class="table-plan-table-times">${escapeHtml(primary.time || "Zeit offen")}</span>` : ""}
             <div class="table-plan-table-head">
               <strong>${escapeHtml(group.label)}</strong>
+              ${primary?.name ? `<small class="table-plan-table-name">${escapeHtml(primary.name)}</small>` : ""}
+              ${primary ? `<small class="table-plan-table-people">${escapeHtml(String(primary.people || 0))} Personen</small>` : ""}
             </div>
-            ${terminalTableBookingSummaryHtml(booked, false)}
+            ${booked.some((reservation) => reservation.marker === "birthday") ? `<span class="table-plan-table-badge is-birthday">Geburtstag</span>` : ""}
+            ${booked.length > 1 ? `<span class="table-plan-table-badge is-count">+${booked.length - 1}</span>` : ""}
+            ${staffAssignment ? `<span class="table-plan-table-badge is-service">${escapeHtml(staffAssignment.employee)}</span>` : ""}
           </button>
         `;
       }).join("")}
@@ -10146,12 +11576,18 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
         if (groupedIds.has(table.id)) return "";
         const currentTable = terminalTableDef(table.id);
         const booked = occupancy.get(table.id) || [];
+        const primary = booked[0] || null;
+        const status = primary ? cleanTerminalTableReservationStatus(primary.status) : "free";
+        const staffAssignment = (staffByTable.get(table.id) || [])[0] || null;
         const reservationTheme = terminalTableReservationThemeStyle(booked[0]);
         const classes = [
           "table-plan-table",
           `is-${table.shape || "table"}`,
           booked.length ? "is-occupied" : "",
           booked.length ? "has-booking" : "",
+          `is-status-${status}`,
+          booked.some((reservation) => reservation.marker === "birthday") ? "has-birthday" : "",
+          staffAssignment ? "has-staff-area" : "",
           selected.has(table.id) ? "is-selected" : "",
           booked.some((reservation) => reservation.tableIds.length > 1) ? "is-connected" : ""
         ].filter(Boolean).join(" ");
@@ -10162,13 +11598,23 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
           `height:${table.h}%`
         ];
         if (reservationTheme) style.push(reservationTheme);
+        if (staffAssignment) style.push(`--staff-color:${staffAssignment.color}`);
         return `
-          <button class="${classes}" type="button" data-table-plan-select="${escapeHtml(table.id)}" data-table-plan-table="${escapeHtml(table.id)}" style="${style.join(";")}">
+          <div class="${classes}" role="button" tabindex="0" draggable="${state.terminalTableView === "work"}" data-table-plan-select="${escapeHtml(table.id)}" data-table-plan-table="${escapeHtml(table.id)}" style="${style.join(";")}">
+            ${primary ? `<span class="table-plan-table-times">${escapeHtml(primary.time || "Zeit offen")}</span>` : ""}
             <div class="table-plan-table-head">
               <strong>${escapeHtml(currentTable?.label || table.label)}</strong>
+              ${primary?.name ? `<small class="table-plan-table-name">${escapeHtml(primary.name)}</small>` : ""}
+              ${primary ? `<small class="table-plan-table-people">${escapeHtml(String(primary.people || 0))} Personen</small>` : ""}
             </div>
-            ${terminalTableBookingSummaryHtml(booked, true)}
-          </button>
+            ${booked.some((reservation) => reservation.marker === "birthday") ? `<span class="table-plan-table-badge is-birthday">K</span>` : ""}
+            ${booked.length > 1 ? `<span class="table-plan-table-badge is-count">+${booked.length - 1}</span>` : ""}
+            ${staffAssignment ? `<span class="table-plan-table-badge is-service">${escapeHtml(staffAssignment.employee.split(" ")[0])}</span>` : ""}
+            ${state.terminalTableView === "manage" ? `
+              <button class="table-plan-rotate-control" type="button" data-table-plan-rotate="${escapeHtml(table.id)}" title="Tisch drehen" aria-label="${escapeHtml(table.label)} drehen">↻</button>
+              <span class="table-plan-resize-control" data-table-plan-resize="${escapeHtml(table.id)}" title="Größe ziehen" aria-hidden="true"></span>
+            ` : ""}
+          </div>
         `;
       }).join("")}
     </div>
@@ -10193,9 +11639,15 @@ function terminalTableDraftSummaryHtml(draft = {}) {
   `;
 }
 
-function startNewTerminalTableReservation() {
+function startNewTerminalTableReservation({ keepSelection = true, openManage = false } = {}) {
   const current = normalizeTerminalTableDraft(state.terminalTableDraft || {});
-  state.terminalTableDraft = normalizeTerminalTableDraft({ tableIds: current.tableIds });
+  state.terminalTableDraft = normalizeTerminalTableDraft({
+    tableIds: keepSelection ? current.tableIds : [],
+    status: "reserved",
+    marker: "normal"
+  });
+  state.terminalTableQuickEntry = !openManage;
+  if (openManage) state.terminalTableView = "manage";
 }
 
 function terminalTableConflictHtml(draft = {}, reservations = []) {
@@ -10240,7 +11692,7 @@ function terminalTablePrintListHtml(dateKey, reservations = [], staffAssignments
           <tbody>
             ${reservations.map((reservation) => `
               <tr class="${state.terminalTableDraft?.id === reservation.id ? "is-active" : ""}">
-                <td>${escapeHtml(reservation.time || "--:--")}</td>
+                <td>${escapeHtml(terminalTableTimeRange(reservation))}</td>
                 <td>${escapeHtml(reservation.name || "-")}</td>
                 <td>${escapeHtml(String(reservation.people || 0))}</td>
                 <td>${escapeHtml(terminalTableLabelText(reservation.tableIds))}</td>
@@ -10277,6 +11729,34 @@ async function saveTerminalTableReservation(button) {
     showToast("Bitte Personenzahl eintragen.");
     return;
   }
+  const existingGroup = terminalTableGroupForTableIds(payload.tableIds);
+  if (
+    !payload.id
+    && payload.tableIds.length >= 3
+    && !existingGroup
+    && terminalTableSelectionCanConnect(payload.tableIds)
+    && window.confirm(`${payload.tableIds.length} benachbarte Tische sind ausgewählt. Zu einer gemeinsamen Tafel verbinden?`)
+  ) {
+    const suggestedLabel = terminalTableSuggestedGroupLabel(payload.tableIds);
+    const label = window.prompt("Welche Tischnummer oder Bezeichnung soll die Tafel bekommen?", suggestedLabel);
+    if (label == null) return;
+    if (!String(label).trim()) {
+      showToast("Bitte eine Tischnummer oder Bezeichnung für die Tafel eingeben.");
+      return;
+    }
+    try {
+      await terminalAction({
+        action: "save-table-group",
+        group: {
+          tableIds: payload.tableIds,
+          label: String(label).trim()
+        }
+      });
+    } catch (error) {
+      showError(error);
+      return;
+    }
+  }
   const oldText = button.textContent;
   button.disabled = true;
   button.textContent = "Speichert...";
@@ -10285,7 +11765,17 @@ async function saveTerminalTableReservation(button) {
       action: "save-table-reservation",
       reservation: payload
     });
-    resetTerminalTableDraft();
+    const saved = sortTerminalTableReservations(terminalTableReservations(), "time").find((reservation) => (
+      reservation.id === payload.id
+      || (
+        reservation.time === payload.time
+        && reservation.name === payload.name
+        && terminalTableSetKey(reservation.tableIds) === terminalTableSetKey(payload.tableIds)
+      )
+    ));
+    state.terminalTableDraft = saved ? emptyTerminalTableDraft(saved) : emptyTerminalTableDraft();
+    state.terminalTableQuickEntry = false;
+    state.terminalTableView = "work";
     renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
     showToast(result.message || "Reservierung gespeichert.");
   } catch (error) {
@@ -10301,10 +11791,6 @@ async function connectSelectedTerminalTables(button) {
   const tableIds = sortTerminalTableIds(draft.tableIds || []);
   if (tableIds.length < 2) {
     showToast("Bitte mindestens zwei Tische auswählen.");
-    return;
-  }
-  if (!terminalTableSelectionCanConnect(tableIds)) {
-    showToast("Bitte nur benachbarte Tische auswählen, die zusammen eine Tafel bilden.");
     return;
   }
   const existingGroup = terminalTableGroupForTableIds(tableIds);
@@ -10644,6 +12130,88 @@ async function deleteTerminalTableCustom(button, explicitId = "") {
   }
 }
 
+async function addTerminalNzBigTable(button) {
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Fügt hinzu...";
+  try {
+    const result = await terminalAction({ action: "add-nz-big-table" });
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Tisch hinzugefügt.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed) || terminalNzBigTables().length >= 10;
+  }
+}
+
+async function removeTerminalNzBigTable(button, tableId) {
+  const cleanId = cleanTerminalRawTableId(tableId);
+  const table = terminalNzBigTables().find((item) => item.id === cleanId);
+  if (!table) return;
+  const activeReservation = terminalTableReservations().find((reservation) => reservation.tableIds.includes(cleanId));
+  if (activeReservation) {
+    showToast(`${table.label || cleanId} ist für ${activeReservation.name || "eine Reservierung"} belegt und kann nicht entfernt werden.`);
+    return;
+  }
+  if (!confirm(`${table.label || cleanId} aus NZ groß entfernen?`)) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "…";
+  try {
+    const result = await terminalAction({ action: "remove-nz-big-table", tableId: cleanId });
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Tisch entfernt.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed);
+  }
+}
+
+async function addTerminalHutTable(button) {
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Fügt hinzu...";
+  try {
+    const result = await terminalAction({ action: "add-hut-table" });
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Tisch hinzugefügt.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed) || terminalHutTables().length >= 10;
+  }
+}
+
+async function removeTerminalHutTable(button, tableId) {
+  const cleanId = cleanTerminalRawTableId(tableId);
+  const table = terminalHutTables().find((item) => item.id === cleanId);
+  if (!table) return;
+  const activeReservation = terminalTableReservations().find((reservation) => reservation.tableIds.includes(cleanId));
+  if (activeReservation) {
+    showToast(`${table.label || cleanId} ist für ${activeReservation.name || "eine Reservierung"} belegt und kann nicht entfernt werden.`);
+    return;
+  }
+  if (!confirm(`${table.label || cleanId} aus der Hütte entfernen?`)) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "…";
+  try {
+    const result = await terminalAction({ action: "remove-hut-table", tableId: cleanId });
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast(result.message || "Tisch entfernt.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.textContent = oldText;
+    button.disabled = Boolean(state.terminalReport?.closed);
+  }
+}
+
 async function saveTerminalTableGroup(button) {
   const payload = currentTerminalTableGroupPayload();
   if (payload.tableIds.length < 2) {
@@ -10803,6 +12371,10 @@ async function loadTerminalTableDate(dateValue = "") {
 function renderTerminalAssignments(dateKey) {
   const target = $("#terminalAssignmentList");
   if (!target) return;
+  if (target.closest("#terminalTomorrowAssignmentsMount")) {
+    target.innerHTML = terminalAssignmentDayHtml(assignmentDateKeys(dateKey)[1], 1);
+    return;
+  }
   target.innerHTML = assignmentDateKeys(dateKey).map((dayKey, index) => terminalAssignmentDayHtml(dayKey, index)).join("");
 }
 
@@ -11056,114 +12628,28 @@ function renderTerminalTasks(report, reportClosed) {
   const target = $("#terminalTaskList");
   if (!target) return;
   const done = report.taskCompletions || {};
-  const tasks = sortTaskTemplates(state.terminalTasks || []);
-  const cleaningDone = weeklyCleaningCompletionsForTerminal(report);
-  const allCleaningTasks = weeklyCleaningTasksForTerminal();
-  const cleaningTasks = allCleaningTasks.filter((task) => !cleaningDone[task.id]);
-  const cleaningTotal = allCleaningTasks.length;
-  const cleaningCompleted = allCleaningTasks.filter((task) => cleaningDone[task.id]).length;
-  const employeeOptions = (selected = "") => `<option value="">Person auswählen</option>${(state.settings.employees || []).map((employee) => `<option value="${escapeHtml(employee)}" ${selected === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`).join("")}`;
-  const groups = [
-    ["preparation", "Vorbereitung"],
-    ["running", "Laufender Betrieb"],
-    ["closing", "Schlussdienst"]
-  ];
-  const compactLimit = 3;
-  const allOpenCount = tasks.filter((task) => !done[task.id]).length + cleaningTasks.length;
-  const allCompletedCount = tasks.filter((task) => done[task.id]).length + cleaningCompleted;
-  if (!state.terminalTasksExpanded) {
-    const standardOpenTasks = tasks.filter((task) => !done[task.id]);
-    const previewTasks = standardOpenTasks.slice(0, compactLimit);
-    const remainingPreviewSlots = Math.max(0, compactLimit - previewTasks.length);
-    const previewCleaningTasks = cleaningTasks.slice(0, remainingPreviewSlots);
-    target.innerHTML = `
-      <div class="terminal-task-preview-counts">
-        <span><strong>${allOpenCount}</strong> offen</span>
-        <span><strong>${allCompletedCount}</strong> erledigt</span>
-      </div>
-      <div class="terminal-task-preview-list">
-        ${previewTasks.map((task) => `
-          <article class="terminal-task terminal-task-preview-item">
-            <label>
-              <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
-              <span><strong>${escapeHtml(task.title)}</strong></span>
-            </label>
-          </article>
-        `).join("")}
-        ${previewCleaningTasks.map((task) => `
-          <article class="terminal-task-preview-item terminal-task-preview-cleaning">
-            <span><strong>${escapeHtml(task.title)}</strong><small>Wöchentliche Reinigung</small></span>
-          </article>
-        `).join("")}
-        ${allOpenCount ? "" : `<p class="terminal-empty-state is-done">Alles erledigt</p>`}
-      </div>
-      ${allOpenCount ? `<div class="terminal-task-toggle"><button class="secondary" type="button" data-terminal-toggle-tasks="all">Aufgaben öffnen</button></div>` : ""}
-    `;
-    return;
-  }
-  let visibleRemaining = state.terminalTasksExpanded ? Number.MAX_SAFE_INTEGER : compactLimit;
-  const taskHtml = groups.map(([category, label]) => {
-    const items = tasks.filter((task) => (task.category || "running") === category);
-    const openItems = items.filter((task) => !done[task.id]);
-    const completed = items.filter((task) => done[task.id]).length;
-    if (!openItems.length) return "";
-    const visibleItems = openItems.slice(0, visibleRemaining);
-    visibleRemaining -= visibleItems.length;
-    if (!visibleItems.length) return "";
-    return `
-      <section class="terminal-task-group terminal-task-${category}">
-        <div class="terminal-task-group-head">
-          <h4>${label}</h4>
-          <span>${completed}/${items.length} erledigt · ${openItems.length} offen</span>
-        </div>
-        <div class="terminal-task-items">
-          ${visibleItems.map((task) => `
-              <article class="terminal-task">
-                <label>
-                  <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
-                  <span>
-                    <strong>${escapeHtml(task.title)}</strong>
-                    ${task.popupEnabled && task.popupTime ? `<small>Popup ${escapeHtml(task.popupTime)}</small>` : ""}
-                    ${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}
-                  </span>
-                </label>
-              </article>
-            `).join("")}
-        </div>
-      </section>
-    `;
-  }).join("");
-  const visibleCleaningTasks = cleaningTasks.slice(0, visibleRemaining);
-  const cleaningHtml = visibleCleaningTasks.length ? `
-    <section class="terminal-task-group terminal-task-cleaning">
-      <div class="terminal-task-group-head">
-        <h4>Wöchentliche Reinigung</h4>
-        <span>${cleaningCompleted}/${cleaningTotal} diese Woche erledigt · ${cleaningTasks.length} offen</span>
-      </div>
-      <div class="terminal-task-items">
-        ${visibleCleaningTasks.map((task) => `
-          <article class="terminal-task terminal-cleaning-todo">
-            <label>
-              <input type="checkbox" data-cleaning-task="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
-              <span>
-                <strong>${escapeHtml(task.title)}</strong>
-                ${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}
-              </span>
-            </label>
-            <select data-cleaning-employee="${escapeHtml(task.id)}" ${reportClosed ? "disabled" : ""}>
-              ${employeeOptions()}
-            </select>
-          </article>
-        `).join("")}
-      </div>
-    </section>
-  ` : "";
-  const toggle = allOpenCount ? `
-    <div class="terminal-task-toggle">
-      <button class="secondary" type="button" data-terminal-toggle-tasks="compact">Vorschau anzeigen</button>
+  const tasks = sortTaskTemplates(state.terminalTasks || [])
+    .filter((task) => (task.category || "running") === "running");
+  target.innerHTML = tasks.length ? `
+    <div class="terminal-task-direct-list">
+      ${tasks.map((task) => {
+        const isDone = Boolean(done[task.id]);
+        return `
+        <article class="terminal-task ${isDone ? "is-done" : "is-open"}">
+          <label>
+            <input type="checkbox" data-terminal-task="${escapeHtml(task.id)}" ${isDone ? "checked" : ""} ${reportClosed ? "disabled" : ""}>
+            <span>
+              <strong>${escapeHtml(task.title)}</strong>
+              ${task.popupEnabled && task.popupTime ? `<small>Popup ${escapeHtml(task.popupTime)}</small>` : ""}
+              ${task.note ? `<small>${escapeHtml(task.note)}</small>` : ""}
+            </span>
+            <small class="terminal-task-status">${isDone ? "Erledigt" : "Offen"}</small>
+          </label>
+        </article>
+      `;
+      }).join("")}
     </div>
-  ` : "";
-  target.innerHTML = taskHtml + cleaningHtml + toggle || `<p class="hint">Alle To Do Aufgaben sind erledigt.</p>`;
+  ` : `<p class="terminal-dashboard-empty">Keine Aufgaben für heute</p>`;
 }
 
 function weeklyCleaningTasksForTerminal() {
@@ -11279,64 +12765,204 @@ function renderToiletStatus(report) {
 function renderTerminalChecks(report = {}) {
   const target = $("#terminalCheckLog");
   if (!target) return;
-  const reminderChecks = (report.reminderChecks || []).map((item) => ({
-    key: item.checkKey || "",
-    text: item.text || "Toiletten-Kontrolle durchführen",
-    employee: item.employee || "",
-    checkedAt: item.checkedAt || "",
-    type: checkLogType(item)
-  }));
-  const reminderKeys = new Set(reminderChecks.map((item) => item.key));
-  const toiletOnly = (report.toiletChecks || [])
-    .filter((item) => item.checkKey && !reminderKeys.has(item.checkKey))
-    .map((item) => ({
-      key: item.checkKey || "",
-      text: "Toiletten-Kontrolle durchführen",
-      employee: item.employee || "",
-      checkedAt: item.checkedAt || "",
-      type: "Toilette"
-    }));
-  const entries = [...reminderChecks, ...toiletOnly]
-    .filter((item) => item.checkedAt || item.key)
-    .sort((a, b) => String(a.checkedAt || a.key).localeCompare(String(b.checkedAt || b.key)));
-  const controlCards = [
-    { id: "toilet", label: "Toiletten", icon: "T", matches: (item) => /toilet|toilette/.test(`${item.text} ${item.key}`.toLowerCase()) },
-    { id: "lanes", label: "Bahnen", icon: "B", matches: (item) => /bahn|bahnen|lane/.test(`${item.text} ${item.key}`.toLowerCase()) },
-    { id: "kitchen", label: "Küche", icon: "K", matches: (item) => /küche|kueche|kitchen/.test(`${item.text} ${item.key}`.toLowerCase()) }
-  ].map((control) => {
-    const latest = entries.filter(control.matches).slice().sort((a, b) => String(b.checkedAt || "").localeCompare(String(a.checkedAt || "")))[0];
-    const pending = state.pendingReminder && control.matches(state.pendingReminder);
-    const status = latest ? "ok" : pending ? "überfällig" : "offen";
-    const statusClass = latest ? "is-ok" : pending ? "is-overdue" : "is-open";
-    return `
-      <article class="terminal-control-card ${statusClass}">
-        <div>
-          <span class="terminal-control-icon" aria-hidden="true">${control.icon}</span>
-          <strong>${control.label}</strong>
-          <span class="terminal-control-status">${status}</span>
-        </div>
-        <small>${latest?.checkedAt ? `Zuletzt ${escapeHtml(formatShortTime(latest.checkedAt))}` : "Keine Kontrolle"}</small>
-      </article>
-    `;
-  }).join("");
-  const history = entries.length ? `
-    <details class="terminal-check-history">
-      <summary>Kontrollverlauf anzeigen</summary>
-      <div class="terminal-check-list">
-        ${entries.map((item) => `
-          <article class="terminal-check-entry">
-            <div>
-              <strong>${escapeHtml(item.type)}</strong>
-              <span>${escapeHtml(item.text)}</span>
-              ${item.employee ? `<small>${escapeHtml(item.employee)}</small>` : ""}
-            </div>
-            <time>${escapeHtml(item.checkedAt ? formatDateTime(item.checkedAt) : checkTimeFromKey(item.key))}</time>
-          </article>
-        `).join("")}
+  const controlCards = loadTerminalControls().filter((control) => control.active);
+  const toiletControl = controlCards.find((control) => control.id === "control-toilets" || String(control.name || "").toLowerCase().includes("toilet"));
+  const standardControls = controlCards.filter((control) => control !== toiletControl);
+  const toiletStatus = terminalToiletControlStatus(report);
+  target.innerHTML = `
+    <div class="terminal-dashboard-control-list">
+      ${toiletControl ? `
+        <article class="terminal-toilet-control is-${escapeHtml(toiletStatus.status)}">
+          <button class="terminal-toilet-control-icon" type="button" data-open-terminal-toilet-check aria-label="Toiletten-Kontrolle bestätigen">WC</button>
+          <div class="terminal-toilet-control-main">
+            <strong>Toiletten</strong>
+            ${toiletStatus.hasCheck ? `<span class="terminal-toilet-control-last">${escapeHtml(toiletStatus.lastLabel)}</span>` : ""}
+          </div>
+        </article>
+      ` : ""}
+      <div class="terminal-standard-control-list">
+      ${standardControls.map((control) => `
+        <article class="terminal-dashboard-control-row is-${escapeHtml(control.status)}">
+          <span class="terminal-dashboard-control-icon" aria-hidden="true">${escapeHtml(control.icon)}</span>
+          <div>
+            <strong>${escapeHtml(control.name)}</strong>
+            <small>Letzte Kontrolle: ${escapeHtml(control.lastLabel)}</small>
+          </div>
+          <span class="terminal-control-status">${terminalControlStatusLabel(control.status)}</span>
+          <button class="terminal-control-complete" type="button" data-complete-terminal-control="${escapeHtml(control.id)}" aria-label="${escapeHtml(control.name)} als erledigt markieren">✓</button>
+        </article>
+      `).join("")}
       </div>
-    </details>
-  ` : "";
-  target.innerHTML = `<div class="terminal-control-grid">${controlCards}</div>${history}`;
+    </div>
+  `;
+}
+
+function terminalToiletControlStatus(report = {}) {
+  const checks = (Array.isArray(report.toiletChecks) ? report.toiletChecks : [])
+    .filter((item) => item?.checkedAt && !Number.isNaN(new Date(item.checkedAt).getTime()))
+    .sort((left, right) => new Date(right.checkedAt) - new Date(left.checkedAt));
+  const latest = checks[0];
+  if (!latest) {
+    return {
+      status: "unknown",
+      hasCheck: false,
+      statusLabel: "",
+      lastLabel: "Keine Kontrolle dokumentiert",
+      nextLabel: "Kontrolle offen"
+    };
+  }
+  const checkedAt = new Date(latest.checkedAt);
+  const lastTime = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(checkedAt);
+  if ((state.terminalDate || todayKey()) !== todayKey()) {
+    return {
+      status: "ok",
+      hasCheck: true,
+      statusLabel: "Dokumentiert",
+      lastLabel: `Letzte Kontrolle: ${lastTime} Uhr`,
+      nextLabel: "Tageskontrolle erfasst"
+    };
+  }
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - checkedAt.getTime()) / 60000));
+  if (elapsedMinutes >= 60) {
+    return {
+      status: "overdue",
+      hasCheck: true,
+      statusLabel: "Überfällig",
+      lastLabel: `Letzte Kontrolle: ${lastTime} Uhr`,
+      nextLabel: `Seit ${elapsedMinutes - 60} Min. überfällig`
+    };
+  }
+  const remaining = 60 - elapsedMinutes;
+  return {
+    status: remaining <= 10 ? "due" : "ok",
+    hasCheck: true,
+    statusLabel: remaining <= 10 ? "Bald fällig" : "In Ordnung",
+    lastLabel: `Letzte Kontrolle: ${lastTime} Uhr`,
+    nextLabel: `Nächste Kontrolle in ${remaining} Min.`
+  };
+}
+
+function openTerminalToiletConfirm() {
+  const modal = $("#terminalToiletConfirm");
+  if (!modal) return;
+  state.terminalManualToiletCheckKey = `${state.terminalDate || todayKey()}-toilet-manual-${Date.now()}`;
+  modal.classList.remove("hidden");
+  $("#confirmTerminalToiletCheck")?.focus();
+}
+
+function closeTerminalToiletConfirm() {
+  $("#terminalToiletConfirm")?.classList.add("hidden");
+  state.terminalManualToiletCheckKey = "";
+}
+
+function terminalControlStatusLabel(status) {
+  return status === "ok" ? "In Ordnung" : status === "overdue" ? "Überfällig" : "Fällig";
+}
+
+function terminalControlIntervalLabel(control) {
+  const value = Number(control.intervalValue || 1);
+  const labels = {
+    once: "Einmalig",
+    hourly: value === 1 ? "Stündlich" : `Alle ${value} Stunden`,
+    daily: value === 1 ? "Täglich" : `Alle ${value} Tage`,
+    weekly: value === 1 ? "Wöchentlich" : `Alle ${value} Wochen`,
+    monthly: value === 1 ? "Monatlich" : `Alle ${value} Monate`
+  };
+  return labels[control.intervalType] || "Täglich";
+}
+
+function renderTerminalControlManagement() {
+  const target = $("#terminalControlManagementList");
+  if (!target) return;
+  const controls = loadTerminalControls();
+  target.innerHTML = controls.map((control) => `
+    <article class="terminal-control-admin-row ${control.active ? "" : "is-inactive"}">
+      <span class="terminal-control-admin-icon" aria-hidden="true">${escapeHtml(control.icon)}</span>
+      <div class="terminal-control-admin-main">
+        <strong>${escapeHtml(control.name)}</strong>
+        <small>${escapeHtml(control.area || "Ohne Bereich")} · ${escapeHtml(terminalControlIntervalLabel(control))}${control.startTime ? ` · ab ${escapeHtml(control.startTime)}` : ""}</small>
+        <small>Letzte: ${escapeHtml(control.lastLabel)} · Nächste: ${escapeHtml(control.nextLabel)}</small>
+      </div>
+      <span class="terminal-control-status is-${escapeHtml(control.status)}">${control.active ? terminalControlStatusLabel(control.status) : "Inaktiv"}</span>
+      <span class="terminal-control-responsible">${escapeHtml(control.responsible || "Offen")}</span>
+      <div class="terminal-control-admin-actions">
+        <button class="secondary" type="button" data-toggle-terminal-control="${escapeHtml(control.id)}">${control.active ? "Deaktivieren" : "Aktivieren"}</button>
+        <button class="secondary" type="button" data-edit-terminal-control="${escapeHtml(control.id)}">Bearbeiten</button>
+        <button class="secondary danger-button" type="button" data-delete-terminal-control="${escapeHtml(control.id)}">Löschen</button>
+      </div>
+    </article>
+  `).join("") || `<p class="hint">Noch keine Kontrollen angelegt.</p>`;
+}
+
+function openTerminalControlForm(control = null) {
+  const normalized = control ? normalizeTerminalControl(control) : normalizeTerminalControl({
+    id: "",
+    name: "",
+    icon: "✓",
+    intervalType: "daily",
+    intervalValue: 1,
+    active: true,
+    status: "due"
+  });
+  state.terminalControlDraftId = control?.id || "";
+  $("#terminalControlId").value = control?.id || "";
+  $("#terminalControlName").value = control?.name || "";
+  $("#terminalControlIcon").value = normalized.icon;
+  $("#terminalControlArea").value = normalized.area;
+  $("#terminalControlIntervalType").value = normalized.intervalType;
+  $("#terminalControlIntervalValue").value = normalized.intervalValue;
+  $("#terminalControlStartTime").value = normalized.startTime;
+  $("#terminalControlResponsible").value = normalized.responsible;
+  $("#terminalControlStatus").value = normalized.status;
+  $("#terminalControlActive").checked = normalized.active;
+  $("#terminalControlForm")?.classList.remove("hidden");
+  $("#terminalControlName")?.focus();
+}
+
+function closeTerminalControlForm() {
+  state.terminalControlDraftId = "";
+  $("#terminalControlForm")?.classList.add("hidden");
+  $("#terminalControlForm")?.reset();
+}
+
+function collectTerminalControlForm() {
+  const existing = loadTerminalControls().find((control) => control.id === state.terminalControlDraftId) || {};
+  return normalizeTerminalControl({
+    ...existing,
+    id: state.terminalControlDraftId || undefined,
+    name: $("#terminalControlName")?.value,
+    icon: $("#terminalControlIcon")?.value,
+    area: $("#terminalControlArea")?.value,
+    intervalType: $("#terminalControlIntervalType")?.value,
+    intervalValue: $("#terminalControlIntervalValue")?.value,
+    startTime: $("#terminalControlStartTime")?.value,
+    responsible: $("#terminalControlResponsible")?.value,
+    status: $("#terminalControlStatus")?.value,
+    active: Boolean($("#terminalControlActive")?.checked)
+  });
+}
+
+function renderTerminalTableLite() {
+  const target = $("#terminalTableLitePreview");
+  if (!target) return;
+  const rows = [
+    ["18:00", "T1", "Müller", "6"],
+    ["18:30", "T4", "Huber", "4"],
+    ["19:00", "T7", "Geburtstag", "10"],
+    ["20:00", "T2", "Wagner", "2"]
+  ];
+  target.innerHTML = `
+    <div class="terminal-table-lite-table" role="table" aria-label="Drucklisten-Vorschau">
+      <div class="terminal-table-lite-row is-head" role="row">
+        <span>Zeit</span><span>Tisch</span><span>Name</span><span>Pers.</span>
+      </div>
+      ${rows.map((row) => `
+        <div class="terminal-table-lite-row" role="row">
+          ${row.map((value) => `<span>${escapeHtml(value)}</span>`).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function checkLogType(item = {}) {
@@ -11361,26 +12987,9 @@ function checkTimeFromKey(key = "") {
 
 function checkTerminalReminders(report, reportClosed) {
   const modal = $("#toiletReminder");
-  if (!modal || reportClosed || !state.terminalToken) {
-    modal?.classList.add("hidden");
-    return;
-  }
-  const due = dueReminder(state.terminalDate || todayKey(), report, report.openingHours || $("#terminalOpeningHours")?.value || "");
-  state.pendingReminder = due;
-  state.pendingToiletCheck = due?.checkKey || "";
-  $("#terminalReminderTitle").textContent = due?.title || (isTodoMode() ? "TO DO Erinnerung" : "Terminal Erinnerung");
-  $("#terminalReminderText").textContent = due?.text || "Bitte quittieren.";
-  const employeeWrap = $("#toiletCheckEmployeeWrap");
-  const employeeSelect = $("#toiletCheckEmployee");
-  const toiletDue = pendingReminderIsToilet(due);
-  employeeWrap?.classList.toggle("hidden", !toiletDue);
-  if (employeeSelect && toiletDue) {
-    const current = employeeSelect.value || report.shiftLeader || "";
-    employeeSelect.innerHTML = `<option value="">Mitarbeiter auswählen</option>${(state.settings?.employees || []).map((employee) => (
-      `<option value="${escapeHtml(employee)}" ${current === employee ? "selected" : ""}>${escapeHtml(employee)}</option>`
-    )).join("")}`;
-  }
-  modal.classList.toggle("hidden", !due);
+  modal?.classList.add("hidden");
+  state.pendingReminder = null;
+  state.pendingToiletCheck = "";
 }
 
 function dueReminder(dateKey, report, openingText = "") {
@@ -11485,7 +13094,7 @@ function setDayReportLocked(isLocked, report = {}) {
   $$("#dayReportPrintArea input, #dayReportPrintArea textarea, #dayReportPrintArea select, #terminalFinanceSection input, #terminalFinanceSection textarea, #terminalFinanceSection select").forEach((field) => {
     field.disabled = isLocked;
   });
-  $$("#addInvoiceCustomer, #addExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-save-expense-entry], [data-remove-report-entry], [data-remove-report-document], #saveDayReport, #saveTipDistribution").forEach((button) => {
+  $$("#addInvoiceCustomer, #addExpense, #openAddExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-save-expense-entry], [data-remove-report-entry], [data-remove-report-document], #saveDayReport, #saveTipDistribution").forEach((button) => {
     button.disabled = isLocked;
   });
   const closeButton = $("#closeDayReport");
@@ -11508,6 +13117,7 @@ function renderReportEntryLists(report) {
   if (expenseTarget) {
     expenseTarget.innerHTML = expenses.map((item) => expenseRowHtml(item)).join("") || `<p class="hint">Keine Ausgaben erfasst.</p>`;
   }
+  renderFinanceExpensePreview();
 }
 
 function invoiceDayOverviewHtml(invoices = []) {
@@ -11530,35 +13140,28 @@ function invoiceDayOverviewHtml(invoices = []) {
 }
 
 function renderReportDocuments(report = {}) {
-  const target = $("#reportDocumentStatus");
-  if (!target) return;
   const documents = report.documents || {};
   const rows = [
-    ["Penta", documents.penta],
-    ["Handschrift", documents.handwriting],
-    ["EC-Schnitt", documents.ecCut]
+    ["Penta", "penta", "#reportDocumentPentaStatus", documents.penta],
+    ["Handschrift", "handwriting", "#reportDocumentHandwritingStatus", documents.handwriting],
+    ["EC-Schnitt", "ecCut", "#reportDocumentEcCutStatus", documents.ecCut]
   ];
-  const documentKey = (label) => {
-    if (label === "Penta") return "penta";
-    if (label === "Handschrift") return "handwriting";
-    return "ecCut";
-  };
-  target.innerHTML = rows.map(([label, document]) => `
-    <article class="report-entry compact-report-entry">
-      <strong>${escapeHtml(label)}</strong>
-      ${document?.name ? `<span class="hint">${escapeHtml(document.name)}</span>` : `<span class="hint">Noch nicht hochgeladen.</span>`}
-      ${document?.path || document?.url || document?.data ? `
-        <div class="report-document-actions">
-          ${reportDocumentLinkHtml(document, label)}
-          <button class="secondary danger-lite" data-remove-report-document="${documentKey(label)}" type="button">Entfernen</button>
-        </div>
-      ` : ""}
-      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="name" value="${escapeHtml(document?.name || "")}">
-      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="path" value="${escapeHtml(document?.path || "")}">
-      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="url" value="${escapeHtml(document?.url || "")}">
-      <input type="hidden" data-report-document="${documentKey(label)}" data-document-field="data" value="${escapeHtml(document?.data || "")}">
-    </article>
-  `).join("");
+  rows.forEach(([label, key, selector, document]) => {
+    const target = $(selector);
+    if (!target) return;
+    const uploaded = Boolean(document?.path || document?.url || document?.data);
+    target.innerHTML = `
+      <div class="finance-document-status ${uploaded ? "is-uploaded" : ""}">
+        <span>${uploaded ? "Hochgeladen" : "Noch nicht hochgeladen"}</span>
+        ${document?.name ? `<small>${escapeHtml(document.name)}</small>` : ""}
+        ${uploaded ? `<div>${reportDocumentLinkHtml(document, label)}<button class="danger-lite" data-remove-report-document="${key}" type="button">Entfernen</button></div>` : ""}
+      </div>
+      <input type="hidden" data-report-document="${key}" data-document-field="name" value="${escapeHtml(document?.name || "")}">
+      <input type="hidden" data-report-document="${key}" data-document-field="path" value="${escapeHtml(document?.path || "")}">
+      <input type="hidden" data-report-document="${key}" data-document-field="url" value="${escapeHtml(document?.url || "")}">
+      <input type="hidden" data-report-document="${key}" data-document-field="data" value="${escapeHtml(document?.data || "")}">
+    `;
+  });
 }
 
 function reportDocumentInputForKey(key) {
@@ -11593,7 +13196,7 @@ function clearReportDocumentFields(key) {
 async function saveReportDocumentsNow(source, successText = "Abschlussdokumente gespeichert.") {
   if (state.terminalReport?.closed) {
     showToast("Tagesbericht ist abgeschlossen. Dokument kann nicht gespeichert werden.");
-    return;
+    return false;
   }
   const oldText = source?.tagName === "BUTTON" ? source.textContent : "";
   if (source?.tagName === "BUTTON") {
@@ -11604,8 +13207,10 @@ async function saveReportDocumentsNow(source, successText = "Abschlussdokumente 
   try {
     await terminalAction(await collectDayReportPayload());
     showToast(successText);
+    return true;
   } catch (error) {
     showError(error);
+    return false;
   } finally {
     if (source?.tagName === "BUTTON") {
       source.textContent = oldText;
@@ -11829,11 +13434,15 @@ function invoiceRowHtml(item = {}) {
   const total = invoiceTotal(item);
   const pentacodeChoice = invoicePentacodeChoice(item);
   const workflow = invoiceWorkflowState({ ...item, id }, linkedInvoice);
+  const suggestedStep = !item.name ? 1 : (!item.paymentMethod && total <= 0 ? 2 : 3);
+  const customerOptions = normalizeCustomerDirectory(state.customerDirectory)
+    .map((customer) => `<option value="${escapeHtml(customer.id)}">${escapeHtml(customer.name || "Kunde")}${customer.contact ? ` · ${escapeHtml(customer.contact)}` : ""}</option>`)
+    .join("");
   const legacyHint = !singleReceipt && legacyReceipts.length
     ? `<span class="hint">Bisherige getrennte Belege: ${legacyReceipts.map(({ label, receipt }) => `${escapeHtml(label)} ${escapeHtml(receipt.receiptName || "")}`).join(" | ")}</span>`
     : "";
   return `
-    <details class="report-entry invoice-entry ${statusClass}" data-report-entry="invoice" data-id="${escapeHtml(id)}" data-saved="${isSaved ? "true" : "false"}" ${isReady ? "" : "open"}>
+    <details class="report-entry invoice-entry ${statusClass}" data-report-entry="invoice" data-id="${escapeHtml(id)}" data-invoice-date="${escapeHtml(item.sourceDate || "")}" data-saved="${isSaved ? "true" : "false"}" ${isReady ? "" : "open"}>
       <summary class="invoice-entry-summary">
         <div>
           <strong>${escapeHtml(item.name || "Neuer Rechnungskunde")}</strong>
@@ -11844,17 +13453,29 @@ function invoiceRowHtml(item = {}) {
         <span class="invoice-entry-total">${formatReportMoney(total)}</span>
       </summary>
       <div class="invoice-entry-body">
-        <div class="invoice-workflow-banner">
-          <div>
-            <strong>${escapeHtml(workflow.title)}</strong>
-            <span>${escapeHtml(workflow.detail)}</span>
-          </div>
-          <small>${linkedInvoice && linkedInvoice.status !== "draft" ? "Nicht mehr direkt änderbar" : "Korrigierbar bis Festschreiben"}</small>
+        <div class="invoice-wizard-progress" data-invoice-current-step="${suggestedStep}">
+          <button type="button" data-invoice-step-go="1" class="${suggestedStep === 1 ? "is-active" : ""}"><b>1</b><span>Kunde</span></button>
+          <i></i>
+          <button type="button" data-invoice-step-go="2" class="${suggestedStep === 2 ? "is-active" : ""}"><b>2</b><span>Beträge</span></button>
+          <i></i>
+          <button type="button" data-invoice-step-go="3" class="${suggestedStep === 3 ? "is-active" : ""}"><b>3</b><span>Beleg &amp; Abschluss</span></button>
         </div>
-        <section class="invoice-workflow-block">
+        <section class="invoice-workflow-block invoice-wizard-panel ${suggestedStep === 1 ? "" : "hidden"}" data-invoice-step-panel="1">
           <div class="invoice-workflow-head">
-            <strong>1. Kundendaten prüfen</strong>
-            <span>Hier kannst du Tippfehler jederzeit korrigieren und speichern.</span>
+            <strong>1. Kunde wählen oder neu anlegen</strong>
+            <span>Bestehenden Kunden übernehmen oder neue Rechnungsdaten eingeben.</span>
+          </div>
+          <div class="invoice-customer-source">
+            <div>
+              <strong>Aus Kundenstamm</strong>
+              <select data-invoice-customer-master>
+                <option value="">Kunde auswählen</option>
+                ${customerOptions}
+              </select>
+              <button class="secondary" data-apply-invoice-customer type="button" ${customerOptions ? "" : "disabled"}>Kundendaten übernehmen</button>
+            </div>
+            <span>oder</span>
+            <div><strong>Neuen Kunden anlegen</strong><small>Felder unten vollständig ausfüllen.</small></div>
           </div>
           <div class="report-entry-grid">
             <label>Kunde<input data-report-field="name" value="${escapeHtml(item.name || "")}" placeholder="Name/Firma"></label>
@@ -11864,8 +13485,9 @@ function invoiceRowHtml(item = {}) {
             <label class="invoice-grid-wide">Rechnungsadresse<textarea data-report-field="address" rows="2" placeholder="Adresse für Rechnung">${escapeHtml(item.address || "")}</textarea></label>
             <label class="invoice-grid-wide">Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
           </div>
+          <div class="invoice-wizard-actions"><button class="primary" data-invoice-step-go="2" type="button">Weiter zu Beträge</button></div>
         </section>
-        <section class="invoice-workflow-block">
+        <section class="invoice-workflow-block invoice-wizard-panel ${suggestedStep === 2 ? "" : "hidden"}" data-invoice-step-panel="2">
           <div class="invoice-workflow-head">
             <strong>2. Beträge und Zahlungsart</strong>
             <span>Hier kommt alles rein, was später auf die Rechnung soll.</span>
@@ -11891,8 +13513,9 @@ function invoiceRowHtml(item = {}) {
             </label>
             <label class="invoice-other-note-field">Sonstiges Notiz<textarea data-report-field="gastroOtherNote" rows="2" placeholder="z.B. Raummiete oder Sonderleistung">${escapeHtml(item.gastroOtherNote || "")}</textarea></label>
           </div>
+          <div class="invoice-wizard-actions"><button class="secondary" data-invoice-step-go="1" type="button">Zurück</button><button class="primary" data-invoice-step-go="3" type="button">Weiter zu Beleg</button></div>
         </section>
-        <section class="invoice-workflow-block">
+        <section class="invoice-workflow-block invoice-wizard-panel ${suggestedStep === 3 ? "" : "hidden"}" data-invoice-step-panel="3">
           <div class="invoice-workflow-head">
             <strong>3. Beleg und Abschluss</strong>
             <span>Beleg hochladen, Pentacode-Status wählen und dann den nächsten Schritt auslösen.</span>
@@ -11904,13 +13527,16 @@ function invoiceRowHtml(item = {}) {
               <option value="false"${pentacodeChoice === "no" ? " selected" : ""}>Nein, nachträgliche Rechnung</option>
             </select>
           </label>
-          <label>Rechnungsbeleg scannen/fotografieren<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
-          ${singleReceipt?.receiptName ? `<span class="hint">Aktueller Rechnungsbeleg: ${escapeHtml(singleReceipt.receiptName)}</span>` : ""}
+          <div class="invoice-receipt-actions">
+            <button class="secondary" data-open-invoice-receipt-scanner type="button">Scanner-App öffnen</button>
+            <label>Oder direkt auswählen<input data-report-file type="file" accept="image/*,application/pdf" capture="environment"></label>
+          </div>
+          <span class="hint" data-invoice-receipt-status>${singleReceipt?.receiptName ? `Aktueller Rechnungsbeleg: ${escapeHtml(singleReceipt.receiptName)}` : "Noch kein Rechnungsbeleg hinterlegt."}</span>
           ${legacyHint}
           <div class="invoice-entry-actions">
+            <button class="secondary" data-invoice-step-go="2" type="button">Zurück</button>
             <button class="secondary" data-save-invoice-draft type="button">Änderungen speichern</button>
-            <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut an Chef senden" : "Fertig für Chef"}</button>
-            <button class="secondary" data-open-invoice-builder type="button">Rechnungsinformationen als PDF</button>
+            <button class="primary" data-mark-invoice-ready type="button">${isReady ? "Erneut für Chef vorbereiten" : "Fertig für Chef"}</button>
             <button class="secondary danger-lite" data-remove-report-entry type="button">Vollständig löschen</button>
           </div>
         </section>
@@ -12043,7 +13669,9 @@ async function collectExpenseReceipts(row) {
 async function collectReportEntriesFrom(root, type) {
   const selector = type === "invoice" ? '[data-report-entry="invoice"]' : '[data-report-entry="expense"]';
   const entries = [];
-  for (const row of [...(root || document).querySelectorAll(selector)]) {
+  const scope = root || document;
+  const rows = scope.matches?.(selector) ? [scope] : [...scope.querySelectorAll(selector)];
+  for (const row of rows) {
     const item = { id: row.dataset.id || cryptoId() };
     row.querySelectorAll("[data-report-field]").forEach((field) => {
       item[field.dataset.reportField] = field.type === "checkbox" ? (field.checked ? "true" : "") : field.value;
@@ -12090,7 +13718,12 @@ async function collectReportEntriesFrom(root, type) {
 }
 
 async function collectReportDocuments() {
-  const documents = { penta: {}, handwriting: {}, ecCut: {} };
+  const documents = {
+    penta: {},
+    handwriting: {},
+    ecCut: {},
+    attachments: cloneData(reportDocumentAttachments())
+  };
   $$("[data-report-document]").forEach((field) => {
     const key = field.dataset.reportDocument;
     const name = field.dataset.documentField;
@@ -12129,6 +13762,7 @@ async function collectDayReportPayload() {
     revenueDrinks: $("#reportRevenueDrinks")?.value || "",
     revenueFood: $("#reportRevenueFood")?.value || "",
     revenueOther: $("#reportRevenueOther")?.value || "",
+    bowlingCashRevenue: $("#reportBowlingCashRevenue")?.value || "",
     revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
     barBowling: $("#reportRevenueBowling")?.value || "",
     barGastro: gastroRevenueFromFormOrReport().toFixed(2),
@@ -12363,130 +13997,56 @@ async function runCustomerInvoiceMutation(action, extra = {}, fallbackMessage = 
   return result;
 }
 
-function openCustomerInvoiceBuilderForRow(button) {
+async function openCustomerInvoiceBuilderForRow(button) {
   const row = button.closest('[data-report-entry="invoice"]');
   if (!row) return;
-  const value = (name) => String(reportFieldValue(row, name) || "").trim();
-  const gastro = invoiceGastroSplit({
-    gastroAmount: value("gastroAmount"),
-    gastroDrinksAmount: value("gastroDrinksAmount"),
-    gastroFoodAmount: value("gastroFoodAmount"),
-    gastroOtherAmount: value("gastroOtherAmount")
-  });
-  const bowling = parseMoneyInput(value("bowlingAmount"));
-  const tip = parseMoneyInput(value("tip"));
-  const total = bowling + gastro.total + tip;
-  const receiptSourceRaw = value("receiptData") || value("receiptUrl") || value("receiptPath") || value("bowlingReceiptData") || value("bowlingReceiptUrl") || value("bowlingReceiptPath");
-  const receiptSource = receiptSourceRaw && !receiptSourceRaw.startsWith("data:")
-    ? new URL(receiptSourceRaw, window.location.href).href
-    : receiptSourceRaw;
-  const receiptIsPdf = /^data:application\/pdf/i.test(receiptSource) || /\.pdf(?:$|[?#])/i.test(receiptSource);
-  const receiptSourceJson = JSON.stringify(receiptSource || "").replace(/</g, "\\u003c");
-  const dateKey = state.invoiceDate || todayKey();
-  const dateLabel = new Date(`${dateKey}T12:00:00`).toLocaleDateString("de-DE", {
-    weekday: "long",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric"
-  });
-  const line = (label, content, strong = false) => `
-    <div class="line${strong ? " total" : ""}">
-      <span>${escapeHtml(label)}</span><b>${escapeHtml(content || "-")}</b>
-    </div>`;
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) {
-    showToast("Bitte Pop-ups erlauben, damit die PDF-Ansicht geöffnet werden kann.");
+  const sourceCustomerId = String(row.dataset.id || "").trim();
+  if (!sourceCustomerId) {
+    showToast("Bitte Rechnungskunde zuerst speichern.");
     return;
   }
-  printWindow.opener = null;
-  printWindow.document.write(`<!doctype html>
-    <html lang="de"><head><meta charset="utf-8"><title>Rechnungsinformationen ${escapeHtml(value("name") || "Kunde")}</title>
-    <style>
-      @page { size: A4; margin: 18mm; }
-      * { box-sizing: border-box; }
-      body { margin: 0; color: #172033; font: 14px/1.45 Arial, sans-serif; }
-      .toolbar { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; padding: 14px 18px; background: #111827; }
-      .toolbar button { border: 0; border-radius: 7px; padding: 11px 16px; color: #fff; background: #e30613; font-weight: 700; cursor: pointer; }
-      .toolbar button.secondary { background: #fff; color: #172033; }
-      .toolbar button:disabled { opacity: .45; cursor: not-allowed; }
-      .page { width: 210mm; min-height: 297mm; margin: 18px auto; padding: 18mm; background: #fff; box-shadow: 0 4px 22px #0002; }
-      #receipt-page { display: none; }
-      body.show-receipt #info-page { display: none; }
-      body.show-receipt #receipt-page { display: block; }
-      .receipt-image { display: block; width: 100%; height: auto; max-height: 245mm; object-fit: contain; }
-      .receipt-missing { padding: 30px; text-align: center; color: #667085; background: #f5f7fa; }
-      header { padding-bottom: 18px; border-bottom: 3px solid #e30613; }
-      h1 { margin: 0; font-size: 25px; }
-      header p { margin: 5px 0 0; color: #667085; }
-      section { margin-top: 22px; }
-      h2 { margin: 0 0 10px; font-size: 15px; text-transform: uppercase; letter-spacing: .04em; }
-      .address { padding: 15px; background: #f5f7fa; border-radius: 8px; white-space: pre-line; }
-      .line { display: flex; justify-content: space-between; gap: 24px; padding: 8px 0; border-bottom: 1px solid #e3e7ed; }
-      .line span { color: #667085; }
-      .line b { text-align: right; }
-      .line.total { margin-top: 8px; padding: 13px 12px; border: 0; background: #fff1f2; color: #c90012; font-size: 18px; }
-      .notes { white-space: pre-line; }
-      footer { margin-top: 28px; color: #667085; font-size: 11px; }
-      @media print {
-        body { background: #fff; }
-        .toolbar { display: none !important; }
-        .page { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
-      }
-    </style></head><body>
-      <nav class="toolbar">
-        <button type="button" onclick="printInformation()">1. Rechnungsinformationen als PDF</button>
-        <button class="secondary" type="button" onclick="printReceipt()" ${receiptSource ? "" : "disabled"}>2. Gescannten Beleg als PDF</button>
-      </nav>
-      <main class="page" id="info-page">
-      <header><h1>LA-Bowling · Rechnungsinformationen</h1><p>Unterlage zum Erstellen und Versenden der Rechnung</p></header>
-      <section><h2>Kunde</h2><div class="address"><b>${escapeHtml(value("name") || "Kunde")}</b><br>${escapeHtml(value("address") || "Keine Rechnungsadresse eingetragen")}</div>
-        ${line("Rechnungsdatum", dateLabel)}
-        ${line("Rechnungs-E-Mail", value("email"))}
-        ${line("Ansprechpartner", value("contact"))}
-        ${line("Telefon", value("phone"))}
-      </section>
-      <section><h2>Beträge</h2>
-        ${line("Bowling", formatReportMoney(bowling))}
-        ${line("Speisen", formatReportMoney(gastro.food))}
-        ${line("Getränke", formatReportMoney(gastro.drinks))}
-        ${line("Sonstiges", formatReportMoney(gastro.other))}
-        ${line("Gastro gesamt", formatReportMoney(gastro.total), true)}
-        ${line("Tipp", formatReportMoney(tip))}
-        ${line("Rechnungsbetrag", formatReportMoney(total), true)}
-        ${line("Zahlungsart", value("paymentMethod"))}
-      </section>
-      <section><h2>Zusatzinformationen</h2>
-        ${line("In Pentacode eingetragen", value("pentacodeEntered") === "true" ? "Ja" : value("pentacodeEntered") === "false" ? "Nein" : "Nicht angegeben")}
-        ${line("Rechnungsbeleg", value("receiptName") || value("bowlingReceiptName") || "Kein Belegname")}
-        <p class="notes"><b>Sonstiges:</b> ${escapeHtml(value("gastroOtherNote") || "-")}</p>
-        <p class="notes"><b>Notiz:</b> ${escapeHtml(value("note") || "-")}</p>
-      </section>
-      <footer>Kunde auf Rechnung wurde in der LA-Bowling TeamApp erfasst.</footer>
-      </main>
-      <main class="page" id="receipt-page">
-        <header><h1>LA-Bowling · Rechnungsbeleg</h1><p>${escapeHtml(value("name") || "Kunde")} · ${escapeHtml(dateLabel)}</p></header>
-        <section>${receiptSource && !receiptIsPdf ? `<img class="receipt-image" src="${escapeHtml(receiptSource)}" alt="Gescanntes Rechnungsdokument">` : receiptIsPdf ? `<p class="receipt-missing">Der Beleg liegt bereits als PDF vor und wird über die zweite Schaltfläche direkt geöffnet.</p>` : `<p class="receipt-missing">Kein gescannter Beleg vorhanden.</p>`}</section>
-      </main>
-      <script>
-        const receiptSource = ${receiptSourceJson};
-        const receiptIsPdf = ${receiptIsPdf ? "true" : "false"};
-        function printInformation() {
-          document.body.classList.remove("show-receipt");
-          setTimeout(() => window.print(), 50);
-        }
-        function printReceipt() {
-          if (!receiptSource) return;
-          if (receiptIsPdf) {
-            window.open(receiptSource, "_blank");
-            return;
-          }
-          document.body.classList.add("show-receipt");
-          setTimeout(() => window.print(), 50);
-        }
-      <\/script>
-    </body></html>`);
-  printWindow.document.close();
-  showToast("PDF-Ausgabe geöffnet. Dort Rechnungsinfos und Beleg getrennt speichern.");
+  const problems = invoiceRowReadyProblems(row);
+  if (problems.length) {
+    showToast(`Noch offen: ${problems.join(", ")}.`);
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Öffnet...";
+  }
+  const readyWasSet = reportFieldValue(row, "invoiceReady") === "true";
+  if (!readyWasSet) {
+    setReportFieldValue(row, "invoiceReady", "true");
+    if (!reportFieldValue(row, "invoiceReadyAt")) {
+      setReportFieldValue(row, "invoiceReadyAt", new Date().toISOString());
+    }
+  }
+  try {
+    const saved = await saveCustomerInvoiceDeskReport(null, "Rechnungskunde für die Rechnung vorbereitet.");
+    if (!saved) {
+      if (!readyWasSet) setReportFieldValue(row, "invoiceReady", "false");
+      return;
+    }
+    const result = await runCustomerInvoiceMutation(
+      "invoice-from-ready-customer",
+      { sourceDate: state.invoiceDate || todayKey(), sourceCustomerId },
+      "Rechnungsentwurf geöffnet."
+    );
+    if (result?.invoice) {
+      setInvoiceDeskDraftFromInvoice(result.invoice);
+      renderCustomerInvoiceDesk();
+      $("#customerInvoiceBuilderSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  } catch (error) {
+    if (!readyWasSet) setReportFieldValue(row, "invoiceReady", "false");
+    showError(error);
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
 }
 
 async function previewCurrentDeskInvoicePdf(button, download = false) {
@@ -12653,7 +14213,10 @@ async function saveCustomerInvoiceDeskRow(button, markReady = false) {
     if (markReady) setReportFieldValue(row, "invoiceReady", "false");
     return;
   }
-  if (markReady) await sendCustomerInvoiceReadyMail(invoiceId, button);
+  if (markReady) {
+    const invoiceDate = row.dataset.invoiceDate || state.terminalInvoiceDate || state.terminalDate || todayKey();
+    await terminalInvoicePdf(invoiceDate, invoiceId, button);
+  }
 }
 
 async function removeCustomerInvoiceDeskEntry(button) {
@@ -12713,7 +14276,6 @@ function invoiceRowReadyProblems(row) {
     gastroOtherAmount: gastroOther
   }).total;
   if (amount <= 0) problems.push("Bowling- oder Gastro-Betrag fehlt");
-  if (reportMoneyNumber(gastroOther) > 0 && !reportFieldValue(row, "gastroOtherNote")) problems.push("Notiz für Sonstiges fehlt");
   if (!invoiceRowHasReceipt(row)) problems.push("Rechnungsbeleg fehlt");
   return problems;
 }
@@ -12734,19 +14296,26 @@ async function saveInvoiceRow(button, markReady = false) {
   button.disabled = true;
   button.textContent = "Speichert...";
   try {
-    const payload = await collectDayReportPayload();
-    if (markReady) {
-      payload.sendInvoiceNotifications = true;
-      payload.sendInvoiceNotificationId = row.dataset.id || "";
+    const invoiceDate = row.dataset.invoiceDate || "";
+    if (invoiceDate && invoiceDate !== (state.terminalDate || todayKey())) {
+      const customer = (await collectReportEntriesFrom(row, "invoice"))[0];
+      const result = await terminalAction({ action: "save-invoice-customer", invoiceDate, customer });
+      showToast(markReady ? "Nachträgliche Rechnung ist fertig für Chef." : "Nachträglicher Rechnungskunde gespeichert.");
+      if (markReady) await terminalInvoicePdf(invoiceDate, result?.customer?.id || customer?.id || row.dataset.id, button);
+      return result;
     }
+    const payload = await collectDayReportPayload();
     const result = await terminalAction(payload);
     const toastMessage = markReady
       ? ["Rechnung ist fertig für Chef.", result?.mailMessage].filter(Boolean).join(" ")
       : "Rechnungskunde zwischengespeichert.";
     showToast(toastMessage);
+    if (markReady) await terminalInvoicePdf(invoiceDate || state.terminalDate || todayKey(), row.dataset.id || "", button);
+    return result;
   } catch (error) {
     if (markReady) setReportFieldValue(row, "invoiceReady", "false");
     showError(error);
+    return null;
   } finally {
     button.textContent = oldText;
     button.disabled = false;
@@ -12934,23 +14503,13 @@ function renderDailyTipDistribution() {
   const displayRows = dailyTipRowsForDisplay(result, report);
   const distributed = displayRows.reduce((sum, row) => sum + Number(row.tip || 0), 0);
   const chefHandover = result.chefHandover;
-  const cashAfterExpenses = Math.max(0, result.cashTotal - result.cashExpenses);
   const summaryHtml = `
-    <article>
+    <button class="tip-summary-card tip-detail-trigger" type="button" data-open-tip-distribution aria-haspopup="dialog">
+      <span class="tip-summary-icon" aria-hidden="true">&#127873;</span>
       <span>Trinkgeld gesamt</span>
       <strong>${formatMoney(result.tipTotal)}</strong>
-      <small>Bar + Ausgaben + EC + Rechnung per Überweisung - Umsatz nach Personalverzehr</small>
-    </article>
-    <article class="tip-summary-handover">
-      <span>Abzugeben an Chef</span>
-      <strong>${formatMoney(chefHandover)}</strong>
-      <small>Umsatz minus EC, Rechnung und Ausgaben</small>
-    </article>
-    <article>
-      <span>Bar nach Ausgaben</span>
-      <strong>${formatMoney(cashAfterExpenses)}</strong>
-      <small>Bar gesamt - ${formatMoney(result.cashExpenses)}</small>
-    </article>
+      <small>Wird laut Arbeitszeiten verteilt.</small>
+    </button>
   `;
   const listHtml = displayRows.length ? `
     <section class="tip-group">
@@ -12980,6 +14539,125 @@ function renderDailyTipDistribution() {
   ` : `<p class="hint">Noch keine Trinkgeld-Verteilung möglich. Dafür braucht es Arbeitszeiten mit Dienstende und Umsatzdetails.</p>`;
   summaryTargets.forEach((target) => { target.innerHTML = summaryHtml; });
   listTargets.forEach((target) => { target.innerHTML = listHtml; });
+  renderFinanceDashboard(result);
+  renderTipDistributionDetail(result, displayRows);
+}
+
+function setFinanceText(selector, value) {
+  const target = $(selector);
+  if (target) target.textContent = value;
+}
+
+function renderFinanceDashboard(result = calculateTipDistribution(state.terminalDate || todayKey())) {
+  setFinanceText("#financeKpiCash", formatMoney(result.cashTotal || 0));
+  setFinanceText("#financeKpiEc", formatMoney(result.ecTotal || 0));
+  setFinanceText("#financeKpiExpenses", formatMoney(result.cashExpenses || 0));
+  setFinanceText("#financeKpiHandover", formatMoney(result.chefHandover || 0));
+  setFinanceText("#financeResultHandover", formatMoney(result.chefHandover || 0));
+  setFinanceText("#financeInvoiceTotal", formatMoney(result.invoiceTotal || 0));
+  setFinanceText("#financeExpenseTotal", formatMoney(result.cashExpenses || 0));
+  setFinanceText(
+    "#financeResultFormula",
+    `Umsatz ${formatMoney(result.totalRevenue || 0)} − EC ${formatMoney(result.ecTotal || 0)} − Rechnung ${formatMoney(result.invoiceTotal || 0)} − Ausgaben ${formatMoney(result.cashExpenses || 0)}`
+  );
+  if (Number(state.terminalClosingStep || 1) === 2) renderPentacodeTransfer();
+  if (Number(state.terminalClosingStep || 1) === 3) renderManualReportTransfer();
+}
+
+function renderFinanceExpensePreview() {
+  const target = $("#financeExpensePreview");
+  if (!target) return;
+  const rows = $$("#expensesList [data-report-entry='expense']");
+  if (!rows.length) {
+    target.innerHTML = `<p class="finance-empty-row">Keine Ausgaben erfasst</p>`;
+    setFinanceText("#financeExpenseTotal", formatMoney(0));
+    return;
+  }
+  const total = rows.reduce((sum, row) => sum + parseMoneyInput(row.querySelector("[data-report-field='amount']")?.value || ""), 0);
+  target.innerHTML = rows.map((row) => {
+    const id = row.dataset.id || "";
+    const name = row.querySelector("[data-report-field='name']")?.value || "Ausgabe";
+    const amount = parseMoneyInput(row.querySelector("[data-report-field='amount']")?.value || "");
+    return `
+      <article class="finance-expense-row">
+        <div><strong>${escapeHtml(name || "Ausgabe")}</strong><span>${formatMoney(amount)}</span></div>
+        <div class="finance-expense-actions">
+          <button type="button" data-edit-expense="${escapeHtml(id)}" aria-label="${escapeHtml(name || "Ausgabe")} bearbeiten">Bearbeiten</button>
+          <button class="is-delete" type="button" data-delete-expense="${escapeHtml(id)}" aria-label="${escapeHtml(name || "Ausgabe")} löschen">&times;</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+  setFinanceText("#financeExpenseTotal", formatMoney(total));
+}
+
+function openFinanceModal(id) {
+  $("#" + id)?.classList.remove("hidden");
+}
+
+function closeFinanceModal(id) {
+  $("#" + id)?.classList.add("hidden");
+}
+
+function renderTipDistributionDetail(result = {}, displayRows = []) {
+  const targets = [$("#tipDistributionDetail"), $("#closingTipDistributionDetail")].filter(Boolean);
+  if (!targets.length) return;
+  const distributed = displayRows.reduce((sum, row) => sum + Number(row.tip || 0), 0);
+  const remainder = Math.max(0, Number(result.tipRemainder || 0));
+  const html = `
+    <div class="tip-detail-total">
+      <span>Trinkgeld gesamt</span>
+      <strong>${formatMoney(result.tipTotal || 0)}</strong>
+      <small>Verteilung nach Arbeitszeit</small>
+    </div>
+    ${displayRows.length ? `
+      <div class="tip-detail-table-wrap">
+        <table class="tip-detail-table">
+          <thead>
+            <tr>
+              <th>Mitarbeiter</th>
+              <th>Arbeitsstunden</th>
+              <th>Anteil</th>
+              <th>Berechnung</th>
+              <th>Trinkgeld</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${displayRows.map((row) => {
+              const amount = Number(row.tip || 0);
+              const share = distributed > 0 ? (amount / distributed) * 100 : 0;
+              return `
+                <tr>
+                  <td><strong>${escapeHtml(row.employee)}</strong><small>${escapeHtml(tipAreaLabel(row.area))}${row.factor !== 1 ? ` · Faktor ${String(row.factor).replace(".", ",")}` : ""}</small></td>
+                  <td>${formatHours(row.hours)}</td>
+                  <td>${share.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %</td>
+                  <td>${formatMoney(row.rawTip)}${row.factor !== 1 ? ` · Faktor ${String(row.factor).replace(".", ",")}` : ""}</td>
+                  <td><strong>${formatMoney(amount)}</strong></td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+      ${remainder > 0.005 ? `<p class="tip-detail-note">Rundungsrest: ${formatMoney(remainder)}</p>` : ""}
+    ` : `
+      <div class="tip-detail-empty">
+        <strong>Noch keine Trinkgeld-Verteilung möglich.</strong>
+        <span>Dafür braucht es Arbeitszeiten mit Dienstende und Umsatzdetails.</span>
+      </div>
+    `}
+  `;
+  targets.forEach((target) => { target.innerHTML = html; });
+}
+
+function openTipDistributionModal() {
+  renderDailyTipDistribution();
+  $("#tipDistributionModal")?.classList.remove("hidden");
+  $("#closeTipDistributionModal")?.focus();
+}
+
+function closeTipDistributionModal() {
+  $("#tipDistributionModal")?.classList.add("hidden");
 }
 
 function dailyTipRowsForDisplay(result = {}, report = {}) {
@@ -13353,11 +15031,15 @@ async function terminalAction(payload) {
   state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
   state.assignmentAvailability = normalizeAssignmentAvailability(result.assignmentAvailability || state.assignmentAvailability || {});
   state.terminalTasks = result.tasks || [];
+  state.terminalTaskTemplates = Array.isArray(result.taskTemplates) ? result.taskTemplates : state.terminalTaskTemplates;
+  state.terminalTaskAreas = Array.isArray(result.taskAreas) ? result.taskAreas : state.terminalTaskAreas;
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
   state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
   state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
   state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
+  state.terminalInvoiceHistory = Array.isArray(result.invoiceHistory) ? result.invoiceHistory : state.terminalInvoiceHistory;
+  state.offers = normalizeOffersClient(result.offers || state.offers || []);
   state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
   state.terminalTableInfo = result.tablePlanInfo || state.terminalTableInfo;
   state.terminalDayMetaEditing = false;
@@ -13386,11 +15068,15 @@ async function terminalLogin(code) {
   state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
   state.assignmentAvailability = normalizeAssignmentAvailability(result.assignmentAvailability || state.assignmentAvailability || {});
   state.terminalTasks = result.tasks || [];
+  state.terminalTaskTemplates = Array.isArray(result.taskTemplates) ? result.taskTemplates : [];
+  state.terminalTaskAreas = Array.isArray(result.taskAreas) ? result.taskAreas : [];
   state.terminalReminders = normalizeReminderTemplates(result.reminders);
   state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
   state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
   state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
   state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
+  state.terminalInvoiceHistory = Array.isArray(result.invoiceHistory) ? result.invoiceHistory : state.terminalInvoiceHistory;
+  state.offers = normalizeOffersClient(result.offers || state.offers || []);
   state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
   state.terminalTableInfo = result.tablePlanInfo || state.terminalTableInfo;
   state.terminalCorrectionMode = false;
@@ -13441,10 +15127,13 @@ async function openCorrectionReport(button) {
     state.assignmentTimes = normalizeAssignmentTimes(result.assignmentTimes || state.assignmentTimes || {});
     state.assignmentSchedules = result.assignmentSchedules || state.assignmentSchedules || {};
     state.terminalTasks = result.tasks || [];
+    state.terminalTaskTemplates = Array.isArray(result.taskTemplates) ? result.taskTemplates : [];
+    state.terminalTaskAreas = Array.isArray(result.taskAreas) ? result.taskAreas : [];
     state.terminalReminders = normalizeReminderTemplates(result.reminders);
     state.terminalCleaningTemplates = normalizeCleaningTemplates(result.cleaningTemplates || state.cleaningTemplates);
     state.terminalWeeklyCleaningCompletions = result.weeklyCleaningCompletions || {};
     state.terminalMessages = result.terminalMessages || state.terminalMessages || [];
+    state.offers = normalizeOffersClient(result.offers || state.offers || []);
     state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
     state.terminalCorrectionMode = true;
     state.timesheets = result.entries || state.timesheets || {};
@@ -13522,6 +15211,58 @@ async function closeCorrectionReport(button) {
       button.disabled = false;
     }
   }
+}
+
+async function terminalInvoicePdf(date, invoiceId, button) {
+  if (!date || !invoiceId) {
+    showToast("Rechnungskunde bitte zuerst speichern.");
+    return;
+  }
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Unterlagen werden erstellt...";
+  }
+  try {
+    const pdfResult = await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({ action: "invoice-export-package", terminalToken: state.terminalToken, sourceDate: date, sourceCustomerId: invoiceId })
+    });
+    const infoName = pdfResult.infoPdfFileName || `Rechnungsinformationen-${date}.pdf`;
+    const receiptsName = pdfResult.receiptsPdfFileName || `Belege-${date}.pdf`;
+    downloadDataUrlFile(pdfResult.infoPdfData, infoName);
+    window.setTimeout(() => downloadDataUrlFile(pdfResult.receiptsPdfData, receiptsName), 180);
+    const recipient = state.settings.invoiceNotificationTo || "pvo65@outlook.de";
+    const customerName = pdfResult.customerName || "Rechnungskunde";
+    const subject = `LA-Bowling Rechnung - ${customerName}`;
+    const body = `Hallo Peter,\n\nim Anhang findest du die Rechnungsinformationen und die gescannten Belege für ${customerName} vom ${formatDate(date)}.\n\nBitte diese beiden Dateien anhängen:\n- ${infoName}\n- ${receiptsName}\n\nViele Grüße`;
+    window.setTimeout(() => {
+      window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    }, 450);
+    showToast("Rechnungsinformationen und Belege erstellt. Outlook wird geöffnet; bitte beide PDFs anhängen.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+async function terminalInvoicePdfForRow(button) {
+  const row = button.closest('[data-report-entry="invoice"]');
+  if (!row) return;
+  const problems = invoiceRowReadyProblems(row);
+  if (problems.length) {
+    showToast(`Noch offen: ${problems.join(", ")}.`);
+    return;
+  }
+  const invoiceDate = row.dataset.invoiceDate || state.terminalDate || todayKey();
+  const customer = (await collectReportEntriesFrom(row, "invoice"))[0];
+  const saved = await terminalAction({ action: "save-invoice-customer", invoiceDate, customer });
+  const savedId = saved?.customer?.id || customer?.id || row.dataset.id;
+  await terminalInvoicePdf(invoiceDate, savedId, button);
 }
 
 async function loadTerminalWorkDate(dateKey, button = null) {
@@ -15124,7 +16865,7 @@ function bindEvents() {
     requestSwapFromSchedule(swapShift.dataset.requestSwapDate, swapShift.dataset.requestSwapPosition);
   });
 
-  $("#chefDashboard")?.addEventListener("click", (event) => {
+  $("#chefDashboard")?.addEventListener("click", async (event) => {
     const invoiceFolderButton = event.target.closest("[data-chef-invoice-folder]");
     if (invoiceFolderButton) {
       const nextFolder = invoiceFolderButton.dataset.chefInvoiceFolder || "write";
@@ -15186,6 +16927,7 @@ function bindEvents() {
       const [mode, dateKey] = String(reportCalendarDay.dataset.reportCalendarDate || "").split("|");
       if (mode === "chef" && dateKey) {
         setReportCalendarSelection("chef", dateKey);
+        await ensureTimesheetsForReportDate(dateKey);
         renderChef();
       }
       return;
@@ -15193,7 +16935,9 @@ function bindEvents() {
     const openReportButton = event.target.closest("[data-chef-open-report]");
     if (openReportButton) {
       state.chefTab = "reports";
-      setReportCalendarSelection("chef", openReportButton.dataset.chefOpenReport || defaultChefReportDate());
+      const reportDate = openReportButton.dataset.chefOpenReport || defaultChefReportDate();
+      setReportCalendarSelection("chef", reportDate);
+      await ensureTimesheetsForReportDate(reportDate);
       renderChef();
       return;
     }
@@ -15289,9 +17033,11 @@ function bindEvents() {
     }
   });
 
-  $("#chefDashboard")?.addEventListener("change", (event) => {
+  $("#chefDashboard")?.addEventListener("change", async (event) => {
     if (event.target.matches("#chefReportDate")) {
-      setReportCalendarSelection("chef", event.target.value || defaultChefReportDate());
+      const reportDate = event.target.value || defaultChefReportDate();
+      setReportCalendarSelection("chef", reportDate);
+      await ensureTimesheetsForReportDate(reportDate);
       renderChef();
       return;
     }
@@ -15437,8 +17183,7 @@ function bindEvents() {
     saveCustomerInvoiceDeskReport(input, `${reportDocumentLabelForInput(input)} gespeichert.`);
   });
 
-  [$("#customerInvoiceStaffArea"), $("#terminalFinanceSection")].filter(Boolean).forEach((invoiceActionRoot) => {
-    invoiceActionRoot.addEventListener("click", (event) => {
+  $("#customerInvoiceStaffArea")?.addEventListener("click", (event) => {
     const copyCustomerButton = event.target.closest("[data-copy-invoice-customer]");
     if (copyCustomerButton) {
       const row = copyCustomerButton.closest('[data-report-entry="invoice"]');
@@ -16202,7 +17947,6 @@ function bindEvents() {
     } catch (error) {
       showError(error);
     }
-    });
   });
 
   $("#customerInvoiceDate")?.addEventListener("change", async (event) => {
@@ -16607,26 +18351,31 @@ function bindEvents() {
     }
   });
 
-  $("#adminOffers")?.addEventListener("input", (event) => {
+  $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("input", (event) => {
     if (event.target.id === "offerCustomerSearch") {
       state.offerCustomerSearch = event.target.value || "";
       renderAdminOffers();
-      $("#offerCustomerSearch")?.focus();
+      offerWorkspaceRoot()?.querySelector("#offerCustomerSearch")?.focus();
       return;
     }
     state.offerDraftDirty = true;
-  });
+  }));
 
-  $("#adminOffers")?.addEventListener("change", (event) => {
+  $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("change", (event) => {
     state.offerDraftDirty = true;
     if (offerFieldNeedsLiveRefresh(event.target)) {
       const fieldName = event.target.dataset?.offerField || "";
       const focusSelector = fieldName ? `[data-offer-field="${cssEscape(fieldName)}"]` : "";
       refreshOfferEditorComputedView(focusSelector);
     }
-  });
+  }));
 
-  $("#adminOffers")?.addEventListener("click", async (event) => {
+  $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("click", async (event) => {
+    const scrollSavedOffers = event.target.closest("[data-offer-scroll-saved]");
+    if (scrollSavedOffers) {
+      offerWorkspaceRoot()?.querySelector(".offer-sidebar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     const selectOffer = event.target.closest("[data-select-offer]");
     if (selectOffer) {
       if (state.offerDraftDirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
@@ -16670,7 +18419,7 @@ function bindEvents() {
     }
     const applyTemplate = event.target.closest("[data-offer-apply-template]");
     if (applyTemplate) {
-      const templateKey = currentOfferDraftFromDom().buffet.templateKey || $("#adminOffers")?.querySelector('[data-offer-field="buffetTemplateKey"]')?.value || "";
+      const templateKey = currentOfferDraftFromDom().buffet.templateKey || offerWorkspaceRoot()?.querySelector('[data-offer-field="buffetTemplateKey"]')?.value || "";
       if (!templateKey) {
         showToast("Bitte eine Buffet-Vorlage wählen.");
         return;
@@ -16681,7 +18430,7 @@ function bindEvents() {
     const applyCustomer = event.target.closest("[data-offer-apply-customer]");
     if (applyCustomer) {
       const draft = currentOfferDraftFromDom();
-      const customerId = draft.customerDirectoryId || $("#adminOffers")?.querySelector('[data-offer-field="customerDirectoryId"]')?.value || "";
+      const customerId = draft.customerDirectoryId || offerWorkspaceRoot()?.querySelector('[data-offer-field="customerDirectoryId"]')?.value || "";
       const customer = normalizeCustomerDirectory(state.customerDirectory).find((item) => item.id === customerId);
       if (!customer) {
         showToast("Bitte zuerst einen Kunden aus dem Kundenstamm wählen.");
@@ -16836,7 +18585,7 @@ function bindEvents() {
       state.offerDraftDirty = false;
       renderAdminOffers();
     }
-  });
+  }));
 
   $("#adminContent")?.addEventListener("change", (event) => {
     if (event.target.matches("#adminReportDate")) {
@@ -16959,21 +18708,140 @@ function bindEvents() {
     }
   });
 
+  $("#terminalTaskFrequency")?.addEventListener("change", updateTerminalTaskEditorFields);
+  $("#terminalTaskAreaFilter")?.addEventListener("change", (event) => { state.terminalTaskAreaFilter = event.target.value; renderTerminalTaskCalendar(); });
+  $("#terminalTaskTypeFilter")?.addEventListener("change", (event) => { state.terminalTaskTypeFilter = event.target.value; renderTerminalTaskCalendar(); });
+  $("#terminalTaskStatusFilter")?.addEventListener("change", (event) => { state.terminalTaskStatusFilter = event.target.value; renderTerminalTaskCalendar(); });
+  $("#terminalTaskSearch")?.addEventListener("input", (event) => { state.terminalTaskSearch = event.target.value; renderTerminalTaskCalendar(); });
+
   $("#terminalContent")?.addEventListener("click", async (event) => {
+    if (event.target.closest("[data-open-terminal-toilet-check]")) {
+      openTerminalToiletConfirm();
+      return;
+    }
+    const taskView = event.target.closest("[data-task-calendar-view]");
+    if (taskView) {
+      state.terminalTaskCalendarView = taskView.dataset.taskCalendarView;
+      renderTerminalTaskCalendar();
+      return;
+    }
+    const taskMonthNav = event.target.closest("[data-task-month-nav]");
+    if (taskMonthNav) {
+      if (taskMonthNav.dataset.taskMonthNav === "today") {
+        state.terminalTaskCalendarMonth = currentMonthValue();
+        state.terminalTaskCalendarDate = todayKey();
+      } else {
+        const date = new Date(`${state.terminalTaskCalendarMonth || currentMonthValue()}-01T12:00:00`);
+        date.setMonth(date.getMonth() + (taskMonthNav.dataset.taskMonthNav === "next" ? 1 : -1));
+        state.terminalTaskCalendarMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      }
+      renderTerminalTaskCalendar();
+      return;
+    }
+    const taskDate = event.target.closest("[data-terminal-task-date]");
+    if (taskDate && !event.target.closest("[data-terminal-task-edit]")) {
+      state.terminalTaskCalendarDate = taskDate.dataset.terminalTaskDate;
+      renderTerminalTaskCalendar();
+      return;
+    }
+    const taskEdit = event.target.closest("[data-terminal-task-edit]");
+    if (taskEdit) {
+      loadTerminalTaskEditor(taskEdit.dataset.terminalTaskEdit);
+      return;
+    }
+    const areaFilter = event.target.closest("[data-terminal-area-filter]");
+    if (areaFilter) {
+      state.terminalTaskAreaFilter = areaFilter.dataset.terminalAreaFilter;
+      renderTerminalTaskCalendar();
+      return;
+    }
+    if (event.target.closest("#newTerminalCalendarTask")) {
+      resetTerminalTaskEditor();
+      $("#terminalTaskTitle")?.focus();
+      return;
+    }
+    if (event.target.closest("#openTaskTemplates")) {
+      state.terminalTaskCalendarView = "list";
+      renderTerminalTaskCalendar();
+      return;
+    }
+    if (event.target.closest("#resetTerminalTaskFilters")) {
+      state.terminalTaskAreaFilter = "all";
+      state.terminalTaskTypeFilter = "all";
+      state.terminalTaskStatusFilter = "active";
+      state.terminalTaskSearch = "";
+      if ($("#terminalTaskSearch")) $("#terminalTaskSearch").value = "";
+      renderTerminalTaskCalendar();
+      return;
+    }
+    if (event.target.closest("#manageTerminalTaskAreas")) return openTerminalTaskAreaManager();
+    if (event.target.closest("#closeTerminalTaskAreas")) return closeTerminalTaskAreaManager();
+    if (event.target.id === "terminalTaskAreaModal") return closeTerminalTaskAreaManager();
+    const areaEdit = event.target.closest("[data-terminal-task-area-edit]");
+    if (areaEdit) {
+      const area = (state.terminalTaskAreas || []).find((item) => item.id === areaEdit.dataset.terminalTaskAreaEdit);
+      if (area) {
+        $("#terminalTaskAreaId").value = area.id;
+        $("#terminalTaskAreaName").value = area.name;
+        $("#terminalTaskAreaColor").value = area.color;
+        $("#terminalTaskAreaActive").checked = area.active !== false;
+      }
+      return;
+    }
+    const areaDelete = event.target.closest("[data-terminal-task-area-delete]");
+    if (areaDelete) {
+      const area = (state.terminalTaskAreas || []).find((item) => item.id === areaDelete.dataset.terminalTaskAreaDelete);
+      if (!area || !confirm(`Bereich "${area.name}" löschen?`)) return;
+      try {
+        await terminalAction({ action: "delete-task-area", id: area.id });
+        renderTerminalTaskCalendar();
+        showToast("Bereich gelöscht.");
+      } catch (error) { showError(error); }
+      return;
+    }
+    const saveArea = event.target.closest("#saveTerminalTaskArea");
+    if (saveArea) return saveTerminalTaskArea(saveArea);
+    const saveTask = event.target.closest("#saveTerminalTask");
+    if (saveTask) return saveTerminalCalendarTask(saveTask);
+    const deleteTask = event.target.closest("#deleteTerminalTask");
+    if (deleteTask) return deleteTerminalCalendarTask(deleteTask);
+    if (event.target.closest("#cancelTerminalTask")) {
+      resetTerminalTaskEditor();
+      return;
+    }
     const dateShortcut = event.target.closest("[data-terminal-date-shortcut]");
     if (dateShortcut) {
       const date = dateShortcut.dataset.terminalDateShortcut === "tomorrow" ? terminalRelativeDate(1) : todayKey();
       await loadTerminalWorkDate(date, dateShortcut);
       return;
     }
+    const worktimeDateStep = event.target.closest("[data-worktime-date-step]");
+    if (worktimeDateStep) {
+      const current = new Date(`${state.terminalDate || todayKey()}T12:00:00`);
+      current.setDate(current.getDate() + Number(worktimeDateStep.dataset.worktimeDateStep || 0));
+      await loadTerminalWorkDate(isoDate(current), worktimeDateStep);
+      return;
+    }
+    if (event.target.closest("[data-focus-terminal-date-picker]")) {
+      const picker = $("#terminalSidebarDatePicker") || $("#terminalDatePicker");
+      if (typeof picker?.showPicker === "function") picker.showPicker();
+      else picker?.focus();
+      return;
+    }
     const openEmployees = event.target.closest("[data-open-terminal-employees]");
     if (openEmployees) {
       const focusAction = openEmployees.dataset.terminalWorktimeFocus || "";
+      const focusEmployee = openEmployees.dataset.terminalPreviewEmployee || "";
       state.terminalTab = "employees";
       renderTerminalTabs();
       window.requestAnimationFrame(() => {
         const serviceSection = $("#terminalServiceSection");
-        serviceSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const employeeCard = focusEmployee
+          ? serviceSection?.querySelector(`[data-terminal-employee-card="${cssEscape(focusEmployee)}"]`)
+          : null;
+        (employeeCard || serviceSection)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        employeeCard?.classList.add("is-highlighted");
+        if (employeeCard) window.setTimeout(() => employeeCard.classList.remove("is-highlighted"), 1600);
         const selector = focusAction === "start"
           ? '[data-terminal-punch="start"]:not(:disabled)'
           : focusAction === "end"
@@ -16985,9 +18853,174 @@ function bindEvents() {
       });
       return;
     }
+    const settingsPlaceholder = event.target.closest("[data-terminal-settings-placeholder]");
+    if (settingsPlaceholder) {
+      const notice = $("#terminalSettingsInlineNotice");
+      if (notice) {
+        notice.textContent = `${settingsPlaceholder.dataset.terminalSettingsPlaceholder} wird später eingerichtet.`;
+        notice.classList.remove("hidden");
+      }
+      return;
+    }
+    const settingsModule = event.target.closest("[data-terminal-settings-module]");
+    if (settingsModule) {
+      state.terminalSettingsModule = settingsModule.dataset.terminalSettingsModule === "table-plan" ? "table-plan" : "controls";
+      if (state.terminalSettingsModule === "table-plan") state.terminalTableView = "manage";
+      renderTerminalTabs();
+      return;
+    }
+    const newControl = event.target.closest("#newTerminalControl");
+    if (newControl) {
+      openTerminalControlForm();
+      return;
+    }
+    const cancelControl = event.target.closest("#cancelTerminalControl");
+    if (cancelControl) {
+      closeTerminalControlForm();
+      return;
+    }
+    const editControl = event.target.closest("[data-edit-terminal-control]");
+    if (editControl) {
+      const control = loadTerminalControls().find((item) => item.id === editControl.dataset.editTerminalControl);
+      if (control) openTerminalControlForm(control);
+      return;
+    }
+    const toggleControl = event.target.closest("[data-toggle-terminal-control]");
+    if (toggleControl) {
+      const control = loadTerminalControls().find((item) => item.id === toggleControl.dataset.toggleTerminalControl);
+      if (control) {
+        control.active = !control.active;
+        saveTerminalControls();
+        renderTerminalControlManagement();
+        renderTerminalChecks(state.terminalReport || {});
+      }
+      return;
+    }
+    const deleteControl = event.target.closest("[data-delete-terminal-control]");
+    if (deleteControl) {
+      state.terminalControlDeleteId = deleteControl.dataset.deleteTerminalControl;
+      const control = loadTerminalControls().find((item) => item.id === state.terminalControlDeleteId);
+      const confirm = $("#terminalControlDeleteConfirm");
+      if (confirm && control) {
+        confirm.innerHTML = `
+          <span><strong>${escapeHtml(control.name)}</strong> wirklich löschen?</span>
+          <button class="danger-button" type="button" data-confirm-delete-terminal-control>Löschen</button>
+          <button class="secondary" type="button" data-cancel-delete-terminal-control>Abbrechen</button>
+        `;
+        confirm.classList.remove("hidden");
+      }
+      return;
+    }
+    if (event.target.closest("[data-cancel-delete-terminal-control]")) {
+      state.terminalControlDeleteId = "";
+      $("#terminalControlDeleteConfirm")?.classList.add("hidden");
+      return;
+    }
+    if (event.target.closest("[data-confirm-delete-terminal-control]")) {
+      state.terminalControls = loadTerminalControls().filter((item) => item.id !== state.terminalControlDeleteId);
+      state.terminalControlDeleteId = "";
+      saveTerminalControls();
+      $("#terminalControlDeleteConfirm")?.classList.add("hidden");
+      renderTerminalControlManagement();
+      renderTerminalChecks(state.terminalReport || {});
+      return;
+    }
+    const completeControl = event.target.closest("[data-complete-terminal-control]");
+    if (completeControl) {
+      const control = loadTerminalControls().find((item) => item.id === completeControl.dataset.completeTerminalControl);
+      if (control) {
+        control.status = "ok";
+        control.lastLabel = "gerade eben";
+        control.nextLabel = terminalControlIntervalLabel(control);
+        saveTerminalControls();
+        renderTerminalChecks(state.terminalReport || {});
+        showToast(`${control.name} erledigt.`);
+      }
+      return;
+    }
+    const checkManualReport = event.target.closest("[data-check-manual-report]");
+    if (checkManualReport) {
+      const key = checkManualReport.dataset.checkManualReport || "";
+      if (!manualReportTransferItems().some((item) => item.key === key)) return;
+      state.terminalManualReportCopied[key] = true;
+      state.terminalManualReportComplete = false;
+      renderManualReportTransfer();
+      return;
+    }
+    if (event.target.closest("[data-reset-manual-report]")) {
+      state.terminalManualReportCopied = {};
+      state.terminalManualReportComplete = false;
+      renderManualReportTransfer();
+      return;
+    }
+    if (event.target.closest("[data-complete-manual-report]")) {
+      const items = manualReportTransferItems();
+      if (!items.every((item) => state.terminalManualReportCopied[item.key])) return;
+      state.terminalManualReportComplete = true;
+      state.terminalClosingStep = 4;
+      renderTerminalClosingSteps();
+      return;
+    }
+    const copyPentacodeValue = event.target.closest("[data-copy-pentacode-value]");
+    if (copyPentacodeValue) {
+      const key = copyPentacodeValue.dataset.copyPentacodeValue || "";
+      const item = pentacodeTransferItems().find((entry) => entry.key === key);
+      if (!item) return;
+      if (item.available) await copyText(pentacodeCopyValue(item));
+      state.terminalPentacodeCopied[key] = true;
+      state.terminalPentacodeComplete = false;
+      renderPentacodeTransfer();
+      showToast(item.available ? `${item.label} kopiert.` : `${item.label} als nicht verfügbar bestätigt.`);
+      return;
+    }
+    if (event.target.closest("[data-reset-pentacode-transfer]")) {
+      state.terminalPentacodeCopied = {};
+      state.terminalPentacodeComplete = false;
+      renderPentacodeTransfer();
+      return;
+    }
+    if (event.target.closest("[data-complete-pentacode-transfer]")) {
+      const items = pentacodeTransferItems();
+      if (!items.every((item) => state.terminalPentacodeCopied[item.key])) return;
+      state.terminalPentacodeComplete = true;
+      state.terminalClosingStep = 3;
+      renderTerminalClosingSteps();
+      return;
+    }
+    const closingStep = event.target.closest("[data-closing-step]");
+    if (closingStep) {
+      state.terminalClosingStep = Number(closingStep.dataset.closingStep || 1);
+      renderTerminalClosingSteps();
+      return;
+    }
     const tab = event.target.closest("[data-terminal-tab]");
     if (tab) {
       state.terminalTab = tab.dataset.terminalTab;
+      if (state.terminalTab === "closing") state.terminalClosingStep = 1;
+      if (state.terminalTab === "tables") state.terminalTableView = "work";
+      if (state.terminalTab === "settings") {
+        state.terminalSettingsModule = tab.dataset.terminalSettingsTarget === "table-plan"
+          ? "table-plan"
+          : (state.terminalSettingsModule || "controls");
+      }
+      renderTerminal();
+      return;
+    }
+    const tablePlanFullscreenPreview = event.target.closest("[data-open-table-plan-fullscreen]");
+    if (tablePlanFullscreenPreview) {
+      await loadTerminalTableDate(state.terminalDate || todayKey());
+      state.terminalTab = "tables";
+      state.terminalTableView = "work";
+      state.terminalTableFullscreen = true;
+      renderTerminal();
+      return;
+    }
+    const tomorrowTablePlanButton = event.target.closest("[data-open-tomorrow-table-plan]");
+    if (tomorrowTablePlanButton) {
+      const tomorrow = assignmentDateKeys(state.terminalDate || todayKey())[1];
+      await loadTerminalTableDate(tomorrow);
+      state.terminalTab = "tables";
+      state.terminalTableView = "work";
       renderTerminal();
       return;
     }
@@ -17043,6 +19076,20 @@ function bindEvents() {
       setTerminalTableView(tablePlanViewButton.dataset.tablePlanView);
       return;
     }
+    const openQuickTableReservationButton = event.target.closest("#openNewTableReservation");
+    if (openQuickTableReservationButton) {
+      startNewTerminalTableReservation({ keepSelection: false, openManage: false });
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      window.requestAnimationFrame(() => $("#tablePlanSelectedDetail [data-table-plan-field='time']")?.focus());
+      return;
+    }
+    const newManagedTableReservationButton = event.target.closest("[data-table-plan-new-manage]");
+    if (newManagedTableReservationButton) {
+      startNewTerminalTableReservation({ keepSelection: false, openManage: true });
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      window.requestAnimationFrame(() => $("#tablePlanName")?.focus());
+      return;
+    }
     const tablePlanFullscreenButton = event.target.closest("#toggleTablePlanFullscreen");
     if (tablePlanFullscreenButton) {
       toggleTerminalTableFullscreen();
@@ -17054,9 +19101,24 @@ function bindEvents() {
       return;
     }
     const tableButton = event.target.closest("[data-table-plan-select]");
+    const rotateTableButton = event.target.closest("[data-table-plan-rotate]");
+    if (rotateTableButton) {
+      await rotateTerminalTable(rotateTableButton.dataset.tablePlanRotate);
+      return;
+    }
     if (tableButton) {
+      if (Date.now() < Number(state.terminalTablePlanSuppressClickUntil || 0)) {
+        state.terminalTablePlanSuppressClickUntil = 0;
+        return;
+      }
       toggleTerminalTableSelection(String(tableButton.dataset.tablePlanSelect || "").split(","));
       renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const editReservationAndManageButton = event.target.closest("[data-table-plan-edit-manage]");
+    if (editReservationAndManageButton) {
+      loadTerminalTableDraft(editReservationAndManageButton.dataset.tablePlanEditManage);
+      setTerminalTableView("manage");
       return;
     }
     const editReservationButton = event.target.closest("[data-table-plan-edit]");
@@ -17065,10 +19127,62 @@ function bindEvents() {
       renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
       return;
     }
+    const quickReservationCancelButton = event.target.closest("[data-table-plan-quick-cancel]");
+    if (quickReservationCancelButton) {
+      resetTerminalTableDraft();
+      renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const saveQuickTableReservationButton = event.target.closest("#saveQuickTableReservation");
+    if (saveQuickTableReservationButton) {
+      await saveTerminalTableReservation(saveQuickTableReservationButton);
+      return;
+    }
+    const tablePlanStatusActionButton = event.target.closest("[data-table-plan-status-action]");
+    if (tablePlanStatusActionButton) {
+      updateTerminalTableDraftField("status", tablePlanStatusActionButton.dataset.tablePlanStatusAction);
+      await saveTerminalTableReservation(tablePlanStatusActionButton);
+      return;
+    }
+    const tablePlanPrintDetailButton = event.target.closest("[data-table-plan-print-detail]");
+    if (tablePlanPrintDetailButton) {
+      printTerminalTablePlanList();
+      return;
+    }
+    const tablePlanDeleteDetailButton = event.target.closest("[data-table-plan-delete-detail]");
+    if (tablePlanDeleteDetailButton) {
+      await deleteTerminalTableReservation(tablePlanDeleteDetailButton);
+      return;
+    }
+    const addNzBigTableButton = event.target.closest("#addNzBigTable");
+    if (addNzBigTableButton) {
+      await addTerminalNzBigTable(addNzBigTableButton);
+      return;
+    }
+    const removeNzBigTableButton = event.target.closest("[data-remove-nz-big-table]");
+    if (removeNzBigTableButton) {
+      await removeTerminalNzBigTable(removeNzBigTableButton, removeNzBigTableButton.dataset.removeNzBigTable);
+      return;
+    }
+    const addHutTableButton = event.target.closest("#addHutTable");
+    if (addHutTableButton) {
+      await addTerminalHutTable(addHutTableButton);
+      return;
+    }
+    const removeHutTableButton = event.target.closest("[data-remove-hut-table]");
+    if (removeHutTableButton) {
+      await removeTerminalHutTable(removeHutTableButton, removeHutTableButton.dataset.removeHutTable);
+      return;
+    }
     const resetTablePlanButton = event.target.closest("#resetTablePlanDraft");
     if (resetTablePlanButton) {
       resetTerminalTableDraft();
       renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+      return;
+    }
+    const focusTablePlanBoardButton = event.target.closest("#focusTablePlanBoard");
+    if (focusTablePlanBoardButton) {
+      $("#tablePlanBoard")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     const newReservationForSelectionButton = event.target.closest("#newTablePlanReservationForSelection");
@@ -17195,6 +19309,11 @@ function bindEvents() {
       printTerminalTablePlanList();
       return;
     }
+    const printTableReservationButton = event.target.closest("#printTablePlanReservation");
+    if (printTableReservationButton) {
+      printTerminalTablePlanList();
+      return;
+    }
     const terminalMessageButton = event.target.closest("[data-confirm-terminal-message]");
     if (terminalMessageButton) {
       const oldText = terminalMessageButton.textContent;
@@ -17235,6 +19354,26 @@ function bindEvents() {
     if (!(details instanceof HTMLElement) || details.id !== "terminalOpenDaysDetails") return;
     state.terminalOpenDaysExpanded = details.hasAttribute("open");
   }, true);
+
+  $("#terminalControlForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const control = collectTerminalControlForm();
+    if (!control.name) {
+      $("#terminalControlName")?.focus();
+      return;
+    }
+    const index = loadTerminalControls().findIndex((item) => item.id === state.terminalControlDraftId);
+    if (index >= 0) {
+      state.terminalControls[index] = control;
+    } else {
+      state.terminalControls.push(control);
+    }
+    saveTerminalControls();
+    closeTerminalControlForm();
+    renderTerminalControlManagement();
+    renderTerminalChecks(state.terminalReport || {});
+    showToast("Kontrolle gespeichert.");
+  });
 
   $("#terminalContent")?.addEventListener("change", async (event) => {
     const datePicker = event.target.closest("#terminalDatePicker, #terminalSidebarDatePicker");
@@ -17331,6 +19470,30 @@ function bindEvents() {
     $("#handoverModal")?.classList.add("hidden");
   });
 
+  $("#cancelTerminalToiletCheck")?.addEventListener("click", closeTerminalToiletConfirm);
+  $("#terminalToiletConfirm")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeTerminalToiletConfirm();
+  });
+  $("#confirmTerminalToiletCheck")?.addEventListener("click", async () => {
+    const button = $("#confirmTerminalToiletCheck");
+    button.disabled = true;
+    try {
+      const result = await terminalAction({
+        action: "confirm-toilet",
+        checkKey: state.terminalManualToiletCheckKey,
+        text: "Toiletten-Kontrolle durchführen"
+      });
+      $("#terminalToiletConfirm")?.classList.add("hidden");
+      state.terminalManualToiletCheckKey = "";
+      renderTerminalChecks(state.terminalReport || {});
+      showToast(result.message || "Toiletten-Kontrolle quittiert.");
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   $("#terminalTablesSection")?.addEventListener("input", (event) => {
     const field = event.target.closest("[data-table-plan-field]");
     if (field) {
@@ -17380,6 +19543,10 @@ function bindEvents() {
   });
 
   $("#tablePlanBoard")?.addEventListener("dragstart", (event) => {
+    if (state.terminalTableView === "manage") {
+      event.preventDefault();
+      return;
+    }
     const table = event.target.closest("[data-table-plan-select]");
     if (!table) return;
     const selection = String(table.dataset.tablePlanSelect || "").split(",");
@@ -17415,6 +19582,30 @@ function bindEvents() {
 
   $("#tablePlanBoard")?.addEventListener("dragend", () => {
     endTerminalTableDrag();
+  });
+
+  $("#tablePlanBoard")?.addEventListener("pointerdown", (event) => {
+    if (state.terminalTableView !== "manage") return;
+    if (event.target.closest("[data-table-plan-rotate]")) {
+      event.stopPropagation();
+      return;
+    }
+    const table = event.target.closest("[data-table-plan-select]");
+    if (!table) return;
+    const resizeHandle = event.target.closest("[data-table-plan-resize]");
+    beginTerminalTablePlanInteraction(event, table.dataset.tablePlanSelect, resizeHandle ? "resize" : "move");
+  });
+
+  window.addEventListener("pointermove", (event) => {
+    updateTerminalTablePlanInteraction(event);
+  });
+
+  window.addEventListener("pointerup", async (event) => {
+    await endTerminalTablePlanInteraction(event);
+  });
+
+  window.addEventListener("pointercancel", (event) => {
+    endTerminalTablePlanInteraction(event);
   });
 
   $("#saveTerminalDayMeta")?.addEventListener("click", async () => {
@@ -17601,7 +19792,19 @@ function bindEvents() {
     const list = $("#invoiceCustomersList");
     if (!list) return;
     if (list.querySelector(".hint")) list.innerHTML = "";
-    list.insertAdjacentHTML("beforeend", invoiceRowHtml());
+    list.insertAdjacentHTML("beforeend", invoiceRowHtml({ sourceDate: state.terminalInvoiceDate || todayKey() }));
+  });
+
+  $("#terminalInvoicesToolDate")?.addEventListener("change", (event) => {
+    const date = String(event.target.value || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > todayKey()) {
+      event.target.value = state.terminalInvoiceDate || todayKey();
+      showToast("Bitte ein gültiges Datum bis heute wählen.");
+      return;
+    }
+    state.terminalInvoiceDate = date;
+    state.terminalInvoiceToolView = "current";
+    renderTerminalInvoiceToolView();
   });
 
   $("#addExpense")?.addEventListener("click", () => {
@@ -17613,7 +19816,39 @@ function bindEvents() {
     updateReportBarTotal();
   });
 
+  $("#openAddExpense")?.addEventListener("click", () => {
+    if (state.terminalReport?.closed) return;
+    const list = $("#expensesList");
+    if (!list) return;
+    if (list.querySelector(".hint")) list.innerHTML = "";
+    list.insertAdjacentHTML("beforeend", expenseRowHtml());
+    syncCashExpensesFromExpenseRows(true);
+    updateReportBarTotal();
+    openFinanceModal("expenseDetailsModal");
+    list.lastElementChild?.querySelector("[data-report-field='name']")?.focus();
+  });
+
   $("#terminalFinanceSection")?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-open-invoice-details]")) {
+      state.terminalTab = "invoices";
+      renderTerminal();
+      return;
+    }
+    const editExpense = event.target.closest("[data-edit-expense]");
+    if (editExpense) {
+      openFinanceModal("expenseDetailsModal");
+      const row = $$("#expensesList [data-report-entry='expense']").find((item) => item.dataset.id === editExpense.dataset.editExpense);
+      row?.scrollIntoView({ block: "center" });
+      row?.querySelector("[data-report-field='name']")?.focus();
+      return;
+    }
+    const deleteExpense = event.target.closest("[data-delete-expense]");
+    if (deleteExpense) {
+      const row = $$("#expensesList [data-report-entry='expense']").find((item) => item.dataset.id === deleteExpense.dataset.deleteExpense);
+      const removeButton = row?.querySelector("[data-remove-report-entry]");
+      if (removeButton && window.confirm("Ausgabe wirklich löschen?")) removeTerminalFinanceEntry(removeButton);
+      return;
+    }
     const copyCustomerButton = event.target.closest("[data-copy-invoice-customer]");
     if (copyCustomerButton) {
       const row = copyCustomerButton.closest('[data-report-entry="invoice"]');
@@ -17655,15 +19890,147 @@ function bindEvents() {
       saveReportDocumentsNow(removeDocumentButton, "Dokument entfernt.");
       return;
     }
+    const removeClosingDocumentButton = event.target.closest("[data-remove-closing-document]");
+    if (removeClosingDocumentButton) {
+      const id = removeClosingDocumentButton.dataset.removeClosingDocument;
+      if (!id || !window.confirm("Dokument wirklich entfernen?")) return;
+      if (id.startsWith("fixed-")) {
+        clearReportDocumentFields(id.slice(6));
+      } else {
+        state.terminalReport.documents.attachments = reportDocumentAttachments().filter((item) => item.id !== id);
+      }
+      renderClosingDocumentsStep();
+      saveReportDocumentsNow(removeClosingDocumentButton, "Dokument entfernt.");
+      return;
+    }
     const removeButton = event.target.closest("[data-remove-report-entry]");
     if (!removeButton) return;
     removeTerminalFinanceEntry(removeButton);
   });
 
   $("#terminalFinanceSection")?.addEventListener("change", (event) => {
+    if (event.target.matches("[data-closing-document-upload]")) {
+      addClosingDocumentFiles(event.target, event.target.dataset.closingDocumentUpload).catch(showError);
+      return;
+    }
     const input = event.target.closest("#reportDocumentPenta, #reportDocumentHandwriting, #reportDocumentEcCut");
     if (!input || !input.files?.length) return;
     saveReportDocumentsNow(input, `${reportDocumentLabelForInput(input)} gespeichert.`);
+  });
+
+  $("#terminalInvoicesToolSection")?.addEventListener("click", (event) => {
+    const viewButton = event.target.closest("[data-invoice-tool-view]");
+    if (viewButton) {
+      state.terminalInvoiceToolView = viewButton.dataset.invoiceToolView || "current";
+      renderTerminalInvoiceToolView();
+      return;
+    }
+    const historyPdfButton = event.target.closest("[data-history-invoice-pdf]");
+    if (historyPdfButton) {
+      terminalInvoicePdf(historyPdfButton.dataset.invoiceDate, historyPdfButton.dataset.invoiceId, historyPdfButton);
+      return;
+    }
+    const row = event.target.closest('[data-report-entry="invoice"]');
+    const stepButton = event.target.closest("[data-invoice-step-go]");
+    if (stepButton) {
+      showInvoiceWizardStep(row, stepButton.dataset.invoiceStepGo);
+      return;
+    }
+    const customerButton = event.target.closest("[data-apply-invoice-customer]");
+    if (customerButton) {
+      applyCustomerMasterToInvoiceRow(row);
+      return;
+    }
+    const scannerButton = event.target.closest("[data-open-invoice-receipt-scanner]");
+    if (scannerButton && row) {
+      const params = new URLSearchParams({
+        integration: "teamapp",
+        date: row.dataset.invoiceDate || state.terminalDate || todayKey(),
+        category: "Rechnungsbeleg",
+        invoiceId: row.dataset.id || "",
+        returnOrigin: window.location.origin
+      });
+      const scannerWindow = window.open(`http://localhost:5055/?${params}`, "laBowlingInvoiceScanner", "popup,width=1180,height=820");
+      if (!scannerWindow) showToast("Scanner konnte nicht geöffnet werden. Pop-ups bitte erlauben.");
+      return;
+    }
+    const draftButton = event.target.closest("[data-save-invoice-draft]");
+    if (draftButton) return void saveInvoiceRow(draftButton, false);
+    const readyButton = event.target.closest("[data-mark-invoice-ready]");
+    if (readyButton) return void saveInvoiceRow(readyButton, true);
+    const pdfButton = event.target.closest("[data-open-invoice-builder]");
+    if (pdfButton) return void terminalInvoicePdfForRow(pdfButton);
+    const removeButton = event.target.closest("[data-remove-report-entry]");
+    if (removeButton) return void removeTerminalFinanceEntry(removeButton);
+    const copyCustomer = event.target.closest("[data-copy-invoice-customer]");
+    if (copyCustomer) return void copyText(invoiceRowCustomerCopyValue(row));
+    const copyTotal = event.target.closest("[data-copy-invoice-total]");
+    if (copyTotal) copyText(invoiceRowTotalCopyValue(row));
+  });
+
+  $("#terminalDocumentsStep")?.addEventListener("click", (event) => {
+    const scannerButton = event.target.closest("[data-open-document-scanner]");
+    if (!scannerButton) return;
+    const category = scannerButton.dataset.openDocumentScanner;
+    const params = new URLSearchParams({
+      integration: "teamapp",
+      date: state.terminalDate || todayKey(),
+      category,
+      returnOrigin: window.location.origin
+    });
+    const scannerWindow = window.open(`http://localhost:5055/?${params}`, "laBowlingScanner", "popup,width=1180,height=820");
+    if (!scannerWindow) showClosingDocumentsHint("Scanner konnte nicht geöffnet werden. Pop-ups bitte erlauben.");
+  });
+
+  $("#completeClosingDocuments")?.addEventListener("click", () => {
+    if (!closingDocumentEntries().length) showClosingDocumentsHint("Keine Dokumente vorhanden. Schritt 4 wurde ohne Dokumente abgeschlossen.");
+    state.terminalDocumentsComplete = true;
+    state.terminalClosingStep = 5;
+    renderTerminalClosingSteps();
+  });
+
+  $$("[data-close-finance-modal]").forEach((button) => {
+    button.addEventListener("click", () => closeFinanceModal(button.dataset.closeFinanceModal));
+  });
+  ["invoiceDetailsModal", "expenseDetailsModal"].forEach((id) => {
+    $("#" + id)?.addEventListener("click", (event) => {
+      if (event.target.id === id) {
+        closeFinanceModal(id);
+        return;
+      }
+      const copyCustomerButton = event.target.closest("[data-copy-invoice-customer]");
+      if (copyCustomerButton) {
+        copyText(invoiceRowCustomerCopyValue(copyCustomerButton.closest('[data-report-entry="invoice"]')));
+        return;
+      }
+      const copyTotalButton = event.target.closest("[data-copy-invoice-total]");
+      if (copyTotalButton) {
+        copyText(invoiceRowTotalCopyValue(copyTotalButton.closest('[data-report-entry="invoice"]')));
+        return;
+      }
+      const draftButton = event.target.closest("[data-save-invoice-draft]");
+      if (draftButton) {
+        saveInvoiceRow(draftButton, false);
+        return;
+      }
+      const readyButton = event.target.closest("[data-mark-invoice-ready]");
+      if (readyButton) {
+        saveInvoiceRow(readyButton, true);
+        return;
+      }
+      const expenseSaveButton = event.target.closest("[data-save-expense-entry]");
+      if (expenseSaveButton) {
+        saveExpenseRow(expenseSaveButton);
+        return;
+      }
+      const receiptButton = event.target.closest("[data-add-expense-receipt]");
+      if (receiptButton) {
+        receiptButton.closest('[data-report-entry="expense"]')?.querySelector(".expense-receipt-upload-list")?.insertAdjacentHTML("beforeend", expenseReceiptUploadHtml());
+        return;
+      }
+      const removeButton = event.target.closest("[data-remove-report-entry]");
+      if (removeButton) removeTerminalFinanceEntry(removeButton);
+    });
   });
 
   $("#saveDayReport")?.addEventListener("click", async () => {
@@ -17688,13 +20055,43 @@ function bindEvents() {
     }
   });
 
-  ["#reportCashTotal", "#reportCashExpenses", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportRevenueGastro"].forEach((selector) => {
+  ["#reportCashTotal", "#reportCashExpenses", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportBowlingCashRevenue", "#reportRevenueGastro"].forEach((selector) => {
     $(selector)?.addEventListener("input", updateReportBarTotal);
   });
 
   $("#expensesList")?.addEventListener("input", () => {
-    syncCashExpensesFromExpenseRows(false);
+    syncCashExpensesFromExpenseRows(true);
     updateReportBarTotal();
+  });
+
+  $("#checkDayReport")?.addEventListener("click", () => {
+    const documents = state.terminalReport?.documents || {};
+    const missingDocuments = [documents.penta, documents.handwriting, documents.ecCut]
+      .filter((document) => !(document?.path || document?.url || document?.data)).length;
+    showToast(missingDocuments
+      ? `Finanzdaten geprüft. ${missingDocuments} Abschlussdokument${missingDocuments === 1 ? " fehlt" : "e fehlen"}.`
+      : "Finanzdaten und Abschlussdokumente sind vollständig erfasst.");
+  });
+
+  $$('[data-open-day-report-preview]').forEach((button) => {
+    button.addEventListener("click", () => {
+      renderDayReportA4Summary(state.terminalDate || todayKey(), reportPreviewFromForm());
+      $("#dayReportPreviewModal")?.classList.remove("hidden");
+    });
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      button.click();
+    });
+  });
+  $$('[data-close-day-report-preview]').forEach((button) => {
+    button.addEventListener("click", () => $("#dayReportPreviewModal")?.classList.add("hidden"));
+  });
+  $("#dayReportPreviewModal")?.addEventListener("click", (event) => {
+    if (event.target.id === "dayReportPreviewModal") event.currentTarget.classList.add("hidden");
+  });
+  $$('[data-print-day-report]').forEach((button) => {
+    button.addEventListener("click", () => $("#printDayReport")?.click());
   });
 
   $("#saveTipDistribution")?.addEventListener("click", async () => {
@@ -17716,6 +20113,7 @@ function bindEvents() {
         revenueDrinks: $("#reportRevenueDrinks")?.value || "",
         revenueFood: $("#reportRevenueFood")?.value || "",
         revenueOther: $("#reportRevenueOther")?.value || "",
+        bowlingCashRevenue: $("#reportBowlingCashRevenue")?.value || "",
         revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
         resetTipPayout: true,
         tipTotal: result.tipTotal.toFixed(2),
@@ -17736,6 +20134,21 @@ function bindEvents() {
         button.disabled = false;
       }, 300);
     }
+  });
+
+  $("#financeTipDaySummary")?.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-open-tip-distribution]")) return;
+    state.terminalClosingStep = 6;
+    renderTerminalClosingSteps();
+  });
+  $("[data-close-closing-tip]")?.addEventListener("click", () => {
+    state.terminalClosingStep = 5;
+    renderTerminalClosingSteps();
+  });
+  $("#closeTipDistributionModal")?.addEventListener("click", closeTipDistributionModal);
+  $("#closeTipDistributionModalFooter")?.addEventListener("click", closeTipDistributionModal);
+  $("#tipDistributionModal")?.addEventListener("click", (event) => {
+    if (event.target.id === "tipDistributionModal") closeTipDistributionModal();
   });
 
   $("#tipDistributionList")?.addEventListener("click", async (event) => {

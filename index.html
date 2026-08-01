@@ -165,36 +165,39 @@
                   <span class="terminal-nav-label">Tagesablauf</span>
                   <button class="terminal-tab active" data-terminal-tab="today" type="button"><span aria-hidden="true">&#9638;</span>Tagesübersicht</button>
                   <button class="terminal-tab" data-terminal-tab="employees" type="button"><span aria-hidden="true">&#9719;</span>Arbeitszeit</button>
-                  <button class="terminal-tab" data-terminal-tab="tables" type="button"><span aria-hidden="true">&#9633;</span>Tischplan</button>
                   <button class="terminal-tab" data-terminal-tab="closing" type="button"><span aria-hidden="true">&#10003;</span>Abschluss</button>
                 </div>
                 <div class="terminal-nav-group terminal-nav-tools">
                   <span class="terminal-nav-label">Tools</span>
+                  <button class="terminal-tab" data-terminal-tab="tables" type="button"><span aria-hidden="true">&#9633;</span>Tischplan</button>
                   <button class="terminal-tab" data-terminal-tab="orders" type="button"><span aria-hidden="true">&#9776;</span>Bestellungen</button>
                   <button class="terminal-tab" data-terminal-tab="offers" type="button"><span aria-hidden="true">&#9671;</span>Angebote</button>
+                  <button class="terminal-tab" data-terminal-tab="task-calendar" type="button"><span aria-hidden="true">&#9638;</span>Aufgaben-Kalender</button>
+                  <button class="terminal-tab" data-terminal-tab="invoices" type="button"><span aria-hidden="true">&#128196;</span>Bezahlung auf Rechnung</button>
+                  <button class="terminal-tab" data-terminal-tab="tips" type="button"><span aria-hidden="true">&#127873;</span>Trinkgeld</button>
+                </div>
+                <div class="terminal-nav-group terminal-nav-management">
+                  <span class="terminal-nav-label">Verwaltung</span>
+                  <button id="terminalSettingsNav" class="terminal-tab hidden" data-terminal-tab="settings" type="button"><span aria-hidden="true">&#9881;</span>Einstellungen</button>
                 </div>
               </nav>
               <div class="terminal-workspace-main">
                 <section id="terminalTodaySection" class="terminal-today-section">
-                  <section class="terminal-hero-card">
-                    <div id="terminalDayMetaDisplay" class="terminal-day-meta-display"></div>
+                  <section class="terminal-section terminal-overview-card">
+                    <div class="terminal-dashboard-head">
+                      <div class="terminal-card-heading">
+                        <span class="terminal-card-icon" aria-hidden="true">&#9638;</span>
+                        <div>
+                          <h3>Was steht an?</h3>
+                          <p class="terminal-card-subtitle">Extras des gewählten Tages</p>
+                        </div>
+                      </div>
+                      <div id="terminalDayMetaDisplay" class="terminal-day-meta-display"></div>
+                    </div>
                     <div id="terminalDayHeadForm" class="terminal-day-head terminal-day-head-editor hidden">
                       <label>Öffnungszeit<input id="terminalOpeningHours" placeholder="z.B. 16:00 bis 00:00 Uhr"></label>
                       <label>Schichtleitung<select id="terminalShiftLeader"></select></label>
                       <button id="saveTerminalDayMeta" class="primary" type="button">Speichern</button>
-                    </div>
-                  </section>
-                  <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
-                  <div id="terminalOpenDaysNav" class="terminal-open-days hidden"></div>
-                  <section class="terminal-section terminal-overview-card">
-                    <div class="terminal-section-head">
-                      <div class="terminal-card-heading">
-                        <span class="terminal-card-icon" aria-hidden="true">T</span>
-                        <div>
-                        <h3>Tagesübersicht</h3>
-                        <p class="terminal-card-subtitle">Was steht an?</p>
-                        </div>
-                      </div>
                     </div>
                     <div class="terminal-date-navigator" aria-label="Tagesauswahl">
                       <div class="terminal-date-shortcuts">
@@ -207,85 +210,110 @@
                     </div>
                     <div id="terminalFuturePreview" class="terminal-future-preview hidden"></div>
                     <div id="terminalEventOverview" class="terminal-event-overview">
-                      <p>Keine Veranstaltungen</p>
+                      <strong>Keine Extras</strong>
+                      <span>Für diesen Tag sind keine besonderen Extras geplant.</span>
                     </div>
                   </section>
-                  <section id="terminalWorktimePreviewSection" class="terminal-section terminal-worktime-preview" data-open-terminal-employees>
+                  <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
+                  <div id="terminalOpenDaysNav" class="terminal-open-days hidden"></div>
+                  <section id="terminalTasksSection" class="terminal-section terminal-dashboard-feature-card is-tasks">
                     <div class="terminal-section-head terminal-staff-section-head">
                       <div class="terminal-card-heading">
-                        <span class="terminal-card-icon" aria-hidden="true">A</span>
+                        <span class="terminal-card-icon" aria-hidden="true">&#10003;</span>
                         <div>
-                        <h3>Arbeitszeit</h3>
-                        </div>
-                      </div>
-                      <strong id="terminalWorktimePreviewCount" class="terminal-active-employee-count">0 aktiv</strong>
-                    </div>
-                    <div class="terminal-worktime-quick-actions" aria-label="Arbeitszeit Schnellaktionen">
-                      <button class="primary" type="button" data-open-terminal-employees data-terminal-worktime-focus="start">Eintragen</button>
-                      <button class="secondary" type="button" data-open-terminal-employees data-terminal-worktime-focus="end">Ausstempeln</button>
-                      <button class="secondary" type="button" data-open-terminal-employees data-terminal-worktime-focus="break">Pause</button>
-                    </div>
-                    <div id="terminalWorktimePreviewList" class="terminal-worktime-preview-list"></div>
-                    <button class="terminal-card-link" type="button" data-open-terminal-employees>Arbeitszeit öffnen</button>
-                  </section>
-                  <section id="terminalChecksSection" class="terminal-section hidden">
-                    <div class="terminal-section-head">
-                      <div class="terminal-card-heading">
-                        <span class="terminal-card-icon" aria-hidden="true">K</span>
-                        <div>
-                        <h3>Kontrollen</h3>
-                        </div>
-                      </div>
-                    </div>
-                    <div id="terminalCheckLog" class="terminal-check-log"></div>
-                  </section>
-                  <section id="terminalTasksSection" class="terminal-section hidden">
-                    <div class="terminal-section-head">
-                      <div class="terminal-card-heading">
-                        <span class="terminal-card-icon" aria-hidden="true">✓</span>
-                        <div>
-                        <h3>Aufgaben</h3>
-                        <p id="terminalDayMetaSummary" class="hint">Vorbereitung, laufender Betrieb und Schlussdienst sauber abhaken.</p>
+                          <h3>Aufgaben heute</h3>
+                          <p class="terminal-card-subtitle">Was ist heute zu erledigen?</p>
                         </div>
                       </div>
                     </div>
                     <div id="terminalTaskList" class="terminal-task-list"></div>
                     <div id="toiletCheckStatus" class="toilet-check-status"></div>
                   </section>
-                  <section id="terminalLeaderMessageSection" class="terminal-day-messages hidden">
-                    <div class="terminal-section-head">
+                  <section id="terminalWorktimePreviewSection" class="terminal-section terminal-dashboard-feature-card is-worktime" data-open-terminal-employees>
+                    <div class="terminal-section-head terminal-staff-section-head">
                       <div class="terminal-card-heading">
-                        <span class="terminal-card-icon" aria-hidden="true">N</span>
+                        <span class="terminal-card-icon" aria-hidden="true">&#9689;</span>
                         <div>
-                        <h3>Nachrichten</h3>
+                          <h3>Arbeitszeit-Vorschau</h3>
+                          <p class="terminal-card-subtitle">Wer ist heute eingeplant?</p>
                         </div>
                       </div>
                     </div>
-                    <div id="terminalLeaderMessages" class="terminal-leader-messages"></div>
+                    <div id="terminalWorktimePreviewList" class="terminal-worktime-preview-list"></div>
+                    <button class="terminal-card-link" type="button" data-open-terminal-employees>Alle Mitarbeiter anzeigen</button>
                   </section>
+                  <section id="terminalChecksSection" class="terminal-section terminal-dashboard-feature-card is-checks hidden">
+                    <div class="terminal-section-head">
+                      <div class="terminal-card-heading">
+                        <span class="terminal-card-icon" aria-hidden="true">&#9888;</span>
+                        <div>
+                          <h3>Kontrollen</h3>
+                          <p class="terminal-card-subtitle">Wichtige Kontrollen</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div id="terminalCheckLog" class="terminal-check-log"></div>
+                    <button class="terminal-card-link" type="button">Alle Kontrollen anzeigen</button>
+                  </section>
+                  <section id="terminalTableLiteSection" class="terminal-section terminal-dashboard-feature-card is-table-lite">
+                    <div class="terminal-section-head">
+                      <div class="terminal-card-heading">
+                        <span class="terminal-card-icon" aria-hidden="true">&#9638;</span>
+                        <div>
+                          <h3>Tischplan Lite</h3>
+                          <p class="terminal-card-subtitle">Drucklisten-Vorschau</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div id="terminalTableLitePreview" class="terminal-table-lite-preview"></div>
+                    <div class="terminal-table-lite-actions">
+                      <button class="terminal-card-link" type="button" data-terminal-tab="tables">Tischplan öffnen</button>
+                      <button class="secondary terminal-table-lite-fullscreen" type="button" data-open-table-plan-fullscreen>Heutigen Tischplan im Vollbild</button>
+                    </div>
+                  </section>
+                  <p id="terminalDayMetaSummary" class="hidden"></p>
+                  <div id="terminalLeaderMessages" class="hidden"></div>
                 </section>
           <section id="terminalServiceSection" class="terminal-section hidden">
-            <div class="terminal-section-head terminal-staff-section-head">
-              <div class="terminal-card-heading">
-                <span class="terminal-card-icon" aria-hidden="true">A</span>
-                <div>
-                  <p class="terminal-card-kicker">Mitarbeiter</p>
-                  <h3>Arbeitszeiten verwalten</h3>
+            <header class="worktime-page-head">
+              <div>
+                <p class="terminal-card-kicker">Tagesablauf</p>
+                <h2>Arbeitszeit</h2>
+                <p>Mitarbeiterzeiten erfassen und verwalten</p>
+              </div>
+              <div class="worktime-head-actions">
+                <div class="worktime-leader-chip">
+                  <span>Schichtleitung</span>
+                  <strong id="terminalWorktimeLeader">Nicht festgelegt</strong>
                 </div>
+                <div class="worktime-date-control" aria-label="Arbeitstag wechseln">
+                  <button class="secondary" type="button" data-worktime-date-step="-1" aria-label="Vorheriger Tag">&#8249;</button>
+                  <strong id="terminalWorktimeDate">Datum</strong>
+                  <button class="secondary" type="button" data-worktime-date-step="1" aria-label="Nächster Tag">&#8250;</button>
+                  <button class="secondary worktime-calendar-button" type="button" data-focus-terminal-date-picker aria-label="Datum wählen">Kalender</button>
+                </div>
+                <details class="terminal-add terminal-add-compact worktime-add-employee">
+                  <summary class="primary"><span aria-hidden="true">+</span> Mitarbeiter hinzufügen</summary>
+                  <div class="form-grid">
+                    <label>
+                      Mitarbeiter auswählen
+                      <select id="terminalAddEmployee"></select>
+                    </label>
+                    <button id="addTerminalEmployee" class="primary">Hinzufügen</button>
+                  </div>
+                </details>
               </div>
-              <strong id="terminalActiveEmployeeCount" class="terminal-active-employee-count">0 aktiv</strong>
+            </header>
+            <section class="worktime-status-overview" aria-label="Arbeitszeitstatus">
+              <div><span>Geplant</span><strong id="terminalPlannedEmployeeCount">0</strong></div>
+              <div class="is-active"><span>Im Dienst</span><strong id="terminalActiveEmployeeCount">0</strong></div>
+              <div class="is-break"><span>Pause</span><strong id="terminalBreakEmployeeCount">0</strong></div>
+              <div><span>Offen</span><strong id="terminalOpenEmployeeCount">0</strong></div>
+              <div><span>Beendet</span><strong id="terminalFinishedEmployeeCount">0</strong></div>
+            </section>
+            <div class="worktime-list-head" aria-hidden="true">
+              <span>Mitarbeiter</span><span>Zeiten</span><span>Aktionen</span>
             </div>
-            <details class="terminal-add terminal-add-compact">
-              <summary aria-label="Ungeplanten Mitarbeiter hinzufügen"><span>+</span></summary>
-              <div class="form-grid">
-                <label>
-                  Schicht hinzufügen
-                  <select id="terminalAddEmployee"></select>
-                </label>
-                <button id="addTerminalEmployee" class="secondary">Hinzufügen</button>
-              </div>
-            </details>
-            <div id="terminalCostSummary" class="terminal-cost-summary"></div>
             <div id="terminalEmployees" class="terminal-employees"></div>
             <section id="terminalHandoverAnchor" class="terminal-handover-anchor">
               <div class="terminal-task-group-head">
@@ -327,7 +355,7 @@
             <div class="terminal-section-head">
               <div>
                 <h3>Tischplan</h3>
-                <p class="hint">Tische direkt anklicken, Reservierungen schnell erfassen und bei Bedarf mehrere Belegungen mit Uhrzeit auf demselben Tisch führen.</p>
+                <p class="hint">Tagesplan prüfen oder Reservierungen und Tische verwalten.</p>
               </div>
               <div class="table-plan-toolbar">
                 <div class="table-plan-toolbar-actions">
@@ -335,6 +363,7 @@
                     <input id="tablePlanDate" type="date">
                   </label>
                   <button id="loadTodayTablePlan" class="secondary hidden" type="button">Heute öffnen</button>
+                  <button id="openTablePlanSettings" class="secondary hidden" type="button" data-terminal-tab="settings" data-terminal-settings-target="table-plan">Tischplan-Einstellungen</button>
                   <button id="toggleTablePlanFullscreen" class="secondary" type="button">Vollbild</button>
                 </div>
               </div>
@@ -344,7 +373,7 @@
               <section class="table-plan-board-panel">
                 <div id="tablePlanBoardMeta" class="table-plan-meta"></div>
                 <div id="tablePlanBoard" class="table-plan-board"></div>
-                <section class="table-plan-list-panel">
+                <section class="table-plan-list-panel table-plan-manage-only">
                   <div class="terminal-section-head">
                     <div>
                       <h3>Druckliste</h3>
@@ -364,37 +393,106 @@
                   <div id="tablePlanPrintArea" class="table-plan-print-area"></div>
                 </section>
               </section>
-              <aside class="table-plan-sidebar">
-                <details id="tablePlanReservationPanel" class="table-plan-side-section">
+              <aside class="table-plan-overview-sidebar">
+                <section class="table-plan-overview-card table-plan-selected-card">
+                  <div class="table-plan-overview-head">
+                    <div>
+                      <small id="tablePlanSelectedKicker">Auswahl</small>
+                      <h4 id="tablePlanSelectedTitle">Ausgewählte Reservierung</h4>
+                    </div>
+                    <span class="table-plan-overview-icon" aria-hidden="true">i</span>
+                  </div>
+                  <div id="tablePlanSelectedDetail"></div>
+                </section>
+                <section class="table-plan-overview-card">
+                  <div class="table-plan-overview-head">
+                    <div>
+                      <small>Heute</small>
+                      <h4>Reservierungen heute</h4>
+                    </div>
+                    <span id="tablePlanReservationCount" class="table-plan-count-chip">0</span>
+                  </div>
+                  <button id="openNewTableReservation" class="primary table-plan-new-reservation" type="button">Neue Reservierung</button>
+                  <div id="tablePlanReservationOverview"></div>
+                </section>
+                <section class="table-plan-overview-card">
+                  <div class="table-plan-overview-head">
+                    <div>
+                      <small>Zuständigkeit</small>
+                      <h4>Servicebereiche heute</h4>
+                    </div>
+                  </div>
+                  <div id="tablePlanServiceOverview"></div>
+                </section>
+                <section class="table-plan-overview-card table-plan-legend-card">
+                  <h4>Legende</h4>
+                  <div id="tablePlanStatusLegend"></div>
+                </section>
+              </aside>
+              <aside class="table-plan-manage-reservations table-plan-manage-only">
+                <div class="table-plan-manage-card-head">
+                  <div>
+                    <small>Gewählter Tag</small>
+                    <h4>Reservierungen</h4>
+                  </div>
+                  <button class="primary" type="button" data-table-plan-new-manage>Neu</button>
+                </div>
+                <div id="tablePlanManageReservationList"></div>
+              </aside>
+              <aside class="table-plan-sidebar table-plan-manage-sidebar">
+                <details id="tablePlanReservationPanel" class="table-plan-side-section table-plan-reservation-editor" open>
                   <summary class="table-plan-side-summary">
-                    <strong>Neue Reservierung</strong>
+                    <strong id="tablePlanReservationTitle">Neue Reservierung</strong>
                     <span id="tablePlanSelectionSummary">Tische auswählen</span>
                   </summary>
                   <div class="table-plan-side-body">
-                    <div id="tablePlanDraftSummary" class="table-plan-draft-summary"></div>
-                    <div id="tablePlanConflictHint" class="hint"></div>
-                    <div id="tablePlanSelectionBookings" class="table-plan-selection-bookings"></div>
+                    <section class="table-plan-form-card">
+                      <h5>1. Grunddaten</h5>
                       <div class="form-grid table-plan-form">
-                        <label>Uhrzeit<input id="tablePlanTime" data-table-plan-field="time" type="time"></label>
-                        <label>Reservierungsname<input id="tablePlanName" data-table-plan-field="name" placeholder="Name / Anlass"></label>
+                        <label>Von<input id="tablePlanTime" data-table-plan-field="time" type="time"></label>
+                        <label>Bis<input id="tablePlanTimeEnd" data-table-plan-field="timeEnd" type="time"></label>
+                        <label>Name / Anlass<input id="tablePlanName" data-table-plan-field="name" placeholder="Name / Anlass"></label>
                         <label>Personen<input id="tablePlanPeople" data-table-plan-field="people" type="number" min="1" step="1" placeholder="0"></label>
-                        <label>Farbmarkierung<select id="tablePlanMarker" data-table-plan-field="marker"></select></label>
-                        <label class="table-plan-note-field">Notiz<textarea id="tablePlanNote" data-table-plan-field="note" rows="3" placeholder="z. B. Kinderstuhl, Geburtstag, zusammen mit T16"></textarea></label>
+                      </div>
+                    </section>
+                    <section class="table-plan-form-card">
+                      <div class="table-plan-form-card-head">
+                        <h5>2. Tische</h5>
+                        <button id="focusTablePlanBoard" class="secondary" type="button">Im Plan auswählen</button>
+                      </div>
+                      <div id="tablePlanDraftSummary" class="table-plan-draft-summary"></div>
+                      <div id="tablePlanConflictHint" class="hint"></div>
+                      <div id="tablePlanSelectionBookings" class="table-plan-selection-bookings"></div>
+                      <div class="table-plan-editor-actions">
+                        <button id="connectSelectedTables" class="secondary" type="button">Tische verbinden</button>
+                        <button id="disconnectSelectedTables" class="secondary danger-lite" type="button">Verbindung lösen</button>
+                      </div>
+                    </section>
+                    <section class="table-plan-form-card">
+                      <h5>3. Typ &amp; Status</h5>
+                      <div class="form-grid table-plan-form">
+                        <label>Typ<select id="tablePlanMarker" data-table-plan-field="marker"></select></label>
+                        <div class="table-plan-readonly-status">
+                          <span>Status</span>
+                          <strong id="tablePlanStatusDisplay">Reserviert</strong>
+                        </div>
                       </div>
                       <div id="tablePlanMarkerLegend"></div>
-                      <div class="table-plan-editor-actions">
-                        <button id="newTablePlanReservationForSelection" class="secondary" type="button">Neue Reservierung</button>
-                        <button id="connectSelectedTables" class="secondary" type="button">Tische verbinden</button>
-                      <button id="disconnectSelectedTables" class="secondary danger-lite" type="button">Verbindung lösen</button>
-                    </div>
+                    </section>
+                    <section class="table-plan-form-card">
+                      <h5>4. Notiz</h5>
+                      <label class="table-plan-note-field">Kurze Notiz<textarea id="tablePlanNote" data-table-plan-field="note" rows="2" placeholder="z. B. Kinderstuhl oder besonderer Wunsch"></textarea></label>
+                    </section>
                     <div class="table-plan-editor-actions">
+                      <button id="resetTablePlanDraft" class="secondary" type="button">Abbrechen</button>
                       <button id="saveTablePlanReservation" class="primary" type="button">Reservierung speichern</button>
+                      <button id="printTablePlanReservation" class="secondary" type="button">Drucken</button>
                       <button id="deleteTablePlanReservation" class="secondary danger-lite" type="button">Reservierung löschen</button>
-                      <button id="resetTablePlanDraft" class="secondary" type="button">Zurücksetzen</button>
                     </div>
                   </div>
                 </details>
-                <details id="tablePlanStaffPanel" class="table-plan-side-section">
+                <div class="table-plan-manage-tools">
+                <details id="tablePlanStaffPanel" class="table-plan-side-section table-plan-staff-editor">
                   <summary class="table-plan-side-summary">
                     <strong>Personalbereich</strong>
                     <span id="tablePlanStaffSummary">Noch kein Bereich zugewiesen</span>
@@ -430,67 +528,270 @@
                     </section>
                   </div>
                 </details>
+                <details id="tablePlanNzBigPanel" class="table-plan-side-section table-plan-nz-editor" open>
+                  <summary class="table-plan-side-summary">
+                    <strong>NZ groß</strong>
+                    <span id="tablePlanNzBigSummary">Tische verwalten</span>
+                  </summary>
+                  <div class="table-plan-side-body">
+                    <div class="table-plan-nz-controls">
+                      <div>
+                        <small>Flexible Tische</small>
+                        <strong id="tablePlanNzBigCount">1 Tisch</strong>
+                      </div>
+                      <div class="table-plan-editor-actions">
+                        <button id="addNzBigTable" class="primary" type="button">Tisch hinzufügen</button>
+                      </div>
+                    </div>
+                    <div id="tablePlanNzBigList" class="table-plan-nz-list"></div>
+                    <p class="hint">Die Tische werden automatisch als T60, T61, T62 usw. angeordnet.</p>
+                  </div>
+                </details>
+                <details id="tablePlanHutPanel" class="table-plan-side-section table-plan-nz-editor">
+                  <summary class="table-plan-side-summary">
+                    <strong>Hütte</strong>
+                    <span id="tablePlanHutSummary">Tische verwalten</span>
+                  </summary>
+                  <div class="table-plan-side-body">
+                    <div class="table-plan-nz-controls">
+                      <div>
+                        <small>Flexible Tische</small>
+                        <strong id="tablePlanHutCount">1 Tisch</strong>
+                      </div>
+                      <div class="table-plan-editor-actions">
+                        <button id="addHutTable" class="primary" type="button">Tisch hinzufügen</button>
+                      </div>
+                    </div>
+                    <div id="tablePlanHutList" class="table-plan-nz-list"></div>
+                    <p class="hint">T70 bleibt bestehen. Weitere Tische werden als T71, T72, T73 usw. angelegt.</p>
+                  </div>
+                </details>
+                </div>
               </aside>
             </div>
           </section>
           <section id="terminalFinanceSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
+            <header class="finance-dashboard-header">
               <div>
-                <h3>Abschluss: Finanz &amp; Unterlagen</h3>
-                <p class="hint">Kassenabrechnung, Trinkgeld, Rechnungskunden, Ausgaben und Abschlussdokumente.</p>
+                <p class="terminal-card-kicker">Tagesabschluss</p>
+                <h3>Abschluss</h3>
+                <p>Tagesabschluss Schritt für Schritt durchführen</p>
               </div>
+            </header>
+
+            <nav class="closing-step-nav" aria-label="Schritte des Tagesabschlusses">
+              <button class="closing-step is-active" type="button" data-closing-step="1"><span>1</span><strong>Daten erfassen</strong></button>
+              <button class="closing-step" type="button" data-closing-step="2"><span>2</span><strong>Pentacode</strong></button>
+              <button class="closing-step" type="button" data-closing-step="3"><span>3</span><strong>Bericht</strong></button>
+              <button class="closing-step" type="button" data-closing-step="4"><span>4</span><strong>Dokumente</strong></button>
+              <button class="closing-step" type="button" data-closing-step="5"><span>5</span><strong>Tagesbericht</strong></button>
+              <button class="closing-step" type="button" data-closing-step="6"><span>6</span><strong>Trinkgeld</strong></button>
+              <button class="closing-step" type="button" data-closing-step="7"><span>7</span><strong>Morgen planen</strong></button>
+            </nav>
+
+            <div class="closing-step-content" data-closing-step-content="1">
+              <div class="closing-step-one-title">
+                <span>Schritt 1</span>
+                <div><h4>Daten erfassen</h4><p>Abschluss: Finanz &amp; Unterlagen</p></div>
+              </div>
+
+            <div class="finance-status-grid" aria-label="Finanzstatus">
+              <article class="finance-status-card is-cash"><span class="finance-icon" aria-hidden="true">€</span><div><small>Bar heute</small><strong id="financeKpiCash">0,00 €</strong><span>Bar gesamt</span></div></article>
+              <article class="finance-status-card is-ec"><span class="finance-icon" aria-hidden="true">EC</span><div><small>EC gesamt</small><strong id="financeKpiEc">0,00 €</strong><span>Alle EC-Einnahmen</span></div></article>
+              <article class="finance-status-card is-expense"><span class="finance-icon" aria-hidden="true">−</span><div><small>Ausgaben</small><strong id="financeKpiExpenses">0,00 €</strong><span>Aus der Kasse</span></div></article>
+              <article class="finance-status-card is-handover"><span class="finance-icon" aria-hidden="true">€</span><div><small>Abzugeben an Chef</small><strong id="financeKpiHandover">0,00 €</strong><span>Berechneter Kassenbetrag</span></div></article>
             </div>
-            <section class="report-subsection report-documents-inline" data-report-field-box="documents">
-              <div class="terminal-section-head">
-                <div>
-                  <h3>Abschlussdokumente</h3>
-                  <p class="hint">Penta, Handschrift und EC-Schnitt direkt zum Tagesbericht scannen.</p>
+
+            <div class="finance-dashboard-grid">
+              <section class="finance-dashboard-card is-register">
+                <header><span class="finance-step">1</span><div><h4>Kasse &amp; EC</h4><p>Einnahmen erfassen</p></div></header>
+                <div class="finance-entry-list">
+                  <label class="finance-entry-row"><span class="finance-row-icon">€</span><strong>Bar gesamt</strong><input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
+                  <label class="finance-entry-row"><span class="finance-row-icon">EC</span><strong>EC Terminal 1</strong><input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
+                  <label class="finance-entry-row"><span class="finance-row-icon">EC</span><strong>EC Terminal 2</strong><input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
+                  <button class="finance-entry-row finance-detail-link" type="button" data-open-invoice-details><span class="finance-row-icon">R</span><strong>Rechnung / Überweisung</strong><span id="financeInvoiceTotal">0,00 €</span><b aria-hidden="true">›</b></button>
+                </div>
+              </section>
+
+              <section class="finance-dashboard-card is-revenue">
+                <header><span class="finance-step">2</span><div><h4>Umsatzbereiche</h4><p>Umsätze nach Bereich</p></div></header>
+                <div class="finance-entry-list">
+                  <label class="finance-entry-row"><span class="finance-row-icon">B</span><strong>Bowling</strong><input id="reportRevenueBowling" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
+                  <label class="finance-entry-row"><span class="finance-row-icon">G</span><strong>Getränke</strong><input id="reportRevenueDrinks" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
+                  <label class="finance-entry-row"><span class="finance-row-icon">S</span><strong>Speisen</strong><input id="reportRevenueFood" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
+                  <label class="finance-entry-row"><span class="finance-row-icon">···</span><strong>Sonstiges</strong><input id="reportRevenueOther" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
+                  <label class="finance-entry-row"><span class="finance-row-icon">P</span><strong>Personalverzehr</strong><input id="reportPersonalConsumption" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
+                  <label class="finance-entry-row is-documentation"><span class="finance-row-icon">B€</span><strong>Bar-Umsatz Bowling</strong><input id="reportBowlingCashRevenue" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
+                  <div class="finance-entry-row is-readonly"><span class="finance-row-icon">Σ</span><strong>Gastro gesamt</strong><input id="reportRevenueGastro" type="text" inputmode="decimal" readonly placeholder="0,00"><em>€</em></div>
+                </div>
+              </section>
+
+              <section class="finance-dashboard-card is-result">
+                <header><span class="finance-step">3</span><div><h4>Ergebnis</h4><p>Übersicht für den Chef</p></div></header>
+                <div class="finance-handover-box">
+                  <span>Abzugeben an Chef</span>
+                  <strong id="financeResultHandover">0,00 €</strong>
+                  <small id="financeResultFormula">Bar + EC − Ausgaben</small>
+                </div>
+                <div id="financeTipDaySummary" class="tip-summary tip-day-summary"></div>
+              </section>
+
+              <section class="finance-dashboard-card is-expenses" data-report-field-box="expenses">
+                <header><span class="finance-step">4</span><div><h4>Ausgaben an der Kasse</h4><p>Belege einzeln erfassen</p></div></header>
+                <button id="openAddExpense" class="finance-add-expense" type="button"><span aria-hidden="true">+</span>Ausgabe hinzufügen</button>
+                <div id="financeExpensePreview" class="finance-expense-preview"></div>
+                <footer><span>Summe Ausgaben</span><strong id="financeExpenseTotal">0,00 €</strong></footer>
+              </section>
+            </div>
+
+            <section class="finance-documents-section legacy-closing-documents" data-report-field-box="documents" aria-hidden="true">
+              <header><span class="finance-step">5</span><div><h4>Abschlussdokumente</h4><p>Alle Unterlagen zum Tagesbericht</p></div></header>
+              <div class="finance-document-grid">
+                <article class="finance-document-card"><span class="finance-document-icon">P</span><div><h5>Penta</h5><p>Kassenbericht</p></div><label class="finance-upload-button">Scannen / Foto hochladen<input id="reportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label><div id="reportDocumentPentaStatus"></div></article>
+                <article class="finance-document-card"><span class="finance-document-icon">H</span><div><h5>Handschrift</h5><p>Notizen oder Zählerstand</p></div><label class="finance-upload-button">Scannen / Foto hochladen<input id="reportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label><div id="reportDocumentHandwritingStatus"></div></article>
+                <article class="finance-document-card"><span class="finance-document-icon">EC</span><div><h5>EC-Schnitt</h5><p>Terminal-Abschluss</p></div><label class="finance-upload-button">Scannen / Foto hochladen<input id="reportDocumentEcCut" type="file" accept="image/*,application/pdf" capture="environment"></label><div id="reportDocumentEcCutStatus"></div></article>
+              </div>
+            </section>
+
+            <section class="finance-day-report-section">
+              <header><span class="finance-step">6</span><div><h4>Tagesbericht</h4><p>Vorschau des aktuellen Abschlussdokuments</p></div></header>
+              <div class="finance-day-report-layout">
+                <div class="finance-day-report-thumbnail" data-open-day-report-preview role="button" tabindex="0" aria-label="Tagesbericht-Vorschau öffnen">
+                  <div id="financeDayReportPreview"></div>
+                </div>
+                <div class="finance-day-report-copy">
+                  <strong>Tagesbericht prüfen</strong>
+                  <p>Finanzwerte, Personalzeiten und Notizen vor dem Abschluss kontrollieren.</p>
+                  <div>
+                    <button class="secondary" type="button" data-open-day-report-preview>Vorschau öffnen</button>
+                    <button class="secondary" type="button" data-print-day-report>Drucken</button>
+                  </div>
                 </div>
               </div>
-              <div class="report-entry-grid">
-                <label>Penta scannen/fotografieren<input id="reportDocumentPenta" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>Handschrift scannen/fotografieren<input id="reportDocumentHandwriting" type="file" accept="image/*,application/pdf" capture="environment"></label>
-                <label>EC-Schnitt scannen/fotografieren<input id="reportDocumentEcCut" type="file" accept="image/*,application/pdf" capture="environment"></label>
-              </div>
-              <div id="reportDocumentStatus" class="report-entry-list"></div>
             </section>
-            <section class="report-subsection tip-finance-block">
-              <div class="terminal-section-head">
-                <div>
-                  <h3>Trinkgeld</h3>
-                  <p class="hint">Bar, EC und Umsatz erfassen. Trinkgeld wird nach Arbeitszeit verteilt und auf Scheine gerundet.</p>
-                </div>
+
+            <div class="finance-action-bar">
+              <button id="printDayReport" class="secondary" type="button">Drucken</button>
+              <button id="saveDayReport" class="secondary" type="button">Zwischenspeichern</button>
+              <button id="checkDayReport" class="secondary" type="button">Abschluss prüfen</button>
+              <button id="closeDayReport" class="primary finance-close-day" type="button">Tagesabschluss speichern</button>
+            </div>
+
+            <input id="reportCashExpenses" class="finance-hidden-data-field" type="number" min="0" step="0.01" tabindex="-1" aria-hidden="true">
+            <input id="reportEcTotal" class="finance-hidden-data-field" type="text" inputmode="decimal" readonly tabindex="-1" aria-hidden="true">
+            <button id="saveTipDistribution" class="finance-hidden-data-field" type="button" tabindex="-1" aria-hidden="true">Umsatzdetails speichern</button>
+            </div>
+
+            <section id="terminalPentacodeStep" class="pentacode-transfer-step hidden" data-closing-step-content="2">
+              <header class="pentacode-transfer-head">
+                <div><span>Schritt 2</span><h4>Pentacode übertragen</h4><p>Werte der Reihe nach kopieren und direkt in Pentacode einfügen.</p></div>
+                <div class="pentacode-progress-copy"><strong id="pentacodeProgressText">0 von 10 übertragen</strong><div class="pentacode-progress-track"><span id="pentacodeProgressBar"></span></div></div>
+              </header>
+              <div id="pentacodeTransferList" class="pentacode-transfer-list"></div>
+              <footer class="pentacode-transfer-actions">
+                <button class="secondary" type="button" data-reset-pentacode-transfer>Übertragungsstatus zurücksetzen</button>
+                <button id="completePentacodeTransfer" class="primary" type="button" data-complete-pentacode-transfer disabled>Pentacode vollständig übertragen</button>
+              </footer>
+            </section>
+            <section id="terminalHandwrittenReportStep" class="manual-report-step hidden" data-closing-step-content="3">
+              <header class="manual-report-head">
+                <div><span>Schritt 3</span><h4>Handschriftlicher Bericht</h4><p>Werte für den manuellen Tagesbericht</p></div>
+                <div class="manual-report-progress"><strong id="manualReportProgressText">0 von 6 übertragen</strong><div class="pentacode-progress-track"><span id="manualReportProgressBar"></span></div></div>
+              </header>
+              <div id="manualReportTransferList" class="manual-report-list"></div>
+              <footer class="pentacode-transfer-actions">
+                <button class="secondary" type="button" data-reset-manual-report>Übertragungsstatus zurücksetzen</button>
+                <button id="completeManualReport" class="primary" type="button" data-complete-manual-report disabled>Bericht vollständig übertragen</button>
+              </footer>
+            </section>
+            <section id="terminalDocumentsStep" class="closing-documents-step hidden" data-closing-step-content="4">
+              <header class="closing-documents-head">
+                <div><span>Schritt 4</span><h4>Dokumente</h4><p id="closingDocumentsDate">Tagesabschluss</p></div>
+                <p class="closing-documents-guide">Dokumentart wählen und direkt darunter scannen.</p>
+              </header>
+              <div class="closing-document-type-grid">
+                <article class="closing-document-type"><span>P</span><div><strong>Penta</strong><small>Kassenbericht</small></div><button type="button" data-open-document-scanner="Penta">Scannen</button><label>Datei<input type="file" accept="image/*,application/pdf" data-closing-document-upload="Penta"></label></article>
+                <article class="closing-document-type"><span>H</span><div><strong>Handschrift</strong><small>Handschriftlicher Bericht</small></div><button type="button" data-open-document-scanner="Handschrift">Scannen</button><label>Datei<input type="file" accept="image/*,application/pdf" data-closing-document-upload="Handschrift"></label></article>
+                <article class="closing-document-type"><span>A</span><div><strong>Ausgabenbeleg</strong><small>Mehrere Belege möglich</small></div><button type="button" data-open-document-scanner="Ausgabenbeleg">Scannen</button><label>Datei<input type="file" accept="image/*,application/pdf" data-closing-document-upload="Ausgabenbeleg" multiple></label></article>
+                <article class="closing-document-type"><span>EC</span><div><strong>EC-Schnitt</strong><small>Terminal-Abschluss</small></div><button type="button" data-open-document-scanner="EC-Schnitt">Scannen</button><label>Datei<input type="file" accept="image/*,application/pdf" data-closing-document-upload="EC-Schnitt"></label></article>
               </div>
-              <div class="tip-input-grid">
-                <label>Bar gesamt<input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Ausgaben aus Kasse<input id="reportCashExpenses" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>EC Terminal 1<input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>EC Terminal 2<input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>EC gesamt<input id="reportEcTotal" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
-                <label>Personalverzehr<input id="reportPersonalConsumption" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Umsatz Bowling<input id="reportRevenueBowling" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Getränke<input id="reportRevenueDrinks" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Speisen<input id="reportRevenueFood" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Sonstiges<input id="reportRevenueOther" type="number" min="0" step="0.01" placeholder="0,00"></label>
-                <label>Umsatz Gastro gesamt<input id="reportRevenueGastro" type="text" inputmode="decimal" readonly placeholder="0,00"></label>
-              </div>
-              <div id="financeTipDaySummary" class="tip-summary tip-day-summary"></div>
-              <div id="financeTipDayDistributionList" class="tip-distribution-list"></div>
-              <div class="finance-save-row">
-                <button id="saveTipDistribution" class="primary" type="button">Umsatzdetails speichern</button>
+              <div id="closingDocumentsList" class="closing-documents-list"></div>
+              <p id="closingDocumentsHint" class="closing-documents-hint hidden" role="status"></p>
+              <footer class="closing-documents-footer">
+                <span id="closingDocumentsCount">0 Dokumente gespeichert</span>
+                <button id="completeClosingDocuments" class="primary" type="button">Dokumente vollständig</button>
+              </footer>
+            </section>
+            <section id="terminalDayReportClosingStep" class="closing-day-report-step hidden" data-closing-step-content="5">
+              <header class="closing-day-report-head">
+                <div><span>Schritt 5</span><h4>Tagesbericht &amp; Tagesabschluss</h4><p>Bericht prüfen, drucken und den Tag abschließen.</p></div>
+              </header>
+              <div id="terminalDayReportClosingMount"></div>
+            </section>
+            <section id="terminalClosingTipStep" class="closing-tip-step hidden" data-closing-step-content="6">
+              <header class="closing-day-report-head">
+                <div><span>Schritt 6</span><h4>Trinkgeld-Verteilung</h4><p>Verteilung für den aktuell gewählten Tagesabschluss.</p></div>
+              </header>
+              <div id="closingTipDistributionDetail" class="closing-tip-detail"></div>
+              <footer class="closing-tip-actions">
+                <button class="secondary" type="button" data-close-closing-tip>Zurück zum Tagesbericht</button>
+              </footer>
+            </section>
+            <section id="terminalTomorrowStep" class="closing-tomorrow-step hidden" data-closing-step-content="7">
+              <header class="closing-day-report-head">
+                <div><span>Schritt 7</span><h4>Morgen planen</h4><p id="terminalTomorrowDate">Vorbereitung für den nächsten Tag.</p></div>
+              </header>
+              <div class="closing-tomorrow-grid">
+                <section class="closing-tomorrow-card is-assignments">
+                  <div class="closing-tomorrow-card-head"><span aria-hidden="true">&#9719;</span><div><h4>Einteilung für morgen</h4><p>Startzeiten für Counter und Service festlegen.</p></div></div>
+                  <div id="terminalTomorrowAssignmentsMount"></div>
+                </section>
+                <section class="closing-tomorrow-card is-tables">
+                  <div class="closing-tomorrow-card-head"><span aria-hidden="true">&#9633;</span><div><h4>Tischplan für morgen</h4><p id="terminalTomorrowTableDate">Plan für den nächsten Tag vorbereiten.</p></div></div>
+                  <div class="closing-tomorrow-empty"><strong>Tischplan vorbereiten</strong><span>Reservierungen prüfen, Tische verbinden und den Aufbau festlegen.</span></div>
+                  <button class="primary" type="button" data-open-tomorrow-table-plan>Tischplan für morgen öffnen</button>
+                </section>
               </div>
             </section>
-            <details class="report-subsection" data-report-field-box="invoiceCustomers">
-              <summary>Kunden auf Rechnung</summary>
-              <div id="invoiceCustomersList" class="report-entry-list"></div>
-              <button id="addInvoiceCustomer" class="secondary" type="button">Rechnungskunde hinzufügen</button>
-            </details>
-            <details class="report-subsection" data-report-field-box="expenses">
-              <summary>Ausgaben aus der Kasse</summary>
-              <div id="expensesList" class="report-entry-list"></div>
-              <button id="addExpense" class="secondary" type="button">Ausgabe hinzufügen</button>
-            </details>
           </section>
+
+          <div id="invoiceDetailsModal" class="tip-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="invoiceDetailsTitle">
+            <section class="tip-detail-panel finance-detail-panel">
+              <header><div><small>Abschluss</small><h3 id="invoiceDetailsTitle">Kunden auf Rechnung</h3></div><button class="tip-detail-close" type="button" data-close-finance-modal="invoiceDetailsModal" aria-label="Schließen">&times;</button></header>
+              <div class="finance-modal-content"><div id="invoiceCustomersList" class="report-entry-list"></div><button id="addInvoiceCustomer" class="secondary" type="button">Rechnungskunde hinzufügen</button></div>
+              <footer><button class="secondary" type="button" data-close-finance-modal="invoiceDetailsModal">Schließen</button></footer>
+            </section>
+          </div>
+
+          <div id="expenseDetailsModal" class="tip-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="expenseDetailsTitle">
+            <section class="tip-detail-panel finance-detail-panel">
+              <header><div><small>Abschluss</small><h3 id="expenseDetailsTitle">Ausgaben an der Kasse</h3></div><button class="tip-detail-close" type="button" data-close-finance-modal="expenseDetailsModal" aria-label="Schließen">&times;</button></header>
+              <div class="finance-modal-content"><div id="expensesList" class="report-entry-list"></div><button id="addExpense" class="secondary" type="button">Weitere Ausgabe hinzufügen</button></div>
+              <footer><button class="secondary" type="button" data-close-finance-modal="expenseDetailsModal">Schließen</button></footer>
+            </section>
+          </div>
+          <div id="tipDistributionModal" class="tip-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="tipDistributionModalTitle">
+            <section class="tip-detail-panel">
+              <header>
+                <div>
+                  <small>Abschluss</small>
+                  <h3 id="tipDistributionModalTitle">Trinkgeld-Verteilung</h3>
+                </div>
+                <button id="closeTipDistributionModal" class="tip-detail-close" type="button" aria-label="Trinkgeld-Verteilung schließen">&times;</button>
+              </header>
+              <div id="tipDistributionDetail"></div>
+              <footer>
+                <button id="closeTipDistributionModalFooter" class="secondary" type="button">Schließen</button>
+              </footer>
+            </section>
+          </div>
+          <div id="dayReportPreviewModal" class="tip-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="dayReportPreviewTitle">
+            <section class="tip-detail-panel day-report-preview-panel">
+              <header><div><small>Abschluss</small><h3 id="dayReportPreviewTitle">Tagesbericht-Vorschau</h3></div><button class="tip-detail-close" type="button" data-close-day-report-preview aria-label="Schließen">&times;</button></header>
+              <div id="dayReportModalPreview" class="day-report-modal-preview"></div>
+              <footer><button class="secondary" type="button" data-print-day-report>Drucken</button><button class="secondary" type="button" data-close-day-report-preview>Schließen</button></footer>
+            </section>
+          </div>
           <section id="terminalTipsSection" class="terminal-section hidden">
             <div class="terminal-section-head">
               <div>
@@ -502,21 +803,40 @@
             <div id="tipSummary" class="tip-summary"></div>
             <div id="tipDistributionList" class="tip-distribution-list"></div>
           </section>
-          <details id="dayReportPrintArea" class="day-report">
+          <section id="terminalInvoicesToolSection" class="terminal-invoices-tool hidden">
+            <header class="terminal-invoices-tool-head">
+              <div>
+                <p class="terminal-card-kicker">Tool</p>
+                <h2>Bezahlung auf Rechnung</h2>
+                <p>Rechnungskunden für den gewählten Terminal-Tag erfassen, Belege scannen und fertigstellen.</p>
+              </div>
+              <div class="terminal-invoices-tool-date">
+                <label for="terminalInvoicesToolDate">Tageszuordnung</label>
+                <input id="terminalInvoicesToolDate" type="date">
+              </div>
+            </header>
+            <div class="terminal-invoice-workflow">
+              <div class="terminal-invoice-workflow-step"><b>1</b><span>Kunde wählen oder anlegen</span></div>
+              <div class="terminal-invoice-workflow-step"><b>2</b><span>Beträge und Zahlungsart</span></div>
+              <div class="terminal-invoice-workflow-step"><b>3</b><span>Beleg und Abschluss</span></div>
+            </div>
+            <div class="terminal-invoice-tool-nav">
+              <button class="primary" data-invoice-tool-view="current" type="button">Rechnungen</button>
+              <button class="secondary" data-invoice-tool-view="history" type="button">Archiv</button>
+            </div>
+            <div id="terminalInvoiceToolMount" class="terminal-invoice-tool-mount"></div>
+            <div id="terminalInvoiceHistory" class="terminal-invoice-history hidden"></div>
+          </section>
+          <details id="dayReportPrintArea" class="day-report finance-report-data">
             <summary class="day-report-title">
               <div>
                 <h3>Tagesbericht</h3>
                 <p id="dayReportLockStatus" class="hint"></p>
               </div>
-              <button id="printDayReport" class="secondary" type="button">Tagesbericht drucken</button>
             </summary>
             <div id="dayReportTipDayDistribution" class="tip-distribution-list day-report-tip-control"></div>
             <div id="dayReportA4Summary" class="day-report-a4-summary"></div>
             <label data-report-field-box="notes">Notizen<textarea id="reportNotes" rows="5"></textarea></label>
-            <div class="day-report-actions">
-              <button id="saveDayReport" class="primary">Tagesbericht speichern</button>
-              <button id="closeDayReport" class="secondary danger-button" type="button">Tagesabschluss</button>
-            </div>
           </details>
           <section id="terminalOrdersSection" class="terminal-section terminal-tool-placeholder hidden">
             <div class="terminal-card-heading">
@@ -528,28 +848,189 @@
             </div>
             <p>Bestellungen werden später eingerichtet.</p>
           </section>
-          <section id="terminalOffersSection" class="terminal-section terminal-tool-placeholder hidden">
-            <div class="terminal-card-heading">
-              <span class="terminal-card-icon" aria-hidden="true">A</span>
+          <section id="terminalOffersSection" class="terminal-offers-page hidden">
+            <header class="terminal-offers-header">
               <div>
                 <p class="terminal-card-kicker">Tool</p>
-                <h3>Angebote</h3>
+                <h2>Angebote</h2>
+                <p>Neue Angebote erstellen oder gespeicherte Angebote nach Jahr öffnen.</p>
+              </div>
+            </header>
+            <div id="terminalOffersWorkspace" class="offer-workspace terminal-offer-workspace"></div>
+          </section>
+          <section id="terminalTaskCalendarSection" class="terminal-task-calendar-page hidden">
+            <header class="task-calendar-header">
+              <div>
+                <p class="terminal-card-kicker">Tool</p>
+                <h3>Aufgaben-Kalender</h3>
+                <p>Aufgaben planen, zuordnen und wiederkehrend organisieren.</p>
+              </div>
+              <div class="task-calendar-header-actions">
+                <button id="openTaskTemplates" class="secondary" type="button">Vorlagen</button>
+                <button id="newTerminalCalendarTask" class="task-calendar-primary" type="button">+ Neue Aufgabe</button>
+              </div>
+            </header>
+            <div class="task-calendar-layout">
+              <aside class="task-calendar-left">
+                <section class="task-tool-card task-filter-card">
+                  <h4>Filter</h4>
+                  <label>Bereich<select id="terminalTaskAreaFilter"></select></label>
+                  <label>Typ<select id="terminalTaskTypeFilter"><option value="all">Alle</option><option value="once">Einmalig</option><option value="recurring">Wiederkehrend</option></select></label>
+                  <label>Status<select id="terminalTaskStatusFilter"><option value="active">Aktiv</option><option value="inactive">Inaktiv</option><option value="all">Alle</option></select></label>
+                  <label>Suche<input id="terminalTaskSearch" type="search" placeholder="Aufgabe suchen"></label>
+                  <button id="resetTerminalTaskFilters" class="task-text-button" type="button">Filter zurücksetzen</button>
+                </section>
+                <section class="task-tool-card task-areas-card">
+                  <div class="task-tool-card-head"><h4>Bereiche</h4><span id="terminalTaskAreaCount" class="task-count-chip">0</span></div>
+                  <div id="terminalTaskAreaList" class="task-area-list"></div>
+                  <button id="manageTerminalTaskAreas" class="task-calendar-secondary" type="button">Bereiche verwalten</button>
+                </section>
+              </aside>
+              <main class="task-tool-card task-calendar-main">
+                <div class="task-calendar-toolbar">
+                  <div class="task-view-switch" role="group" aria-label="Kalenderansicht">
+                    <button class="active" type="button" data-task-calendar-view="month">Monat</button>
+                    <button type="button" data-task-calendar-view="week">Woche</button>
+                    <button type="button" data-task-calendar-view="list">Liste</button>
+                  </div>
+                  <div class="task-month-navigation">
+                    <button type="button" data-task-month-nav="prev" aria-label="Vorheriger Monat">&#8249;</button>
+                    <strong id="terminalTaskMonthTitle">Monat</strong>
+                    <button type="button" data-task-month-nav="next" aria-label="Nächster Monat">&#8250;</button>
+                    <button type="button" data-task-month-nav="today">Heute</button>
+                  </div>
+                </div>
+                <div id="terminalTaskCalendar" class="terminal-task-calendar"></div>
+                <section class="task-selected-day">
+                  <div class="task-tool-card-head"><div><small>Ausgewählter Tag</small><h4 id="terminalTaskSelectedDate">Heute</h4></div></div>
+                  <div id="terminalTaskSelectedList" class="task-selected-list"></div>
+                </section>
+              </main>
+              <aside class="task-calendar-right">
+                <section class="task-tool-card task-editor-card">
+                  <div class="task-tool-card-head"><div><small id="terminalTaskEditorKicker">Neue Aufgabe</small><h4 id="terminalTaskEditorTitle">Aufgabe planen</h4></div></div>
+                  <input id="terminalTaskEditId" type="hidden">
+                  <label>Aufgabenname<input id="terminalTaskTitle" maxlength="180" placeholder="Was ist zu erledigen?"></label>
+                  <label>Beschreibung<textarea id="terminalTaskDescription" rows="2" maxlength="600" placeholder="Optional"></textarea></label>
+                  <div class="task-editor-grid">
+                    <label>Typ<select id="terminalTaskFrequency"><option value="once">Einmalig</option><option value="daily">Täglich</option><option value="weekly">Wöchentlich</option><option value="monthly">Monatlich</option><option value="interval">Intervall</option></select></label>
+                    <label id="terminalTaskDateField">Datum<input id="terminalTaskDate" type="date"></label>
+                    <label id="terminalTaskWeekdayField" class="hidden">Wochentag<select id="terminalTaskWeekday"></select></label>
+                    <label id="terminalTaskMonthdayField" class="hidden">Tag im Monat<input id="terminalTaskMonthday" type="number" min="1" max="31" value="1"></label>
+                    <label id="terminalTaskIntervalField" class="hidden">Alle ... Tage<input id="terminalTaskInterval" type="number" min="1" max="365" value="14"></label>
+                    <label>Fällig bis<input id="terminalTaskDueTime" type="time"></label>
+                    <label>Bereich<select id="terminalTaskArea"></select></label>
+                    <label>Zuständig<select id="terminalTaskAssignee"><option value="">Nicht festgelegt</option></select></label>
+                  </div>
+                  <label class="task-active-toggle"><input id="terminalTaskActive" type="checkbox" checked><span>Aufgabe aktiv</span></label>
+                  <div class="task-editor-actions">
+                    <button id="cancelTerminalTask" class="secondary" type="button">Abbrechen</button>
+                    <button id="deleteTerminalTask" class="danger-lite hidden" type="button">Löschen</button>
+                    <button id="saveTerminalTask" class="task-calendar-primary" type="button">Speichern</button>
+                  </div>
+                </section>
+              </aside>
+            </div>
+            <div id="terminalTaskAreaModal" class="task-area-modal hidden" role="dialog" aria-modal="true" aria-labelledby="taskAreaModalTitle">
+              <section class="task-area-modal-panel">
+                <header><div><small>Aufgaben-Kalender</small><h3 id="taskAreaModalTitle">Bereiche verwalten</h3></div><button id="closeTerminalTaskAreas" type="button" aria-label="Schließen">&times;</button></header>
+                <div id="terminalTaskAreaManageList" class="task-area-manage-list"></div>
+                <div class="task-area-edit-row">
+                  <input id="terminalTaskAreaId" type="hidden">
+                  <input id="terminalTaskAreaName" placeholder="Neuer Bereich">
+                  <input id="terminalTaskAreaColor" type="color" value="#7c3aed" aria-label="Bereichsfarbe">
+                  <label class="task-active-toggle"><input id="terminalTaskAreaActive" type="checkbox" checked><span>Aktiv</span></label>
+                  <button id="saveTerminalTaskArea" class="task-calendar-primary" type="button">Speichern</button>
+                </div>
+              </section>
+            </div>
+          </section>
+          <section id="terminalSettingsSection" class="terminal-section terminal-settings-page hidden">
+            <div class="terminal-settings-header">
+              <div>
+                <p class="terminal-card-kicker">Verwaltung</p>
+                <h3>Einstellungen &amp; Verwaltung</h3>
+                <p>Zentrale Verwaltung der Team-App</p>
               </div>
             </div>
-            <p>Die bestehende Angebotsverwaltung bleibt geschützt im Backoffice.</p>
-            <a class="primary terminal-tool-link" href="./?bereich=offers">Angebote im Backoffice öffnen</a>
-          </section>
-          <div id="toiletReminder" class="toilet-reminder hidden" role="dialog" aria-modal="true">
-            <div>
-              <h3 id="terminalReminderTitle">Erinnerung</h3>
-              <p id="terminalReminderText">Bitte quittieren.</p>
-              <label id="toiletCheckEmployeeWrap" class="toilet-check-employee hidden">
-                Kontrolle gemacht von
-                <select id="toiletCheckEmployee"></select>
-              </label>
-              <button id="confirmToiletCheck" class="primary" type="button">Quittieren</button>
+            <div class="terminal-settings-module-grid">
+              <button class="terminal-settings-module is-active" type="button" data-terminal-settings-module="controls">
+                <span aria-hidden="true">&#10003;</span>
+                <strong>Kontrollen verwalten</strong>
+                <small>Intervalle und Zuständigkeiten</small>
+              </button>
+              <button class="terminal-settings-module" type="button" data-terminal-settings-module="table-plan">
+                <span aria-hidden="true">&#9633;</span>
+                <strong>Tischplan verwalten</strong>
+                <small>Grundplan, Positionen und Größen</small>
+              </button>
+              <button class="terminal-settings-module" type="button" data-terminal-settings-placeholder="Aufgaben verwalten">
+                <span aria-hidden="true">&#9638;</span>
+                <strong>Aufgaben verwalten</strong>
+                <small>Wird später eingerichtet</small>
+              </button>
+              <button class="terminal-settings-module" type="button" data-terminal-settings-placeholder="Mitarbeiter & Bereiche">
+                <span aria-hidden="true">&#9689;</span>
+                <strong>Mitarbeiter &amp; Bereiche</strong>
+                <small>Wird später eingerichtet</small>
+              </button>
+              <button class="terminal-settings-module" type="button" data-terminal-settings-placeholder="Allgemeine Einstellungen">
+                <span aria-hidden="true">&#9881;</span>
+                <strong>Allgemeine Einstellungen</strong>
+                <small>Wird später eingerichtet</small>
+              </button>
             </div>
-          </div>
+            <p id="terminalSettingsInlineNotice" class="terminal-settings-notice hidden"></p>
+            <section class="terminal-control-management">
+              <div class="terminal-control-management-head">
+                <div>
+                  <h4>Kontrollen verwalten</h4>
+                  <p>Kontrollpunkte, Intervalle und Zuständigkeiten festlegen</p>
+                </div>
+                <button id="newTerminalControl" class="primary" type="button">Neue Kontrolle anlegen</button>
+              </div>
+              <form id="terminalControlForm" class="terminal-control-form hidden">
+                <input id="terminalControlId" type="hidden">
+                <label>Name<input id="terminalControlName" required maxlength="80"></label>
+                <label>Icon
+                  <select id="terminalControlIcon">
+                    <option value="WC">WC</option>
+                    <option value="◉">Kreis</option>
+                    <option value="⚙">Zahnrad</option>
+                    <option value="✓">Haken</option>
+                    <option value="!">Hinweis</option>
+                  </select>
+                </label>
+                <label>Bereich<input id="terminalControlArea" maxlength="80" placeholder="z.B. Sanitär"></label>
+                <label>Intervalltyp
+                  <select id="terminalControlIntervalType">
+                    <option value="once">Einmalig</option>
+                    <option value="hourly">Stündlich</option>
+                    <option value="daily">Täglich</option>
+                    <option value="weekly">Wöchentlich</option>
+                    <option value="monthly">Monatlich</option>
+                  </select>
+                </label>
+                <label>Intervallwert<input id="terminalControlIntervalValue" type="number" min="1" max="365" value="1"></label>
+                <label>Startzeit<input id="terminalControlStartTime" type="time"></label>
+                <label>Zuständigkeit<input id="terminalControlResponsible" maxlength="80" placeholder="Rolle oder Person"></label>
+                <label>Status
+                  <select id="terminalControlStatus">
+                    <option value="ok">In Ordnung</option>
+                    <option value="due">Bald fällig</option>
+                    <option value="overdue">Überfällig</option>
+                  </select>
+                </label>
+                <label class="terminal-control-active-field"><input id="terminalControlActive" type="checkbox" checked> Aktiv</label>
+                <div class="terminal-control-form-actions">
+                  <button id="saveTerminalControl" class="primary" type="submit">Speichern</button>
+                  <button id="cancelTerminalControl" class="secondary" type="button">Abbrechen</button>
+                </div>
+              </form>
+              <div id="terminalControlDeleteConfirm" class="terminal-control-delete-confirm hidden"></div>
+              <div id="terminalControlManagementList" class="terminal-control-management-list"></div>
+            </section>
+          </section>
             </div>
           </div>
         </div>
@@ -677,7 +1158,6 @@
         <nav class="admin-workspace-tabs" aria-label="Admin-Arbeitsbereiche">
           <button class="admin-workspace-tab active" type="button" data-admin-workspace-tab="planning">Planung</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="reports">Tagesberichte</button>
-          <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="invoices">Rechnungen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="employees">Mitarbeiter Sicht</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="numbers">Monatszahlen</button>
           <button class="admin-workspace-tab" type="button" data-admin-workspace-tab="operations">Betrieb</button>
@@ -1318,6 +1798,19 @@
       </section>
     </main>
 
+    <div id="terminalToiletConfirm" class="terminal-toilet-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="terminalToiletConfirmTitle">
+      <section class="terminal-toilet-confirm-card">
+        <span class="terminal-toilet-confirm-icon" aria-hidden="true">WC</span>
+        <div>
+          <h2 id="terminalToiletConfirmTitle">Toiletten-Kontrolle jetzt bestätigen?</h2>
+        </div>
+        <div class="terminal-toilet-confirm-actions">
+          <button id="cancelTerminalToiletCheck" class="secondary" type="button">Abbrechen</button>
+          <button id="confirmTerminalToiletCheck" class="primary" type="button">Ja, jetzt kontrolliert</button>
+        </div>
+      </section>
+    </div>
+
     <div id="pinChangeOverlay" class="pin-change-overlay hidden" role="dialog" aria-modal="true">
       <section class="pin-change-card">
         <img class="login-card-logo" src="la-bowling-print-logo.png" alt="LA Bowling">
@@ -1372,7 +1865,7 @@
         }
       }
     </script>
-    <script src="teamapp-client.js?v=20260602-einteilung-reiter-v1"></script>
+    <script src="teamapp-client.js?v=20260801-timesheets-month-fix-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

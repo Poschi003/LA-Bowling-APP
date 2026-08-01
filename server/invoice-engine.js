@@ -205,6 +205,9 @@ function normalizeInvoiceRecord(invoice = {}, settings = DEFAULT_INVOICE_SETTING
     dueDate,
     paymentMethod,
     paymentStatus,
+    pentacodeEntered: invoice.pentacodeEntered === true || invoice.pentacodeEntered === "true"
+      ? "yes"
+      : (invoice.pentacodeEntered === false || invoice.pentacodeEntered === "false" ? "no" : safeText(invoice.pentacodeEntered, 12)),
     headline: safeText(invoice.headline || "Rechnung", 120) || "Rechnung",
     introText: safeText(invoice.introText || normalizedSettings.defaultText, 1200) || normalizedSettings.defaultText,
     note: safeText(invoice.note, 2000),
@@ -392,6 +395,7 @@ function createInvoiceDraftFromCustomer(customer = {}, sourceDate = "", settings
     serviceDate,
     dueDate: addDays(nowIso().slice(0, 10), normalizedSettings.paymentDays),
     paymentMethod: customer.paymentMethod || "",
+    pentacodeEntered: customer.pentacodeEntered,
     paymentStatus: customer.paymentMethod === "Bar" || customer.paymentMethod === "EC" ? "cash-paid" : "open",
     headline: "Rechnung",
     introText: normalizedSettings.defaultText,
@@ -877,6 +881,179 @@ async function sendInvoiceEmail(invoice = {}, settings = DEFAULT_INVOICE_SETTING
   }
 }
 
+async function buildInvoiceInfoPdfBuffer(invoice = {}, settings = DEFAULT_INVOICE_SETTINGS) {
+  const normalized = normalizeInvoiceRecord(invoice, settings);
+  const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([595.28, 841.89]);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const dark = rgb(0.07, 0.1, 0.16);
+  const muted = rgb(0.36, 0.41, 0.49);
+  const red = rgb(0.89, 0.02, 0.08);
+  const line = rgb(0.84, 0.87, 0.91);
+  const panel = rgb(0.965, 0.97, 0.98);
+  const totalPanel = rgb(1, 0.94, 0.95);
+  const margin = 40;
+  const right = page.getWidth() - margin;
+  const money = (value) => `${moneyNumber(value).toFixed(2).replace(".", ",")} €`;
+  const drawRight = (text, xRight, y, size = 10, usedFont = font, color = dark) => {
+    page.drawText(text, { x: xRight - usedFont.widthOfTextAtSize(text, size), y, size, font: usedFont, color });
+  };
+
+  const logoBytes = await loadLogoBytes(settings);
+  if (logoBytes?.buffer?.length) {
+    try {
+      const logo = logoBytes.mime.includes("png") ? await pdf.embedPng(logoBytes.buffer) : await pdf.embedJpg(logoBytes.buffer);
+      const scale = Math.min(1, 170 / logo.width, 62 / logo.height);
+      page.drawImage(logo, { x: margin, y: 760, width: logo.width * scale, height: logo.height * scale });
+    } catch (error) {
+      page.drawText("LA-BOWLING", { x: margin, y: 788, size: 22, font: bold, color: dark });
+    }
+  } else {
+    page.drawText("LA-BOWLING", { x: margin, y: 788, size: 22, font: bold, color: dark });
+  }
+
+  page.drawText("Bitte eine Rechnung schreiben", { x: margin, y: 728, size: 23, font: bold, color: dark });
+  page.drawText("Kunde auf Rechnung wurde in der TeamApp erfasst und ist bereit für die Rechnungsschreibung.", { x: margin, y: 708, size: 8.5, font, color: muted });
+
+  const panelY = 566;
+  page.drawRectangle({ x: margin, y: panelY, width: right - margin, height: 118, color: panel });
+  page.drawText("RECHNUNGSANSCHRIFT", { x: margin + 12, y: panelY + 96, size: 7.5, font: bold, color: muted });
+  const addressLines = [normalized.customerName || "-", ...String(normalized.customerAddress || "-").split("\n")].filter(Boolean);
+  addressLines.slice(0, 5).forEach((text, index) => page.drawText(text, {
+    x: margin + 12,
+    y: panelY + 76 - (index * 15),
+    size: index === 0 ? 12 : 10,
+    font: index === 0 ? bold : font,
+    color: dark
+  }));
+  const contactX = 318;
+  page.drawText("RECHNUNGS-E-MAIL", { x: contactX, y: panelY + 96, size: 7.5, font: bold, color: muted });
+  drawWrapped(page, bold, normalized.customerEmail || "-", contactX, panelY + 76, 225, 9, dark, 12);
+  page.drawText("ANSPRECHPARTNER", { x: contactX, y: panelY + 48, size: 7.5, font, color: muted });
+  page.drawText("TELEFON", { x: 445, y: panelY + 48, size: 7.5, font, color: muted });
+  page.drawText(normalized.customerContact || "-", { x: contactX, y: panelY + 30, size: 9.5, font: bold, color: dark });
+  page.drawText(normalized.customerPhone || "-", { x: 445, y: panelY + 30, size: 9.5, font: bold, color: dark });
+
+  const category = { bowling: 0, food: 0, drinks: 0, other: 0, tip: 0 };
+  for (const position of normalized.positions || []) {
+    const amount = invoiceLineGross(position);
+    const description = String(position.description || "").toLowerCase();
+    const article = String(position.articleNumber || "").toLowerCase();
+    if (article === "tip" || /\btip+p?\b/.test(description)) category.tip += amount;
+    else if (/bowling|bahn/.test(description)) category.bowling += amount;
+    else if (/getränk|getraenk|drink/.test(description)) category.drinks += amount;
+    else if (/speise|essen|food/.test(description)) category.food += amount;
+    else category.other += amount;
+  }
+  const gastroTotal = category.food + category.drinks + category.other;
+  const total = category.bowling + gastroTotal + category.tip;
+  let y = 528;
+  page.drawText("Beträge", { x: margin, y, size: 12, font: bold, color: dark });
+  y -= 16;
+  const amountRows = [
+    ["Bowling", category.bowling, false],
+    ["Speisen", category.food, false],
+    ["Getränke", category.drinks, false],
+    ["Sonstiges", category.other, false],
+    ["Gastro gesamt", gastroTotal, true],
+    ["Tipp", category.tip, false]
+  ];
+  for (const [label, value, emphasize] of amountRows) {
+    page.drawLine({ start: { x: margin, y }, end: { x: right, y }, thickness: 0.7, color: line });
+    page.drawText(label, { x: margin + 10, y: y - 18, size: 9.5, font: emphasize ? bold : font, color: muted });
+    drawRight(money(value), right - 10, y - 18, 10, emphasize ? bold : font, dark);
+    y -= 30;
+  }
+
+  page.drawRectangle({ x: margin, y: y - 46, width: right - margin, height: 46, color: totalPanel });
+  page.drawText("Rechnungsbetrag", { x: margin + 12, y: y - 28, size: 11, font: bold, color: red });
+  drawRight(money(total), right - 12, y - 31, 18, bold, red);
+  y -= 82;
+
+  page.drawText("Weitere Angaben", { x: margin, y, size: 12, font: bold, color: dark });
+  y -= 15;
+  const pentacode = normalized.pentacodeEntered === "yes" ? "Ja" : (normalized.pentacodeEntered === "no" ? "Nein" : "-");
+  const detailRows = [
+    ["Zahlungsart", normalized.paymentMethod || "-"],
+    ["In Pentacode eingetragen", pentacode],
+    ["Zuordnung", `Tagesbericht ${formatDateLabel(normalized.sourceDate || normalized.serviceDate)}`],
+    ["Hinweis", normalized.note || "-"]
+  ];
+  for (const [label, value] of detailRows) {
+    page.drawLine({ start: { x: margin, y }, end: { x: right, y }, thickness: 0.7, color: line });
+    page.drawText(label, { x: margin + 10, y: y - 17, size: 9, font, color: muted });
+    const valueLines = wrapText(bold, value, 9.5, 340).slice(0, 2);
+    valueLines.forEach((text, index) => drawRight(text, right - 10, y - 17 - (index * 12), 9.5, bold, dark));
+    y -= Math.max(28, valueLines.length * 12 + 10);
+  }
+  page.drawLine({ start: { x: margin, y }, end: { x: right, y }, thickness: 0.7, color: line });
+
+  page.drawText("Der in der TeamApp gespeicherte Originalbeleg befindet sich in der separaten Beleg-PDF.", { x: margin, y: 43, size: 8, font, color: muted });
+  drawRight("LA-Bowling TeamApp", right, 43, 8, font, muted);
+
+  const safeName = safeText(normalized.customerName || "rechnung", 80).replace(/[^a-z0-9äöüß_-]+/gi, "-").replace(/^-+|-+$/g, "") || "rechnung";
+  return {
+    buffer: Buffer.from(await pdf.save()),
+    fileName: `Rechnungsinformationen-${safeName}-${normalized.sourceDate || normalized.invoiceDate}.pdf`
+  };
+}
+
+async function buildInvoiceAttachmentsPdfBuffer(invoice = {}, settings = DEFAULT_INVOICE_SETTINGS) {
+  const normalized = normalizeInvoiceRecord(invoice, settings);
+  const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
+  const output = await PDFDocument.create();
+  const font = await output.embedFont(StandardFonts.Helvetica);
+  const bold = await output.embedFont(StandardFonts.HelveticaBold);
+  let added = 0;
+
+  for (const attachment of normalized.attachments || []) {
+    const file = await attachmentToMailFile(attachment);
+    if (!file?.content?.length) continue;
+    const mime = String(file.contentType || attachment.mime || "").toLowerCase();
+    const name = file.filename || attachment.name || attachment.label || "Beleg";
+    try {
+      if (mime.includes("pdf") || /\.pdf$/i.test(name)) {
+        const source = await PDFDocument.load(file.content);
+        const pages = await output.copyPages(source, source.getPageIndices());
+        pages.forEach((page) => output.addPage(page));
+        added += pages.length;
+        continue;
+      }
+      const image = mime.includes("png") || /\.png$/i.test(name)
+        ? await output.embedPng(file.content)
+        : await output.embedJpg(file.content);
+      const page = output.addPage([595.28, 841.89]);
+      page.drawText(name, { x: 36, y: 806, size: 11, font: bold, color: rgb(0.08, 0.11, 0.16) });
+      const maxWidth = 523;
+      const maxHeight = 744;
+      const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+      const width = image.width * scale;
+      const height = image.height * scale;
+      page.drawImage(image, { x: (595.28 - width) / 2, y: 42 + (maxHeight - height) / 2, width, height });
+      added += 1;
+    } catch (error) {
+      const page = output.addPage([595.28, 841.89]);
+      page.drawText("Beleg konnte nicht eingebettet werden", { x: 48, y: 760, size: 16, font: bold });
+      page.drawText(name, { x: 48, y: 730, size: 11, font, color: rgb(0.35, 0.4, 0.48) });
+      added += 1;
+    }
+  }
+
+  if (!added) {
+    const page = output.addPage([595.28, 841.89]);
+    page.drawText("LA-Bowling", { x: 48, y: 770, size: 20, font: bold });
+    page.drawText("Keine Rechnungsbelege hinterlegt.", { x: 48, y: 730, size: 13, font });
+  }
+
+  const safeName = safeText(normalized.customerName || "rechnung", 80).replace(/[^a-z0-9äöüß_-]+/gi, "-").replace(/^-+|-+$/g, "") || "rechnung";
+  return {
+    buffer: Buffer.from(await output.save()),
+    fileName: `Belege-${safeName}-${normalized.sourceDate || normalized.invoiceDate}.pdf`
+  };
+}
+
 function escapeHtml(value) {
   return String(value == null ? "" : value)
     .replace(/&/g, "&amp;")
@@ -888,6 +1065,8 @@ function escapeHtml(value) {
 module.exports = {
   DEFAULT_INVOICE_SETTINGS,
   archiveInvoiceRecord,
+  buildInvoiceAttachmentsPdfBuffer,
+  buildInvoiceInfoPdfBuffer,
   buildInvoiceMailHtml,
   buildInvoicePdfBuffer,
   createBlankInvoiceDraft,
