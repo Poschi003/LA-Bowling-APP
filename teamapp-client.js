@@ -8906,8 +8906,40 @@ function showClosingDocumentsHint(message) {
   hint.classList.remove("hidden");
 }
 
+const SCANNER_URL_STORAGE_KEY = "laBowlingScannerUrl";
+const DEFAULT_NETWORK_SCANNER_URL = "http://192.168.2.199:5055";
+
+function scannerAppUrl() {
+  const saved = String(localStorage.getItem(SCANNER_URL_STORAGE_KEY) || "").trim();
+  if (/^https?:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(saved)) return saved.replace(/\/$/, "");
+  return ["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? "http://localhost:5055"
+    : DEFAULT_NETWORK_SCANNER_URL;
+}
+
+function scannerAppOrigin() {
+  try {
+    return new URL(scannerAppUrl()).origin;
+  } catch (_) {
+    return "";
+  }
+}
+
+function configureScannerApp() {
+  const value = window.prompt("Adresse des Scanner-PCs", scannerAppUrl());
+  if (value == null) return false;
+  const normalized = String(value || "").trim().replace(/\/$/, "");
+  if (!/^https?:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(normalized)) {
+    showToast("Bitte eine vollständige Scanner-Adresse eingeben, z.B. http://192.168.2.199:5055");
+    return false;
+  }
+  localStorage.setItem(SCANNER_URL_STORAGE_KEY, normalized);
+  showToast("Scanner-Adresse gespeichert.");
+  return true;
+}
+
 window.addEventListener("message", (event) => {
-  if (event.origin !== "http://localhost:5055" || event.data?.type !== "la-bowling-scanner-document") return;
+  if (event.origin !== scannerAppOrigin() || event.data?.type !== "la-bowling-scanner-document") return;
   const invoiceRow = event.data.invoiceId
     ? $$("#invoiceCustomersList [data-report-entry='invoice']").find((item) => item.dataset.id === event.data.invoiceId)
     : null;
@@ -19950,7 +19982,7 @@ function bindEvents() {
         invoiceId: row.dataset.id || "",
         returnOrigin: window.location.origin
       });
-      const scannerWindow = window.open(`http://localhost:5055/?${params}`, "laBowlingInvoiceScanner", "popup,width=1180,height=820");
+      const scannerWindow = window.open(`${scannerAppUrl()}/?${params}`, "laBowlingInvoiceScanner", "popup,width=1180,height=820");
       if (!scannerWindow) showToast("Scanner konnte nicht geöffnet werden. Pop-ups bitte erlauben.");
       return;
     }
@@ -19978,8 +20010,12 @@ function bindEvents() {
       category,
       returnOrigin: window.location.origin
     });
-    const scannerWindow = window.open(`http://localhost:5055/?${params}`, "laBowlingScanner", "popup,width=1180,height=820");
+    const scannerWindow = window.open(`${scannerAppUrl()}/?${params}`, "laBowlingScanner", "popup,width=1180,height=820");
     if (!scannerWindow) showClosingDocumentsHint("Scanner konnte nicht geöffnet werden. Pop-ups bitte erlauben.");
+  });
+
+  $$('[data-configure-scanner]').forEach((button) => {
+    button.addEventListener("click", configureScannerApp);
   });
 
   $("#completeClosingDocuments")?.addEventListener("click", () => {

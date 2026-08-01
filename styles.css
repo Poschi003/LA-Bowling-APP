@@ -15572,6 +15572,16 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-nav-management {
 .closing-documents-head p { margin: 0; }
 .closing-documents-head label { min-width: 240px; }
 .closing-documents-guide { max-width: 310px; text-align: right; }
+.closing-documents-connection {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.closing-documents-connection .secondary {
+  flex: 0 0 auto;
+  min-height: 36px;
+}
 
 .closing-document-type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .closing-document-type {
