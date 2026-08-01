@@ -147,7 +147,9 @@ async function adminCloseCorrection(body, res) {
 async function load(body, res, session = {}) {
   const appData = await readAppData();
   if (require("./_data").syncReportTipsToTimesheets(appData)) await writeAppData(appData);
-  const date = session.correctionDate || activeTerminalDate(appData, cleanDate(body.date));
+  const requestedDate = cleanDate(body.date);
+  const date = session.correctionDate
+    || (body.manualDate === true ? manuallySelectedTerminalDate(appData, requestedDate) : activeTerminalDate(appData, requestedDate));
   sendJson(res, 200, terminalPayload(appData, date));
 }
 
@@ -1221,11 +1223,19 @@ function activeTerminalDate(appData, requestedDate) {
   const today = localDate(new Date());
   const requested = cleanDate(requestedDate);
   const requestedReport = appData.dayReports?.[requested];
-  if (requested === today) return today;
-  if (requested && requested !== today && !requestedReport) return requested;
-  if (requestedReport && !requestedReport.closed && !requestedReport.correctionOpen) return requested;
   const openDates = openTerminalDates(appData, requested);
-  return openDates.at(-1) || today;
+  const carriedOpenDate = openDates.filter((dateKey) => dateKey < today).at(-1);
+  if (requested === today && carriedOpenDate) return carriedOpenDate;
+  if (requestedReport && !requestedReport.closed && !requestedReport.correctionOpen) return requested;
+  return openDates.at(-1) || requested || today;
+}
+
+function manuallySelectedTerminalDate(appData, requestedDate) {
+  const today = localDate(new Date());
+  const requested = cleanDate(requestedDate) || today;
+  const requestedReport = appData.dayReports?.[requested];
+  if (!requestedReport || (!requestedReport.closed && !requestedReport.correctionOpen)) return requested;
+  return activeTerminalDate(appData, requested);
 }
 
 function openTerminalDates(appData, requestedDate) {

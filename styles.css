@@ -14021,13 +14021,14 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-side-brand img {
   background: rgba(255, 255, 255, 0.15);
 }
 
-.terminal-sidebar-date-control input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  min-height: 0;
+.terminal-sidebar-date-picker {
+  position: fixed;
+  top: -100px;
+  left: -100px;
+  width: 1px;
+  height: 1px;
   opacity: 0;
-  cursor: pointer;
+  pointer-events: none;
 }
 
 .terminal-sidebar-opening {

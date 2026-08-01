@@ -15282,7 +15282,7 @@ async function loadTerminalWorkDate(dateKey, button = null) {
     button.textContent = "Lädt...";
   }
   try {
-    const result = await terminalAction({ action: "load", date: requestedDate });
+    const result = await terminalAction({ action: "load", date: requestedDate, manualDate: true });
     if (result.date && result.date !== requestedDate) {
       showToast("Dieser Tag ist bereits abgeschlossen. Bitte dafür den Admin-Korrekturmodus verwenden.");
     } else if (previousDate !== requestedDate) {
@@ -18825,7 +18825,7 @@ function bindEvents() {
     if (event.target.closest("[data-focus-terminal-date-picker]")) {
       const picker = $("#terminalSidebarDatePicker") || $("#terminalDatePicker");
       if (typeof picker?.showPicker === "function") picker.showPicker();
-      else picker?.focus();
+      else picker?.click();
       return;
     }
     const openEmployees = event.target.closest("[data-open-terminal-employees]");
@@ -20190,6 +20190,9 @@ function bindEvents() {
     try {
       await terminalAction(await collectDayReportPayload());
       await terminalAction({ action: "close-report" });
+      if ((state.terminalDate || "") < todayKey()) {
+        await terminalAction({ action: "load", date: todayKey(), manualDate: true });
+      }
       showToast("Tagesbericht abgeschlossen.");
     } catch (error) {
       button.textContent = oldText;
