@@ -7093,6 +7093,39 @@ body.terminal-mode:not(.terminal-login-mode) #terminalFinanceSection {
   align-items: stretch;
 }
 
+.closing-data-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.closing-data-save-row span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.closing-data-save-row button {
+  min-width: 180px;
+}
+
+@media (max-width: 720px) {
+  .closing-data-save-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .closing-data-save-row button {
+    width: 100%;
+  }
+}
+
 .finance-dashboard-card,
 .finance-documents-section {
   min-width: 0;

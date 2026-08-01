@@ -20033,8 +20033,8 @@ function bindEvents() {
     });
   });
 
-  $("#saveDayReport")?.addEventListener("click", async () => {
-    const button = $("#saveDayReport");
+  async function saveClosingData(button) {
+    if (!button) return;
     const oldText = button.textContent;
     button.disabled = true;
     button.textContent = "Speichert...";
@@ -20053,7 +20053,10 @@ function bindEvents() {
         button.disabled = false;
       }, 300);
     }
-  });
+  }
+
+  $("#saveDayReport")?.addEventListener("click", () => saveClosingData($("#saveDayReport")));
+  $("#saveClosingData")?.addEventListener("click", () => saveClosingData($("#saveClosingData")));
 
   ["#reportCashTotal", "#reportCashExpenses", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportBowlingCashRevenue", "#reportRevenueGastro"].forEach((selector) => {
     $(selector)?.addEventListener("input", updateReportBarTotal);
