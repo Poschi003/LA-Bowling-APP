@@ -5961,10 +5961,24 @@ function offerTimelineScaleMarkup(events = []) {
   const minMinutes = Math.min(...minutes);
   const maxMinutes = Math.max(...minutes);
   const span = Math.max(60, maxMinutes - minMinutes);
-  const points = grouped.map((group, index) => {
+  const rawPositions = grouped.map((group) => {
     const value = offerTimeMinutesValue(group.time) ?? minMinutes;
     const ratio = grouped.length === 1 ? 0.5 : (value - minMinutes) / span;
-    const left = 4 + Math.max(0, Math.min(1, ratio)) * 92;
+    return 4 + Math.max(0, Math.min(1, ratio)) * 92;
+  });
+  const minGap = grouped.length > 1 ? Math.min(18, 88 / (grouped.length - 1)) : 0;
+  const positions = [...rawPositions];
+  for (let index = 1; index < positions.length; index += 1) {
+    positions[index] = Math.max(positions[index], positions[index - 1] + minGap);
+  }
+  if (positions.at(-1) > 96) {
+    positions[positions.length - 1] = 96;
+    for (let index = positions.length - 2; index >= 0; index -= 1) {
+      positions[index] = Math.min(rawPositions[index], positions[index + 1] - minGap);
+    }
+  }
+  const points = grouped.map((group, index) => {
+    const left = positions[index];
     const palette = index % 3 === 1 ? "gold" : index % 3 === 2 ? "dark" : "red";
     const items = group.events.map((item) => `
       <div class="scale-entry">
@@ -6026,6 +6040,7 @@ function printOfferDraft() {
   `).join("");
   const costs = (draft.costs || []).map((item) => `
     <tr>
+      <td></td>
       <td>${escapeHtml(item.label || "—")}</td>
       <td>${escapeHtml(item.quantity || 0)}</td>
       <td>${formatMoney(item.unitPrice || 0)}</td>
@@ -6051,27 +6066,34 @@ function printOfferDraft() {
     : "";
   const bowlingCostRows = bowling.laneCost > 0 || bowling.shoeCost > 0 || bowling.tournamentCost > 0
     ? `
-      ${bowling.laneCost > 0 ? `<tr><td>Bowling Bahnen</td><td>${escapeHtml(`${draft.bowling?.lanes || 0} Bahn(en) · ${bowling.durationLabel}`)}</td><td>laut Tarif</td><td>${formatMoney(bowling.laneCost)}</td></tr>` : ""}
-      ${bowling.shoeCost > 0 ? `<tr><td>Leihschuhe</td><td>${escapeHtml(String(draft.bowling?.shoePersons || 0))}</td><td>${formatMoney(OFFER_BOWLING_SHOE_PRICE)}</td><td>${formatMoney(bowling.shoeCost)}</td></tr>` : ""}
-      ${bowling.tournamentCost > 0 ? `<tr><td>${escapeHtml(bowling.tournamentPackageLabel || "Turnierpaket")}</td><td>${escapeHtml(bowling.tournamentPackageDescription || "Zusatzpaket")}</td><td>pauschal</td><td>${formatMoney(bowling.tournamentCost)}</td></tr>` : ""}
+      ${bowling.laneCost > 0 ? `<tr><td></td><td>Bowling Bahnen<br><small>${escapeHtml(`${draft.bowling?.lanes || 0} Bahn(en) · ${bowling.durationLabel}`)}</small></td><td>${escapeHtml(String(draft.bowling?.lanes || 0))}</td><td>laut Tarif</td><td>${formatMoney(bowling.laneCost)}</td></tr>` : ""}
+      ${bowling.shoeCost > 0 ? `<tr><td></td><td>Leihschuhe</td><td>${escapeHtml(String(draft.bowling?.shoePersons || 0))}</td><td>${formatMoney(OFFER_BOWLING_SHOE_PRICE)}</td><td>${formatMoney(bowling.shoeCost)}</td></tr>` : ""}
+      ${bowling.tournamentCost > 0 ? `<tr><td></td><td>${escapeHtml(bowling.tournamentPackageLabel || "Turnierpaket")}<br><small>${escapeHtml(bowling.tournamentPackageDescription || "Zusatzpaket")}</small></td><td>1</td><td>${formatMoney(bowling.tournamentCost)}</td><td>${formatMoney(bowling.tournamentCost)}</td></tr>` : ""}
     `
     : "";
   const buffetCostRows = buffetPricing.buffetBaseTotal > 0 || buffetPricing.sparklingReceptionTotal > 0
     ? `
-      ${buffetPricing.adults > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td>Buffet Erwachsene</td><td>${escapeHtml(String(buffetPricing.adults))}</td><td>${formatMoney(buffetPricing.pricePerPerson)}</td><td>${formatMoney(buffetPricing.adults * buffetPricing.pricePerPerson)}</td></tr>` : ""}
-      ${buffetPricing.children > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td>Buffet Kinder unter 12</td><td>${escapeHtml(String(buffetPricing.children))}</td><td>${formatMoney(buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
-      ${draft.buffet?.sparklingReception && buffetPricing.adults > 0 ? `<tr><td>Sektempfang Erwachsene</td><td>${escapeHtml(String(buffetPricing.adults))}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE)}</td><td>${formatMoney(buffetPricing.adults * OFFER_SPARKLING_RECEPTION_PRICE)}</td></tr>` : ""}
-      ${draft.buffet?.sparklingReception && buffetPricing.children > 0 ? `<tr><td>Sektempfang Kinder unter 12</td><td>${escapeHtml(String(buffetPricing.children))}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
+      ${buffetPricing.adults > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td></td><td>Buffet Erwachsene</td><td>${escapeHtml(String(buffetPricing.adults))}</td><td>${formatMoney(buffetPricing.pricePerPerson)}</td><td>${formatMoney(buffetPricing.adults * buffetPricing.pricePerPerson)}</td></tr>` : ""}
+      ${buffetPricing.children > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td></td><td>Buffet Kinder unter 12</td><td>${escapeHtml(String(buffetPricing.children))}</td><td>${formatMoney(buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
+      ${draft.buffet?.sparklingReception && buffetPricing.adults > 0 ? `<tr><td></td><td>Sektempfang Erwachsene</td><td>${escapeHtml(String(buffetPricing.adults))}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE)}</td><td>${formatMoney(buffetPricing.adults * OFFER_SPARKLING_RECEPTION_PRICE)}</td></tr>` : ""}
+      ${draft.buffet?.sparklingReception && buffetPricing.children > 0 ? `<tr><td></td><td>Sektempfang Kinder unter 12</td><td>${escapeHtml(String(buffetPricing.children))}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
     `
     : "";
   const reservedAreaCostRows = reservedAreaPricing.roomFee > 0 || reservedAreaPricing.campfireFee > 0
     ? `
-      ${reservedAreaPricing.roomFee > 0 ? `<tr><td>${escapeHtml(reservedAreaPricing.roomFeeLabel || "Raummiete")}</td><td>1</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td></tr>` : ""}
-      ${reservedAreaPricing.campfireFee > 0 ? `<tr><td>Lagerfeuerstelle mit Feuerholz</td><td>1</td><td>${formatMoney(OFFER_CAMPFIRE_PRICE)}</td><td>${formatMoney(reservedAreaPricing.campfireFee)}</td></tr>` : ""}
+      ${reservedAreaPricing.roomFee > 0 ? `<tr><td></td><td>${escapeHtml(reservedAreaPricing.roomFeeLabel || "Raummiete")}</td><td>1</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td></tr>` : ""}
+      ${reservedAreaPricing.campfireFee > 0 ? `<tr><td></td><td>Lagerfeuerstelle mit Feuerholz</td><td>1</td><td>${formatMoney(OFFER_CAMPFIRE_PRICE)}</td><td>${formatMoney(reservedAreaPricing.campfireFee)}</td></tr>` : ""}
     `
     : "";
   const personsSummary = totals.children ? `${totals.adults} + ${totals.children} Kinder` : `${totals.personCount || 0}`;
   const venueInfo = [reservedAreaPricing.reservedAreaLabel, draft.additionalInfo].filter(Boolean).join("\n\n");
+  const includedServices = [
+    bowling.total > 0 ? ["Bowling", [draft.bowling?.lanes ? `${draft.bowling.lanes} Bahn(en)` : "", bowling.durationLabel].filter(Boolean).join(" · ")] : null,
+    buffetPricing.buffetBaseTotal > 0 ? ["Buffet", [draft.buffet?.name || "Buffet", `${personsSummary} Personen`].filter(Boolean).join(" · ")] : null,
+    reservedAreaPricing.reservedAreaLabel ? ["Reservierter Bereich", reservedAreaPricing.reservedAreaLabel] : null,
+    bowling.tournamentCost > 0 ? [bowling.tournamentPackageLabel || "Turnierpaket", bowling.tournamentPackageDescription || ""] : null,
+    reservedAreaPricing.campfireFee > 0 ? ["Lagerfeuerstelle", "inklusive Feuerholz"] : null
+  ].filter(Boolean);
   win.document.write(`
     <!doctype html>
     <html lang="de">
@@ -6083,74 +6105,80 @@ function printOfferDraft() {
           @page { size: A4 portrait; margin: 0; }
           * { box-sizing: border-box; }
           html, body { margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; color: #161616; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .sheet { width: 210mm; min-height: 297mm; height: 297mm; padding: 0 11mm 8mm; position: relative; background: #fff; display: flex; flex-direction: column; gap: 4mm; overflow: hidden; }
+          body { font-family: Inter, Arial, Helvetica, sans-serif; color: #121a2a; background: #eef1f5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .sheet { width: 210mm; min-height: 297mm; height: 297mm; margin: 0 auto; padding: 0 12mm 9mm; position: relative; background: #fff; display: flex; flex-direction: column; gap: 4mm; overflow: hidden; }
           .sheet + .sheet { page-break-before: always; margin-top: 0; }
-          .header { margin: 0 -11mm 4mm; height: 34mm; display: grid; grid-template-columns: 1.48fr 0.82fr; overflow: hidden; }
-          .header-left { position: relative; background: linear-gradient(135deg, #111 0%, #1f1f1f 60%, #151515 100%); color: #fff; padding: 6.5mm 9mm 4.5mm 11mm; }
-          .header-left::before { content: ""; position: absolute; inset: 0; background:
-            linear-gradient(130deg, transparent 0 42%, rgba(168,136,72,0.22) 42% 49%, transparent 49% 100%),
-            repeating-linear-gradient(130deg, transparent 0 18px, rgba(255,255,255,0.08) 18px 20px, transparent 20px 60px); pointer-events: none; }
-          .header-left > * { position: relative; z-index: 1; }
-          .header-right { position: relative; background: #b8202c; color: #fff; padding: 6.5mm 11mm 4.5mm 8mm; clip-path: polygon(16% 0, 100% 0, 100% 100%, 0 100%); display: flex; flex-direction: column; justify-content: center; }
-          .header-logo { width: 68mm; max-width: 100%; filter: brightness(0) invert(1); }
-          .header-contact { margin-top: 3.5mm; font-size: 9px; letter-spacing: 0.02em; }
-          .header-offer-title { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
-          .header-offer-date { margin-top: 2.5mm; font-size: 9px; }
-          .page-title { margin: 0 0 1.5mm; font-size: 20px; font-weight: 700; }
+          .header { margin: 0 -12mm 4mm; height: 29mm; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(54mm, .7fr); overflow: hidden; border-bottom: 1.5mm solid #e30613; background: #0b1c2e; color: #fff; }
+          .header.compact { height: 23mm; }
+          .header-left { display: flex; align-items: center; min-width: 0; padding: 4mm 7mm 3mm 12mm; }
+          .header-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding: 5mm 12mm 4mm 6mm; text-align: right; border-left: 1px solid rgba(255,255,255,.14); }
+          .header-logo { width: 61mm; max-width: 100%; max-height: 18mm; object-fit: contain; filter: brightness(0) invert(1); }
+          .header-contact { margin-top: 1.5mm; max-width: 60mm; font-size: 8.2px; line-height: 1.45; color: #dbe5ef; }
+          .title-row { display: flex; justify-content: space-between; align-items: flex-end; margin: 0 0 1mm; }
+          .page-title { margin: 0; font-size: 21px; line-height: 1.15; font-weight: 750; color: #0b1c2e; }
+          .offer-date { font-size: 9px; color: #667085; }
           .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 4.5mm; }
-          .template-card { border: 1px solid #ddd3c8; border-radius: 6mm; padding: 4.5mm 5mm; background: #fff; page-break-inside: avoid; }
+          .template-card { border: 1px solid #dfe5ec; border-radius: 2.5mm; padding: 4mm 4.5mm; background: #fff; page-break-inside: avoid; }
           .template-card + .template-card { margin-top: 4.5mm; }
-          .section-title { display: flex; align-items: center; gap: 8px; margin: 0 0 3mm; font-size: 14px; font-weight: 700; }
-          .section-title::before { content: ""; width: 6px; height: 24px; border-radius: 4px; background: linear-gradient(180deg, #ef4d59 0%, #be1d2b 100%); display: inline-block; flex: none; }
-          .muted { color: #6d6b68; }
+          .section-title { display: flex; align-items: center; gap: 7px; margin: 0 0 2.5mm; font-size: 13px; font-weight: 750; color: #0b1c2e; }
+          .section-title::before { content: ""; width: 3px; height: 15px; border-radius: 2px; background: #e30613; display: inline-block; flex: none; }
+          .muted { color: #667085; }
           .event-grid { display: grid; grid-template-columns: 100px 1fr; row-gap: 4px; column-gap: 10px; font-size: 11px; }
-          .event-grid strong { color: #77716a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
-          .scale-wrap { position: relative; margin-top: 2.5mm; min-height: 46mm; padding: 6mm 3mm 0; }
-          .scale-line { position: absolute; left: 4%; right: 4%; top: 18mm; height: 2px; background: #c8a764; }
-          .scale-point { position: absolute; top: 0; transform: translateX(-50%); width: 30mm; text-align: center; }
-          .scale-time { font-size: 10px; font-weight: 700; margin-bottom: 6mm; }
-          .scale-dot { width: 8mm; height: 8mm; border-radius: 999px; margin: 0 auto 4.5mm; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.08); }
-          .scale-dot.is-red { background: #be1d2b; }
-          .scale-dot.is-gold { background: #c8a764; }
-          .scale-dot.is-dark { background: #111; }
-          .scale-stack { display: grid; gap: 2.5mm; }
+          .event-grid strong { color: #667085; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; }
+          .scale-wrap { position: relative; margin-top: 1mm; min-height: 39mm; padding: 5mm 3mm 0; }
+          .scale-line { position: absolute; left: 4%; right: 4%; top: 15.5mm; height: 1px; background: #aeb9c6; }
+          .scale-point { position: absolute; top: 0; transform: translateX(-50%); width: clamp(22mm, 16%, 30mm); text-align: center; }
+          .scale-time { font-size: 9.5px; font-weight: 750; color: #0b1c2e; margin-bottom: 4.7mm; }
+          .scale-dot { width: 5mm; height: 5mm; border-radius: 50%; margin: 0 auto 3.5mm; border: 1.2mm solid #fff; background: #e30613; box-shadow: 0 0 0 .5mm #e30613; }
+          .scale-dot.is-red, .scale-dot.is-gold, .scale-dot.is-dark { background: #e30613; }
+          .scale-stack { display: grid; gap: 2mm; padding: 1.8mm; border: 1px solid #e4e9ef; border-radius: 1.8mm; background: #f8fafc; }
           .scale-entry { display: grid; gap: 1px; }
-          .scale-label { font-size: 9.6px; font-weight: 700; line-height: 1.25; }
-          .scale-note { font-size: 8.7px; color: #6d6b68; line-height: 1.25; }
+          .scale-label { font-size: 9px; font-weight: 700; line-height: 1.2; }
+          .scale-note { font-size: 8px; color: #667085; line-height: 1.2; }
           .buffet-layout { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4mm; align-items: start; }
           .buffet-col h4 { margin: 0 0 2mm; font-size: 12px; text-align: center; }
           .buffet-col ul { list-style: none; margin: 0; padding: 0; font-size: 10px; line-height: 1.45; text-align: center; }
           .buffet-col li + li { margin-top: 2.5mm; }
           .buffet-col span { display: block; font-size: 9px; color: #6d6b68; }
           .buffet-meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 3mm; }
-          .buffet-badge { padding: 2.5mm 8mm; border-radius: 999px; background: #efe7da; color: #7c6962; font-size: 10px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; }
-          .price-pill { margin-top: 4mm; text-align: right; font-size: 10px; font-weight: 700; }
-          .price-pill small { display: block; font-size: 9px; color: #6d6b68; font-weight: 400; }
+          .buffet-heading { display: flex; align-items: center; gap: 3mm; flex-wrap: wrap; }
+          .buffet-badge { padding: 1.8mm 4mm; border-radius: 999px; background: #f2f4f7; color: #344054; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+          .buffet-price { min-width: 33mm; text-align: right; color: #0b1c2e; font-size: 14px; font-weight: 750; }
+          .buffet-price small { display: block; margin-top: .5mm; color: #667085; font-size: 8px; font-weight: 500; }
+          .services-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; }
+          .service-item { padding-left: 3mm; border-left: 2px solid #e30613; font-size: 9px; line-height: 1.35; }
+          .service-item strong { display: block; margin-bottom: .8mm; color: #0b1c2e; font-size: 10px; }
           .details-copy { white-space: pre-line; font-size: 10px; line-height: 1.45; }
-          .footer { margin-top: auto; padding-top: 3mm; border-top: 1px solid #ddd3c8; display: flex; justify-content: space-between; font-size: 9px; color: #6d6b68; }
+          .footer { margin-top: auto; padding-top: 3mm; border-top: 1px solid #dfe5ec; display: flex; justify-content: space-between; font-size: 8.5px; color: #667085; }
           .cost-card { margin-top: 0; }
-          .cost-table { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 11px; }
-          .cost-table th { text-align: left; font-size: 10px; text-transform: uppercase; color: #77716a; padding: 0 0 2.5mm; }
-          .cost-table td { padding: 1.5mm 0; vertical-align: top; border-bottom: 1px solid #f0ebe3; }
+          .cost-table { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 10px; counter-reset: offer-position; }
+          .cost-table th { text-align: left; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; color: #fff; padding: 2.2mm 1.5mm; background: #0b1c2e; border-bottom: 1px solid #0b1c2e; }
+          .cost-table td { padding: 1.8mm 1.5mm; vertical-align: top; border-bottom: 1px solid #e7ebf0; }
+          .cost-table tbody tr { counter-increment: offer-position; page-break-inside: avoid; }
+          .cost-table tbody td:first-child::before { content: counter(offer-position); }
+          .cost-table small { color: #667085; font-size: 8px; line-height: 1.3; }
           .cost-table td:last-child, .cost-table th:last-child { text-align: right; }
-          .cost-table td:nth-child(2), .cost-table th:nth-child(2),
+          .cost-table td:nth-child(1), .cost-table th:nth-child(1),
           .cost-table td:nth-child(3), .cost-table th:nth-child(3) { text-align: center; }
+          .cost-table td:nth-child(4), .cost-table th:nth-child(4) { text-align: right; }
           .cost-note { margin-top: 3mm; font-size: 9px; color: #6d6b68; }
-          .total-line { margin-top: 5mm; display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 700; }
+          .total-line { width: 100%; margin: 4mm 0 0; padding: 3.2mm 4mm; display: flex; justify-content: space-between; align-items: center; background: #0b1c2e; color: #fff; font-size: 15px; font-weight: 750; }
           .big-heading { margin: 1mm 0 3mm; font-size: 22px; font-weight: 700; }
-          .summary-strip { width: 100%; margin: 0 0 4mm; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #ddd3c8; border-radius: 5mm; overflow: hidden; }
+          .summary-strip { width: 100%; margin: 0 0 4mm; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #dfe5ec; border-radius: 2.5mm; overflow: hidden; }
           .summary-strip > div { padding: 3mm 4mm; text-align: center; }
-          .summary-strip > div + div { border-left: 1px solid #e7ded2; }
+          .summary-strip > div + div { border-left: 1px solid #dfe5ec; }
           .summary-strip small { display: block; font-size: 9px; color: #77716a; text-transform: uppercase; margin-bottom: 1.5mm; }
           .summary-strip strong { font-size: 10px; }
-          .info-card { border: 1px solid #ddd3c8; border-radius: 5mm; padding: 4mm 5mm; margin: 0 0 4mm; width: 100%; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; align-items: stretch; }
+          .info-card { border: 1px solid #dfe5ec; border-radius: 2.5mm; padding: 3.5mm 4mm; margin: 0; width: 100%; background: #fbfcfd; }
           .info-card p { margin: 0; white-space: pre-line; font-size: 10px; line-height: 1.45; }
-          .signature-card { width: 100%; margin: 0 0 4mm; border: 1px solid #ddd3c8; border-radius: 5mm; padding: 4mm 5mm 6mm; }
-          .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin-top: 8mm; }
+          .signature-card { width: 100%; margin: 0 0 4mm; border: 1px solid #dfe5ec; border-radius: 2.5mm; padding: 4mm 5mm 6mm; }
+          .signature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5mm; margin-top: 8mm; }
           .signature-line { border-top: 1px solid #9f9b96; padding-top: 2mm; font-size: 9px; color: #6d6b68; min-height: 13mm; }
           .closing { width: 100%; margin: 2mm 0 0; font-size: 10px; }
           .closing strong { display: block; margin-top: 2mm; font-size: 13px; color: #161616; }
+          @media screen and (max-width: 850px) { body { overflow-x: auto; } .sheet { transform-origin: top left; } }
+          @media print { body { background: #fff; } .sheet { margin: 0; } }
         </style>
       </head>
       <body>
@@ -6158,14 +6186,16 @@ function printOfferDraft() {
           <div class="header">
             <div class="header-left">
               <img class="header-logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
-              <div class="header-contact">LA-Bowling · Röntgenstr. 12 · 84030 Landshut</div>
             </div>
             <div class="header-right">
-              <h1 class="header-offer-title">Angebot</h1>
-              <div class="header-offer-date">Angebotsdatum: ${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "-")}</div>
+              <strong>LA-Bowling</strong>
+              <div class="header-contact">Röntgenstr. 12 · 84030 Landshut</div>
             </div>
           </div>
-          <h2 class="page-title">Angebot</h2>
+          <div class="title-row">
+            <h2 class="page-title">Angebot</h2>
+            <div class="offer-date">Angebotsdatum: ${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "-")}</div>
+          </div>
           <div class="grid-two">
             <section class="template-card">
               <h3 class="section-title">Kunde</h3>
@@ -6185,8 +6215,11 @@ function printOfferDraft() {
           ${timelineScale ? `<section class="template-card"><h3 class="section-title">Ablauf</h3>${timelineScale}</section>` : ""}
           <section class="template-card">
             <div class="buffet-meta">
-              <h3 class="section-title">Buffet</h3>
-              ${templateBadge ? `<span class="buffet-badge">${escapeHtml(templateBadge)}</span>` : ""}
+              <div class="buffet-heading">
+                <h3 class="section-title">Buffet</h3>
+                ${templateBadge ? `<span class="buffet-badge">${escapeHtml(templateBadge)}</span>` : ""}
+              </div>
+              ${buffetPricing.pricePerPerson > 0 ? `<div class="buffet-price">${formatMoney(buffetPricing.pricePerPerson)}<small>pro Person</small></div>` : ""}
             </div>
             ${draft.buffet?.name ? `<p class="muted">${escapeHtml(draft.buffet.name)}</p>` : ""}
             <div class="buffet-layout">
@@ -6201,32 +6234,35 @@ function printOfferDraft() {
                 `;
               }).filter(Boolean).join("")}
             </div>
-            <div class="price-pill">${formatMoney(draft.buffet?.pricePerPerson || 0)}<small>pro Person</small></div>
           </section>
-          <section class="template-card">
-            <h3 class="section-title">Exklusiv für Sie reserviert</h3>
-            <div class="details-copy">${escapeHtml(venueInfo || "-")}</div>
-            ${draft.reservedAreaCampfire ? `<p class="muted" style="margin-top:4mm;">Lagerfeuerstelle mit Feuerholz ist zusätzlich gebucht.</p>` : ""}
-          </section>
+          ${includedServices.length ? `<section class="template-card">
+            <h3 class="section-title">Inklusive Leistungen</h3>
+            <div class="services-grid">${includedServices.map(([title, detail]) => `<div class="service-item"><strong>${escapeHtml(title)}</strong>${escapeHtml(detail || "")}</div>`).join("")}</div>
+            ${draft.additionalInfo ? `<div class="details-copy muted" style="margin-top:3mm;">${escapeHtml(draft.additionalInfo)}</div>` : ""}
+          </section>` : ""}
           <div class="footer">
             <span>LA Bowling · Röntgenstr. 12 · 84030 Landshut</span>
             <span>Seite 1 von 2</span>
           </div>
         </div>
         <div class="sheet">
-          <div class="header">
+          <div class="header compact">
             <div class="header-left">
               <img class="header-logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
-              <div class="header-contact">LA-Bowling · Röntgenstr. 12 · 84030 Landshut</div>
             </div>
             <div class="header-right">
-              <h1 class="header-offer-title">Angebot</h1>
+              <strong>LA-Bowling</strong>
+              <div class="header-contact">Röntgenstr. 12 · 84030 Landshut</div>
             </div>
+          </div>
+          <div class="title-row">
+            <h2 class="page-title">Kosten &amp; Vereinbarung</h2>
+            <div class="offer-date">Angebot für ${escapeHtml(draft.customerName || "-")}</div>
           </div>
           <section class="template-card cost-card">
             <h3 class="section-title">Kostenübersicht</h3>
             <table class="cost-table">
-              <thead><tr><th>Position</th><th>Menge</th><th>Einzel</th><th>Gesamt</th></tr></thead>
+              <thead><tr><th>Pos.</th><th>Beschreibung</th><th>Anzahl</th><th>Einzelpreis</th><th>Gesamtpreis</th></tr></thead>
               <tbody>
                 ${buffetCostRows}
                 ${bowlingCostRows}
@@ -6235,22 +6271,21 @@ function printOfferDraft() {
               </tbody>
             </table>
             ${vatNoticeText ? `<div class="cost-note">${escapeHtml(vatNoticeText)}</div>` : ""}
-            <div class="total-line"><span>Gesamt:</span><span>${formatMoney(totals.total)}</span></div>
+            <div class="total-line"><span>Gesamtbetrag</span><span>${formatMoney(totals.total)}</span></div>
           </section>
-          <h2 class="big-heading">Hinweise & Reservierungsbestätigung</h2>
-          <div class="summary-strip">
-            <div><small>Datum</small><strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</strong></div>
-            <div><small>Personen</small><strong>${escapeHtml(personsSummary)}</strong></div>
-            <div><small>Gesamtsumme</small><strong>${formatMoney(totals.total)}</strong></div>
+          <div class="info-grid">
+            ${pricingNoticeText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.pricingNotice.label)}</h3><p>${escapeHtml(pricingNoticeText)}</p></section>` : ""}
+            ${cancellationText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.cancellationTerms.label)}</h3><p>${escapeHtml(cancellationText)}</p></section>` : ""}
+            ${reservationText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.reservationConfirmation.label)}</h3><p>${escapeHtml(reservationText)}</p></section>` : ""}
           </div>
-          ${pricingNoticeText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.pricingNotice.label)}</h3><p>${escapeHtml(pricingNoticeText)}</p></section>` : ""}
-          ${cancellationText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.cancellationTerms.label)}</h3><p>${escapeHtml(cancellationText)}</p></section>` : ""}
-          ${reservationText ? `<section class="info-card"><h3 class="section-title">${escapeHtml(includedTextBlocks.reservationConfirmation.label)}</h3><p>${escapeHtml(reservationText)}</p></section>` : ""}
           <section class="signature-card">
-            <h3 class="section-title">Bestätigung</h3>
+            <h3 class="section-title">Angebot angenommen</h3>
+            ${reservationText ? `<p class="muted" style="font-size:9px; margin:0;">Bitte senden Sie das unterschriebene Angebot als Bestätigung zurück.</p>` : ""}
             <div class="signature-grid">
-              <div class="signature-line">Ort, Datum</div>
-              <div class="signature-line">Unterschrift / Firmenstempel</div>
+              <div class="signature-line">Ort</div>
+              <div class="signature-line">Datum</div>
+              <div class="signature-line">Firmenstempel</div>
+              <div class="signature-line">Unterschrift</div>
             </div>
           </section>
           <div class="closing">
