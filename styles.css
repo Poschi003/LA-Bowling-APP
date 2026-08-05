@@ -14870,6 +14870,54 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-dashboard-feature-card.is
   white-space: nowrap;
 }
 
+.terminal-table-lite-empty {
+  display: grid;
+  gap: 6px;
+}
+
+.terminal-table-lite-empty > small {
+  color: #778195;
+  font-size: .7rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.terminal-table-lite-board {
+  position: relative;
+  min-height: 180px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f7f9fc;
+}
+
+.terminal-table-lite-zone,
+.terminal-table-lite-table-shape {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.terminal-table-lite-zone {
+  border: 1px solid #d9e1eb;
+  border-radius: 5px;
+  background: rgb(255 255 255 / 48%);
+}
+
+.terminal-table-lite-table-shape {
+  display: grid;
+  min-width: 13px;
+  min-height: 10px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #aebbd0;
+  border-radius: 3px;
+  background: #fff;
+  color: #334155;
+  font-size: clamp(.32rem, .48vw, .52rem);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 @media (max-width: 1380px) {
   body.terminal-mode:not(.terminal-login-mode) .terminal-today-section {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -15070,6 +15118,7 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-nav-management {
 
 .terminal-toilet-control.is-due .terminal-toilet-control-icon { background: #d97706; box-shadow: 0 8px 18px rgb(217 119 6 / 25%); }
 .terminal-toilet-control.is-overdue .terminal-toilet-control-icon { background: #e30613; box-shadow: 0 8px 18px rgb(227 6 19 / 28%); }
+.terminal-toilet-control.is-overdue .terminal-toilet-control-icon { animation: terminal-toilet-icon-alert 1.15s ease-in-out infinite; }
 .terminal-toilet-control.is-unknown .terminal-toilet-control-icon { background: #7c8798; box-shadow: none; }
 .terminal-toilet-control-main { display: grid; gap: 4px; }
 .terminal-toilet-control-main > strong { font-size: 1.08rem; }
@@ -15077,6 +15126,18 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-nav-management {
 @keyframes terminal-toilet-card-alert {
   0%, 100% { transform: translateY(0); box-shadow: 0 10px 24px rgb(227 6 19 / 13%); }
   50% { transform: translateY(-1px); box-shadow: 0 12px 32px rgb(227 6 19 / 25%); }
+}
+@keyframes terminal-toilet-icon-alert {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgb(227 6 19 / 38%); }
+  50% { transform: scale(1.07); box-shadow: 0 0 0 12px rgb(227 6 19 / 0%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-toilet-control.is-overdue,
+  .terminal-toilet-control.is-overdue .terminal-toilet-control-icon,
+  .terminal-dashboard-control-row.is-overdue .terminal-dashboard-control-icon {
+    animation: none !important;
+  }
 }
 
 .terminal-toilet-confirm {

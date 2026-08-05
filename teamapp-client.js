@@ -5837,7 +5837,10 @@ function renderAdminOffers() {
               <strong>Kostenübersicht</strong>
               <span>Zusätzliche Positionen wie Sektempfang, Raummiete, Getränke oder Sonstiges.</span>
             </div>
-            <button class="secondary" type="button" data-offer-add-cost>+ Position hinzufügen</button>
+            <div class="offer-inline-tools">
+              <button class="secondary" type="button" data-offer-add-special-opening>+ Sonderöffnung</button>
+              <button class="secondary" type="button" data-offer-add-cost>+ Position hinzufügen</button>
+            </div>
           </div>
           <div class="offer-row-list">
             ${(draft.costs || []).length ? (draft.costs || []).map((item, index) => renderOfferCostRow(item, index)).join("") : `<p class="hint">Noch keine Positionen angelegt.</p>`}
@@ -8280,6 +8283,14 @@ function bowlingCashRevenueFromFormOrReport(report = state.terminalReport || {})
   return parseMoneyInput($("#reportBowlingCashRevenue")?.value || report.bowlingCashRevenue || "");
 }
 
+function gastroCashRevenueFromFormOrReport(report = state.terminalReport || {}) {
+  return parseMoneyInput($("#reportGastroCashRevenue")?.value || report.gastroCashRevenue || "");
+}
+
+function dailyCashRevenueFromFormOrReport(report = state.terminalReport || {}) {
+  return bowlingCashRevenueFromFormOrReport(report) + gastroCashRevenueFromFormOrReport(report);
+}
+
 function reportPreviewFromForm() {
   const cashTotal = $("#reportCashTotal")?.value || state.terminalReport?.cashTotal || "";
   const cashExpenses = cashExpensesFromFormOrReport().toFixed(2);
@@ -8288,6 +8299,7 @@ function reportPreviewFromForm() {
   const revenueFood = $("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "";
   const revenueOther = $("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || "";
   const bowlingCashRevenue = $("#reportBowlingCashRevenue")?.value || state.terminalReport?.bowlingCashRevenue || "";
+  const gastroCashRevenue = $("#reportGastroCashRevenue")?.value || state.terminalReport?.gastroCashRevenue || "";
   const revenueGastro = gastroRevenueFromFormOrReport().toFixed(2);
   const personalConsumption = $("#reportPersonalConsumption")?.value || state.terminalReport?.personalConsumption || "";
   const tipResult = calculateTipDistribution(state.terminalDate || todayKey());
@@ -8304,6 +8316,7 @@ function reportPreviewFromForm() {
     revenueFood,
     revenueOther,
     bowlingCashRevenue,
+    gastroCashRevenue,
     revenueGastro,
     barBowling: revenueBowling,
     barGastro: revenueGastro,
@@ -8495,6 +8508,7 @@ function renderTerminal() {
   $("#reportRevenueFood").value = report.revenueFood || "";
   $("#reportRevenueOther").value = report.revenueOther || "";
   $("#reportBowlingCashRevenue").value = report.bowlingCashRevenue || "";
+  $("#reportGastroCashRevenue").value = report.gastroCashRevenue || "";
   $("#reportRevenueGastro").value = report.revenueGastro || report.barGastro || "";
   updateReportBarTotal();
   $("#reportNotes").value = report.notes || "";
@@ -8999,23 +9013,11 @@ function currentCashExpenseTransferItems() {
 
 function manualReportTransferItems() {
   const result = calculateTipDistribution(state.terminalDate || todayKey());
-  const expenses = currentCashExpenseTransferItems();
-  const expenseItems = expenses.length
-    ? expenses.map((item, index) => ({
-        key: `receipt:${item.id || index}`,
-        label: item.name || `Kassenbeleg ${index + 1}`,
-        note: ["Beleg aus Kasse", item.category].filter(Boolean).join(" · "),
-        value: item.amount,
-        available: true
-      }))
-    : [{ key: "receipts", label: "Belege aus Kasse", value: result.cashExpenses, available: true }];
   return [
-    { key: "drinks", label: "Getränke", value: result.revenueDrinks, available: true },
-    { key: "food", label: "Speisen", value: result.revenueFood, available: true },
-    { key: "rent", label: "Raummiete", value: result.revenueOther, available: true },
+    { key: "cashGastro", label: "Gastro-Bar", value: gastroCashRevenueFromFormOrReport(), available: true },
     { key: "cashBowling", label: "Bar-Umsatz Bowling", value: bowlingCashRevenueFromFormOrReport(), available: true },
     { key: "consumption", label: "Personalverzehr", value: result.personalConsumption, available: true },
-    ...expenseItems
+    { key: "receipts", label: "Belege aus Kasse", value: result.cashExpenses, available: true }
   ];
 }
 
@@ -12800,7 +12802,7 @@ function renderTerminalChecks(report = {}) {
   const controlCards = loadTerminalControls().filter((control) => control.active);
   const toiletControl = controlCards.find((control) => control.id === "control-toilets" || String(control.name || "").toLowerCase().includes("toilet"));
   const standardControls = controlCards.filter((control) => control !== toiletControl);
-  const toiletStatus = terminalToiletControlStatus(report);
+  const toiletStatus = terminalToiletControlStatus(report, toiletControl);
   target.innerHTML = `
     <div class="terminal-dashboard-control-list">
       ${toiletControl ? `
@@ -12829,7 +12831,16 @@ function renderTerminalChecks(report = {}) {
   `;
 }
 
-function terminalToiletControlStatus(report = {}) {
+function terminalControlIntervalMinutes(control = {}) {
+  const value = Math.max(1, Number(control.intervalValue || 1));
+  if (control.intervalType === "hourly") return value * 60;
+  if (control.intervalType === "daily") return value * 24 * 60;
+  if (control.intervalType === "weekly") return value * 7 * 24 * 60;
+  if (control.intervalType === "monthly") return value * 30 * 24 * 60;
+  return value * 60;
+}
+
+function terminalToiletControlStatus(report = {}, control = {}) {
   const checks = (Array.isArray(report.toiletChecks) ? report.toiletChecks : [])
     .filter((item) => item?.checkedAt && !Number.isNaN(new Date(item.checkedAt).getTime()))
     .sort((left, right) => new Date(right.checkedAt) - new Date(left.checkedAt));
@@ -12854,17 +12865,18 @@ function terminalToiletControlStatus(report = {}) {
       nextLabel: "Tageskontrolle erfasst"
     };
   }
+  const intervalMinutes = terminalControlIntervalMinutes(control);
   const elapsedMinutes = Math.max(0, Math.floor((Date.now() - checkedAt.getTime()) / 60000));
-  if (elapsedMinutes >= 60) {
+  if (elapsedMinutes >= intervalMinutes) {
     return {
       status: "overdue",
       hasCheck: true,
       statusLabel: "Überfällig",
       lastLabel: `Letzte Kontrolle: ${lastTime} Uhr`,
-      nextLabel: `Seit ${elapsedMinutes - 60} Min. überfällig`
+      nextLabel: `Seit ${elapsedMinutes - intervalMinutes} Min. überfällig`
     };
   }
-  const remaining = 60 - elapsedMinutes;
+  const remaining = intervalMinutes - elapsedMinutes;
   return {
     status: remaining <= 10 ? "due" : "ok",
     hasCheck: true,
@@ -12977,22 +12989,37 @@ function collectTerminalControlForm() {
 function renderTerminalTableLite() {
   const target = $("#terminalTableLitePreview");
   if (!target) return;
-  const rows = [
-    ["18:00", "T1", "Müller", "6"],
-    ["18:30", "T4", "Huber", "4"],
-    ["19:00", "T7", "Geburtstag", "10"],
-    ["20:00", "T2", "Wagner", "2"]
-  ];
-  target.innerHTML = `
-    <div class="terminal-table-lite-table" role="table" aria-label="Drucklisten-Vorschau">
-      <div class="terminal-table-lite-row is-head" role="row">
-        <span>Zeit</span><span>Tisch</span><span>Name</span><span>Pers.</span>
-      </div>
-      ${rows.map((row) => `
-        <div class="terminal-table-lite-row" role="row">
-          ${row.map((value) => `<span>${escapeHtml(value)}</span>`).join("")}
+  const reservations = sortTerminalTableReservations(
+    terminalTableReservations(state.terminalReport || {}),
+    "time"
+  );
+  if (reservations.length) {
+    target.innerHTML = `
+      <div class="terminal-table-lite-table" role="table" aria-label="Aktuelle Tischreservierungen">
+        <div class="terminal-table-lite-row is-head" role="row">
+          <span>Zeit</span><span>Tisch</span><span>Name</span><span>Pers.</span>
         </div>
-      `).join("")}
+        ${reservations.slice(0, 6).map((reservation) => `
+          <div class="terminal-table-lite-row" role="row">
+            <span>${escapeHtml(terminalTableTimeRange(reservation))}</span>
+            <span>${escapeHtml(terminalTableLabelText(reservation.tableIds))}</span>
+            <span>${escapeHtml(reservation.name || "Reservierung")}</span>
+            <span>${escapeHtml(String(reservation.people || 0))}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+    return;
+  }
+  const zones = terminalPlanVisibleZones();
+  const tables = terminalPlanVisibleTables();
+  target.innerHTML = `
+    <div class="terminal-table-lite-empty">
+      <div class="terminal-table-lite-board" aria-label="Tischplan ohne Reservierungen">
+        ${zones.map((zone) => `<span class="terminal-table-lite-zone" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%"></span>`).join("")}
+        ${tables.map((table) => `<span class="terminal-table-lite-table-shape" style="left:${table.x}%;top:${table.y}%;width:${table.w}%;height:${table.h}%">${escapeHtml(table.label || table.id)}</span>`).join("")}
+      </div>
+      <small>Heute noch keine Reservierungen</small>
     </div>
   `;
 }
@@ -13795,6 +13822,7 @@ async function collectDayReportPayload() {
     revenueFood: $("#reportRevenueFood")?.value || "",
     revenueOther: $("#reportRevenueOther")?.value || "",
     bowlingCashRevenue: $("#reportBowlingCashRevenue")?.value || "",
+    gastroCashRevenue: $("#reportGastroCashRevenue")?.value || "",
     revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
     barBowling: $("#reportRevenueBowling")?.value || "",
     barGastro: gastroRevenueFromFormOrReport().toFixed(2),
@@ -14807,6 +14835,9 @@ function calculateTipDistribution(dateKey) {
   const revenueFood = parseMoneyInput($("#reportRevenueFood")?.value || state.terminalReport?.revenueFood || "");
   const revenueGastro = gastroRevenueFromFormOrReport();
   const transferInvoiceTotal = currentTerminalTransferInvoiceTotal(state.terminalReport || {});
+  const bowlingCashRevenue = bowlingCashRevenueFromFormOrReport();
+  const gastroCashRevenue = gastroCashRevenueFromFormOrReport();
+  const dailyCashRevenue = bowlingCashRevenue + gastroCashRevenue;
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
   const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal + transferInvoiceTotal - totalRevenue);
   const openingTime = tipOpeningTime(dateKey);
@@ -14854,6 +14885,9 @@ function calculateTipDistribution(dateKey) {
     revenueFood,
     revenueOther: parseMoneyInput($("#reportRevenueOther")?.value || state.terminalReport?.revenueOther || ""),
     revenueGastro,
+    bowlingCashRevenue,
+    gastroCashRevenue,
+    dailyCashRevenue,
     invoiceTotal: transferInvoiceTotal,
     totalRevenue,
     chefHandover: Math.max(0, totalRevenue - ecTotal - transferInvoiceTotal - cashExpenses),
@@ -18625,6 +18659,23 @@ function bindEvents() {
       renderAdminReports();
       return;
     }
+    const addSpecialOpening = event.target.closest("[data-offer-add-special-opening]");
+    if (addSpecialOpening) {
+      const draft = currentOfferDraftFromDom();
+      draft.costs.push({
+        id: cryptoId(),
+        label: "Sonderöffnung",
+        quantity: 1,
+        unitPrice: 0,
+        note: "Öffnung außerhalb der regulären Öffnungszeiten"
+      });
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      renderAdminOffers();
+      offerWorkspaceRoot()?.querySelector('[data-offer-cost-row]:last-of-type [data-offer-cost-unit]')?.focus();
+      return;
+    }
     if (!event.target.matches("#adminNumbersMonth")) return;
     state.selectedMonth = event.target.value;
     if ($("#monthInput")) $("#monthInput").value = state.selectedMonth;
@@ -20094,7 +20145,7 @@ function bindEvents() {
   $("#saveDayReport")?.addEventListener("click", () => saveClosingData($("#saveDayReport")));
   $("#saveClosingData")?.addEventListener("click", () => saveClosingData($("#saveClosingData")));
 
-  ["#reportCashTotal", "#reportCashExpenses", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportBowlingCashRevenue", "#reportRevenueGastro"].forEach((selector) => {
+  ["#reportCashTotal", "#reportCashExpenses", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportBowlingCashRevenue", "#reportGastroCashRevenue", "#reportRevenueGastro"].forEach((selector) => {
     $(selector)?.addEventListener("input", updateReportBarTotal);
   });
 
@@ -20153,6 +20204,7 @@ function bindEvents() {
         revenueFood: $("#reportRevenueFood")?.value || "",
         revenueOther: $("#reportRevenueOther")?.value || "",
         bowlingCashRevenue: $("#reportBowlingCashRevenue")?.value || "",
+        gastroCashRevenue: $("#reportGastroCashRevenue")?.value || "",
         revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
         resetTipPayout: true,
         tipTotal: result.tipTotal.toFixed(2),
