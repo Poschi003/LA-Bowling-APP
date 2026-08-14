@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260602-einteilung-reiter-v1">
+    <link rel="stylesheet" href="styles.css?v=20260814-closing-income-v1">
   </head>
   <body>
     <header class="topbar">
@@ -187,8 +187,8 @@
                       <div class="terminal-card-heading">
                         <span class="terminal-card-icon" aria-hidden="true">&#9638;</span>
                         <div>
-                          <h3>Was steht an?</h3>
-                          <p class="terminal-card-subtitle">Extras des gewählten Tages</p>
+                          <h3>Extras &amp; Besonderheiten</h3>
+                          <p class="terminal-card-subtitle">Angebote, Aktionen und Hinweise für den gewählten Tag</p>
                         </div>
                       </div>
                       <div id="terminalDayMetaDisplay" class="terminal-day-meta-display"></div>
@@ -208,9 +208,28 @@
                       </label>
                     </div>
                     <div id="terminalFuturePreview" class="terminal-future-preview hidden"></div>
-                    <div id="terminalEventOverview" class="terminal-event-overview">
-                      <strong>Keine Extras</strong>
-                      <span>Für diesen Tag sind keine besonderen Extras geplant.</span>
+                    <div class="terminal-extras-dashboard">
+                      <div class="terminal-extras-current">
+                        <div class="terminal-extras-block-head">
+                          <div>
+                            <small>Gewählter Tag</small>
+                            <strong id="terminalExtrasDateLabel">Heute</strong>
+                          </div>
+                          <span id="terminalExtrasCount" class="terminal-extras-count">0 Extras</span>
+                        </div>
+                        <div id="terminalEventOverview" class="terminal-event-overview">
+                          <div class="terminal-extras-empty">
+                            <span class="terminal-extras-empty-icon" aria-hidden="true">+</span>
+                            <span><strong>Keine Extras geplant</strong><small>Für diesen Tag sind keine besonderen Aktionen oder Hinweise hinterlegt.</small></span>
+                          </div>
+                        </div>
+                      </div>
+                      <aside class="terminal-extras-week" aria-label="Extras der nächsten sieben Tage">
+                        <div class="terminal-extras-block-head">
+                          <div><small>Vorschau</small><strong>Nächste 7 Tage</strong></div>
+                        </div>
+                        <div id="terminalExtrasWeek" class="terminal-extras-week-list"></div>
+                      </aside>
                     </div>
                   </section>
                   <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
@@ -581,8 +600,8 @@
             <nav class="closing-step-nav" aria-label="Schritte des Tagesabschlusses">
               <button class="closing-step is-active" type="button" data-closing-step="1"><span>1</span><strong>Daten erfassen</strong></button>
               <button class="closing-step" type="button" data-closing-step="2"><span>2</span><strong>Pentacode</strong></button>
-              <button class="closing-step" type="button" data-closing-step="3"><span>3</span><strong>Bericht</strong></button>
-              <button class="closing-step" type="button" data-closing-step="4"><span>4</span><strong>Dokumente</strong></button>
+              <button class="closing-step" type="button" data-closing-step="3"><span>3</span><strong>Belege</strong></button>
+              <button class="closing-step" type="button" data-closing-step="4"><span>4</span><strong>Ergebnis &amp; Bericht</strong></button>
               <button class="closing-step" type="button" data-closing-step="5"><span>5</span><strong>Tagesbericht</strong></button>
               <button class="closing-step" type="button" data-closing-step="6"><span>6</span><strong>Trinkgeld</strong></button>
               <button class="closing-step" type="button" data-closing-step="7"><span>7</span><strong>Morgen planen</strong></button>
@@ -608,7 +627,12 @@
                   <label class="finance-entry-row"><span class="finance-row-icon">€</span><strong>Bar gesamt</strong><input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
                   <label class="finance-entry-row"><span class="finance-row-icon">EC</span><strong>EC Terminal 1</strong><input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
                   <label class="finance-entry-row"><span class="finance-row-icon">EC</span><strong>EC Terminal 2</strong><input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
-                  <button class="finance-entry-row finance-detail-link" type="button" data-open-invoice-details><span class="finance-row-icon">R</span><strong>Rechnung / Überweisung</strong><span id="financeInvoiceTotal">0,00 €</span><b aria-hidden="true">›</b></button>
+                  <label class="finance-entry-row is-readonly"><span class="finance-row-icon">R</span><strong>Rechnung / Überweisung</strong><input id="financeInvoiceTotal" type="text" inputmode="decimal" readonly value="0,00"><em>€</em></label>
+                </div>
+                <div class="finance-misc-income-block">
+                  <div class="finance-subhead"><div><strong>Sonstige Bareinnahmen</strong><small>Im Bar gesamt enthalten · nicht boniert · Bezeichnung erforderlich</small></div><button id="addMiscIncome" type="button"><span aria-hidden="true">+</span> Hinzufügen</button></div>
+                  <div id="miscIncomeList" class="finance-misc-income-list"></div>
+                  <div class="finance-misc-income-total"><span>Summe sonstige Einnahmen</span><strong id="financeMiscIncomeTotal">0,00 €</strong></div>
                 </div>
               </section>
 
@@ -626,21 +650,21 @@
                 </div>
               </section>
 
+              <section class="finance-dashboard-card is-expenses" data-report-field-box="expenses">
+                <header><span class="finance-step">3</span><div><h4>Ausgaben an der Kasse</h4><p>Belege einzeln erfassen</p></div></header>
+                <button id="openAddExpense" class="finance-add-expense" type="button"><span aria-hidden="true">+</span>Ausgabe hinzufügen</button>
+                <div id="financeExpensePreview" class="finance-expense-preview"></div>
+                <footer><span>Summe Ausgaben</span><strong id="financeExpenseTotal">0,00 €</strong></footer>
+              </section>
+
               <section class="finance-dashboard-card is-result">
-                <header><span class="finance-step">3</span><div><h4>Ergebnis</h4><p>Übersicht für den Chef</p></div></header>
+                <header><span class="finance-step">4</span><div><h4>Ergebnis</h4><p>Übersicht für den Chef</p></div></header>
                 <div class="finance-handover-box">
                   <span>Abzugeben an Chef</span>
                   <strong id="financeResultHandover">0,00 €</strong>
                   <small id="financeResultFormula">Bar + EC − Ausgaben</small>
                 </div>
                 <div id="financeTipDaySummary" class="tip-summary tip-day-summary"></div>
-              </section>
-
-              <section class="finance-dashboard-card is-expenses" data-report-field-box="expenses">
-                <header><span class="finance-step">4</span><div><h4>Ausgaben an der Kasse</h4><p>Belege einzeln erfassen</p></div></header>
-                <button id="openAddExpense" class="finance-add-expense" type="button"><span aria-hidden="true">+</span>Ausgabe hinzufügen</button>
-                <div id="financeExpensePreview" class="finance-expense-preview"></div>
-                <footer><span>Summe Ausgaben</span><strong id="financeExpenseTotal">0,00 €</strong></footer>
               </section>
             </div>
 
@@ -698,9 +722,9 @@
                 <button id="completePentacodeTransfer" class="primary" type="button" data-complete-pentacode-transfer disabled>Pentacode vollständig übertragen</button>
               </footer>
             </section>
-            <section id="terminalHandwrittenReportStep" class="manual-report-step hidden" data-closing-step-content="3">
+            <section id="terminalHandwrittenReportStep" class="manual-report-step hidden" data-closing-step-content="4">
               <header class="manual-report-head">
-                <div><span>Schritt 3</span><h4>Handschriftlicher Bericht</h4><p>Werte für den manuellen Tagesbericht</p></div>
+                <div><span>Schritt 4</span><h4>Ergebnis &amp; Bericht</h4><p>Tagessummen, Einnahmen und Belege im Überblick</p></div>
                 <div class="manual-report-progress"><strong id="manualReportProgressText">0 von 6 übertragen</strong><div class="pentacode-progress-track"><span id="manualReportProgressBar"></span></div></div>
               </header>
               <div id="manualReportTransferList" class="manual-report-list"></div>
@@ -709,9 +733,9 @@
                 <button id="completeManualReport" class="primary" type="button" data-complete-manual-report disabled>Bericht vollständig übertragen</button>
               </footer>
             </section>
-            <section id="terminalDocumentsStep" class="closing-documents-step hidden" data-closing-step-content="4">
+            <section id="terminalDocumentsStep" class="closing-documents-step hidden" data-closing-step-content="3">
               <header class="closing-documents-head">
-                <div><span>Schritt 4</span><h4>Dokumente</h4><p id="closingDocumentsDate">Tagesabschluss</p></div>
+                <div><span>Schritt 3</span><h4>Belege</h4><p id="closingDocumentsDate">Tagesabschluss</p></div>
                 <div class="closing-documents-connection"><p class="closing-documents-guide">Dokumentart wählen und direkt darunter scannen.</p><button class="secondary" data-configure-scanner type="button">Scanner verbinden</button></div>
               </header>
               <div class="closing-document-type-grid">
@@ -1870,7 +1894,7 @@
         }
       }
     </script>
-    <script src="teamapp-client.js?v=20260801-timesheets-month-fix-v1"></script>
+    <script src="teamapp-client.js?v=20260814-closing-income-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

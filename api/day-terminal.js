@@ -303,12 +303,13 @@ async function saveReport(body, res) {
   const cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
   const invoiceCustomers = await cleanReportItems(body.invoiceCustomers, "invoice", date);
   const cleanedExpenses = await cleanReportItems(body.expenses, "expense", date);
+  const miscIncome = await cleanReportItems(body.miscIncome ?? existing.miscIncome, "misc-income", date);
   const expenses = body.mergeExpenses === true || body.mergeExpenses === "true"
     ? mergeReportItemsById(existing.expenses || [], cleanedExpenses)
     : cleanedExpenses;
   const documents = await cleanReportDocuments(body.documents || existing.documents, date);
   upsertCustomerDirectory(appData, invoiceCustomers);
-  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), bowlingCashRevenue: cleanMoney(body.bowlingCashRevenue ?? existing.bowlingCashRevenue), gastroCashRevenue: cleanMoney(body.gastroCashRevenue ?? existing.gastroCashRevenue), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), extraEmployees: cleanExtraEmployees(body.extraEmployees || existing.extraEmployees), removedEmployees: cleanEmployeeList(body.removedEmployees || existing.removedEmployees), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
+  appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), bowlingCashRevenue: cleanMoney(body.bowlingCashRevenue ?? existing.bowlingCashRevenue), gastroCashRevenue: cleanMoney(body.gastroCashRevenue ?? existing.gastroCashRevenue), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, miscIncome, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), extraEmployees: cleanExtraEmployees(body.extraEmployees || existing.extraEmployees), removedEmployees: cleanEmployeeList(body.removedEmployees || existing.removedEmployees), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
   applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
   await writeAppData(appData);
   const shouldSendInvoiceNotifications = body.sendInvoiceNotifications === true || body.sendInvoiceNotifications === "true";
@@ -1244,7 +1245,10 @@ function openTerminalDates(appData, requestedDate) {
   const openDateSet = new Set();
   Object.entries(appData.dayReports || {}).forEach(([dateKey, report]) => {
     if (dateKey > today || !report || typeof report !== "object" || report.closed || report.correctionOpen) return;
-    if (reportHasActivity(report) || dayHasTimesheetActivity(appData, dateKey)) openDateSet.add(dateKey);
+    const hasReportActivity = isTuesday(dateKey)
+      ? restDayReportHasActivity(report)
+      : reportHasActivity(report);
+    if (hasReportActivity || dayHasTimesheetActivity(appData, dateKey) || dayHasPlannedOperation(appData, dateKey)) openDateSet.add(dateKey);
   });
   timesheetActivityDates(appData).forEach((dateKey) => {
     if (dateKey > today) return;
@@ -1252,7 +1256,59 @@ function openTerminalDates(appData, requestedDate) {
     if (report?.closed || report?.correctionOpen) return;
     openDateSet.add(dateKey);
   });
+  const yesterday = offsetDateKey(today, -1);
+  if (isTuesday(yesterday) && dayHasPlannedOperation(appData, yesterday)) {
+    const report = appData.dayReports?.[yesterday];
+    if (!report?.closed && !report?.correctionOpen) openDateSet.add(yesterday);
+  }
   return [...openDateSet].sort();
+}
+
+function offsetDateKey(dateKey, days) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  date.setDate(date.getDate() + Number(days || 0));
+  return localDate(date);
+}
+
+function isTuesday(dateKey) {
+  return new Date(`${dateKey}T12:00:00`).getDay() === 2;
+}
+
+function dayHasPlannedOperation(appData, dateKey) {
+  if (!isTuesday(dateKey)) return false;
+  const scheduleDay = appData.schedules?.[dateKey.slice(0, 7)]?.days?.[dateKey];
+  const hasSchedule = scheduleDay && typeof scheduleDay === "object" && Object.keys(scheduleDay).length > 0;
+  const assignments = appData.assignmentTimes?.[dateKey];
+  const hasAssignments = assignments && typeof assignments === "object" && Object.keys(assignments).length > 0;
+  const hasOffer = (Array.isArray(appData.offers) ? appData.offers : []).some((offer) =>
+    cleanDate(offer?.eventDate || offer?.date || offer?.event?.date) === dateKey
+  );
+  return Boolean(hasSchedule || hasAssignments || hasOffer);
+}
+
+function restDayReportHasActivity(report = {}) {
+  const moneyFields = [
+    "cashTotal", "cashExpenses", "ecTerminal1", "ecTerminal2", "ecTotal",
+    "personalConsumption", "revenueBowling", "bowlingCashRevenue", "gastroCashRevenue",
+    "revenueDrinks", "revenueFood", "revenueOther", "revenueGastro", "tipTotal"
+  ];
+  return Boolean(
+    report.openingHours ||
+    report.shiftLeader ||
+    report.notes ||
+    moneyFields.some((field) => moneyNumber(report[field]) !== 0) ||
+    (report.invoiceCustomers || []).length ||
+    (report.expenses || []).length ||
+    (report.miscIncome || []).length ||
+    Object.values(report.documents || {}).some((document) => document?.name || document?.path || document?.url || document?.data) ||
+    (report.handovers || []).length ||
+    Object.keys(report.taskCompletions || {}).length ||
+    Object.keys(report.cleaningCompletions || {}).length ||
+    (report.toiletChecks || []).length ||
+    (report.tableReservations || []).length ||
+    (report.tableGroups || []).length ||
+    (report.tableStaffAssignments || []).length
+  );
 }
 
 function dayHasTimesheetActivity(appData, dateKey) {
@@ -1342,7 +1398,7 @@ function tablePlanInfo(appData, selectedDate) {
 }
 
 function defaultReport(report = {}) {
-  return { cashTotal: "", cashExpenses: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", bowlingCashRevenue: "", gastroCashRevenue: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], documents: {}, notes: "", extraEmployees: [], removedEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], tableReservations: [], tableGroups: [], tableStaffAssignments: [], ...report };
+  return { cashTotal: "", cashExpenses: "", ecTerminal1: "", ecTerminal2: "", ecTotal: "", personalConsumption: "", revenueBowling: "", bowlingCashRevenue: "", gastroCashRevenue: "", revenueDrinks: "", revenueFood: "", revenueOther: "", revenueGastro: "", barBowling: "", barGastro: "", tipTotal: "", tipRemainder: "", tipPayoutConfirmedAt: "", tipPayoutAmount: "", tipPayoutRemainder: "", tipsByEmployee: {}, invoiceCustomers: [], expenses: [], miscIncome: [], documents: {}, notes: "", extraEmployees: [], removedEmployees: [], handovers: [], taskCompletions: {}, cleaningCompletions: {}, toiletChecks: [], reminderChecks: [], terminalMessageChecks: [], tableReservations: [], tableGroups: [], tableStaffAssignments: [], ...report };
 }
 
 function normalizeTablePlanConfig(value = {}) {

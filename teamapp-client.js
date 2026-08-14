@@ -119,6 +119,9 @@
   offerDraftId: "",
   offerDraftDirty: false,
   offerCustomerSearch: "",
+  offerEditorStep: 1,
+  offerServiceExpanded: {},
+  offerShoePersonsManual: false,
   taskTemplates: [],
   cleaningTemplates: [],
   reminderTemplates: [],
@@ -790,6 +793,7 @@ async function loadState() {
   if (!state.offerDraft || !state.offers.some((offer) => offer.id === state.offerDraft?.id)) {
     state.offerDraft = state.offers[0] ? cloneData(state.offers[0]) : createBlankOfferDraft();
     state.offerDraftId = state.offerDraft.id;
+    state.offerShoePersonsManual = Number(state.offerDraft.bowling?.shoePersons || 0) > 0;
   }
   state.offerDraftDirty = false;
   state.dayReports = data.dayReports || {};
@@ -1265,6 +1269,11 @@ const OFFER_TOURNAMENT_PACKAGES = {
   }
 };
 const OFFER_TEXT_BLOCK_DEFAULTS = {
+  drinksByMenu: {
+    label: "Getränke nach Karte",
+    enabled: true,
+    text: "Getränke werden nach Verbrauch gemäß der aktuellen Getränkekarte berechnet."
+  },
   pricingNotice: {
     label: "Hinweis zur Preisangabe",
     enabled: true,
@@ -1320,6 +1329,12 @@ function normalizeOfferClient(offer = {}) {
     startTime: cleanOfferTimeValue(offer.startTime),
     mealTime: cleanOfferTimeValue(offer.mealTime),
     sparklingReceptionTime: cleanOfferTimeValue(offer.sparklingReceptionTime),
+    sparklingReceptionPrice: offer.sparklingReceptionPrice == null ? OFFER_SPARKLING_RECEPTION_PRICE : cleanOfferMoneyValue(offer.sparklingReceptionPrice),
+    campfireTime: cleanOfferTimeValue(offer.campfireTime),
+    campfirePrice: offer.campfirePrice == null ? OFFER_CAMPFIRE_PRICE : cleanOfferMoneyValue(offer.campfirePrice),
+    drinksMode: offer.drinksMode === "custom" ? "custom" : "menu",
+    drinksCustomText: String(offer.drinksCustomText || "").trim().slice(0, 600),
+    drinksCustomPrice: cleanOfferMoneyValue(offer.drinksCustomPrice),
     reservedArea: String(offer.reservedArea || "").trim().slice(0, 200),
     reservedAreaPrice: cleanOfferMoneyValue(offer.reservedAreaPrice),
     reservedAreaCampfire: offer.reservedAreaCampfire === true,
@@ -1431,7 +1446,27 @@ function cleanOfferMoneyValue(value) {
 
 function cleanOfferTimeValue(value) {
   const text = String(value || "").trim();
-  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "";
+  if (!text) return "";
+  const compact = text.replace(/[^0-9]/g, "");
+  let hours = "";
+  let minutes = "";
+  if (/^\d{1,2}$/.test(text)) {
+    hours = text;
+    minutes = "00";
+  } else if (/^\d{3,4}$/.test(compact) && !text.includes(":")) {
+    const padded = compact.padStart(4, "0");
+    hours = padded.slice(0, 2);
+    minutes = padded.slice(2);
+  } else {
+    const match = text.match(/^(\d{1,2}):([0-5]?\d)$/);
+    if (!match) return "";
+    hours = match[1];
+    minutes = match[2].padStart(2, "0");
+  }
+  const hourNumber = Number(hours);
+  const minuteNumber = Number(minutes);
+  if (hourNumber > 23 || minuteNumber > 59) return "";
+  return `${String(hourNumber).padStart(2, "0")}:${String(minuteNumber).padStart(2, "0")}`;
 }
 
 function createBlankOfferDraft() {
@@ -1450,6 +1485,12 @@ function createBlankOfferDraft() {
     startTime: "",
     mealTime: "",
     sparklingReceptionTime: "",
+    sparklingReceptionPrice: OFFER_SPARKLING_RECEPTION_PRICE,
+    campfireTime: "",
+    campfirePrice: OFFER_CAMPFIRE_PRICE,
+    drinksMode: "menu",
+    drinksCustomText: "",
+    drinksCustomPrice: 0,
     reservedArea: "",
     reservedAreaPrice: 0,
     reservedAreaCampfire: false,
@@ -1487,6 +1528,7 @@ function setOfferDraftFromOffer(offer) {
   state.offerDraft = cloneData(normalizeOfferClient(offer));
   state.offerDraftId = state.offerDraft.id;
   state.offerDraftDirty = false;
+  state.offerShoePersonsManual = Number(state.offerDraft.bowling?.shoePersons || 0) > 0;
 }
 
 function offerWorkspaceRoot() {
@@ -1518,6 +1560,12 @@ function currentOfferDraftFromDom() {
     startTime: cleanOfferTimeValue(field("startTime")?.value),
     mealTime: cleanOfferTimeValue(field("mealTime")?.value),
     sparklingReceptionTime: cleanOfferTimeValue(field("sparklingReceptionTime")?.value),
+    sparklingReceptionPrice: cleanOfferMoneyValue(field("sparklingReceptionPrice")?.value ?? base.sparklingReceptionPrice),
+    campfireTime: cleanOfferTimeValue(field("campfireTime")?.value || base.campfireTime),
+    campfirePrice: cleanOfferMoneyValue(field("campfirePrice")?.value ?? base.campfirePrice),
+    drinksMode: root.querySelector('[data-offer-field="drinksMode"]:checked')?.value === "custom" ? "custom" : "menu",
+    drinksCustomText: String(field("drinksCustomText")?.value || "").trim(),
+    drinksCustomPrice: cleanOfferMoneyValue(field("drinksCustomPrice")?.value),
     reservedArea: simpleText("reservedArea"),
     reservedAreaPrice: cleanOfferMoneyValue(field("reservedAreaPrice")?.value),
     reservedAreaCampfire: field("reservedAreaCampfire")?.checked === true,
@@ -1570,6 +1618,8 @@ function currentOfferDraftFromDom() {
       text: String(field(`textBlockText-${key}`)?.value || "").trim()
     };
   });
+  draft.textBlocks.drinksByMenu.enabled = draft.drinksMode !== "custom";
+  draft.textBlocks.drinksByMenu.text = OFFER_TEXT_BLOCK_DEFAULTS.drinksByMenu.text;
   return normalizeOfferClient(draft);
 }
 
@@ -1624,14 +1674,16 @@ function offerBuffetPricing(offer) {
   const pricePerPerson = cleanOfferMoneyValue(draft.buffet?.pricePerPerson);
   const chargedUnits = offerChargedPersonUnits(draft);
   const buffetBaseTotal = Math.round(chargedUnits * pricePerPerson * 100) / 100;
+  const sparklingReceptionPrice = cleanOfferMoneyValue(draft.sparklingReceptionPrice);
   const sparklingReceptionTotal = draft.buffet?.sparklingReception
-    ? Math.round(chargedUnits * OFFER_SPARKLING_RECEPTION_PRICE * 100) / 100
+    ? Math.round(chargedUnits * sparklingReceptionPrice * 100) / 100
     : 0;
   return {
     adults,
     children,
     chargedUnits,
     pricePerPerson,
+    sparklingReceptionPrice,
     sparklingReception: draft.buffet?.sparklingReception === true,
     buffetBaseTotal,
     sparklingReceptionTotal,
@@ -1801,7 +1853,7 @@ function offerReservedAreaPricing(offer) {
     roomFee = OFFER_LARGE_ROOM_ONLY_PRICE;
     roomFeeLabel = "Raummiete großes Nebenzimmer";
   }
-  const campfireFee = draft.reservedAreaCampfire ? OFFER_CAMPFIRE_PRICE : 0;
+  const campfireFee = draft.reservedAreaCampfire ? cleanOfferMoneyValue(draft.campfirePrice) : 0;
   return {
     reservedArea,
     reservedAreaLabel: OFFER_RESERVED_AREA_LABELS[reservedArea] || reservedArea || "",
@@ -1821,7 +1873,8 @@ function offerTotals(offer) {
   const bowlingPricing = offerBowlingPricing(draft.eventDate, draft.bowling);
   const reservedAreaPricing = offerReservedAreaPricing(draft);
   const extraRows = (draft.costs || []).reduce((sum, row) => sum + (cleanOfferMoneyValue(row.quantity) * cleanOfferMoneyValue(row.unitPrice)), 0);
-  const total = buffetPricing.total + bowlingPricing.total + reservedAreaPricing.total + extraRows;
+  const drinksTotal = draft.drinksMode === "custom" ? cleanOfferMoneyValue(draft.drinksCustomPrice) : 0;
+  const total = buffetPricing.total + bowlingPricing.total + reservedAreaPricing.total + drinksTotal + extraRows;
   return {
     adults: buffetPricing.adults,
     children: buffetPricing.children,
@@ -1837,6 +1890,7 @@ function offerTotals(offer) {
     roomFee: reservedAreaPricing.roomFee,
     roomFeeLabel: reservedAreaPricing.roomFeeLabel,
     campfireFee: reservedAreaPricing.campfireFee,
+    drinksTotal,
     extraRows,
     total
   };
@@ -1858,6 +1912,9 @@ function offerTimelineEvents(offer) {
   push(draft.startTime, "Eintreffen", "", 10);
   if (draft.buffet?.sparklingReception) {
     push(draft.sparklingReceptionTime, "Sektempfang", "Optional zum Buffet gebucht", 20);
+  }
+  if (draft.reservedAreaCampfire) {
+    push(draft.campfireTime, "Lagerfeuer", "Lagerfeuerstelle mit Feuerholz", 35);
   }
   push(draft.bowling?.fromTime, "Bowling Beginn", "", 30);
   push(draft.bowling?.toTime, "Bowling Ende", "", 35);
@@ -4378,6 +4435,10 @@ function reportCashExpensesTotal(report = {}) {
   return reportItemsTotal(report.expenses);
 }
 
+function reportMiscIncomeTotal(report = {}) {
+  return reportItemsTotal(Array.isArray(report.miscIncome) ? report.miscIncome : []);
+}
+
 function reportGrossRevenueTotal(report = {}) {
   const split = reportMoneyNumber(report.revenueBowling || report.barBowling) + gastroRevenueTotal(report);
   if (split) return split;
@@ -4408,7 +4469,7 @@ function reportTipTotal(report = {}) {
   const revenueGastro = gastroRevenueTotal(report);
   const transferInvoiceTotal = reportTransferInvoiceTotal(report);
   const revenueTotal = Math.max(0, revenueBowling + revenueGastro - reportPersonalConsumptionTotal(report));
-  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) + transferInvoiceTotal - revenueTotal);
+  return Math.max(0, barTotal(report) + reportCashExpensesTotal(report) + reportEcTotal(report) + transferInvoiceTotal - revenueTotal - reportMiscIncomeTotal(report));
 }
 
 function reportChefHandoverTotal(report = {}) {
@@ -4418,6 +4479,7 @@ function reportChefHandoverTotal(report = {}) {
       - reportEcTotal(report)
       - reportTransferInvoiceTotal(report)
       - reportCashExpensesTotal(report)
+      + reportMiscIncomeTotal(report)
   );
 }
 
@@ -5658,9 +5720,13 @@ function renderAdminOffers() {
       </aside>
       <section class="offer-editor">
         <div class="offer-editor-head">
-          <div>
-            <h3>${escapeHtml(draft.title || "Angebot")}</h3>
-            <p>${draft.archived ? "Archiviert" : "Aktiv"} · zuletzt ${draft.updatedAt ? escapeHtml(formatDateTime(draft.updatedAt)) : "noch nicht gespeichert"}</p>
+          <div class="offer-editor-brand">
+            <img src="la-bowling-print-logo.png" alt="LA Bowling">
+            <div>
+              <small>Angebotseditor</small>
+              <h3>${escapeHtml(draft.title || "Angebot erstellen")}</h3>
+              <p>${draft.archived ? "Archiviert" : "Aktiv"} · zuletzt ${draft.updatedAt ? escapeHtml(formatDateTime(draft.updatedAt)) : "noch nicht gespeichert"}</p>
+            </div>
           </div>
           <div class="offer-head-badges">
             <span class="offer-badge">${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "Datum offen")}</span>
@@ -5672,10 +5738,10 @@ function renderAdminOffers() {
           <label>Bezeichnung<input data-offer-field="title" value="${escapeHtml(draft.title)}" placeholder="z.B. Angebot Stoll"></label>
           <label>Angebotsdatum<input data-offer-field="offerDate" type="date" value="${escapeHtml(draft.offerDate)}"></label>
           <label>Veranstaltungsdatum<input data-offer-field="eventDate" type="date" value="${escapeHtml(draft.eventDate)}"></label>
+          <label class="offer-arrival-field">Eintreffen der Gäste<input data-offer-field="startTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.startTime)}" placeholder="z. B. 18:00"></label>
           <label>Anlass<input data-offer-field="occasion" value="${escapeHtml(draft.occasion)}" placeholder="z.B. Hochzeitsfeier"></label>
           <label>Erwachsene<input data-offer-field="personsAdults" type="number" min="0" step="1" value="${escapeHtml(draft.personsAdults)}"></label>
           <label>Kinder<input data-offer-field="personsChildren" type="number" min="0" step="1" value="${escapeHtml(draft.personsChildren)}"></label>
-          <label>Eintreffen<input data-offer-field="startTime" type="time" value="${escapeHtml(draft.startTime)}"></label>
         </div>
 
         <section class="offer-section">
@@ -5698,12 +5764,12 @@ function renderAdminOffers() {
           </div>
         </section>
 
-        <div class="offer-grid offer-grid-two">
-          <label>Kunde / Firma<input data-offer-field="customerName" value="${escapeHtml(draft.customerName)}" placeholder="Firma oder Name"></label>
-          <label>Ansprechpartner<input data-offer-field="customerContact" value="${escapeHtml(draft.customerContact)}" placeholder="Ansprechpartner"></label>
-          <label>E-Mail<input data-offer-field="customerEmail" value="${escapeHtml(draft.customerEmail)}" placeholder="E-Mail für Rückfragen"></label>
-          <label>Telefon<input data-offer-field="customerPhone" value="${escapeHtml(draft.customerPhone)}" placeholder="Telefonnummer"></label>
-          <label class="offer-grid-wide">Rechnungsadresse<textarea data-offer-field="customerAddress" rows="3" placeholder="Adresse">${escapeHtml(draft.customerAddress)}</textarea></label>
+        <div class="offer-grid offer-grid-two offer-contact-grid">
+          <label>Firma oder Name<input data-offer-field="customerName" value="${escapeHtml(draft.customerName)}" placeholder="z. B. Musterfirma GmbH"></label>
+          <label>Ansprechpartner<input data-offer-field="customerContact" value="${escapeHtml(draft.customerContact)}" placeholder="z. B. Max Mustermann"></label>
+          <label>E-Mail-Adresse<input data-offer-field="customerEmail" value="${escapeHtml(draft.customerEmail)}" placeholder="name@firma.de"></label>
+          <label>Telefonnummer<input data-offer-field="customerPhone" value="${escapeHtml(draft.customerPhone)}" placeholder="z. B. 0871 123456"></label>
+          <label class="offer-grid-wide">Rechnungsanschrift<textarea data-offer-field="customerAddress" rows="3" placeholder="Straße und Hausnummer&#10;PLZ und Ort">${escapeHtml(draft.customerAddress)}</textarea></label>
         </div>
 
         <section class="offer-section">
@@ -5722,10 +5788,6 @@ function renderAdminOffers() {
             <label>Preis komplettes Center
               <input data-offer-field="reservedAreaPrice" type="number" min="0" step="0.01" value="${escapeHtml(draft.reservedAreaPrice)}" placeholder="frei eingeben">
             </label>
-            <label class="offer-toggle-row">
-              <span>Lagerfeuerstelle mit Feuerholz</span>
-              <input data-offer-field="reservedAreaCampfire" type="checkbox" ${draft.reservedAreaCampfire ? "checked" : ""}>
-            </label>
           </div>
           <div class="offer-bowling-summary">
             <span class="offer-stat"><small>Bereich</small><strong>${escapeHtml(reservedAreaPricing.reservedAreaLabel || "-")}</strong></span>
@@ -5734,6 +5796,62 @@ function renderAdminOffers() {
             <span class="offer-stat offer-stat-total"><small>Bereich gesamt</small><strong>${formatMoney(reservedAreaPricing.total)}</strong></span>
           </div>
           ${reservedAreaPricing.warning ? `<p class="offer-warning">${escapeHtml(reservedAreaPricing.warning)}</p>` : ""}
+        </section>
+
+        <section class="offer-section offer-drinks-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Getränke</strong>
+              <span>Standardsatz verwenden oder eine individuelle Vereinbarung eintragen.</span>
+            </div>
+          </div>
+          <div class="offer-drinks-choice" role="radiogroup" aria-label="Getränkeabrechnung">
+            <label class="offer-choice-card ${draft.drinksMode !== "custom" ? "is-selected" : ""}">
+              <input data-offer-field="drinksMode" type="radio" name="offerDrinksMode" value="menu" ${draft.drinksMode !== "custom" ? "checked" : ""}>
+              <span><strong>Standard</strong><small>Getränke werden laut Karte berechnet.</small></span>
+            </label>
+            <label class="offer-choice-card ${draft.drinksMode === "custom" ? "is-selected" : ""}">
+              <input data-offer-field="drinksMode" type="radio" name="offerDrinksMode" value="custom" ${draft.drinksMode === "custom" ? "checked" : ""}>
+              <span><strong>Sonderabsprache</strong><small>Eigener Text und freier Gesamtpreis</small></span>
+            </label>
+          </div>
+          <div class="offer-drinks-custom ${draft.drinksMode === "custom" ? "" : "hidden"}">
+            <label>Vereinbarung<textarea data-offer-field="drinksCustomText" rows="3" placeholder="z. B. Getränkepauschale laut Absprache">${escapeHtml(draft.drinksCustomText)}</textarea></label>
+            <label>Preis gesamt<input data-offer-field="drinksCustomPrice" type="number" min="0" step="0.01" value="${escapeHtml(draft.drinksCustomPrice)}" placeholder="0,00"></label>
+          </div>
+          <input data-offer-field="textBlockEnabled-drinksByMenu" type="checkbox" class="hidden" tabindex="-1" ${draft.drinksMode !== "custom" ? "checked" : ""}>
+          <input data-offer-field="textBlockText-drinksByMenu" type="hidden" value="${escapeHtml(OFFER_TEXT_BLOCK_DEFAULTS.drinksByMenu.text)}">
+        </section>
+
+        <section class="offer-section offer-special-services">
+          <div class="offer-section-head">
+            <div>
+              <strong>Sonderleistungen</strong>
+              <span>Sektempfang und Lagerfeuer mit Vorgabepreis, Uhrzeit und freier Anpassung.</span>
+            </div>
+          </div>
+          <div class="offer-special-service-grid">
+            <article class="offer-special-service-card ${draft.buffet?.sparklingReception ? "is-selected" : ""}">
+              <label class="offer-toggle-row">
+                <span><strong>Sektempfang</strong><small>Preis pro Person</small></span>
+                <input data-offer-field="buffetSparklingReception" type="checkbox" ${draft.buffet?.sparklingReception ? "checked" : ""}>
+              </label>
+              <div class="offer-grid offer-grid-two">
+                <label>Uhrzeit<input data-offer-field="sparklingReceptionTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.sparklingReceptionTime)}" placeholder="z. B. 18:00"></label>
+                <label>Preis pro Person<input data-offer-field="sparklingReceptionPrice" type="number" min="0" step="0.01" value="${escapeHtml(draft.sparklingReceptionPrice)}"></label>
+              </div>
+            </article>
+            <article class="offer-special-service-card ${draft.reservedAreaCampfire ? "is-selected" : ""}">
+              <label class="offer-toggle-row">
+                <span><strong>Lagerfeuer</strong><small>Lagerfeuerstelle inklusive Feuerholz</small></span>
+                <input data-offer-field="reservedAreaCampfire" type="checkbox" ${draft.reservedAreaCampfire ? "checked" : ""}>
+              </label>
+              <div class="offer-grid offer-grid-two">
+                <label>Uhrzeit<input data-offer-field="campfireTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.campfireTime)}" placeholder="z. B. 21:00"></label>
+                <label>Pauschalpreis<input data-offer-field="campfirePrice" type="number" min="0" step="0.01" value="${escapeHtml(draft.campfirePrice)}"></label>
+              </div>
+            </article>
+          </div>
         </section>
 
         <section class="offer-section">
@@ -5751,9 +5869,9 @@ function renderAdminOffers() {
               </select>
             </label>
             <label>Bahnen Anzahl<input data-offer-field="bowlingLanes" type="number" min="0" step="1" value="${escapeHtml(draft.bowling?.lanes)}"></label>
-            <label>Leihschuhe Personen<input data-offer-field="bowlingShoePersons" type="number" min="0" step="1" value="${escapeHtml(draft.bowling?.shoePersons)}"></label>
-            <label>Bowling von<input data-offer-field="bowlingFromTime" type="time" value="${escapeHtml(draft.bowling?.fromTime)}"></label>
-            <label>Bowling bis<input data-offer-field="bowlingToTime" type="time" value="${escapeHtml(draft.bowling?.toTime)}"></label>
+            <label>Leihschuhe Personen<input data-offer-field="bowlingShoePersons" type="number" min="0" step="1" value="${escapeHtml(draft.bowling?.shoePersons)}"><small class="offer-field-help">Automatisch aus der Personenzahl, weiterhin frei änderbar.</small></label>
+            <label>Bowling von<input data-offer-field="bowlingFromTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.bowling?.fromTime)}" placeholder="HH:MM"></label>
+            <label>Bowling bis<input data-offer-field="bowlingToTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.bowling?.toTime)}" placeholder="HH:MM"></label>
           </div>
           <div class="offer-bowling-summary">
             <span class="offer-stat"><small>Tag</small><strong>${escapeHtml(bowling.dayLabel || (draft.eventDate ? formatDate(draft.eventDate) : "-"))}</strong></span>
@@ -5786,12 +5904,7 @@ function renderAdminOffers() {
           <div class="offer-grid offer-grid-two">
             <label>Buffetname<input data-offer-field="buffetName" value="${escapeHtml(draft.buffet?.name)}" placeholder="Buffetname"></label>
             <label>Preis pro Person<input data-offer-field="buffetPricePerPerson" type="number" min="0" step="0.01" value="${escapeHtml(draft.buffet?.pricePerPerson)}"></label>
-            <label class="offer-toggle-row">
-              <span>Sektempfang dazubuchen</span>
-              <input data-offer-field="buffetSparklingReception" type="checkbox" ${draft.buffet?.sparklingReception ? "checked" : ""}>
-            </label>
-            <label>Sektempfang Uhrzeit<input data-offer-field="sparklingReceptionTime" type="time" value="${escapeHtml(draft.sparklingReceptionTime)}"></label>
-            <label>Essenszeit<input data-offer-field="mealTime" type="time" value="${escapeHtml(draft.mealTime)}"></label>
+            <label class="offer-meal-time-field">Essenszeit<input data-offer-field="mealTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.mealTime)}" placeholder="z. B. 19:00"><small class="offer-field-help">Wird im Ablauf des Kundenangebots deutlich angezeigt.</small></label>
           </div>
           <div class="offer-bowling-summary">
             <span class="offer-stat"><small>Erwachsene</small><strong>${escapeHtml(String(totals.adults))}</strong></span>
@@ -5855,7 +5968,7 @@ function renderAdminOffers() {
             </div>
           </div>
           <div class="offer-row-list">
-            ${Object.entries(draft.textBlocks || {}).map(([key, block]) => renderOfferTextBlockEditor(key, block)).join("")}
+            ${Object.entries(draft.textBlocks || {}).filter(([key]) => key !== "drinksByMenu").map(([key, block]) => renderOfferTextBlockEditor(key, block)).join("")}
           </div>
         </section>
 
@@ -5866,6 +5979,7 @@ function renderAdminOffers() {
       </section>
     </div>
   `;
+  setupOfferGuidedEditor(container, draft);
 }
 
 function renderOfferListItem(offer, activeId) {
@@ -5919,7 +6033,7 @@ function renderOfferDishRow(category, item) {
 function renderOfferTimelineRow(item) {
   return `
     <div class="offer-edit-row" data-offer-timeline-row data-offer-timeline-id="${escapeHtml(item.id)}">
-      <input data-offer-timeline-time type="time" value="${escapeHtml(item.time)}">
+      <input data-offer-timeline-time data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(item.time)}" placeholder="HH:MM">
       <input data-offer-timeline-title value="${escapeHtml(item.title)}" placeholder="Schritt / Ablaufpunkt">
       <input data-offer-timeline-note value="${escapeHtml(item.note)}" placeholder="Notiz">
       <div class="row-actions">
@@ -5932,12 +6046,31 @@ function renderOfferTimelineRow(item) {
 }
 
 function renderOfferCostRow(item) {
+  if (String(item.label || "").trim().toLowerCase() === "sonderöffnung") {
+    return `
+      <div class="offer-special-opening-row" data-offer-cost-row data-offer-cost-id="${escapeHtml(item.id)}">
+        <input data-offer-cost-label type="hidden" value="Sonderöffnung">
+        <input data-offer-cost-quantity type="hidden" value="1">
+        <div class="offer-special-opening-title">
+          <span class="offer-special-opening-icon" aria-hidden="true">◷</span>
+          <div><strong>Sonderöffnungsgebühr</strong><small>Öffnung außerhalb der regulären Öffnungszeiten</small></div>
+        </div>
+        <label>Freier Preis
+          <input data-offer-cost-unit type="number" min="0" step="0.01" value="${escapeHtml(item.unitPrice)}" placeholder="0,00">
+        </label>
+        <label>Notiz <span class="optional-label">optional</span>
+          <input data-offer-cost-note value="${escapeHtml(item.note)}" placeholder="z. B. Öffnung ab 10:00 Uhr">
+        </label>
+        <button class="secondary danger-lite" type="button" data-offer-remove-cost>Entfernen</button>
+      </div>
+    `;
+  }
   return `
-    <div class="offer-edit-row" data-offer-cost-row data-offer-cost-id="${escapeHtml(item.id)}">
-      <input data-offer-cost-label value="${escapeHtml(item.label)}" placeholder="Bezeichnung">
-      <input data-offer-cost-quantity type="number" min="0" step="0.01" value="${escapeHtml(item.quantity)}" placeholder="Menge">
-      <input data-offer-cost-unit type="number" min="0" step="0.01" value="${escapeHtml(item.unitPrice)}" placeholder="Einzelpreis">
-      <input data-offer-cost-note value="${escapeHtml(item.note)}" placeholder="Notiz">
+    <div class="offer-edit-row offer-cost-row-labeled" data-offer-cost-row data-offer-cost-id="${escapeHtml(item.id)}">
+      <label>Bezeichnung<input data-offer-cost-label value="${escapeHtml(item.label)}" placeholder="z. B. Sektempfang"></label>
+      <label>Menge<input data-offer-cost-quantity type="number" min="0" step="0.01" value="${escapeHtml(item.quantity)}" placeholder="1"></label>
+      <label>Einzelpreis<input data-offer-cost-unit type="number" min="0" step="0.01" value="${escapeHtml(item.unitPrice)}" placeholder="0,00"></label>
+      <label>Notiz <span class="optional-label">optional</span><input data-offer-cost-note value="${escapeHtml(item.note)}" placeholder="Zusatzinformation"></label>
       <div class="row-actions">
         <button class="secondary" type="button" data-offer-move-cost="up">↑</button>
         <button class="secondary" type="button" data-offer-move-cost="down">↓</button>
@@ -5945,6 +6078,161 @@ function renderOfferCostRow(item) {
       </div>
     </div>
   `;
+}
+
+function offerEditorSectionByTitle(editor, title) {
+  return [...editor.querySelectorAll(":scope > .offer-section")]
+    .find((section) => section.querySelector(".offer-section-head strong")?.textContent.trim() === title) || null;
+}
+
+function renderOfferLiveSummary(draftValue) {
+  const draft = normalizeOfferClient(draftValue || ensureOfferDraft());
+  const totals = offerTotals(draft);
+  const services = [
+    offerHasBowlingBooking(draft) ? `${draft.bowling?.lanes || 0} Bowlingbahn${Number(draft.bowling?.lanes) === 1 ? "" : "en"}` : "",
+    Number(draft.bowling?.shoePersons || 0) ? `${draft.bowling.shoePersons} Leihschuhe` : "",
+    offerHasBuffet(draft) ? (draft.buffet?.name || "Buffet") : "",
+    draft.buffet?.sparklingReception ? `Sektempfang ${formatMoney(draft.sparklingReceptionPrice)} pro Person${draft.sparklingReceptionTime ? ` · ${draft.sparklingReceptionTime} Uhr` : ""}` : "",
+    draft.reservedAreaCampfire ? `Lagerfeuer ${formatMoney(draft.campfirePrice)}${draft.campfireTime ? ` · ${draft.campfireTime} Uhr` : ""}` : "",
+    draft.reservedArea || "",
+    draft.drinksMode === "custom"
+      ? `${draft.drinksCustomText || "Getränke nach Sonderabsprache"} · ${formatMoney(draft.drinksCustomPrice)}`
+      : "Getränke werden laut Karte berechnet",
+    ...(draft.costs || []).map((item) => item.label).filter(Boolean)
+  ].filter(Boolean);
+  const timeline = offerTimelineEvents(draft).slice(0, 4);
+  const costSummary = [
+    totals.bowlingTotal > 0 ? ["Bowling", totals.bowlingTotal] : null,
+    totals.buffetTotal > 0 ? ["Buffet", totals.buffetTotal] : null,
+    totals.reservedAreaTotal > 0 ? ["Bereich", totals.reservedAreaTotal] : null,
+    totals.drinksTotal > 0 ? ["Getränke", totals.drinksTotal] : null,
+    totals.extraRows > 0 ? ["Zusatzpositionen", totals.extraRows] : null
+  ].filter(Boolean);
+  return `
+    <div class="offer-live-summary-head"><small>Live-Vorschau</small><strong>Angebot</strong><span>Aktualisiert sich während der Eingabe</span></div>
+    <div class="offer-live-summary-customer">
+      <small>Kundendaten</small>
+      <strong>${escapeHtml(draft.customerName || "Kunde noch offen")}</strong>
+      <span>${escapeHtml(draft.customerContact || draft.customerEmail || "Kontaktdaten noch offen")}</span>
+    </div>
+    <div class="offer-live-summary-section"><small>Veranstaltung</small><span><b>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "Datum offen")}</b> · ${totals.personCount} Personen</span>${draft.occasion ? `<span>${escapeHtml(draft.occasion)}</span>` : ""}${draft.startTime ? `<span><b>${escapeHtml(draft.startTime)} Uhr</b> Eintreffen</span>` : ""}</div>
+    <div class="offer-live-summary-section"><small>Leistungen</small>${services.length ? services.slice(0, 6).map((item) => `<span>✓ ${escapeHtml(item)}</span>`).join("") : `<em>Noch keine Leistungen gewählt</em>`}</div>
+    <div class="offer-live-summary-section"><small>Ablauf</small>${timeline.length ? timeline.map((item) => `<span><b>${escapeHtml(item.time || "--:--")}</b> ${escapeHtml(item.title || "Ablaufpunkt")}</span>`).join("") : `<em>Noch kein Ablauf</em>`}</div>
+    <div class="offer-live-summary-section offer-live-summary-costs"><small>Kostenübersicht</small>${costSummary.length ? costSummary.map(([label, amount]) => `<span><b>${escapeHtml(label)}</b><strong>${formatMoney(amount)}</strong></span>`).join("") : `<em>Noch keine Kostenpositionen</em>`}</div>
+    <div class="offer-live-summary-total"><span>Gesamt</span><strong>${formatMoney(totals.total)}</strong></div>
+  `;
+}
+
+function setupOfferGuidedEditor(container, draft) {
+  const editor = container.querySelector(".offer-editor");
+  const editorHead = editor?.querySelector(":scope > .offer-editor-head");
+  if (!editor || !editorHead) return;
+  const step = Math.min(4, Math.max(1, Number(state.offerEditorStep || 1)));
+  state.offerEditorStep = step;
+  const timeline = offerTimelineEvents(draft);
+  const done = {
+    1: Boolean(draft.customerName && draft.eventDate),
+    2: Boolean(offerHasBowlingBooking(draft) || offerHasBuffet(draft) || draft.reservedArea || draft.costs?.length),
+    3: Boolean(timeline.length)
+  };
+  const wizard = document.createElement("nav");
+  wizard.className = "offer-wizard-steps";
+  wizard.setAttribute("aria-label", "Schritte zur Angebotserstellung");
+  wizard.innerHTML = [[1, "Kunde & Veranstaltung"], [2, "Leistungen"], [3, "Ablauf"], [4, "Prüfen & Erstellen"]].map(([number, label]) => `
+    <button class="offer-wizard-step ${step === number ? "active" : ""} ${done[number] || step > number ? "done" : ""}" data-offer-editor-step="${number}" type="button">
+      <span>${done[number] || step > number ? "✓" : number}</span><strong>${label}</strong>
+    </button>
+  `).join("");
+  editorHead.after(wizard);
+
+  const directGrids = [...editor.querySelectorAll(":scope > .offer-grid")];
+  const sections = {
+    customer: offerEditorSectionByTitle(editor, "Kunde aus Kundenstamm"),
+    area: offerEditorSectionByTitle(editor, "Bereich & Zusatzoptionen"),
+    drinks: offerEditorSectionByTitle(editor, "Getränke"),
+    specialServices: offerEditorSectionByTitle(editor, "Sonderleistungen"),
+    bowling: offerEditorSectionByTitle(editor, "Bowling"),
+    buffet: offerEditorSectionByTitle(editor, "Buffet"),
+    timeline: offerEditorSectionByTitle(editor, "Ablauf"),
+    costs: offerEditorSectionByTitle(editor, "Kostenübersicht"),
+    texts: offerEditorSectionByTitle(editor, "Zusatztexte für das Angebot")
+  };
+  const guided = document.createElement("div");
+  guided.className = "offer-guided-layout";
+  const main = document.createElement("div");
+  main.className = "offer-guided-main";
+  const panels = [1, 2, 3, 4].map((number) => {
+    const panel = document.createElement("section");
+    panel.className = `offer-step-panel ${step === number ? "active" : ""}`;
+    panel.dataset.offerStepPanel = String(number);
+    const labels = {
+      1: ["Kunde & Veranstaltung", "Kundendaten und Eckdaten der Veranstaltung"],
+      2: ["Leistungen", "Nur benötigte Leistungen öffnen und bearbeiten"],
+      3: ["Ablauf", "Zeiten prüfen und bei Bedarf ergänzen"],
+      4: ["Prüfen & Erstellen", "Inhalte kontrollieren und Angebot ausgeben"]
+    };
+    panel.innerHTML = `<header class="offer-step-heading"><span>${number}</span><div><h4>${labels[number][0]}</h4><p>${labels[number][1]}</p></div></header>`;
+    main.append(panel);
+    return panel;
+  });
+  [directGrids[0], sections.customer].filter(Boolean).forEach((node) => panels[0].append(node));
+  if (directGrids[1]) {
+    const contactHeading = document.createElement("div");
+    contactHeading.className = "offer-subsection-title";
+    contactHeading.innerHTML = `<div><strong>Kontaktdaten</strong><span>Angaben für Rückfragen und die Angebotsanschrift</span></div>`;
+    panels[0].append(contactHeading, directGrids[1]);
+  }
+  [sections.area, sections.drinks, sections.specialServices, sections.bowling, sections.buffet, sections.costs].filter(Boolean).forEach((section) => {
+    const title = section.querySelector(".offer-section-head strong")?.textContent.trim() || "Leistung";
+    const serviceKey = title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const selected = title === "Bowling" ? offerHasBowlingBooking(draft)
+      : title === "Buffet" ? offerHasBuffet(draft)
+        : title === "Bereich & Zusatzoptionen" ? Boolean(draft.reservedArea)
+          : title === "Getränke" ? true
+          : title === "Sonderleistungen" ? Boolean(draft.buffet?.sparklingReception || draft.reservedAreaCampfire)
+          : Boolean(draft.costs?.length);
+    section.classList.add("offer-service-card");
+    section.classList.toggle("is-selected", selected);
+    section.classList.toggle("is-expanded", Boolean(state.offerServiceExpanded?.[serviceKey] ?? selected));
+    const toggle = document.createElement("button");
+    toggle.className = "offer-service-toggle";
+    toggle.type = "button";
+    toggle.dataset.offerServiceToggle = serviceKey;
+    toggle.innerHTML = `<span>${selected ? "✓" : "+"}</span><b>${selected ? "Ausgewählt" : "Öffnen"}</b>`;
+    section.querySelector(".offer-section-head")?.append(toggle);
+    panels[1].append(section);
+  });
+  if (sections.timeline) panels[2].append(sections.timeline);
+  const review = document.createElement("div");
+  review.className = "offer-review-grid";
+  const totals = offerTotals(draft);
+  review.innerHTML = `
+    <div><small>Kunde</small><strong>${escapeHtml(draft.customerName || "Noch offen")}</strong></div>
+    <div><small>Datum</small><strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "Noch offen")}</strong></div>
+    <div><small>Personen</small><strong>${totals.personCount}</strong></div>
+    <div><small>Gesamtsumme</small><strong>${formatMoney(totals.total)}</strong></div>
+  `;
+  panels[3].append(review);
+  [sections.texts, directGrids[2]].filter(Boolean).forEach((node) => panels[3].append(node));
+  const reviewActions = document.createElement("div");
+  reviewActions.className = "offer-review-actions";
+  reviewActions.innerHTML = `<button class="secondary" type="button" data-offer-save>Entwurf speichern</button><button class="primary" type="button" data-offer-print>Vorschau / Drucken</button>`;
+  panels[3].append(reviewActions);
+  const footer = document.createElement("footer");
+  footer.className = "offer-step-footer";
+  footer.innerHTML = `<button class="secondary" type="button" data-offer-editor-step="${Math.max(1, step - 1)}" ${step === 1 ? "disabled" : ""}>Zurück</button><span>Schritt ${step} von 4</span><button class="primary" type="button" data-offer-editor-step="${Math.min(4, step + 1)}" ${step === 4 ? "disabled" : ""}>Weiter</button>`;
+  main.append(footer);
+  const summary = document.createElement("aside");
+  summary.id = "offerLiveSummary";
+  summary.className = "offer-live-summary";
+  summary.innerHTML = renderOfferLiveSummary(draft);
+  guided.append(main, summary);
+  wizard.after(guided);
+}
+
+function refreshOfferLiveSummary() {
+  const target = offerWorkspaceRoot()?.querySelector("#offerLiveSummary");
+  if (target) target.innerHTML = renderOfferLiveSummary(currentOfferDraftFromDom());
 }
 
 function terminalTaskAreaById(id) {
@@ -6196,6 +6484,12 @@ function offerFieldNeedsLiveRefresh(target) {
     "startTime",
     "mealTime",
     "sparklingReceptionTime",
+    "sparklingReceptionPrice",
+    "campfireTime",
+    "campfirePrice",
+    "drinksMode",
+    "drinksCustomText",
+    "drinksCustomPrice",
     "reservedArea",
     "reservedAreaPrice",
     "reservedAreaCampfire",
@@ -6327,6 +6621,7 @@ function newOfferDraft() {
   state.offerDraft = createBlankOfferDraft();
   state.offerDraftId = state.offerDraft.id;
   state.offerDraftDirty = false;
+  state.offerShoePersonsManual = false;
   renderAdminOffers();
 }
 
@@ -6398,6 +6693,8 @@ function printOfferDraft() {
   const timelineScale = offerTimelineScaleMarkup(timelineEvents);
   const templateBadge = offerTemplateBadgeLabel(draft);
   const includedTextBlocks = draft.textBlocks || {};
+  const drinksByMenuText = includedTextBlocks.drinksByMenu?.enabled ? includedTextBlocks.drinksByMenu.text : "";
+  const drinksCustomText = draft.drinksMode === "custom" ? (draft.drinksCustomText || "Getränke nach Sonderabsprache") : "";
   const pricingNoticeText = includedTextBlocks.pricingNotice?.enabled ? includedTextBlocks.pricingNotice.text : "";
   const cancellationText = includedTextBlocks.cancellationTerms?.enabled ? includedTextBlocks.cancellationTerms.text : "";
   const reservationText = includedTextBlocks.reservationConfirmation?.enabled ? includedTextBlocks.reservationConfirmation.text : "";
@@ -6461,15 +6758,18 @@ function printOfferDraft() {
     ? `
       ${buffetPricing.adults > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td><span class="cost-icon">F</span>Buffet</td><td>${escapeHtml(draft.buffet?.name || "Buffet laut Beschreibung")}</td><td>${escapeHtml(`${buffetPricing.adults} Pers.`)}</td><td>${formatMoney(buffetPricing.pricePerPerson)}</td><td>${formatMoney(buffetPricing.adults * buffetPricing.pricePerPerson)}</td></tr>` : ""}
       ${buffetPricing.children > 0 && buffetPricing.pricePerPerson > 0 ? `<tr><td><span class="cost-icon">K</span>Buffet Kinder</td><td>Kinder unter 12 Jahren</td><td>${escapeHtml(`${buffetPricing.children} Pers.`)}</td><td>${formatMoney(buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * buffetPricing.pricePerPerson * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
-      ${draft.buffet?.sparklingReception && buffetPricing.adults > 0 ? `<tr><td><span class="cost-icon">W</span>Sektempfang</td><td>Welcome Drink bei Ankunft</td><td>${escapeHtml(`${buffetPricing.adults} Pers.`)}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE)}</td><td>${formatMoney(buffetPricing.adults * OFFER_SPARKLING_RECEPTION_PRICE)}</td></tr>` : ""}
-      ${draft.buffet?.sparklingReception && buffetPricing.children > 0 ? `<tr><td><span class="cost-icon">W</span>Sektempfang Kinder</td><td>Kinder unter 12 Jahren</td><td>${escapeHtml(`${buffetPricing.children} Pers.`)}</td><td>${formatMoney(OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * OFFER_SPARKLING_RECEPTION_PRICE * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
+      ${draft.buffet?.sparklingReception && buffetPricing.adults > 0 ? `<tr><td><span class="cost-icon">W</span>Sektempfang</td><td>Welcome Drink bei Ankunft</td><td>${escapeHtml(`${buffetPricing.adults} Pers.`)}</td><td>${formatMoney(buffetPricing.sparklingReceptionPrice)}</td><td>${formatMoney(buffetPricing.adults * buffetPricing.sparklingReceptionPrice)}</td></tr>` : ""}
+      ${draft.buffet?.sparklingReception && buffetPricing.children > 0 ? `<tr><td><span class="cost-icon">W</span>Sektempfang Kinder</td><td>Kinder unter 12 Jahren</td><td>${escapeHtml(`${buffetPricing.children} Pers.`)}</td><td>${formatMoney(buffetPricing.sparklingReceptionPrice * OFFER_CHILD_DISCOUNT_FACTOR)}</td><td>${formatMoney(buffetPricing.children * buffetPricing.sparklingReceptionPrice * OFFER_CHILD_DISCOUNT_FACTOR)}</td></tr>` : ""}
     `
     : "";
   const reservedAreaCostRows = reservedAreaPricing.roomFee > 0 || reservedAreaPricing.campfireFee > 0
     ? `
       ${reservedAreaPricing.roomFee > 0 ? `<tr><td><span class="cost-icon">R</span>Raumreservierung</td><td>${escapeHtml(reservedAreaPricing.roomFeeLabel || "Reservierter Bereich")}</td><td>1</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td><td>${formatMoney(reservedAreaPricing.roomFee)}</td></tr>` : ""}
-      ${reservedAreaPricing.campfireFee > 0 ? `<tr><td><span class="cost-icon">L</span>Lagerfeuerstelle</td><td>Inklusive Feuerholz</td><td>1</td><td>${formatMoney(OFFER_CAMPFIRE_PRICE)}</td><td>${formatMoney(reservedAreaPricing.campfireFee)}</td></tr>` : ""}
+      ${reservedAreaPricing.campfireFee > 0 ? `<tr><td><span class="cost-icon">L</span>Lagerfeuerstelle</td><td>Inklusive Feuerholz</td><td>1</td><td>${formatMoney(reservedAreaPricing.campfireFee)}</td><td>${formatMoney(reservedAreaPricing.campfireFee)}</td></tr>` : ""}
     `
+    : "";
+  const drinksCostRows = draft.drinksMode === "custom" && totals.drinksTotal > 0
+    ? `<tr><td><span class="cost-icon">G</span>Getränke</td><td>${escapeHtml(drinksCustomText)}</td><td>1</td><td>${formatMoney(totals.drinksTotal)}</td><td>${formatMoney(totals.drinksTotal)}</td></tr>`
     : "";
   const personsSummary = totals.children ? `${totals.adults} + ${totals.children} Kinder` : `${totals.personCount || 0}`;
   const venueInfo = [reservedAreaPricing.reservedAreaLabel, draft.additionalInfo].filter(Boolean).join("\n\n");
@@ -6482,7 +6782,12 @@ function printOfferDraft() {
   const includedItems = [
     bowling.total > 0 ? { icon: "B", title: "Bowling", text: `${bowling.durationLabel}${draft.bowling?.lanes ? ` · ${draft.bowling.lanes} Bahn(en)` : ""}` } : null,
     buffetPricing.buffetBaseTotal > 0 ? { icon: "F", title: "Buffet", text: `${draft.buffet?.name || "Buffet"} · ${formatMoney(draft.buffet?.pricePerPerson || 0)} pro Person` } : null,
-    reservedAreaPricing.reservedAreaLabel ? { icon: "R", title: "Reservierter Bereich", text: reservedAreaPricing.reservedAreaLabel } : null
+    reservedAreaPricing.reservedAreaLabel ? { icon: "R", title: "Reservierter Bereich", text: reservedAreaPricing.reservedAreaLabel } : null,
+    draft.buffet?.sparklingReception ? { icon: "S", title: "Sektempfang", text: `${formatMoney(draft.sparklingReceptionPrice)} pro Person${draft.sparklingReceptionTime ? ` · ${draft.sparklingReceptionTime} Uhr` : ""}` } : null,
+    draft.reservedAreaCampfire ? { icon: "L", title: "Lagerfeuer", text: `${formatMoney(draft.campfirePrice)} pauschal${draft.campfireTime ? ` · ${draft.campfireTime} Uhr` : ""}` } : null,
+    draft.drinksMode === "custom"
+      ? { icon: "G", title: "Getränke", text: `${drinksCustomText} · ${formatMoney(totals.drinksTotal)}` }
+      : { icon: "G", title: "Getränke", text: "Werden laut Karte berechnet" }
   ].filter(Boolean);
   win.document.write(`
     <!doctype html>
@@ -6578,6 +6883,70 @@ function printOfferDraft() {
           .info-grid .info-card { margin: 0; min-height: 28mm; }
           .info-card .section-title { font-size: 11px; margin-bottom: 2mm; }
           .signature-grid { grid-template-columns: repeat(4, 1fr); gap: 7mm; }
+          /* Professional customer document: calm, compact and print-safe. */
+          .header { height: 29mm; padding-top: 5mm; padding-bottom: 5mm; align-items: flex-start; }
+          .header-left { display: grid; gap: 2mm; }
+          .header-logo { width: 54mm; }
+          .sender-contact { font-size: 7.8px; line-height: 1.35; color: #d8e2ec; }
+          .header-right { min-width: 61mm; gap: 1mm; text-align: right; font-size: 8.5px; }
+          .header-right span { justify-content: space-between; gap: 5mm; }
+          .header-right b { font-weight: 700; color: #fff; }
+          .title-row { align-items: flex-end; margin: 0 0 3mm; padding-bottom: 3mm; border-bottom: 1px solid var(--line); }
+          .title-copy small { display: block; margin-top: 1.5mm; color: var(--muted); font-size: 9px; }
+          .page-title { font-size: 22px; letter-spacing: 0; }
+          .date-card { display: none; }
+          .template-card { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 3mm 0; }
+          .grid-two > .template-card { border-top: 2px solid var(--navy); }
+          .section-title { margin-bottom: 2.5mm; font-size: 12px; }
+          .section-title::before, .round-icon, .cost-icon { display: none; }
+          .details-copy { font-size: 9.6px; line-height: 1.5; }
+          .event-grid { grid-template-columns: 27mm 1fr; font-size: 9.6px; line-height: 1.4; }
+          .event-grid strong { font-size: 8px; color: var(--muted); }
+          .event-overview { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 0 1mm; border: 1px solid var(--line); }
+          .event-overview div { min-width: 0; padding: 2.6mm 3mm; }
+          .event-overview div + div { border-left: 1px solid var(--line); }
+          .event-overview small { display: block; margin-bottom: 1mm; color: var(--muted); font-size: 7.5px; text-transform: uppercase; }
+          .event-overview strong { display: block; overflow-wrap: anywhere; color: var(--navy); font-size: 9.5px; }
+          .scale-wrap { min-height: 36mm; padding-top: 4mm; margin-top: 1mm; }
+          .scale-line { top: 14mm; height: 1px; background: var(--navy); }
+          .scale-point { width: 25mm; }
+          .scale-time { margin-bottom: 4mm; color: var(--navy); font-size: 9px; }
+          .scale-dot { width: 4.5mm; height: 4.5mm; margin-bottom: 3mm; border-width: 1.2mm; box-shadow: none; }
+          .scale-label { font-size: 8.5px; line-height: 1.2; overflow-wrap: anywhere; }
+          .scale-note { font-size: 7.5px; line-height: 1.2; overflow-wrap: anywhere; }
+          .buffet-highlight { flex-wrap: wrap; padding: 3mm 0; background: #fff; border-color: var(--line); }
+          .buffet-highlight-main { display: block; }
+          .buffet-highlight h3 { font-size: 12px; }
+          .buffet-price { font-size: 17px; }
+          .buffet-menu { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin-top: 2.5mm; padding-top: 2.5mm; border-top: 1px solid var(--line); }
+          .offer-print-buffet-group h4 { margin: 0 0 1mm; color: var(--navy); font-size: 8.5px; }
+          .offer-print-buffet-group ul { margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 7.6px; line-height: 1.3; }
+          .offer-print-buffet-group li + li { margin-top: .8mm; }
+          .offer-print-buffet-group span { display: block; }
+          .included-grid { grid-template-columns: repeat(2, 1fr); gap: 0 5mm; }
+          .included-item { min-height: 0; padding: 2mm 0; border-bottom: 1px solid var(--line); }
+          .included-item + .included-item { border-left: 0; }
+          .included-item strong { margin: 0 0 .8mm; font-size: 9.5px; }
+          .included-item span:last-child { font-size: 8px; }
+          .cost-card { border-top: 0; padding-top: 0; }
+          .cost-table { border: 0; border-radius: 0; font-size: 9px; }
+          .cost-table th { padding: 2.6mm 2.3mm; background: var(--navy); color: #fff; font-size: 8px; }
+          .cost-table td { padding: 2.5mm 2.3mm; }
+          .cost-table td:nth-child(n+3) { white-space: nowrap; text-align: right; }
+          .cost-table th:nth-child(n+3) { text-align: right; }
+          .total-line { margin-top: 2mm; border-radius: 1.5mm; padding: 4.5mm 5mm; }
+          .total-line span small { display: block; margin-top: 1mm; color: #d8e2ec; font-size: 7.5px; font-weight: 400; }
+          .info-groups { display: grid; grid-template-columns: 1fr 1.12fr; gap: 6mm; }
+          .info-group { border-top: 2px solid var(--navy); }
+          .info-group > h3 { margin: 0; padding: 3mm 0 1mm; color: var(--navy); font-size: 11px; }
+          .info-grid { display: block; }
+          .info-grid .info-card { min-height: 0; margin: 0; padding: 2.5mm 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+          .info-card .section-title { margin-bottom: 1mm; font-size: 9.5px; }
+          .info-card p { font-size: 8.2px; line-height: 1.35; }
+          .signature-card { margin-top: 1mm; padding: 3mm 0 4mm; border-width: 1px 0 0; border-radius: 0; }
+          .signature-grid { margin-top: 7mm; }
+          .signature-line { min-height: 11mm; }
+          .footer { border-color: var(--line); color: var(--muted); font-size: 7.5px; }
         </style>
       </head>
       <body>
@@ -6585,23 +6954,24 @@ function printOfferDraft() {
           <div class="header">
             <div class="header-left">
               <img class="header-logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
+              <div class="sender-contact">Röntgenstraße 12 a · 84030 Landshut · LA-Bowling Veranstaltungsservice</div>
             </div>
             <div class="header-right">
-              <span>⌖ Röntgenstraße 12 · 84030 Landshut</span>
-              <span>☎ LA-Bowling Veranstaltungsservice</span>
+              <span>Angebot <b>${escapeHtml(draft.title || draft.customerName || "Veranstaltung")}</b></span>
+              <span>Angebotsdatum <b>${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "-")}</b></span>
+              <span>Gültig bis <b>${escapeHtml(offerValidUntil)}</b></span>
             </div>
           </div>
           <div class="title-row">
-            <h2 class="page-title">Angebot</h2>
-            <div class="date-card"><span class="date-icon">D</span><span><small>Angebotsdatum</small><strong>${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "-")}</strong></span></div>
+            <div class="title-copy"><h2 class="page-title">Angebot für Ihre Veranstaltung</h2>${draft.occasion ? `<small>${escapeHtml(draft.occasion)}</small>` : ""}</div>
           </div>
           <div class="grid-two">
             <section class="template-card">
-              <h3 class="section-title" data-icon="K">Kundendaten</h3>
-              <div class="details-copy"><strong>${escapeHtml(draft.customerName || "-")}</strong>${draft.customerContact ? `\n${escapeHtml(draft.customerContact)}` : ""}${draft.customerAddress ? `\n${escapeHtml(draft.customerAddress)}` : ""}${draft.customerPhone ? `\n\n☎ ${escapeHtml(draft.customerPhone)}` : ""}${draft.customerEmail ? `\n✉ ${escapeHtml(draft.customerEmail)}` : ""}</div>
+              <h3 class="section-title">Kundendaten</h3>
+              <div class="details-copy"><strong>${escapeHtml(draft.customerName || "-")}</strong>${draft.customerContact ? `\n${escapeHtml(draft.customerContact)}` : ""}${draft.customerAddress ? `\n${escapeHtml(draft.customerAddress)}` : ""}${draft.customerPhone ? `\n\n${escapeHtml(draft.customerPhone)}` : ""}${draft.customerEmail ? `\n${escapeHtml(draft.customerEmail)}` : ""}</div>
             </section>
             <section class="template-card">
-              <h3 class="section-title" data-icon="V">Veranstaltungsdetails</h3>
+              <h3 class="section-title">Veranstaltungsdetails</h3>
               <div class="event-grid">
                 <strong>Datum</strong><span>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</span>
                 <strong>Anlass</strong><span>${escapeHtml(draft.occasion || "-")}</span>
@@ -6611,15 +6981,21 @@ function printOfferDraft() {
               </div>
             </section>
           </div>
-          ${timelineScale ? `<section class="template-card"><h3 class="section-title" data-icon="Z">Zeitskala / Ablauf</h3>${timelineScale}</section>` : ""}
+          <div class="event-overview">
+            <div><small>Datum</small><strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</strong></div>
+            <div><small>Personen</small><strong>${escapeHtml(personsSummary)}</strong></div>
+            <div><small>Beginn / Dauer</small><strong>${escapeHtml(draft.startTime || draft.bowling?.fromTime || "-")}${bowling.durationLabel && bowling.durationLabel !== "-" ? ` · ${escapeHtml(bowling.durationLabel)}` : ""}</strong></div>
+            <div><small>Bereich</small><strong>${escapeHtml(reservedAreaPricing.reservedAreaLabel || "LA-Bowling")}</strong></div>
+          </div>
+          ${timelineScale ? `<section class="template-card"><h3 class="section-title">Ablauf Ihrer Veranstaltung</h3>${timelineScale}</section>` : ""}
           ${buffetPricing.buffetBaseTotal > 0 ? `<section class="template-card buffet-highlight">
             <div class="buffet-highlight-main">
-              <span class="round-icon">F</span>
-              <div><h3>${escapeHtml(draft.buffet?.name || templateBadge || "Buffet")}</h3><p>${escapeHtml(draft.buffet?.name ? "Buffet laut ausgewählter Zusammenstellung" : "Buffet laut Beschreibung")}</p></div>
+              <div><h3>${escapeHtml(draft.buffet?.name || templateBadge || "Buffet")}</h3><p>${escapeHtml(`${personsSummary} Personen · Buffet laut ausgewählter Zusammenstellung`)}</p></div>
             </div>
             <div class="buffet-price">${formatMoney(draft.buffet?.pricePerPerson || 0)}<small>pro Person</small></div>
+            ${buffetSections ? `<div class="buffet-menu">${buffetSections}</div>` : ""}
           </section>` : ""}
-          ${includedItems.length ? `<section class="template-card"><h3 class="section-title" data-icon="+">Inklusive im Angebot</h3><div class="included-grid">${includedItems.map((item) => `<div class="included-item"><span class="round-icon">${escapeHtml(item.icon)}</span><span><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.text)}</span></span></div>`).join("")}</div></section>` : ""}
+          ${includedItems.length ? `<section class="template-card"><h3 class="section-title">Ihre Leistungen</h3><div class="included-grid">${includedItems.map((item) => `<div class="included-item"><span><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.text)}</span></span></div>`).join("")}</div></section>` : ""}
           <div class="footer">
             <span>LA Bowling · Röntgenstr. 12 · 84030 Landshut</span>
             <span>Seite 1 von 2</span>
@@ -6629,10 +7005,12 @@ function printOfferDraft() {
           <div class="header">
             <div class="header-left">
               <img class="header-logo" src="/la-bowling-print-logo.png" alt="LA Bowling">
+              <div class="sender-contact">Röntgenstraße 12 a · 84030 Landshut · LA-Bowling Veranstaltungsservice</div>
             </div>
             <div class="header-right">
-              <span>⌖ Röntgenstraße 12 · 84030 Landshut</span>
-              <span>☎ LA-Bowling Veranstaltungsservice</span>
+              <span>Angebot <b>${escapeHtml(draft.title || draft.customerName || "Veranstaltung")}</b></span>
+              <span>Angebotsdatum <b>${escapeHtml(draft.offerDate ? formatDate(draft.offerDate) : "-")}</b></span>
+              <span>Gültig bis <b>${escapeHtml(offerValidUntil)}</b></span>
             </div>
           </div>
           <section class="template-card cost-card">
@@ -6643,21 +7021,27 @@ function printOfferDraft() {
                 ${buffetCostRows}
                 ${bowlingCostRows}
                 ${reservedAreaCostRows}
+                ${drinksCostRows}
                 ${costs}
               </tbody>
             </table>
             ${vatNoticeText ? `<div class="cost-note">${escapeHtml(vatNoticeText)}</div>` : ""}
-            <div class="total-line"><span>Gesamtbetrag</span><strong>${formatMoney(totals.total)}</strong></div>
+            <div class="total-line"><span>Gesamtbetrag<small>inkl. gesetzlicher MwSt.</small></span><strong>${formatMoney(totals.total)}</strong></div>
           </section>
-          <div class="info-grid">
-            <section class="info-card"><h3 class="section-title" data-icon="D">Angebotsgültigkeit</h3><p>Dieses Angebot ist gültig bis ${escapeHtml(offerValidUntil)}.</p></section>
-            ${vatNoticeText ? `<section class="info-card"><h3 class="section-title" data-icon="i">Hinweise</h3><p>${escapeHtml(vatNoticeText)}</p></section>` : ""}
-            ${cancellationText ? `<section class="info-card"><h3 class="section-title" data-icon="S">Stornierungsbedingungen</h3><p>${escapeHtml(cancellationText)}</p></section>` : ""}
-            ${reservationText ? `<section class="info-card"><h3 class="section-title" data-icon="✓">Reservierung / Bestätigung</h3><p>${escapeHtml(reservationText)}</p></section>` : ""}
-            ${pricingNoticeText ? `<section class="info-card"><h3 class="section-title" data-icon="i">Preisgrundlage</h3><p>${escapeHtml(pricingNoticeText)}</p></section>` : ""}
+          <div class="info-groups">
+            <section class="info-group"><h3>Wichtige Hinweise</h3><div class="info-grid">
+              <section class="info-card"><h3 class="section-title">Angebotsgültigkeit</h3><p>Dieses Angebot ist gültig bis ${escapeHtml(offerValidUntil)}.</p></section>
+              ${(drinksByMenuText || drinksCustomText) ? `<section class="info-card"><h3 class="section-title">Getränke</h3><p>${escapeHtml(drinksCustomText || drinksByMenuText)}${draft.drinksMode === "custom" ? ` <strong>${formatMoney(totals.drinksTotal)}</strong>` : ""}</p></section>` : ""}
+              ${vatNoticeText ? `<section class="info-card"><h3 class="section-title">Hinweise</h3><p>${escapeHtml(vatNoticeText)}</p></section>` : ""}
+              ${pricingNoticeText ? `<section class="info-card"><h3 class="section-title">Preisgrundlage</h3><p>${escapeHtml(pricingNoticeText)}</p></section>` : ""}
+            </div></section>
+            <section class="info-group"><h3>Vertragsbedingungen</h3><div class="info-grid">
+              ${cancellationText ? `<section class="info-card"><h3 class="section-title">Stornierungsbedingungen</h3><p>${escapeHtml(cancellationText)}</p></section>` : ""}
+              ${reservationText ? `<section class="info-card"><h3 class="section-title">Reservierung / Bestätigung</h3><p>${escapeHtml(reservationText)}</p></section>` : ""}
+            </div></section>
           </div>
           <section class="signature-card">
-            <h3 class="section-title" data-icon="✓">Angebot angenommen</h3>
+            <h3 class="section-title">Angebot annehmen</h3>
             <p class="muted" style="font-size:9px;">Mit der Unterschrift bestätigen wir die Annahme dieses Angebots und die verbindliche Buchung.</p>
             <div class="signature-grid">
               <div class="signature-line">Ort</div>
@@ -8318,6 +8702,7 @@ function reportPreviewFromForm() {
     bowlingCashRevenue,
     gastroCashRevenue,
     revenueGastro,
+    miscIncome: miscIncomeFromFormOrReport(),
     barBowling: revenueBowling,
     barGastro: revenueGastro,
     tipTotal: tipResult.tipTotal.toFixed(2),
@@ -8387,6 +8772,75 @@ function renderTerminalDateNavigator(dateKey) {
   }
 }
 
+function terminalExtrasForDate(dateKey) {
+  return normalizeOffersClient(state.offers || [])
+    .filter((offer) => !offer.archived && offer.eventDate === dateKey)
+    .sort((a, b) => String(a.startTime || "99:99").localeCompare(String(b.startTime || "99:99")));
+}
+
+function terminalExtraTitle(offer = {}) {
+  return offer.occasion || offer.title || offer.customerName || "Besonderheit";
+}
+
+function terminalExtraDescription(offer = {}) {
+  const details = [];
+  if (offer.customerName && offer.customerName !== terminalExtraTitle(offer)) details.push(offer.customerName);
+  const persons = offerPersonCount(offer);
+  if (persons) details.push(`${persons} Pers.`);
+  if (offer.reservedArea) details.push(offer.reservedArea);
+  return details.join(" · ") || "Angebot für diesen Tag";
+}
+
+function renderTerminalExtras(dateKey) {
+  const target = $("#terminalEventOverview");
+  const weekTarget = $("#terminalExtrasWeek");
+  if (!target || !weekTarget) return;
+  const selectedExtras = terminalExtrasForDate(dateKey);
+  const date = new Date(`${dateKey}T12:00:00`);
+  if ($("#terminalExtrasDateLabel")) {
+    $("#terminalExtrasDateLabel").textContent = date.toLocaleDateString("de-DE", {
+      weekday: "long", day: "2-digit", month: "2-digit"
+    });
+  }
+  if ($("#terminalExtrasCount")) {
+    $("#terminalExtrasCount").textContent = `${selectedExtras.length} Extra${selectedExtras.length === 1 ? "" : "s"}`;
+    $("#terminalExtrasCount").classList.toggle("has-extras", selectedExtras.length > 0);
+  }
+  target.innerHTML = selectedExtras.length ? `
+    <div class="terminal-extra-list">
+      ${selectedExtras.slice(0, 5).map((offer) => `
+        <article class="terminal-extra-item">
+          <span class="terminal-extra-time">${escapeHtml(offer.startTime || "Ganztägig")}</span>
+          <span class="terminal-extra-copy">
+            <strong>${escapeHtml(terminalExtraTitle(offer))}</strong>
+            <small>${escapeHtml(terminalExtraDescription(offer))}</small>
+          </span>
+          <span class="terminal-extra-kind">${offer.buffet?.name ? "Buffet" : offer.bowling?.lanes ? "Bowling" : "Angebot"}</span>
+        </article>
+      `).join("")}
+      ${selectedExtras.length > 5 ? `<button class="terminal-extra-more" data-terminal-tab-target="offers" type="button">Alle ${selectedExtras.length} Extras öffnen</button>` : ""}
+    </div>
+  ` : `
+    <div class="terminal-extras-empty">
+      <span class="terminal-extras-empty-icon" aria-hidden="true">+</span>
+      <span><strong>Keine Extras geplant</strong><small>Für diesen Tag sind keine besonderen Aktionen oder Hinweise hinterlegt.</small></span>
+    </div>
+  `;
+
+  const weekDays = Array.from({ length: 7 }, (_, offset) => {
+    const day = new Date(`${dateKey}T12:00:00`);
+    day.setDate(day.getDate() + offset);
+    const key = isoDate(day);
+    return { key, day, extras: terminalExtrasForDate(key) };
+  });
+  weekTarget.innerHTML = weekDays.map(({ key, day, extras }) => `
+    <button class="terminal-extra-day ${key === dateKey ? "active" : ""} ${extras.length ? "has-extras" : ""}" data-terminal-extra-date="${key}" type="button">
+      <span class="terminal-extra-day-date"><strong>${day.toLocaleDateString("de-DE", { weekday: "short" })}</strong><small>${day.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}</small></span>
+      <span class="terminal-extra-day-summary"><strong>${extras.length} Extra${extras.length === 1 ? "" : "s"}</strong><small>${extras.slice(0, 2).map(terminalExtraTitle).join(" · ") || "Nichts geplant"}</small></span>
+    </button>
+  `).join("");
+}
+
 function renderTerminal() {
   const panel = $("#terminal");
   if (!panel) return;
@@ -8420,6 +8874,7 @@ function renderTerminal() {
   const reportLocked = reportClosed || terminalIsFuturePreview(dateKey);
   renderTerminalTabs();
   renderTerminalDateNavigator(dateKey);
+  renderTerminalExtras(dateKey);
   renderTerminalDayMeta(dateKey, report, reportLocked);
   renderTerminalCorrectionBanner(dateKey, report);
   renderTerminalOpenDays(dateKey);
@@ -8795,15 +9250,15 @@ function renderTerminalClosingSteps() {
   $$('[data-closing-step]').forEach((button) => {
     const step = Number(button.dataset.closingStep || 1);
     button.classList.toggle("is-active", step === activeStep);
-    button.classList.toggle("is-complete", (step === 2 && Boolean(state.terminalPentacodeComplete)) || (step === 3 && Boolean(state.terminalManualReportComplete)) || (step === 4 && Boolean(state.terminalDocumentsComplete)));
+    button.classList.toggle("is-complete", (step === 2 && Boolean(state.terminalPentacodeComplete)) || (step === 3 && Boolean(state.terminalDocumentsComplete)) || (step === 4 && Boolean(state.terminalManualReportComplete)));
     button.setAttribute("aria-current", step === activeStep ? "step" : "false");
   });
   $$('[data-closing-step-content]').forEach((section) => {
     section.classList.toggle("hidden", Number(section.dataset.closingStepContent || 1) !== activeStep);
   });
   if (activeStep === 2) renderPentacodeTransfer();
-  if (activeStep === 3) renderManualReportTransfer();
-  if (activeStep === 4) renderClosingDocumentsStep();
+  if (activeStep === 3) renderClosingDocumentsStep();
+  if (activeStep === 4) renderManualReportTransfer();
   if (activeStep === 6) renderDailyTipDistribution();
   if (activeStep === 7) {
     const tomorrow = assignmentDateKeys(state.terminalDate || todayKey())[1];
@@ -9013,11 +9468,15 @@ function currentCashExpenseTransferItems() {
 
 function manualReportTransferItems() {
   const result = calculateTipDistribution(state.terminalDate || todayKey());
+  const miscIncome = miscIncomeFromFormOrReport();
+  const expenses = currentCashExpenseTransferItems();
   return [
     { key: "cashGastro", label: "Gastro-Bar", value: gastroCashRevenueFromFormOrReport(), available: true },
     { key: "cashBowling", label: "Bar-Umsatz Bowling", value: bowlingCashRevenueFromFormOrReport(), available: true },
     { key: "consumption", label: "Personalverzehr", value: result.personalConsumption, available: true },
-    { key: "receipts", label: "Belege aus Kasse", value: result.cashExpenses, available: true }
+    ...miscIncome.map((item, index) => ({ key: `income:${item.id || index}`, label: `Sonstige Einnahme: ${item.name || "ohne Bezeichnung"}`, value: reportMoneyNumber(item.amount), available: true })),
+    ...expenses.map((item, index) => ({ key: `receipt:${item.id || index}`, label: `Beleg: ${item.name || `Beleg ${index + 1}`}`, note: item.category || "", value: reportMoneyNumber(item.amount), available: true })),
+    { key: "receipts-total", label: "Gesamtsumme Belege", value: result.cashExpenses, available: true }
   ];
 }
 
@@ -13153,7 +13612,7 @@ function setDayReportLocked(isLocked, report = {}) {
   $$("#dayReportPrintArea input, #dayReportPrintArea textarea, #dayReportPrintArea select, #terminalFinanceSection input, #terminalFinanceSection textarea, #terminalFinanceSection select").forEach((field) => {
     field.disabled = isLocked;
   });
-  $$("#addInvoiceCustomer, #addExpense, #openAddExpense, [data-save-invoice-draft], [data-mark-invoice-ready], [data-save-expense-entry], [data-remove-report-entry], [data-remove-report-document], #saveDayReport, #saveTipDistribution").forEach((button) => {
+  $$("#addInvoiceCustomer, #addExpense, #openAddExpense, #addMiscIncome, [data-save-invoice-draft], [data-mark-invoice-ready], [data-save-expense-entry], [data-remove-report-entry], [data-remove-report-document], [data-remove-misc-income], #saveDayReport, #saveTipDistribution").forEach((button) => {
     button.disabled = isLocked;
   });
   const closeButton = $("#closeDayReport");
@@ -13166,6 +13625,7 @@ function setDayReportLocked(isLocked, report = {}) {
 function renderReportEntryLists(report) {
   const invoices = report.invoiceCustomers || [];
   const expenses = report.expenses || [];
+  const miscIncome = report.miscIncome || [];
   const invoiceTarget = $("#invoiceCustomersList");
   const expenseTarget = $("#expensesList");
   if (invoiceTarget) {
@@ -13176,7 +13636,42 @@ function renderReportEntryLists(report) {
   if (expenseTarget) {
     expenseTarget.innerHTML = expenses.map((item) => expenseRowHtml(item)).join("") || `<p class="hint">Keine Ausgaben erfasst.</p>`;
   }
+  renderMiscIncomeList(miscIncome);
   renderFinanceExpensePreview();
+}
+
+function miscIncomeRowHtml(item = {}) {
+  return `
+    <div class="finance-misc-income-row" data-report-entry="misc-income" data-id="${escapeHtml(item.id || cryptoId())}">
+      <input data-report-field="name" value="${escapeHtml(item.name || "")}" placeholder="Bezeichnung, z.B. Automaten" aria-label="Bezeichnung sonstige Einnahme">
+      <input data-report-field="amount" type="number" min="0" step="0.01" value="${escapeHtml(item.amount || "")}" placeholder="0,00" aria-label="Betrag sonstige Einnahme">
+      <span>€</span>
+      <button type="button" data-remove-misc-income aria-label="Sonstige Einnahme entfernen">&times;</button>
+    </div>`;
+}
+
+function renderMiscIncomeList(items = []) {
+  const target = $("#miscIncomeList");
+  if (!target) return;
+  target.innerHTML = items.length ? items.map((item) => miscIncomeRowHtml(item)).join("") : `<p class="finance-empty-row">Keine sonstigen Einnahmen</p>`;
+  renderMiscIncomeTotal();
+}
+
+function currentMiscIncomeEntries() {
+  return $$("#miscIncomeList [data-report-entry='misc-income']").map((row) => ({
+    id: row.dataset.id || cryptoId(),
+    name: row.querySelector("[data-report-field='name']")?.value.trim() || "",
+    amount: row.querySelector("[data-report-field='amount']")?.value || ""
+  })).filter((item) => item.name || item.amount);
+}
+
+function miscIncomeFromFormOrReport(report = state.terminalReport || {}) {
+  const target = $("#miscIncomeList");
+  return target ? currentMiscIncomeEntries() : (Array.isArray(report.miscIncome) ? report.miscIncome : []);
+}
+
+function renderMiscIncomeTotal() {
+  setFinanceText("#financeMiscIncomeTotal", formatMoney(reportItemsTotal(currentMiscIncomeEntries())));
 }
 
 function invoiceDayOverviewHtml(invoices = []) {
@@ -13809,6 +14304,10 @@ async function collectReportDocuments() {
 
 async function collectDayReportPayload() {
   const tipResult = calculateTipDistribution(state.terminalDate || todayKey());
+  const miscIncome = currentMiscIncomeEntries();
+  if (miscIncome.some((item) => reportMoneyNumber(item.amount) > 0 && !item.name)) {
+    throw new Error("Bitte für jede sonstige Einnahme eine Bezeichnung eingeben.");
+  }
   return {
     action: "save-report",
     cashTotal: $("#reportCashTotal")?.value || "",
@@ -13834,6 +14333,7 @@ async function collectDayReportPayload() {
     handovers: state.terminalReport.handovers || [],
     invoiceCustomers: await collectReportEntries("invoice"),
     expenses: await collectReportEntries("expense"),
+    miscIncome,
     documents: await collectReportDocuments(),
     notes: $("#reportNotes").value,
     extraEmployees: state.terminalReport.extraEmployees || [],
@@ -14614,14 +15114,16 @@ function renderFinanceDashboard(result = calculateTipDistribution(state.terminal
   setFinanceText("#financeKpiExpenses", formatMoney(result.cashExpenses || 0));
   setFinanceText("#financeKpiHandover", formatMoney(result.chefHandover || 0));
   setFinanceText("#financeResultHandover", formatMoney(result.chefHandover || 0));
-  setFinanceText("#financeInvoiceTotal", formatMoney(result.invoiceTotal || 0));
+  const invoiceField = $("#financeInvoiceTotal");
+  if (invoiceField) invoiceField.value = Number(result.invoiceTotal || 0).toFixed(2).replace(".", ",");
+  setFinanceText("#financeMiscIncomeTotal", formatMoney(result.miscIncomeTotal || 0));
   setFinanceText("#financeExpenseTotal", formatMoney(result.cashExpenses || 0));
   setFinanceText(
     "#financeResultFormula",
-    `Umsatz ${formatMoney(result.totalRevenue || 0)} − EC ${formatMoney(result.ecTotal || 0)} − Rechnung ${formatMoney(result.invoiceTotal || 0)} − Ausgaben ${formatMoney(result.cashExpenses || 0)}`
+    `Umsatz ${formatMoney(result.totalRevenue || 0)} + sonstige Einnahmen ${formatMoney(result.miscIncomeTotal || 0)} − EC ${formatMoney(result.ecTotal || 0)} − Rechnung ${formatMoney(result.invoiceTotal || 0)} − Ausgaben ${formatMoney(result.cashExpenses || 0)}`
   );
   if (Number(state.terminalClosingStep || 1) === 2) renderPentacodeTransfer();
-  if (Number(state.terminalClosingStep || 1) === 3) renderManualReportTransfer();
+  if (Number(state.terminalClosingStep || 1) === 4) renderManualReportTransfer();
 }
 
 function renderFinanceExpensePreview() {
@@ -14838,8 +15340,10 @@ function calculateTipDistribution(dateKey) {
   const bowlingCashRevenue = bowlingCashRevenueFromFormOrReport();
   const gastroCashRevenue = gastroCashRevenueFromFormOrReport();
   const dailyCashRevenue = bowlingCashRevenue + gastroCashRevenue;
+  const miscIncome = miscIncomeFromFormOrReport();
+  const miscIncomeTotal = reportItemsTotal(miscIncome);
   const totalRevenue = Math.max(0, revenueBowling + revenueGastro - personalConsumption);
-  const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal + transferInvoiceTotal - totalRevenue);
+  const tipTotal = Math.max(0, cashTotal + cashExpenses + ecTotal + transferInvoiceTotal - totalRevenue - miscIncomeTotal);
   const openingTime = tipOpeningTime(dateKey);
   const entries = state.terminalEntries || {};
   const employees = terminalTipEmployeesForDay(dateKey);
@@ -14888,9 +15392,11 @@ function calculateTipDistribution(dateKey) {
     bowlingCashRevenue,
     gastroCashRevenue,
     dailyCashRevenue,
+    miscIncome,
+    miscIncomeTotal,
     invoiceTotal: transferInvoiceTotal,
     totalRevenue,
-    chefHandover: Math.max(0, totalRevenue - ecTotal - transferInvoiceTotal - cashExpenses),
+    chefHandover: Math.max(0, totalRevenue + miscIncomeTotal - ecTotal - transferInvoiceTotal - cashExpenses),
     tipTotal,
     distributedTipTotal,
     tipRemainder,
@@ -15419,6 +15925,32 @@ async function saveAdminTimesheet(button) {
   }
 }
 
+async function deleteAdminTimesheet(button) {
+  if (!state.adminToken) {
+    showToast("Bitte Admin-Bereich erneut entsperren.");
+    return;
+  }
+  const employee = button.dataset.adminDeleteTimesheet || "";
+  const date = button.dataset.timesheetDate || "";
+  if (!employee || !date) return;
+  if (!window.confirm(`Arbeitszeit von ${employee} am ${formatDate(date)} wirklich löschen?`)) return;
+  button.disabled = true;
+  button.textContent = "Löscht...";
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      body: JSON.stringify({ action: "admin-delete-timesheet-entry", adminToken: state.adminToken, employee, date })
+    });
+    state.timesheets = result.timesheets || state.timesheets || {};
+    renderAdminEmployeeOverview();
+    showToast(`Arbeitszeit am ${formatDate(date)} gelöscht.`);
+  } catch (error) {
+    showError(error);
+    button.disabled = false;
+    button.textContent = "Löschen";
+  }
+}
+
 async function confirmToiletCheck() {
   if (!state.pendingReminder?.checkKey && !state.pendingToiletCheck) return { ok: true, message: "Keine offene Erinnerung." };
   const checkKey = state.pendingReminder?.checkKey || state.pendingToiletCheck;
@@ -15519,6 +16051,7 @@ function employeeOverviewHtml({ allowCorrection = false } = {}) {
                   <span>${escapeHtml(shift.timeText || "?")}</span>
                   <span>${formatHours(shift.hours)}</span>
                   ${shift.adminOnly ? `<small>Nur Admin${shift.adminNote ? ` | ${escapeHtml(shift.adminNote)}` : ""}</small>` : ""}
+                  ${allowCorrection ? `<button class="danger-lite" type="button" data-admin-delete-timesheet="${escapeHtml(employee)}" data-timesheet-date="${escapeHtml(shift.date)}">Löschen</button>` : ""}
                 </div>
               `).join("") || `<p class="hint">Keine Arbeitszeiten für diesen Monat erfasst.</p>`}
             </div>
@@ -18200,6 +18733,11 @@ function bindEvents() {
   });
 
   $("#adminEmployeeOverview")?.addEventListener("click", (event) => {
+    const deleteButton = event.target.closest("[data-admin-delete-timesheet]");
+    if (deleteButton) {
+      deleteAdminTimesheet(deleteButton);
+      return;
+    }
     const button = event.target.closest("[data-admin-save-timesheet]");
     if (!button) return;
     saveAdminTimesheet(button);
@@ -18424,11 +18962,35 @@ function bindEvents() {
       offerWorkspaceRoot()?.querySelector("#offerCustomerSearch")?.focus();
       return;
     }
+    if (event.target.matches("[data-offer-time-input]")) {
+      const rawTime = String(event.target.value || "").trim();
+      if (/^\d{4}$/.test(rawTime)) event.target.value = cleanOfferTimeValue(rawTime);
+    }
+    const offerFieldName = event.target.dataset?.offerField || "";
+    if (offerFieldName === "bowlingShoePersons") {
+      state.offerShoePersonsManual = true;
+    } else if (["personsAdults", "personsChildren"].includes(offerFieldName) && !state.offerShoePersonsManual) {
+      const root = offerWorkspaceRoot();
+      const adults = cleanOfferIntegerValue(root?.querySelector('[data-offer-field="personsAdults"]')?.value);
+      const children = cleanOfferIntegerValue(root?.querySelector('[data-offer-field="personsChildren"]')?.value);
+      const shoeInput = root?.querySelector('[data-offer-field="bowlingShoePersons"]');
+      if (shoeInput) shoeInput.value = String(adults + children);
+    }
     state.offerDraftDirty = true;
+    window.requestAnimationFrame(refreshOfferLiveSummary);
   }));
 
   $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("change", (event) => {
     state.offerDraftDirty = true;
+    if (event.target.matches("[data-offer-time-input]")) {
+      const normalizedTime = cleanOfferTimeValue(event.target.value);
+      if (normalizedTime) event.target.value = normalizedTime;
+      else if (String(event.target.value || "").trim()) {
+        showToast("Bitte die Uhrzeit als HH:MM eingeben, zum Beispiel 18:00.");
+        event.target.focus();
+        return;
+      }
+    }
     if (offerFieldNeedsLiveRefresh(event.target)) {
       const fieldName = event.target.dataset?.offerField || "";
       const focusSelector = fieldName ? `[data-offer-field="${cssEscape(fieldName)}"]` : "";
@@ -18437,6 +18999,26 @@ function bindEvents() {
   }));
 
   $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("click", async (event) => {
+    const editorStepButton = event.target.closest("[data-offer-editor-step]");
+    if (editorStepButton) {
+      state.offerCustomerSearch = offerWorkspaceRoot()?.querySelector("#offerCustomerSearch")?.value || state.offerCustomerSearch || "";
+      state.offerDraft = currentOfferDraftFromDom();
+      state.offerDraftId = state.offerDraft.id;
+      state.offerDraftDirty = true;
+      state.offerEditorStep = Number(editorStepButton.dataset.offerEditorStep || 1);
+      renderAdminOffers();
+      offerWorkspaceRoot()?.querySelector(".offer-wizard-steps")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    const serviceToggle = event.target.closest("[data-offer-service-toggle]");
+    if (serviceToggle) {
+      const key = serviceToggle.dataset.offerServiceToggle;
+      const section = serviceToggle.closest(".offer-service-card");
+      state.offerServiceExpanded = { ...(state.offerServiceExpanded || {}), [key]: !section?.classList.contains("is-expanded") };
+      section?.classList.toggle("is-expanded");
+      serviceToggle.querySelector("b").textContent = section?.classList.contains("is-expanded") ? "Schließen" : (section?.classList.contains("is-selected") ? "Ausgewählt" : "Öffnen");
+      return;
+    }
     const scrollSavedOffers = event.target.closest("[data-offer-scroll-saved]");
     if (scrollSavedOffers) {
       offerWorkspaceRoot()?.querySelector(".offer-sidebar")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -18626,6 +19208,28 @@ function bindEvents() {
       renderAdminOffers();
       return;
     }
+    const addSpecialOpening = event.target.closest("[data-offer-add-special-opening]");
+    if (addSpecialOpening) {
+      const draft = currentOfferDraftFromDom();
+      const existing = (draft.costs || []).find((item) => String(item.label || "").trim().toLowerCase() === "sonderöffnung");
+      if (!existing) {
+        draft.costs.push({
+          id: cryptoId(),
+          label: "Sonderöffnung",
+          quantity: 1,
+          unitPrice: 0,
+          note: ""
+        });
+      }
+      state.offerDraft = draft;
+      state.offerDraftId = draft.id;
+      state.offerDraftDirty = false;
+      state.offerServiceExpanded.costs = true;
+      renderAdminOffers();
+      offerWorkspaceRoot()?.querySelector('.offer-special-opening-row [data-offer-cost-unit]')?.focus();
+      if (existing) showToast("Die Sonderöffnungsgebühr ist bereits angelegt.");
+      return;
+    }
     const removeCost = event.target.closest("[data-offer-remove-cost]");
     if (removeCost) {
       const row = removeCost.closest("[data-offer-cost-row]");
@@ -18657,23 +19261,6 @@ function bindEvents() {
     if (event.target.matches("#adminReportDate")) {
       setReportCalendarSelection("admin", event.target.value || defaultAdminReportDate());
       renderAdminReports();
-      return;
-    }
-    const addSpecialOpening = event.target.closest("[data-offer-add-special-opening]");
-    if (addSpecialOpening) {
-      const draft = currentOfferDraftFromDom();
-      draft.costs.push({
-        id: cryptoId(),
-        label: "Sonderöffnung",
-        quantity: 1,
-        unitPrice: 0,
-        note: "Öffnung außerhalb der regulären Öffnungszeiten"
-      });
-      state.offerDraft = draft;
-      state.offerDraftId = draft.id;
-      state.offerDraftDirty = false;
-      renderAdminOffers();
-      offerWorkspaceRoot()?.querySelector('[data-offer-cost-row]:last-of-type [data-offer-cost-unit]')?.focus();
       return;
     }
     if (!event.target.matches("#adminNumbersMonth")) return;
@@ -18898,6 +19485,17 @@ function bindEvents() {
       await loadTerminalWorkDate(date, dateShortcut);
       return;
     }
+    const extraDate = event.target.closest("[data-terminal-extra-date]");
+    if (extraDate) {
+      await loadTerminalWorkDate(extraDate.dataset.terminalExtraDate, extraDate);
+      return;
+    }
+    const extraTabTarget = event.target.closest("[data-terminal-tab-target]");
+    if (extraTabTarget) {
+      state.terminalTab = terminalWorkspaceTab(extraTabTarget.dataset.terminalTabTarget);
+      renderTerminalTabs();
+      return;
+    }
     const worktimeDateStep = event.target.closest("[data-worktime-date-step]");
     if (worktimeDateStep) {
       const current = new Date(`${state.terminalDate || todayKey()}T12:00:00`);
@@ -19040,7 +19638,7 @@ function bindEvents() {
       const items = manualReportTransferItems();
       if (!items.every((item) => state.terminalManualReportCopied[item.key])) return;
       state.terminalManualReportComplete = true;
-      state.terminalClosingStep = 4;
+      state.terminalClosingStep = 5;
       renderTerminalClosingSteps();
       return;
     }
@@ -19911,6 +20509,28 @@ function bindEvents() {
     list.lastElementChild?.querySelector("[data-report-field='name']")?.focus();
   });
 
+  $("#addMiscIncome")?.addEventListener("click", () => {
+    const list = $("#miscIncomeList");
+    if (!list || state.terminalReport?.closed) return;
+    if (list.querySelector(".finance-empty-row")) list.innerHTML = "";
+    list.insertAdjacentHTML("beforeend", miscIncomeRowHtml());
+    list.lastElementChild?.querySelector("[data-report-field='name']")?.focus();
+    renderMiscIncomeTotal();
+  });
+
+  $("#miscIncomeList")?.addEventListener("input", () => {
+    renderMiscIncomeTotal();
+    updateReportBarTotal();
+  });
+
+  $("#miscIncomeList")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-misc-income]");
+    if (!button || state.terminalReport?.closed) return;
+    button.closest("[data-report-entry='misc-income']")?.remove();
+    if (!$("#miscIncomeList")?.children.length) renderMiscIncomeList([]);
+    updateReportBarTotal();
+  });
+
   $("#terminalFinanceSection")?.addEventListener("click", (event) => {
     if (event.target.closest("[data-open-invoice-details]")) {
       state.terminalTab = "invoices";
@@ -20072,7 +20692,7 @@ function bindEvents() {
   $("#completeClosingDocuments")?.addEventListener("click", () => {
     if (!closingDocumentEntries().length) showClosingDocumentsHint("Keine Dokumente vorhanden. Schritt 4 wurde ohne Dokumente abgeschlossen.");
     state.terminalDocumentsComplete = true;
-    state.terminalClosingStep = 5;
+    state.terminalClosingStep = 4;
     renderTerminalClosingSteps();
   });
 
@@ -20206,6 +20826,7 @@ function bindEvents() {
         bowlingCashRevenue: $("#reportBowlingCashRevenue")?.value || "",
         gastroCashRevenue: $("#reportGastroCashRevenue")?.value || "",
         revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
+        miscIncome: currentMiscIncomeEntries(),
         resetTipPayout: true,
         tipTotal: result.tipTotal.toFixed(2),
         tipRemainder: result.tipRemainder.toFixed(2),

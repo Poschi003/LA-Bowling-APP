@@ -151,6 +151,9 @@ async function handlePost(req, res) {
   if (action === "delete-offer") {
     return deleteOffer(body, res);
   }
+  if (action === "admin-delete-timesheet-entry") {
+    return adminDeleteTimesheetEntry(body, res);
+  }
   if (action.startsWith("invoice-")) {
     return handleInvoiceMutation(body, res);
   }
@@ -158,6 +161,33 @@ async function handlePost(req, res) {
     return handleScheduleMutation(req, res, body);
   }
   return saveCustomerInvoice(body, res);
+}
+
+async function adminDeleteTimesheetEntry(body, res) {
+  if (!verifyToken(body.adminToken || "", "admin")) {
+    return sendJson(res, 401, { error: "Bitte Admin erneut entsperren." });
+  }
+  const employee = String(body.employee || "").trim();
+  const date = String(body.date || "").trim();
+  const month = date.slice(0, 7);
+  if (!employee || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return sendJson(res, 400, { error: "Mitarbeiter oder Datum fehlt." });
+  }
+  const appData = await readAppData();
+  const canonicalEmployee = (appData.settings?.employees || []).find((name) => name === employee) || employee;
+  const employeeEntries = appData.timesheets?.[month]?.[canonicalEmployee];
+  if (!employeeEntries?.[date]) {
+    return sendJson(res, 404, { error: "Arbeitszeit nicht gefunden." });
+  }
+  delete employeeEntries[date];
+  if (!Object.keys(employeeEntries).length) delete appData.timesheets[month][canonicalEmployee];
+  await writeAppData(appData);
+  return sendJson(res, 200, {
+    ok: true,
+    employee: canonicalEmployee,
+    date,
+    timesheets: appData.timesheets?.[month] || {}
+  });
 }
 
 async function acknowledgeMessage(body, res) {
@@ -1045,6 +1075,12 @@ function normalizeOffer(offer = {}) {
     startTime: cleanTime(offer.startTime),
     mealTime: cleanTime(offer.mealTime),
     sparklingReceptionTime: cleanTime(offer.sparklingReceptionTime),
+    sparklingReceptionPrice: offer.sparklingReceptionPrice == null ? 2.5 : cleanOfferMoney(offer.sparklingReceptionPrice),
+    campfireTime: cleanTime(offer.campfireTime),
+    campfirePrice: offer.campfirePrice == null ? 50 : cleanOfferMoney(offer.campfirePrice),
+    drinksMode: offer.drinksMode === "custom" ? "custom" : "menu",
+    drinksCustomText: String(offer.drinksCustomText || "").trim().slice(0, 600),
+    drinksCustomPrice: cleanOfferMoney(offer.drinksCustomPrice),
     reservedArea: String(offer.reservedArea || "").trim().slice(0, 200),
     reservedAreaPrice: cleanOfferMoney(offer.reservedAreaPrice),
     reservedAreaCampfire: offer.reservedAreaCampfire === true,
@@ -1073,6 +1109,11 @@ function normalizeOffer(offer = {}) {
 
 function normalizeOfferTextBlocks(blocks = {}) {
   const defaults = {
+    drinksByMenu: {
+      label: "Getränke nach Karte",
+      enabled: true,
+      text: "Getränke werden nach Verbrauch gemäß der aktuellen Getränkekarte berechnet."
+    },
     pricingNotice: {
       label: "Hinweis zur Preisangabe",
       enabled: true,
