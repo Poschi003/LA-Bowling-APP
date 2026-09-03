@@ -226,12 +226,21 @@
   },
   {
     "id": "cocktail-26",
-    "name": "Moscow oder Munich Mule",
+    "name": "Moscow Mule",
     "category": "longdrink",
     "glass": "",
     "garnish": "Zitrone",
-    "ingredients": "4 cl Vodka oder Gin\nZitrone\nGinger Beer",
-    "steps": "Spirituose und Zitrone ins Glas geben.\nMit Ginger Beer auffüllen.\nKurz umrühren."
+    "ingredients": "4 cl Vodka\nZitrone\nGinger Beer",
+    "steps": "Vodka und Zitrone ins Glas geben.\nMit Ginger Beer auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-26-munich",
+    "name": "Munich Mule",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "Zitrone",
+    "ingredients": "4 cl Gin\nZitrone\nGinger Beer",
+    "steps": "Gin und Zitrone ins Glas geben.\nMit Ginger Beer auffüllen.\nKurz umrühren."
   },
   {
     "id": "cocktail-27",

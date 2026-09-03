@@ -117,7 +117,7 @@
   offers: [],
   cocktails: [],
   cocktailMode: "recipes",
-  cocktailCategory: "all",
+  cocktailCategory: "",
   cocktailSearch: "",
   offerDraft: null,
   offerDraftId: "",
@@ -9199,8 +9199,10 @@ function renderCocktailTool() {
   const categories = $("#cocktailCategories");
   if (!list || !categories) return;
   const search = String(state.cocktailSearch || "").trim().toLowerCase();
+  const selectedCategory = String(state.cocktailCategory || "");
+  const showResults = state.cocktailMode === "manage" || Boolean(search) || Boolean(selectedCategory);
   const recipes = (state.cocktails || []).filter((recipe) => {
-    const categoryMatch = state.cocktailCategory === "all" || recipe.category === state.cocktailCategory;
+    const categoryMatch = !selectedCategory || selectedCategory === "all" || recipe.category === selectedCategory;
     const searchMatch = !search || `${recipe.name} ${recipe.ingredients} ${recipe.garnish}`.toLowerCase().includes(search);
     return categoryMatch && searchMatch;
   });
@@ -9214,6 +9216,12 @@ function renderCocktailTool() {
       <span><small>${escapeHtml(cocktailCategoryLabels[recipe.category] || "Cocktail")}</small><strong>${escapeHtml(recipe.name)}</strong><em>${escapeHtml(recipe.garnish ? `Garnitur: ${recipe.garnish}` : recipe.glass || "Rezept öffnen")}</em></span>
       <b aria-hidden="true">›</b>
     </button>`).join("") : `<div class="cocktail-empty"><strong>Kein Rezept gefunden</strong><span>Suchbegriff oder Kategorie ändern.</span></div>`;
+  $("#cocktailResults")?.classList.toggle("hidden", !showResults);
+  if ($("#cocktailResultsTitle")) {
+    $("#cocktailResultsTitle").textContent = search
+      ? `Suchergebnisse für „${state.cocktailSearch.trim()}“`
+      : cocktailCategoryLabels[selectedCategory] || "Alle Rezepte";
+  }
   $("#cocktailEditor")?.classList.toggle("hidden", state.cocktailMode !== "manage");
   $(".cocktail-layout")?.classList.toggle("is-manage", state.cocktailMode === "manage");
   $$('[data-cocktail-mode]').forEach((button) => {
@@ -9263,6 +9271,22 @@ function bindCocktailEvents() {
     if (mode) { state.cocktailMode = mode.dataset.cocktailMode; resetCocktailForm(); renderCocktailTool(); return; }
     const category = event.target.closest("[data-cocktail-category]");
     if (category) { state.cocktailCategory = category.dataset.cocktailCategory; renderCocktailTool(); return; }
+    if (event.target.closest("[data-reset-cocktail-selection]")) {
+      state.cocktailCategory = "";
+      state.cocktailSearch = "";
+      renderCocktailTool();
+      $("#cocktailSearch")?.focus();
+      return;
+    }
+    if (event.target.closest("#cocktailFullscreen")) {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await document.documentElement.requestFullscreen();
+      } catch (error) {
+        showToast("Vollbild ist auf diesem Gerät nur über die Home-Bildschirm-App verfügbar.");
+      }
+      return;
+    }
     const recipe = event.target.closest("[data-open-cocktail]");
     if (recipe) { openCocktailRecipe(recipe.dataset.openCocktail); return; }
     if (event.target.closest("[data-close-cocktail]")) { $("#cocktailViewer")?.classList.add("hidden"); return; }
@@ -9276,6 +9300,13 @@ function bindCocktailEvents() {
     }
   });
   $("#cocktailSearch")?.addEventListener("input", (event) => { state.cocktailSearch = event.target.value; renderCocktailTool(); });
+  document.addEventListener("fullscreenchange", () => {
+    const button = $("#cocktailFullscreen");
+    if (!button) return;
+    const active = Boolean(document.fullscreenElement);
+    button.querySelector("b").textContent = active ? "Vollbild beenden" : "Vollbild";
+    button.setAttribute("aria-label", active ? "Vollbild beenden" : "Vollbild einschalten");
+  });
   $("#cocktailForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const recipe = { id: $("#cocktailId").value, name: $("#cocktailName").value.trim(), category: $("#cocktailCategory").value, glass: $("#cocktailGlass").value.trim(), garnish: $("#cocktailGarnish").value.trim(), ingredients: $("#cocktailIngredients").value.trim(), steps: $("#cocktailSteps").value.trim() };

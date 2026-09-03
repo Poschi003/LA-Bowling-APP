@@ -299,7 +299,7 @@ function mergeData(value) {
     invoiceSettings: normalizeInvoiceSettings(value?.invoiceSettings || base.invoiceSettings),
     invoices: normalizeInvoices(Array.isArray(value?.invoices) ? value.invoices : base.invoices, value?.invoiceSettings || base.invoiceSettings),
     offers: Array.isArray(value?.offers) ? value.offers : base.offers,
-    cocktails: Array.isArray(value?.cocktails) ? value.cocktails : base.cocktails,
+    cocktails: normalizeCocktails(value?.cocktails, base.cocktails),
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests,
     pushSubscriptions: normalizePushSubscriptions(value?.pushSubscriptions || base.pushSubscriptions)
@@ -308,6 +308,18 @@ function mergeData(value) {
     merged.settings.businessName = "Teamapp";
   }
   return merged;
+}
+
+function normalizeCocktails(value, fallback = []) {
+  const items = Array.isArray(value) ? value : fallback;
+  return items.flatMap((recipe) => {
+    if (String(recipe?.name || "").trim().toLowerCase() !== "moscow oder munich mule") return [recipe];
+    const base = { ...recipe, id: recipe.id || "cocktail-26", name: "Moscow Mule" };
+    return [
+      { ...base, ingredients: String(base.ingredients || "").replace("4 cl Vodka oder Gin", "4 cl Vodka"), steps: String(base.steps || "").replace("Spirituose", "Vodka") },
+      { ...base, id: `${base.id}-munich`, name: "Munich Mule", ingredients: String(base.ingredients || "").replace("4 cl Vodka oder Gin", "4 cl Gin"), steps: String(base.steps || "").replace("Spirituose", "Gin") }
+    ];
+  });
 }
 
 function normalizeSchedules(schedules) {

@@ -18390,6 +18390,25 @@ body.cocktail-only-mode:not(.terminal-login-mode) .terminal-workspace-main {
 }
 body.cocktail-only-mode .cocktail-mode-switch { display: none; }
 body.cocktail-only-mode .cocktail-tool-head { padding-block: 18px; }
+body.cocktail-only-mode .cocktail-head-actions { display: flex; align-items: center; gap: 10px; }
+body.cocktail-only-mode .cocktail-fullscreen { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; }
+body.cocktail-only-mode .cocktail-fullscreen span { font-size: 21px; line-height: 1; }
+body:not(.cocktail-only-mode) .cocktail-fullscreen { display: none; }
+body.cocktail-only-mode .cocktail-toolbar {
+  grid-template-columns: minmax(280px, .7fr) minmax(0, 1.3fr);
+  align-items: end;
+  padding: 26px;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+  background: #fff;
+}
+body.cocktail-only-mode .cocktail-search input { min-height: 58px; font-size: 18px; }
+body.cocktail-only-mode .cocktail-categories button { min-height: 58px; font-size: 16px; }
+body.cocktail-only-mode .cocktail-results { display: grid; gap: 14px; }
+body.cocktail-only-mode .cocktail-results.hidden { display: none; }
+body.cocktail-only-mode .cocktail-results > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+body.cocktail-only-mode .cocktail-results > header h3 { margin: 0; font-size: 22px; }
+body.cocktail-only-mode .cocktail-results > header button { min-height: 44px; }
 body.cocktail-only-mode .cocktail-tool-head h2::after {
   content: "Bar-Ansicht";
   display: inline-block;
@@ -18401,6 +18420,15 @@ body.cocktail-only-mode .cocktail-tool-head h2::after {
   font-size: 11px;
   vertical-align: middle;
   text-transform: uppercase;
+}
+@media (max-width: 900px) {
+  body.cocktail-only-mode .cocktail-toolbar { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  body.cocktail-only-mode .terminal-workspace-main { padding: 12px; }
+  body.cocktail-only-mode .cocktail-tool-head { align-items: stretch; }
+  body.cocktail-only-mode .cocktail-fullscreen b { display: none; }
+  body.cocktail-only-mode .cocktail-results > header { align-items: stretch; flex-direction: column; }
 }
 
 /* Stable room layout for the operational table plan. Old saved coordinates
