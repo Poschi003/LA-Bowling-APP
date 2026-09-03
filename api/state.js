@@ -37,6 +37,10 @@ const {
 
 module.exports = async function handler(req, res) {
   try {
+    if (req.method === "GET" && req.query.cocktailApp != null) {
+      req.query.asset = "index.html";
+      return serveAsset(req, res);
+    }
     if (req.method === "GET" && req.query.asset) return serveAsset(req, res);
     if (req.method === "POST") return handlePost(req, res);
     if (req.method !== "GET") return sendJson(res, 405, { error: "Methode nicht erlaubt." });
