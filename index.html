@@ -11,7 +11,7 @@
     <script>
       if (new URLSearchParams(window.location.search).has("cocktails") || window.location.pathname.startsWith("/cocktails")) {
         document.title = "Cocktail-Bar";
-        document.getElementById("appManifest").href = "/cocktail-manifest.webmanifest";
+        document.getElementById("appManifest").href = "/cocktail-manifest.webmanifest?v=2";
         document.getElementById("appleAppTitle").content = "Cocktail-Bar";
       }
     </script>
