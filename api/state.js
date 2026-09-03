@@ -251,7 +251,15 @@ function serveAsset(req, res) {
     "teamapp-icon-512.png": { file: "teamapp-icon-512.png", type: "image/png" },
     "apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png" }
   };
-  const asset = String(req.query.asset || "index.html");
+  const requestedAsset = Array.isArray(req.query.asset)
+    ? String(req.query.asset[0] || "index.html")
+    : String(req.query.asset || "index.html");
+  const asset = Object.keys(files).find((name) => (
+    requestedAsset === name
+    || requestedAsset.startsWith(`${name}/`)
+    || requestedAsset.startsWith(`${name}?`)
+    || requestedAsset.startsWith(`${name},`)
+  )) || "";
   const entry = files[asset];
   if (!entry) return sendJson(res, 404, { error: "Datei nicht gefunden." });
   const file = path.join(process.cwd(), entry.file);
