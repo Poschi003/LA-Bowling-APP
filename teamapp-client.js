@@ -12180,6 +12180,10 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
     $("#connectTablesFromToolbar").disabled = reportClosed || draft.tableIds.length < 2;
     $("#connectTablesFromToolbar").textContent = selectedGroup ? "Tafel anpassen" : "Tafeln verbinden";
   }
+  if ($("#disconnectTablesFromToolbar")) {
+    $("#disconnectTablesFromToolbar").classList.toggle("hidden", !selectedGroup);
+    $("#disconnectTablesFromToolbar").disabled = reportClosed || !selectedGroup;
+  }
   if ($("#disconnectSelectedTables")) {
     $("#disconnectSelectedTables").classList.toggle("hidden", !selectedGroup);
     $("#disconnectSelectedTables").disabled = reportClosed || !selectedGroup;
@@ -12219,19 +12223,7 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
   const occupancy = terminalTableOccupancyMap(reservations);
   const staffByTable = terminalTableStaffAssignmentsByTable(staffAssignments);
   const selected = new Set(sortTerminalTableIds(draft.tableIds));
-  const reservationGroups = reservations
-    .filter((reservation) => (
-      reservation.tableIds.length >= 2
-      && terminalTableSelectionCanConnect(reservation.tableIds)
-      && !groups.some((group) => group.tableIds.some((tableId) => reservation.tableIds.includes(tableId)))
-    ))
-    .map((reservation) => ({
-      id: `reservation-${reservation.id}`,
-      label: terminalTableLabels(reservation.tableIds).join("/"),
-      tableIds: reservation.tableIds,
-      reservationGroup: true
-    }));
-  const mergedGroups = [...groups, ...reservationGroups];
+  const mergedGroups = groups;
   const groupedIds = terminalTableGroupedIds(mergedGroups);
   const visibleTables = terminalPlanVisibleTables();
   const visibleZones = terminalPlanVisibleZones();
@@ -12253,8 +12245,6 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
       ${terminalTableDraftOverlayHtml(draft, groups)}
       ${terminalTableStaffOverlayHtml(staffAssignments, employeeMeta)}
       ${mergedGroups.map((group) => {
-        const rect = terminalTableGroupRect(group);
-        if (!rect) return "";
         const booked = reservations.filter((reservation) => reservation.tableIds.some((tableId) => group.tableIds.includes(tableId)));
         const primary = booked[0] || null;
         const status = primary ? cleanTerminalTableReservationStatus(primary.status) : "free";
@@ -12262,38 +12252,37 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
         const staffAssignment = staff[0] || null;
         const reservationTheme = terminalTableReservationThemeStyle(booked[0]);
         const isSelected = group.tableIds.every((tableId) => selected.has(tableId));
-        const classes = [
-          "table-plan-table",
-          "is-group",
-          `is-${terminalTableGroupShape(group)}`,
-          booked.length ? "is-occupied" : "",
-          booked.length ? "has-booking" : "",
-          `is-status-${status}`,
-          booked.some((reservation) => reservation.marker === "birthday") ? "has-birthday" : "",
-          staffAssignment ? "has-staff-area" : "",
-          isSelected ? "is-selected" : ""
-        ].filter(Boolean).join(" ");
-        const style = [
-          `left:${rect.left}%`,
-          `top:${rect.top}%`,
-          `width:${rect.width}%`,
-          `height:${rect.height}%`
-        ];
-        if (reservationTheme) style.push(reservationTheme);
-        if (staffAssignment) style.push(`--staff-color:${staffAssignment.color}`);
-        return `
-          <button class="${classes}" type="button" draggable="${state.terminalTableView === "work"}" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
-            ${primary ? `<span class="table-plan-table-times">${escapeHtml(primary.time || "Zeit offen")}</span>` : ""}
-            <div class="table-plan-table-head">
-              <strong>${escapeHtml(group.label)}</strong>
-              ${primary?.name ? `<small class="table-plan-table-name">${escapeHtml(primary.name)}</small>` : ""}
-              ${primary ? `<small class="table-plan-table-people">${escapeHtml(String(primary.people || 0))} Personen</small>` : ""}
-            </div>
-            ${booked.some((reservation) => reservation.marker === "birthday") ? `<span class="table-plan-table-badge is-birthday">Geburtstag</span>` : ""}
-            ${booked.length > 1 ? `<span class="table-plan-table-badge is-count">+${booked.length - 1}</span>` : ""}
-            ${staffAssignment ? `<span class="table-plan-table-badge is-service">${escapeHtml(staffAssignment.employee)}</span>` : ""}
-          </button>
-        `;
+        return sortTerminalTableIds(group.tableIds).map((tableId, index) => {
+          const table = terminalTableLookup()[tableId] || terminalTableDef(tableId);
+          if (!table) return "";
+          const classes = [
+            "table-plan-table",
+            "is-linked-group",
+            `is-${table.shape || "table"}`,
+            booked.length ? "is-occupied" : "",
+            booked.length ? "has-booking" : "",
+            `is-status-${status}`,
+            booked.some((reservation) => reservation.marker === "birthday") ? "has-birthday" : "",
+            staffAssignment ? "has-staff-area" : "",
+            isSelected ? "is-selected" : ""
+          ].filter(Boolean).join(" ");
+          const style = [`left:${table.x}%`, `top:${table.y}%`, `width:${table.w}%`, `height:${table.h}%`];
+          if (reservationTheme) style.push(reservationTheme);
+          if (staffAssignment) style.push(`--staff-color:${staffAssignment.color}`);
+          return `
+            <button class="${classes}" type="button" draggable="${state.terminalTableView === "work"}" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
+              ${primary && index === 0 ? `<span class="table-plan-table-times">${escapeHtml(primary.time || "Zeit offen")}</span>` : ""}
+              <div class="table-plan-table-head">
+                <strong>${escapeHtml(table.label || table.id)}</strong>
+                ${primary?.name && index === 0 ? `<small class="table-plan-table-name">${escapeHtml(primary.name)}</small>` : ""}
+              </div>
+              ${index === 0 ? `<span class="table-plan-table-badge is-group-label">${escapeHtml(group.label)}</span>` : ""}
+              ${booked.some((reservation) => reservation.marker === "birthday") && index === 0 ? `<span class="table-plan-table-badge is-birthday">Geburtstag</span>` : ""}
+              ${booked.length > 1 && index === 0 ? `<span class="table-plan-table-badge is-count">+${booked.length - 1}</span>` : ""}
+              ${staffAssignment && index === 0 ? `<span class="table-plan-table-badge is-service">${escapeHtml(staffAssignment.employee)}</span>` : ""}
+            </button>
+          `;
+        }).join("");
       }).join("")}
       ${visibleTables.map((table) => {
         if (groupedIds.has(table.id)) return "";
@@ -20143,6 +20132,11 @@ function bindEvents() {
     const disconnectSelectedTablesButton = event.target.closest("#disconnectSelectedTables");
     if (disconnectSelectedTablesButton) {
       await disconnectSelectedTerminalTables(disconnectSelectedTablesButton);
+      return;
+    }
+    const disconnectTablesFromToolbarButton = event.target.closest("#disconnectTablesFromToolbar");
+    if (disconnectTablesFromToolbarButton) {
+      await disconnectSelectedTerminalTables(disconnectTablesFromToolbarButton);
       return;
     }
     const resetTablePlanGroupButton = event.target.closest("#resetTablePlanGroupDraft");
