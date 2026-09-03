@@ -1,8 +1,8 @@
 {
-  "id": "/cocktail-bar",
+  "id": "/cocktails/",
   "name": "LA-Bowling Cocktail-Bar",
   "short_name": "Cocktail-Bar",
-  "start_url": "/?cocktails=1",
+  "start_url": "/cocktails/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#081525",

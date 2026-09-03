@@ -2,6 +2,8 @@
   "rewrites": [
     { "source": "/", "destination": "/api/state?asset=index.html" },
     { "source": "/index.html", "destination": "/api/state?asset=index.html" },
+    { "source": "/cocktails", "destination": "/api/state?asset=index.html" },
+    { "source": "/cocktails/", "destination": "/api/state?asset=index.html" },
     { "source": "/todo", "destination": "/api/state?asset=todo.html" },
     { "source": "/todo.html", "destination": "/api/state?asset=todo.html" },
     { "source": "/teamapp-client.js", "destination": "/api/state?asset=teamapp-client.js" },
