@@ -1,9 +1,10 @@
 {
+  "redirects": [
+    { "source": "/cocktails/:path*", "destination": "/?cocktails=1", "permanent": false }
+  ],
   "rewrites": [
     { "source": "/", "destination": "/api/state?asset=index.html" },
     { "source": "/index.html", "destination": "/api/state?asset=index.html" },
-    { "source": "/cocktails", "destination": "/api/state?cocktailApp=1" },
-    { "source": "/cocktails/", "destination": "/api/state?cocktailApp=1" },
     { "source": "/todo", "destination": "/api/state?asset=todo.html" },
     { "source": "/todo.html", "destination": "/api/state?asset=todo.html" },
     { "source": "/teamapp-client.js", "destination": "/api/state?asset=teamapp-client.js" },
