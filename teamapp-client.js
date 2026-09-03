@@ -2088,7 +2088,7 @@ function renderPinChangeOverlay() {
 
 function isTerminalMode() {
   const params = new URLSearchParams(window.location.search);
-  return params.has("terminal") || params.has("cocktails") || window.location.pathname.startsWith("/cocktails") || window.location.hash === "#terminal";
+  return params.has("terminal") || params.has("cocktails") || window.location.pathname.startsWith("/cocktails") || window.location.hash === "#terminal" || window.location.hash === "#cocktails";
 }
 
 function isCocktailOnlyMode() {
