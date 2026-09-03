@@ -81,6 +81,8 @@ module.exports = async function handler(req, res) {
     if (action === "save-report") return saveReport(body, res);
     if (action === "send-ready-invoice-mail") return sendReadyInvoiceMail(body, res);
     if (action === "save-invoice-customer") return saveInvoiceCustomerOnly(body, res);
+    if (action === "close-business-range") return closeBusinessRange(body, res);
+    if (action === "reopen-business-day") return reopenBusinessDay(body, res);
     if (action === "close-report") return closeReport(body, res);
     return sendJson(res, 400, { error: "Unbekannte Aktion." });
   } catch (error) {
@@ -1117,6 +1119,61 @@ async function closeReport(body, res) {
   sendJson(res, 200, { ok: true, message: "Tagesbericht abgeschlossen.", ...terminalPayload(appData, date) });
 }
 
+async function closeBusinessRange(body, res) {
+  const from = validDateKey(body.from);
+  const to = validDateKey(body.to);
+  const label = cleanText(body.label, 80) || "Betriebsurlaub";
+  if (!from || !to) return sendJson(res, 400, { error: "Bitte einen gültigen Zeitraum auswählen." });
+  if (to < from) return sendJson(res, 400, { error: "Der letzte Tag muss nach dem ersten Tag liegen." });
+  const dates = dateKeysBetween(from, to, 370);
+  if (!dates.length) return sendJson(res, 400, { error: "Der Zeitraum darf höchstens 370 Tage umfassen." });
+  const appData = await readAppData();
+  const now = new Date().toISOString();
+  appData.dayReports ||= {};
+  let changed = 0;
+  dates.forEach((date) => {
+    const existing = appData.dayReports[date] || {};
+    if (!existing.closed || existing.closureType !== "business-vacation" || existing.closureLabel !== label) changed += 1;
+    appData.dayReports[date] = {
+      ...existing,
+      closed: true,
+      closedAt: existing.closedAt || now,
+      correctionOpen: false,
+      closureType: "business-vacation",
+      closureLabel: label,
+      closureFrom: from,
+      closureTo: to,
+      updatedAt: now
+    };
+  });
+  await writeAppData(appData);
+  return sendJson(res, 200, {
+    ok: true,
+    message: `${dates.length} Tage als ${label} geschlossen.`,
+    rangeResult: { from, to, total: dates.length, changed },
+    ...terminalPayload(appData, cleanDate(body.date))
+  });
+}
+
+async function reopenBusinessDay(body, res) {
+  const targetDate = validDateKey(body.targetDate);
+  if (!targetDate) return sendJson(res, 400, { error: "Bitte einen gültigen Tag auswählen." });
+  const appData = await readAppData();
+  const existing = appData.dayReports?.[targetDate];
+  if (!existing || existing.closureType !== "business-vacation") {
+    return sendJson(res, 400, { error: "Dieser Tag gehört zu keinem eingetragenen Betriebsurlaub." });
+  }
+  const reopened = { ...existing, closed: false, reopenedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  delete reopened.closedAt;
+  delete reopened.closureType;
+  delete reopened.closureLabel;
+  delete reopened.closureFrom;
+  delete reopened.closureTo;
+  appData.dayReports[targetDate] = reopened;
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true, message: `${targetDate.split("-").reverse().join(".")} wurde wieder geöffnet.`, ...terminalPayload(appData, cleanDate(body.date)) });
+}
+
 function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
@@ -1904,6 +1961,16 @@ function cleanTaskTemplate(task) {
 }
 
 function localDate(date) { const p = berlinParts(date); return `${p.year}-${p.month}-${p.day}`; }
+function validDateKey(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : ""; }
+function dateKeysBetween(from, to, maxDays = 370) {
+  const dates = [];
+  let current = from;
+  while (current <= to && dates.length <= maxDays) {
+    dates.push(current);
+    current = addDaysKey(current, 1);
+  }
+  return current <= to ? [] : dates;
+}
 function cleanDate(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : localDate(new Date()); }
 function cleanText(value, max) { return String(value || "").trim().slice(0, max); }
 function roundToQuarter(date) { const p = berlinParts(date), m = Number(p.hour) * 60 + Number(p.minute), r = Math.round(m / 15) * 15; return `${String(Math.floor(r / 60) % 24).padStart(2, "0")}:${String(r % 60).padStart(2, "0")}`; }

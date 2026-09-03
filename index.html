@@ -1025,6 +1025,11 @@
                 <strong>Tischplan verwalten</strong>
                 <small>Grundplan, Positionen und Größen</small>
               </button>
+              <button class="terminal-settings-module" type="button" data-terminal-settings-module="closures">
+                <span aria-hidden="true">&#128197;</span>
+                <strong>Betriebsurlaub</strong>
+                <small>Mehrere Tage gemeinsam schließen</small>
+              </button>
               <button class="terminal-settings-module" type="button" data-terminal-settings-placeholder="Aufgaben verwalten">
                 <span aria-hidden="true">&#9638;</span>
                 <strong>Aufgaben verwalten</strong>
@@ -1042,6 +1047,26 @@
               </button>
             </div>
             <p id="terminalSettingsInlineNotice" class="terminal-settings-notice hidden"></p>
+            <section id="terminalClosureManagement" class="terminal-closure-management hidden">
+              <div class="terminal-control-management-head">
+                <div>
+                  <h4>Betriebsurlaub eintragen</h4>
+                  <p>Der gesamte Zeitraum wird geschlossen. Vorhandene Daten bleiben erhalten.</p>
+                </div>
+              </div>
+              <form id="terminalClosureForm" class="terminal-closure-form">
+                <label>Erster geschlossener Tag<input id="terminalClosureFrom" type="date" required></label>
+                <label>Letzter geschlossener Tag<input id="terminalClosureTo" type="date" required></label>
+                <label>Bezeichnung<input id="terminalClosureLabel" maxlength="80" value="Betriebsurlaub" required></label>
+                <button id="closeTerminalDateRange" class="primary" type="submit">Zeitraum schließen</button>
+              </form>
+              <p id="terminalClosureStatus" class="terminal-closure-status hidden"></p>
+              <div class="terminal-closure-reopen">
+                <div><strong>Sonderveranstaltung im Zeitraum?</strong><span>Einen einzelnen Tag wieder öffnen.</span></div>
+                <label>Tag<input id="terminalReopenDate" type="date"></label>
+                <button id="reopenTerminalDate" class="secondary" type="button">Tag wieder öffnen</button>
+              </div>
+            </section>
             <section class="terminal-control-management">
               <div class="terminal-control-management-head">
                 <div>

@@ -9171,6 +9171,7 @@ function renderTerminalTabs() {
   $("#terminalSettingsSection")?.classList.toggle("is-table-plan-settings", tablePlanSettingsActive);
   $(".terminal-workspace-main")?.classList.toggle("is-table-plan-settings-active", tablePlanSettingsActive);
   $(".terminal-control-management")?.classList.toggle("hidden", active === "settings" && state.terminalSettingsModule !== "controls");
+  $("#terminalClosureManagement")?.classList.toggle("hidden", active !== "settings" || state.terminalSettingsModule !== "closures");
   $$(".terminal-settings-module[data-terminal-settings-module]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.terminalSettingsModule === state.terminalSettingsModule);
   });
@@ -19776,9 +19777,36 @@ function bindEvents() {
     }
     const settingsModule = event.target.closest("[data-terminal-settings-module]");
     if (settingsModule) {
-      state.terminalSettingsModule = settingsModule.dataset.terminalSettingsModule === "table-plan" ? "table-plan" : "controls";
+      const requestedModule = settingsModule.dataset.terminalSettingsModule;
+      state.terminalSettingsModule = ["table-plan", "closures"].includes(requestedModule) ? requestedModule : "controls";
       if (state.terminalSettingsModule === "table-plan") state.terminalTableView = "manage";
+      if (state.terminalSettingsModule === "closures") {
+        const today = todayKey();
+        if (!$("#terminalClosureFrom")?.value) $("#terminalClosureFrom").value = today;
+        if (!$("#terminalClosureTo")?.value) $("#terminalClosureTo").value = today;
+        if (!$("#terminalReopenDate")?.value) $("#terminalReopenDate").value = today;
+      }
       renderTerminalTabs();
+      return;
+    }
+    const reopenTerminalDate = event.target.closest("#reopenTerminalDate");
+    if (reopenTerminalDate) {
+      const date = $("#terminalReopenDate")?.value || "";
+      if (!date) { showToast("Bitte einen Tag auswählen."); return; }
+      const oldText = reopenTerminalDate.textContent;
+      reopenTerminalDate.disabled = true;
+      reopenTerminalDate.textContent = "Wird geöffnet...";
+      try {
+        const result = await terminalAction({ action: "reopen-business-day", targetDate: date });
+        const status = $("#terminalClosureStatus");
+        if (status) { status.textContent = result.message; status.classList.remove("hidden"); }
+        showToast(result.message);
+      } catch (error) {
+        showError(error);
+      } finally {
+        reopenTerminalDate.disabled = false;
+        reopenTerminalDate.textContent = oldText;
+      }
       return;
     }
     const newControl = event.target.closest("#newTerminalControl");
@@ -20285,6 +20313,44 @@ function bindEvents() {
     renderTerminalControlManagement();
     renderTerminalChecks(state.terminalReport || {});
     showToast("Kontrolle gespeichert.");
+  });
+
+  $("#terminalClosureForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const from = $("#terminalClosureFrom")?.value || "";
+    const to = $("#terminalClosureTo")?.value || "";
+    const label = $("#terminalClosureLabel")?.value.trim() || "Betriebsurlaub";
+    if (!from || !to) {
+      showToast("Bitte den gesamten Zeitraum auswählen.");
+      return;
+    }
+    if (to < from) {
+      showToast("Der letzte Tag muss nach dem ersten Tag liegen.");
+      return;
+    }
+    if (!window.confirm(`${formatDate(from)} bis ${formatDate(to)} als ${label} schließen?`)) return;
+    const button = $("#closeTerminalDateRange");
+    const oldText = button?.textContent || "Zeitraum schließen";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Wird geschlossen...";
+    }
+    try {
+      const result = await terminalAction({ action: "close-business-range", from, to, label });
+      const status = $("#terminalClosureStatus");
+      if (status) {
+        status.textContent = result.message;
+        status.classList.remove("hidden");
+      }
+      showToast(result.message);
+    } catch (error) {
+      showError(error);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = oldText;
+      }
+    }
   });
 
   $("#terminalContent")?.addEventListener("change", async (event) => {
