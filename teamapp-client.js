@@ -11310,7 +11310,7 @@ function terminalTableAreaText(tableIds = [], groups = terminalTableGroups()) {
 }
 
 function terminalTableRect(id) {
-  const table = terminalTableDef(id);
+  const table = terminalTableLookup()[cleanTerminalTableId(id)] || terminalTableDef(id);
   if (!table) return null;
   return { left: table.x, top: table.y, right: table.x + table.w, bottom: table.y + table.h };
 }
@@ -12174,7 +12174,11 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   if ($("#newTablePlanReservationForSelection")) $("#newTablePlanReservationForSelection").disabled = reportClosed || !draft.tableIds.length;
   if ($("#connectSelectedTables")) {
     $("#connectSelectedTables").disabled = reportClosed || draft.tableIds.length < 2;
-    $("#connectSelectedTables").textContent = selectedGroup ? "Verbindung anpassen" : "Tische verbinden";
+    $("#connectSelectedTables").textContent = selectedGroup ? "Tafel anpassen" : "Tafeln verbinden";
+  }
+  if ($("#connectTablesFromToolbar")) {
+    $("#connectTablesFromToolbar").disabled = reportClosed || draft.tableIds.length < 2;
+    $("#connectTablesFromToolbar").textContent = selectedGroup ? "Tafel anpassen" : "Tafeln verbinden";
   }
   if ($("#disconnectSelectedTables")) {
     $("#disconnectSelectedTables").classList.toggle("hidden", !selectedGroup);
@@ -20131,7 +20135,7 @@ function bindEvents() {
       renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
       return;
     }
-    const connectSelectedTablesButton = event.target.closest("#connectSelectedTables");
+    const connectSelectedTablesButton = event.target.closest("#connectSelectedTables, #connectTablesFromToolbar");
     if (connectSelectedTablesButton) {
       await connectSelectedTerminalTables(connectSelectedTablesButton);
       return;
