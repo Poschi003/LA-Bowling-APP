@@ -244,6 +244,7 @@ function serveAsset(req, res) {
     "terminal-roles-addon.js": { file: "terminal-roles-addon.js", type: "text/javascript; charset=utf-8" },
     "sw.js": { file: "sw.js", type: "text/javascript; charset=utf-8" },
     "manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json; charset=utf-8" },
+    "cocktail-manifest.webmanifest": { file: "cocktail-manifest.webmanifest", type: "application/manifest+json; charset=utf-8" },
     "styles.css": { file: "styles.css", type: "text/css; charset=utf-8" },
     "la-bowling-logo.png": { file: "la-bowling-logo.png", type: "image/png" },
     "teamapp-icon-192.png": { file: "teamapp-icon-192.png", type: "image/png" },

@@ -18316,7 +18316,7 @@ body.terminal-mode:not(.terminal-login-mode) .table-plan-premium-title h3 {
   .table-plan-shell.is-work-view .table-plan-overview-sidebar { display: grid; grid-template-columns: 1fr; }
 }
 
-.cocktail-tool { display: grid; gap: 18px; color: #e8eef5; }
+.cocktail-tool { display: grid; grid-template-rows: auto auto auto; align-content: start; gap: 18px; color: #e8eef5; }
 .cocktail-tool-head { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px; border: 1px solid #26394b; border-radius: 8px; background: #0b1c2c; }
 .cocktail-tool-head h2 { margin: 3px 0 5px; color: #fff; font-size: 28px; }
 .cocktail-tool-head p { margin: 0; color: #9db0c2; }
@@ -18401,6 +18401,8 @@ body.cocktail-only-mode .cocktail-toolbar {
   border: 1px solid #d8e0e8;
   border-radius: 8px;
   background: #fff;
+  align-self: start;
+  min-height: 0;
 }
 body.cocktail-only-mode .cocktail-search input { min-height: 58px; font-size: 18px; }
 body.cocktail-only-mode .cocktail-categories button { min-height: 58px; font-size: 16px; }
@@ -18409,6 +18411,20 @@ body.cocktail-only-mode .cocktail-results.hidden { display: none; }
 body.cocktail-only-mode .cocktail-results > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 body.cocktail-only-mode .cocktail-results > header h3 { margin: 0; font-size: 22px; }
 body.cocktail-only-mode .cocktail-results > header button { min-height: 44px; }
+body.cocktail-only-mode.cocktail-searching .cocktail-tool-head { display: none; }
+body.cocktail-only-mode.cocktail-searching .cocktail-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  grid-template-columns: 1fr;
+  padding: 12px;
+  box-shadow: 0 8px 22px rgba(6, 18, 31, .18);
+}
+body.cocktail-only-mode.cocktail-searching .cocktail-search span,
+body.cocktail-only-mode.cocktail-searching .cocktail-categories { display: none; }
+body.cocktail-only-mode.cocktail-searching .cocktail-search { gap: 0; }
+body.cocktail-only-mode.cocktail-searching .cocktail-search input { min-height: 52px; }
+body.cocktail-only-mode.cocktail-searching .cocktail-results > header { position: sticky; top: 88px; z-index: 10; padding: 10px 0; background: #edf2f6; }
 body.cocktail-only-mode .cocktail-tool-head h2::after {
   content: "Bar-Ansicht";
   display: inline-block;

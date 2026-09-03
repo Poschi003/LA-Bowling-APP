@@ -2088,12 +2088,12 @@ function renderPinChangeOverlay() {
 
 function isTerminalMode() {
   const params = new URLSearchParams(window.location.search);
-  return params.has("terminal") || params.has("cocktails") || window.location.hash === "#terminal";
+  return params.has("terminal") || params.has("cocktails") || window.location.pathname.startsWith("/cocktails") || window.location.hash === "#terminal";
 }
 
 function isCocktailOnlyMode() {
   const params = new URLSearchParams(window.location.search);
-  return params.has("cocktails") || window.location.hash === "#cocktails";
+  return params.has("cocktails") || window.location.pathname.startsWith("/cocktails") || window.location.hash === "#cocktails";
 }
 
 function isTodoMode() {
@@ -9270,7 +9270,13 @@ function bindCocktailEvents() {
     const mode = event.target.closest("[data-cocktail-mode]");
     if (mode) { state.cocktailMode = mode.dataset.cocktailMode; resetCocktailForm(); renderCocktailTool(); return; }
     const category = event.target.closest("[data-cocktail-category]");
-    if (category) { state.cocktailCategory = category.dataset.cocktailCategory; renderCocktailTool(); return; }
+    if (category) {
+      state.cocktailCategory = category.dataset.cocktailCategory;
+      $("#cocktailSearch")?.blur();
+      document.body.classList.remove("cocktail-searching");
+      renderCocktailTool();
+      return;
+    }
     if (event.target.closest("[data-reset-cocktail-selection]")) {
       state.cocktailCategory = "";
       state.cocktailSearch = "";
@@ -9288,7 +9294,12 @@ function bindCocktailEvents() {
       return;
     }
     const recipe = event.target.closest("[data-open-cocktail]");
-    if (recipe) { openCocktailRecipe(recipe.dataset.openCocktail); return; }
+    if (recipe) {
+      $("#cocktailSearch")?.blur();
+      document.body.classList.remove("cocktail-searching");
+      openCocktailRecipe(recipe.dataset.openCocktail);
+      return;
+    }
     if (event.target.closest("[data-close-cocktail]")) { $("#cocktailViewer")?.classList.add("hidden"); return; }
     if (event.target.closest("[data-new-cocktail]")) { resetCocktailForm(); return; }
     if (event.target.closest("#deleteCocktail")) {
@@ -9299,7 +9310,23 @@ function bindCocktailEvents() {
       showToast("Rezept gelöscht.");
     }
   });
-  $("#cocktailSearch")?.addEventListener("input", (event) => { state.cocktailSearch = event.target.value; renderCocktailTool(); });
+  $("#cocktailSearch")?.addEventListener("focus", () => {
+    if (isCocktailOnlyMode()) document.body.classList.add("cocktail-searching");
+  });
+  $("#cocktailSearch")?.addEventListener("input", (event) => {
+    state.cocktailSearch = event.target.value;
+    renderCocktailTool();
+    if (state.cocktailSearch.trim()) {
+      requestAnimationFrame(() => $("#cocktailResults")?.scrollIntoView({ block: "nearest" }));
+    }
+  });
+  $("#cocktailSearch")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    event.currentTarget.blur();
+    document.body.classList.remove("cocktail-searching");
+    requestAnimationFrame(() => $("#cocktailResults")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  });
   document.addEventListener("fullscreenchange", () => {
     const button = $("#cocktailFullscreen");
     if (!button) return;
