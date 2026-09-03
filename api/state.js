@@ -38,8 +38,7 @@ const {
 module.exports = async function handler(req, res) {
   try {
     if (req.method === "GET" && req.query.cocktailApp != null) {
-      req.query.asset = "index.html";
-      return serveAsset(req, res);
+      return serveAsset(req, res, "index.html");
     }
     if (req.method === "GET" && req.query.asset) return serveAsset(req, res);
     if (req.method === "POST") return handlePost(req, res);
@@ -240,7 +239,7 @@ async function savePushSubscription(body, res) {
   return sendJson(res, 200, { ok: true, pushSubscriptionActive: true });
 }
 
-function serveAsset(req, res) {
+function serveAsset(req, res, forcedAsset = "") {
   const files = {
     "index.html": { file: "index.html", type: "text/html; charset=utf-8" },
     "todo.html": { file: "todo.html", type: "text/html; charset=utf-8" },
@@ -255,9 +254,9 @@ function serveAsset(req, res) {
     "teamapp-icon-512.png": { file: "teamapp-icon-512.png", type: "image/png" },
     "apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png" }
   };
-  const requestedAsset = Array.isArray(req.query.asset)
+  const requestedAsset = forcedAsset || (Array.isArray(req.query.asset)
     ? String(req.query.asset[0] || "index.html")
-    : String(req.query.asset || "index.html");
+    : String(req.query.asset || "index.html"));
   const asset = Object.keys(files).find((name) => (
     requestedAsset === name
     || requestedAsset.startsWith(`${name}/`)
