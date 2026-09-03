@@ -171,6 +171,7 @@
                   <button class="terminal-tab" data-terminal-tab="tables" type="button"><span aria-hidden="true">&#9633;</span>Tischplan</button>
                   <button class="terminal-tab" data-terminal-tab="orders" type="button"><span aria-hidden="true">&#9776;</span>Bestellungen</button>
                   <button class="terminal-tab" data-terminal-tab="offers" type="button"><span aria-hidden="true">&#9671;</span>Angebote</button>
+                  <button class="terminal-tab" data-terminal-tab="cocktails" type="button"><span aria-hidden="true">&#9679;</span>Cocktails</button>
                   <button class="terminal-tab" data-terminal-tab="task-calendar" type="button"><span aria-hidden="true">&#9638;</span>Aufgaben-Kalender</button>
                   <button class="terminal-tab" data-terminal-tab="invoices" type="button"><span aria-hidden="true">&#128196;</span>Bezahlung auf Rechnung</button>
                   <button class="terminal-tab" data-terminal-tab="tips" type="button"><span aria-hidden="true">&#127873;</span>Trinkgeld</button>
@@ -182,6 +183,14 @@
               </nav>
               <div class="terminal-workspace-main">
                 <section id="terminalTodaySection" class="terminal-today-section">
+                  <header class="terminal-premium-header">
+                    <div>
+                      <span class="terminal-premium-eyebrow">Tages-Terminal</span>
+                      <h2>Heute im Überblick</h2>
+                      <p id="terminalPremiumDate">Gewählter Tag</p>
+                    </div>
+                    <div id="terminalDayMetaDisplay" class="terminal-day-meta-display"></div>
+                  </header>
                   <section class="terminal-section terminal-overview-card">
                     <div class="terminal-dashboard-head">
                       <div class="terminal-card-heading">
@@ -191,7 +200,6 @@
                           <p class="terminal-card-subtitle">Angebote, Aktionen und Hinweise für den gewählten Tag</p>
                         </div>
                       </div>
-                      <div id="terminalDayMetaDisplay" class="terminal-day-meta-display"></div>
                     </div>
                     <div id="terminalDayHeadForm" class="terminal-day-head terminal-day-head-editor hidden">
                       <label>Öffnungszeit<input id="terminalOpeningHours" placeholder="z.B. 16:00 bis 00:00 Uhr"></label>
@@ -232,6 +240,7 @@
                       </aside>
                     </div>
                   </section>
+                  <section id="terminalDashboardKpis" class="terminal-dashboard-kpis" aria-label="Tageskennzahlen"></section>
                   <div id="terminalCorrectionBanner" class="terminal-correction-banner hidden"></div>
                   <div id="terminalOpenDaysNav" class="terminal-open-days hidden"></div>
                   <section id="terminalTasksSection" class="terminal-section terminal-dashboard-feature-card is-tasks">
@@ -279,7 +288,7 @@
                         <span class="terminal-card-icon" aria-hidden="true">&#9638;</span>
                         <div>
                           <h3>Tischplan Lite</h3>
-                          <p class="terminal-card-subtitle">Drucklisten-Vorschau</p>
+                          <p class="terminal-card-subtitle">Heutige Reservierungen</p>
                         </div>
                       </div>
                     </div>
@@ -289,6 +298,10 @@
                       <button class="secondary terminal-table-lite-fullscreen" type="button" data-open-table-plan-fullscreen>Heutigen Tischplan im Vollbild</button>
                     </div>
                   </section>
+                  <footer class="terminal-dashboard-footer">
+                    <span id="terminalDashboardUpdated">Aktualisiert: --:-- Uhr</span>
+                    <button class="terminal-card-link" data-terminal-tab="closing" type="button">Tagesabschluss fortsetzen</button>
+                  </footer>
                   <p id="terminalDayMetaSummary" class="hidden"></p>
                   <div id="terminalLeaderMessages" class="hidden"></div>
                 </section>
@@ -370,11 +383,12 @@
             <div id="terminalAssignmentList" class="terminal-assignment-list"></div>
           </section>
           <section id="terminalTablesSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
+            <div class="terminal-section-head table-plan-premium-header">
+              <div class="table-plan-premium-title">
+                <span>LA-BOWLING</span>
                 <h3>Tischplan</h3>
-                <p class="hint">Tagesplan prüfen oder Reservierungen und Tische verwalten.</p>
               </div>
+              <div id="tablePlanStatusLegend" class="table-plan-header-legend"></div>
               <div class="table-plan-toolbar">
                 <div class="table-plan-toolbar-actions">
                   <label class="table-plan-date-control">Plan-Datum
@@ -391,6 +405,7 @@
               <section class="table-plan-board-panel">
                 <div id="tablePlanBoardMeta" class="table-plan-meta"></div>
                 <div id="tablePlanBoard" class="table-plan-board"></div>
+                <div class="table-plan-work-hint"><span aria-hidden="true">i</span> Tippe auf einen Tisch für Details oder reserviere einen freien Tisch.</div>
                 <section class="table-plan-list-panel table-plan-manage-only">
                   <div class="terminal-section-head">
                     <div>
@@ -441,10 +456,6 @@
                     </div>
                   </div>
                   <div id="tablePlanServiceOverview"></div>
-                </section>
-                <section class="table-plan-overview-card table-plan-legend-card">
-                  <h4>Legende</h4>
-                  <div id="tablePlanStatusLegend"></div>
                 </section>
               </aside>
               <aside class="table-plan-manage-reservations table-plan-manage-only">
@@ -832,6 +843,18 @@
             <div id="tipSummary" class="tip-summary"></div>
             <div id="tipDistributionList" class="tip-distribution-list"></div>
           </section>
+          <section id="terminalCocktailsSection" class="cocktail-tool hidden">
+            <header class="cocktail-tool-head">
+              <div><p class="terminal-card-kicker">Bar-Tool</p><h2>Cocktail-Rezepte</h2><p>Rezept auswählen und direkt am Tablet zubereiten.</p></div>
+              <div class="cocktail-mode-switch"><button class="primary" type="button" data-cocktail-mode="recipes">Rezeptansicht</button><button class="secondary" type="button" data-cocktail-mode="manage">Verwalten</button></div>
+            </header>
+            <div class="cocktail-toolbar"><label class="cocktail-search"><span>Rezept suchen</span><input id="cocktailSearch" type="search" placeholder="Name oder Zutat"></label><div id="cocktailCategories" class="cocktail-categories"></div></div>
+            <div class="cocktail-layout"><div id="cocktailRecipeList" class="cocktail-recipe-list"></div>
+              <aside id="cocktailEditor" class="cocktail-editor hidden"><div class="cocktail-editor-head"><div><small>Verwaltung</small><h3 id="cocktailEditorTitle">Neues Rezept</h3></div><button class="secondary" type="button" data-new-cocktail>Neu</button></div>
+                <form id="cocktailForm"><input id="cocktailId" type="hidden"><label>Name<input id="cocktailName" required placeholder="z. B. Aperol Spritz"></label><label>Kategorie<select id="cocktailCategory" required></select></label><div class="cocktail-form-row"><label>Glas<input id="cocktailGlass" placeholder="Weinglas"></label><label>Garnitur<input id="cocktailGarnish" placeholder="Orange"></label></div><label>Zutaten<textarea id="cocktailIngredients" required rows="7" placeholder="Eine Zutat pro Zeile"></textarea></label><label>Zubereitung<textarea id="cocktailSteps" required rows="6" placeholder="Ein Schritt pro Zeile"></textarea></label><div class="cocktail-editor-actions"><button class="primary" type="submit">Rezept speichern</button><button id="deleteCocktail" class="secondary danger hidden" type="button">Löschen</button></div></form>
+              </aside></div>
+          </section>
+          <div id="cocktailViewer" class="cocktail-viewer hidden" role="dialog" aria-modal="true"><section class="cocktail-viewer-panel"><header><div><small id="cocktailViewerCategory">Cocktail</small><h2 id="cocktailViewerName"></h2><p id="cocktailViewerMeta"></p></div><button class="cocktail-viewer-close" type="button" data-close-cocktail aria-label="Schließen">&times;</button></header><div class="cocktail-viewer-grid"><article><h3>Zutaten</h3><div id="cocktailViewerIngredients"></div></article><article><h3>Zubereitung</h3><ol id="cocktailViewerSteps"></ol></article></div><footer><button class="primary" type="button" data-close-cocktail>Fertig</button></footer></section></div>
           <section id="terminalInvoicesToolSection" class="terminal-invoices-tool hidden">
             <header class="terminal-invoices-tool-head">
               <div>

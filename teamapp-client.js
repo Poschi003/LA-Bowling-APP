@@ -115,6 +115,10 @@
   invoiceSkipDomSync: false,
   invoiceSearch: "",
   offers: [],
+  cocktails: [],
+  cocktailMode: "recipes",
+  cocktailCategory: "all",
+  cocktailSearch: "",
   offerDraft: null,
   offerDraftId: "",
   offerDraftDirty: false,
@@ -2084,7 +2088,12 @@ function renderPinChangeOverlay() {
 
 function isTerminalMode() {
   const params = new URLSearchParams(window.location.search);
-  return params.has("terminal") || window.location.hash === "#terminal";
+  return params.has("terminal") || params.has("cocktails") || window.location.hash === "#terminal";
+}
+
+function isCocktailOnlyMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.has("cocktails") || window.location.hash === "#cocktails";
 }
 
 function isTodoMode() {
@@ -8726,7 +8735,7 @@ function terminalWorkspaceTab(value) {
     cleaning: "today"
   };
   const tab = legacyTabs[String(value || "")] || String(value || "");
-  return ["today", "tables", "employees", "closing", "orders", "offers", "task-calendar", "invoices", "tips", "settings"].includes(tab) ? tab : "today";
+  return ["today", "tables", "employees", "closing", "orders", "offers", "cocktails", "task-calendar", "invoices", "tips", "settings"].includes(tab) ? tab : "today";
 }
 
 function terminalCanManageSettings() {
@@ -8796,6 +8805,9 @@ function renderTerminalExtras(dateKey) {
   const weekTarget = $("#terminalExtrasWeek");
   if (!target || !weekTarget) return;
   const selectedExtras = terminalExtrasForDate(dateKey);
+  const overviewCard = target.closest(".terminal-overview-card");
+  overviewCard?.classList.toggle("has-no-extras", selectedExtras.length === 0);
+  overviewCard?.classList.toggle("has-extras", selectedExtras.length > 0);
   const date = new Date(`${dateKey}T12:00:00`);
   if ($("#terminalExtrasDateLabel")) {
     $("#terminalExtrasDateLabel").textContent = date.toLocaleDateString("de-DE", {
@@ -8841,17 +8853,58 @@ function renderTerminalExtras(dateKey) {
   `).join("");
 }
 
+function renderTerminalDashboardKpis(dateKey, employees = [], entries = {}, report = {}) {
+  const target = $("#terminalDashboardKpis");
+  if (!target) return;
+  const activeEmployees = employees.filter((employee) => {
+    const entry = entries[employee]?.[dateKey] || {};
+    return Boolean(entry.from && !entry.to);
+  });
+  const occupiedAreas = new Set(activeEmployees.map(terminalWorktimeArea).filter(Boolean));
+  const controls = loadTerminalControls().filter((control) => control.active);
+  const overdueControls = controls.filter((control) => control.status === "overdue").length;
+  const reservations = terminalTableReservations(report).length;
+  const completions = report.taskCompletions || {};
+  const openTasks = sortTaskTemplates(state.terminalTasks || [])
+    .filter((task) => (task.category || "running") === "running" && !completions[task.id]).length;
+  const kpis = [
+    { tone: "blue", icon: "&#9786;", value: activeEmployees.length, label: "Mitarbeiter im Dienst", detail: `${occupiedAreas.size} Bereiche besetzt` },
+    { tone: overdueControls ? "red" : "green", icon: "&#9888;", value: overdueControls, label: overdueControls === 1 ? "Kontrolle überfällig" : "Kontrollen überfällig", detail: overdueControls ? "Bitte prüfen" : "Alles in Ordnung" },
+    { tone: "purple", icon: "&#9638;", value: reservations, label: "Tischreservierungen", detail: "Heute" },
+    { tone: openTasks ? "orange" : "green", icon: "&#10003;", value: openTasks, label: "Aufgaben offen", detail: "Heute" }
+  ];
+  target.innerHTML = kpis.map((item) => `
+    <article class="terminal-dashboard-kpi is-${item.tone}">
+      <span class="terminal-dashboard-kpi-icon" aria-hidden="true">${item.icon}</span>
+      <strong>${escapeHtml(String(item.value))}</strong>
+      <span class="terminal-dashboard-kpi-label">${escapeHtml(item.label)}</span>
+      <small>${escapeHtml(item.detail)}</small>
+    </article>
+  `).join("");
+  if ($("#terminalPremiumDate")) $("#terminalPremiumDate").textContent = formatLongDate(dateKey);
+  if ($("#terminalDashboardUpdated")) {
+    $("#terminalDashboardUpdated").textContent = `Aktualisiert: ${new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(new Date())} Uhr`;
+  }
+}
+
 function renderTerminal() {
   const panel = $("#terminal");
   if (!panel) return;
   const todoMode = isTodoMode();
+  const cocktailOnlyMode = isCocktailOnlyMode();
   panel.classList.toggle("terminal-dashboard-mode", Boolean(state.terminalToken) && isTerminalMode() && !todoMode);
   if (todoMode) state.terminalTab = "today";
-  if ($("#terminalTitle")) $("#terminalTitle").textContent = "Tages-Terminal";
-  if ($("#terminalCodeLabel")) $("#terminalCodeLabel").textContent = todoMode ? "TO-DO-Code" : "Terminal-Code";
+  if (cocktailOnlyMode) {
+    state.terminalTab = "cocktails";
+    state.cocktailMode = "recipes";
+  }
+  if ($("#terminalTitle")) $("#terminalTitle").textContent = cocktailOnlyMode ? "Cocktail-Bar" : "Tages-Terminal";
+  if ($("#terminalCodeLabel")) $("#terminalCodeLabel").textContent = todoMode ? "TO-DO-Code" : cocktailOnlyMode ? "Bar-Code" : "Terminal-Code";
   if ($("#terminalLoginHint")) $("#terminalLoginHint").textContent = todoMode
     ? "Willkommen bei der LA-Bowling To-do-App! Bitte melden Sie sich an."
-    : "Willkommen bei der LA-Bowling TerminalApp! Bitte melden Sie sich an.";
+    : cocktailOnlyMode
+      ? "Willkommen in der LA-Bowling Cocktail-Bar. Bitte melden Sie sich an."
+      : "Willkommen bei der LA-Bowling TerminalApp! Bitte melden Sie sich an.";
   if ($("#unlockTerminal")) $("#unlockTerminal").textContent = "Login";
   document.body.classList.toggle("terminal-login-mode", (isTerminalMode() || todoMode) && !state.terminalToken);
   $("#terminalLoginBrand")?.classList.toggle("hidden", Boolean(state.terminalToken));
@@ -8884,6 +8937,7 @@ function renderTerminal() {
   renderToiletStatus(report);
   renderTerminalChecks(report);
   renderTerminalTableLite();
+  renderTerminalDashboardKpis(dateKey, employees, entries, report);
   renderTerminalAssignments(dateKey);
   renderTerminalTablePlan(dateKey, report, reportClosed);
   checkTerminalReminders(report, reportClosed);
@@ -9111,6 +9165,7 @@ function renderTerminalTabs() {
   $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "closing");
   $("#terminalOrdersSection")?.classList.toggle("hidden", active !== "orders");
   $("#terminalOffersSection")?.classList.toggle("hidden", active !== "offers");
+  $("#terminalCocktailsSection")?.classList.toggle("hidden", active !== "cocktails");
   $("#terminalTaskCalendarSection")?.classList.toggle("hidden", active !== "task-calendar");
   $("#terminalSettingsSection")?.classList.toggle("hidden", active !== "settings");
   $("#terminalSettingsSection")?.classList.toggle("is-table-plan-settings", tablePlanSettingsActive);
@@ -9126,8 +9181,108 @@ function renderTerminalTabs() {
   }
   if (active === "task-calendar") renderTerminalTaskCalendar();
   if (active === "offers") renderAdminOffers();
+  if (active === "cocktails") renderCocktailTool();
   if (active === "invoices") mountTerminalInvoiceTool();
   if (active === "closing") renderTerminalClosingSteps();
+}
+
+const cocktailCategoryLabels = {
+  all: "Alle",
+  spritz: "Spritz",
+  alkoholfrei: "Alkoholfrei",
+  alkohol: "Mit Alkohol",
+  longdrink: "Longdrinks"
+};
+
+function renderCocktailTool() {
+  const list = $("#cocktailRecipeList");
+  const categories = $("#cocktailCategories");
+  if (!list || !categories) return;
+  const search = String(state.cocktailSearch || "").trim().toLowerCase();
+  const recipes = (state.cocktails || []).filter((recipe) => {
+    const categoryMatch = state.cocktailCategory === "all" || recipe.category === state.cocktailCategory;
+    const searchMatch = !search || `${recipe.name} ${recipe.ingredients} ${recipe.garnish}`.toLowerCase().includes(search);
+    return categoryMatch && searchMatch;
+  });
+  categories.innerHTML = Object.entries(cocktailCategoryLabels).map(([key, label]) => {
+    const count = key === "all" ? (state.cocktails || []).length : (state.cocktails || []).filter((item) => item.category === key).length;
+    return `<button class="${state.cocktailCategory === key ? "is-active" : ""}" type="button" data-cocktail-category="${key}"><span>${escapeHtml(label)}</span><b>${count}</b></button>`;
+  }).join("");
+  list.innerHTML = recipes.length ? recipes.map((recipe) => `
+    <button class="cocktail-recipe-card" type="button" data-open-cocktail="${escapeHtml(recipe.id)}">
+      <span class="cocktail-recipe-mark" aria-hidden="true">${escapeHtml((recipe.name || "C").slice(0, 1).toUpperCase())}</span>
+      <span><small>${escapeHtml(cocktailCategoryLabels[recipe.category] || "Cocktail")}</small><strong>${escapeHtml(recipe.name)}</strong><em>${escapeHtml(recipe.garnish ? `Garnitur: ${recipe.garnish}` : recipe.glass || "Rezept öffnen")}</em></span>
+      <b aria-hidden="true">›</b>
+    </button>`).join("") : `<div class="cocktail-empty"><strong>Kein Rezept gefunden</strong><span>Suchbegriff oder Kategorie ändern.</span></div>`;
+  $("#cocktailEditor")?.classList.toggle("hidden", state.cocktailMode !== "manage");
+  $(".cocktail-layout")?.classList.toggle("is-manage", state.cocktailMode === "manage");
+  $$('[data-cocktail-mode]').forEach((button) => {
+    button.classList.toggle("primary", button.dataset.cocktailMode === state.cocktailMode);
+    button.classList.toggle("secondary", button.dataset.cocktailMode !== state.cocktailMode);
+  });
+  const searchInput = $("#cocktailSearch");
+  if (searchInput && searchInput.value !== state.cocktailSearch) searchInput.value = state.cocktailSearch;
+  const select = $("#cocktailCategory");
+  if (select && !select.options.length) select.innerHTML = Object.entries(cocktailCategoryLabels).filter(([key]) => key !== "all").map(([key, label]) => `<option value="${key}">${escapeHtml(label)}</option>`).join("");
+}
+
+function openCocktailRecipe(id) {
+  const recipe = (state.cocktails || []).find((item) => item.id === id);
+  if (!recipe) return;
+  if (state.cocktailMode === "manage") {
+    $("#cocktailId").value = recipe.id;
+    $("#cocktailName").value = recipe.name || "";
+    $("#cocktailCategory").value = recipe.category || "alkohol";
+    $("#cocktailGlass").value = recipe.glass || "";
+    $("#cocktailGarnish").value = recipe.garnish || "";
+    $("#cocktailIngredients").value = recipe.ingredients || "";
+    $("#cocktailSteps").value = recipe.steps || "";
+    $("#cocktailEditorTitle").textContent = recipe.name;
+    $("#deleteCocktail").classList.remove("hidden");
+    $("#cocktailEditor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  $("#cocktailViewerName").textContent = recipe.name;
+  $("#cocktailViewerCategory").textContent = cocktailCategoryLabels[recipe.category] || "Cocktail";
+  $("#cocktailViewerMeta").textContent = [recipe.glass && `Glas: ${recipe.glass}`, recipe.garnish && `Garnitur: ${recipe.garnish}`].filter(Boolean).join(" · ");
+  $("#cocktailViewerIngredients").innerHTML = String(recipe.ingredients || "").split(/\n+/).filter(Boolean).map((line) => `<div><span aria-hidden="true">+</span>${escapeHtml(line)}</div>`).join("");
+  $("#cocktailViewerSteps").innerHTML = String(recipe.steps || "").split(/\n+/).filter(Boolean).map((line) => `<li>${escapeHtml(line)}</li>`).join("");
+  $("#cocktailViewer").classList.remove("hidden");
+}
+
+function resetCocktailForm() {
+  $("#cocktailForm")?.reset();
+  if ($("#cocktailId")) $("#cocktailId").value = "";
+  if ($("#cocktailEditorTitle")) $("#cocktailEditorTitle").textContent = "Neues Rezept";
+  $("#deleteCocktail")?.classList.add("hidden");
+}
+
+function bindCocktailEvents() {
+  document.addEventListener("click", async (event) => {
+    const mode = event.target.closest("[data-cocktail-mode]");
+    if (mode) { state.cocktailMode = mode.dataset.cocktailMode; resetCocktailForm(); renderCocktailTool(); return; }
+    const category = event.target.closest("[data-cocktail-category]");
+    if (category) { state.cocktailCategory = category.dataset.cocktailCategory; renderCocktailTool(); return; }
+    const recipe = event.target.closest("[data-open-cocktail]");
+    if (recipe) { openCocktailRecipe(recipe.dataset.openCocktail); return; }
+    if (event.target.closest("[data-close-cocktail]")) { $("#cocktailViewer")?.classList.add("hidden"); return; }
+    if (event.target.closest("[data-new-cocktail]")) { resetCocktailForm(); return; }
+    if (event.target.closest("#deleteCocktail")) {
+      const id = $("#cocktailId")?.value || "";
+      if (!id || !confirm("Dieses Rezept wirklich löschen?")) return;
+      await terminalAction({ action: "delete-cocktail", id });
+      resetCocktailForm();
+      showToast("Rezept gelöscht.");
+    }
+  });
+  $("#cocktailSearch")?.addEventListener("input", (event) => { state.cocktailSearch = event.target.value; renderCocktailTool(); });
+  $("#cocktailForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const recipe = { id: $("#cocktailId").value, name: $("#cocktailName").value.trim(), category: $("#cocktailCategory").value, glass: $("#cocktailGlass").value.trim(), garnish: $("#cocktailGarnish").value.trim(), ingredients: $("#cocktailIngredients").value.trim(), steps: $("#cocktailSteps").value.trim() };
+    await terminalAction({ action: "save-cocktail", recipe });
+    resetCocktailForm();
+    showToast("Rezept gespeichert.");
+  });
 }
 
 function mountTerminalInvoiceTool() {
@@ -9776,7 +9931,7 @@ function terminalTableZoneArchitectureHtml(zone = {}) {
       <span class="table-plan-zone-door" aria-hidden="true">Tür</span>
     `;
   }
-  return "";
+  return zone.hideArchitectureName ? "" : `<span class="table-plan-zone-name">${escapeHtml(zone.label || "Bereich")}</span>`;
 }
 
 function terminalTableIsLane(table = {}) {
@@ -10895,7 +11050,7 @@ function terminalTableMarkerOptionsHtml(selected = "normal") {
 }
 
 function terminalTableQuickMarkerOptionsHtml(selected = "normal") {
-  return ["normal", "birthday"].map((id) => {
+  return ["normal", "birthday", "setup"].map((id) => {
     const item = TERMINAL_TABLE_MARKERS[id];
     return `<option value="${escapeHtml(id)}"${id === cleanTerminalTableMarker(selected) ? " selected" : ""}>${escapeHtml(item.label)}</option>`;
   }).join("");
@@ -11565,16 +11720,22 @@ function terminalTableReservationOverviewHtml(reservations = []) {
   }
   return `
     <div class="table-plan-overview-list">
-      ${sortTerminalTableReservations(reservations, "time").map((reservation) => `
+      ${sortTerminalTableReservations(reservations, "time").map((reservation) => {
+        const status = cleanTerminalTableReservationStatus(reservation.status);
+        const statusLabel = status === "arrived" ? "Besetzt" : terminalTableReservationStatusLabel(status);
+        return `
         <button class="table-plan-overview-row ${state.terminalTableDraft?.id === reservation.id ? "is-active" : ""}" type="button" data-table-plan-edit="${escapeHtml(reservation.id)}">
-          <span class="table-plan-row-time">${escapeHtml(terminalTableTimeRange(reservation))}</span>
+          <span class="table-plan-overview-row-head">
+            <strong><i class="table-plan-status-dot is-${escapeHtml(status)}" aria-hidden="true"></i>${escapeHtml(terminalTableLabelText(reservation.tableIds))}</strong>
+            <em>${escapeHtml(statusLabel)}</em>
+          </span>
           <span class="table-plan-row-main">
             <strong>${escapeHtml(reservation.name || "Reservierung")}</strong>
-            <small>${escapeHtml(String(reservation.people || 0))} Pers. · ${escapeHtml(terminalTableLabelText(reservation.tableIds))}</small>
+            <small>${escapeHtml(terminalTableTimeRange(reservation))}${reservation.people ? ` · ${escapeHtml(String(reservation.people))} Pers.` : ""}</small>
           </span>
-          <i class="table-plan-status-dot is-${escapeHtml(cleanTerminalTableReservationStatus(reservation.status))}" aria-hidden="true"></i>
         </button>
-      `).join("")}
+      `;
+      }).join("")}
     </div>
   `;
 }
@@ -11607,9 +11768,7 @@ function terminalTableStatusLegendHtml() {
     <div class="table-plan-status-legend">
       <span><i class="is-free"></i>Frei</span>
       <span><i class="is-reserved"></i>Reserviert</span>
-      <span><i class="is-arrived"></i>Kunde da</span>
-      <span><i class="is-birthday"></i>Kindergeburtstag</span>
-      <span><i class="is-service"></i>Servicebereich</span>
+      <span><i class="is-arrived"></i>Besetzt</span>
     </div>
   `;
 }
@@ -12013,11 +12172,19 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
   const groupedIds = terminalTableGroupedIds(mergedGroups);
   const visibleTables = terminalPlanVisibleTables();
   const visibleZones = terminalPlanVisibleZones();
+  const workZoneLabels = {
+    "nz-small": "NZ Klein",
+    "main-left": "Innenraum",
+    dj: "30er Reihe",
+    "main-bottom": "DJ",
+    "nz-big": "NZ Groß",
+    hut: "Hütte"
+  };
   return `
     <div class="table-plan-canvas">
       ${visibleZones.map((zone) => `
         <div class="table-plan-zone ${escapeHtml(terminalTableZoneClassNames(zone))}" data-zone-label="${escapeHtml(zone.label || "")}" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%;">
-          ${terminalTableZoneArchitectureHtml(zone)}
+          ${terminalTableZoneArchitectureHtml({ ...zone, label: workZoneLabels[zone.id] || zone.label })}
         </div>
       `).join("")}
       ${terminalTableDraftOverlayHtml(draft, groups)}
@@ -13142,7 +13309,13 @@ function renderTerminalTasks(report, reportClosed) {
       `;
       }).join("")}
     </div>
-  ` : `<p class="terminal-dashboard-empty">Keine Aufgaben für heute</p>`;
+  ` : `
+    <div class="terminal-dashboard-empty terminal-task-empty">
+      <span aria-hidden="true">&#10003;</span>
+      <strong>Alles erledigt</strong>
+      <small>Für heute sind keine offenen Aufgaben geplant.</small>
+    </div>
+  `;
 }
 
 function weeklyCleaningTasksForTerminal() {
@@ -13269,7 +13442,9 @@ function renderTerminalChecks(report = {}) {
           <button class="terminal-toilet-control-icon" type="button" data-open-terminal-toilet-check aria-label="Toiletten-Kontrolle bestätigen">WC</button>
           <div class="terminal-toilet-control-main">
             <strong>Toiletten</strong>
+            ${toiletStatus.statusLabel ? `<span class="terminal-toilet-control-status">${escapeHtml(toiletStatus.statusLabel)}</span>` : ""}
             ${toiletStatus.hasCheck ? `<span class="terminal-toilet-control-last">${escapeHtml(toiletStatus.lastLabel)}</span>` : ""}
+            ${toiletStatus.status === "overdue" && toiletStatus.nextLabel ? `<small>${escapeHtml(toiletStatus.nextLabel)}</small>` : ""}
           </div>
         </article>
       ` : ""}
@@ -13305,12 +13480,13 @@ function terminalToiletControlStatus(report = {}, control = {}) {
     .sort((left, right) => new Date(right.checkedAt) - new Date(left.checkedAt));
   const latest = checks[0];
   if (!latest) {
+    const existingStatus = control?.status === "overdue" ? "overdue" : control?.status === "due" ? "due" : "unknown";
     return {
-      status: "unknown",
+      status: existingStatus,
       hasCheck: false,
-      statusLabel: "",
+      statusLabel: existingStatus === "overdue" ? "Überfällig" : existingStatus === "due" ? "Fällig" : "",
       lastLabel: "Keine Kontrolle dokumentiert",
-      nextLabel: "Kontrolle offen"
+      nextLabel: existingStatus === "overdue" ? "Kontrolle überfällig" : "Kontrolle offen"
     };
   }
   const checkedAt = new Date(latest.checkedAt);
@@ -13470,15 +13646,10 @@ function renderTerminalTableLite() {
     `;
     return;
   }
-  const zones = terminalPlanVisibleZones();
-  const tables = terminalPlanVisibleTables();
   target.innerHTML = `
-    <div class="terminal-table-lite-empty">
-      <div class="terminal-table-lite-board" aria-label="Tischplan ohne Reservierungen">
-        ${zones.map((zone) => `<span class="terminal-table-lite-zone" style="left:${zone.x}%;top:${zone.y}%;width:${zone.w}%;height:${zone.h}%"></span>`).join("")}
-        ${tables.map((table) => `<span class="terminal-table-lite-table-shape" style="left:${table.x}%;top:${table.y}%;width:${table.w}%;height:${table.h}%">${escapeHtml(table.label || table.id)}</span>`).join("")}
-      </div>
-      <small>Heute noch keine Reservierungen</small>
+    <div class="terminal-table-lite-empty" role="status">
+      <span class="terminal-table-lite-empty-icon" aria-hidden="true">&#9638;</span>
+      <strong>Noch kein Tischplan für heute</strong>
     </div>
   `;
 }
@@ -15612,6 +15783,7 @@ async function terminalAction(payload) {
   state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
   state.terminalInvoiceHistory = Array.isArray(result.invoiceHistory) ? result.invoiceHistory : state.terminalInvoiceHistory;
   state.offers = normalizeOffersClient(result.offers || state.offers || []);
+  state.cocktails = Array.isArray(result.cocktails) ? result.cocktails : state.cocktails;
   state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
   state.terminalTableInfo = result.tablePlanInfo || state.terminalTableInfo;
   state.terminalDayMetaEditing = false;
@@ -15649,6 +15821,7 @@ async function terminalLogin(code) {
   state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
   state.terminalInvoiceHistory = Array.isArray(result.invoiceHistory) ? result.invoiceHistory : state.terminalInvoiceHistory;
   state.offers = normalizeOffersClient(result.offers || state.offers || []);
+  state.cocktails = Array.isArray(result.cocktails) ? result.cocktails : state.cocktails;
   state.terminalTableConfig = normalizeTerminalTableConfig(result.tablePlanConfig || state.terminalTableConfig);
   state.terminalTableInfo = result.tablePlanInfo || state.terminalTableInfo;
   state.terminalCorrectionMode = false;
@@ -21161,6 +21334,7 @@ async function saveSchedule(published) {
 }
 
 bindEvents();
+bindCocktailEvents();
 window.setInterval(() => {
   if (state.terminalToken) refreshTerminalReminderState();
 }, 30000);
@@ -21168,6 +21342,7 @@ window.addEventListener("focus", () => {
   if (state.terminalToken) refreshTerminalReminderState();
 });
 if (isTerminalMode()) document.body.classList.add("terminal-mode");
+if (isCocktailOnlyMode()) document.body.classList.add("cocktail-only-mode");
 if (isTodoMode()) document.body.classList.add("todo-mode");
 if (isCustomerInvoiceMode()) document.body.classList.add("customer-invoice-mode");
 state.settings = cloneData(defaultData.settings);

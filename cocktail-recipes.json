@@ -1,0 +1,398 @@
+[
+  {
+    "id": "cocktail-1",
+    "name": "Himbeer Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "Himbeeren",
+    "ingredients": "6 cl Himbeer Sirup\n1 cl Zitronen\nProsecco\nTonic auffüllen\nEiswürfel\nHimbeeren",
+    "steps": "Eiswürfel ins Glas geben.\nSirup und Zitrone einfüllen.\nMit Prosecco und Tonic auffüllen.\nMit Himbeeren garnieren."
+  },
+  {
+    "id": "cocktail-2",
+    "name": "Pfirsich Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "Optional: Pfirsichspalte",
+    "ingredients": "3 cl Peachtree\n4 cl Pfirsichsirup\n2 cl Zitronensaft\nTonic auffüllen\nEiswürfel\nOptional: Pfirsichspalte",
+    "steps": "Eiswürfel ins Glas geben.\nPeachtree, Pfirsichsirup und Zitronensaft einfüllen.\nMit Tonic auffüllen.\nOptional mit Pfirsichspalte garnieren."
+  },
+  {
+    "id": "cocktail-3",
+    "name": "Veilchen Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "Limette",
+    "ingredients": "6 cl Veilchensirup\nProsecco\n2 cl Zitronensaft\nTonic auffüllen\nLimette\nEiswürfel",
+    "steps": "Eiswürfel ins Glas geben.\nVeilchensirup und Zitronensaft einfüllen.\nMit Prosecco und Tonic auffüllen.\nMit Limette garnieren."
+  },
+  {
+    "id": "cocktail-4",
+    "name": "Grapefruit Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "2 cl Aperol\n2 cl Rohrzuckersirup\n1 cl Zitronensaft\nBitterlemon + Prosecco auffüllen\nEiswürfel",
+    "steps": "Eiswürfel ins Glas geben.\nAperol, Rohrzuckersirup und Zitronensaft einfüllen.\nMit Bitterlemon und Prosecco auffüllen."
+  },
+  {
+    "id": "cocktail-5",
+    "name": "Hibiskus Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "Limette",
+    "ingredients": "6 cl Hibiskussirup\nProsecco Rose\n2 cl Zitronensaft\nSoda auffüllen\nEiswürfel\nLimette",
+    "steps": "Eiswürfel ins Glas geben.\nHibiskussirup und Zitronensaft einfüllen.\nMit Prosecco Rose und Soda auffüllen.\nMit Limette garnieren."
+  },
+  {
+    "id": "cocktail-6",
+    "name": "Wassermelonen Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "Zitronenscheibe",
+    "ingredients": "4 cl Wassermelonen Sirup\n2 cl Aperol\n1 cl Zitronensaft\nProsecco + Soda auffüllen\nZitronenscheibe\nEiswürfel",
+    "steps": "Eiswürfel ins Glas geben.\nWassermelonen Sirup, Aperol und Zitronensaft einfüllen.\nMit Prosecco und Soda auffüllen.\nMit Zitronenscheibe garnieren."
+  },
+  {
+    "id": "cocktail-7",
+    "name": "Ingwer Orangen Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "Orangenscheibe",
+    "ingredients": "4 cl Orange Spritz Sirup\n4 cl Ingwersirup\n2 cl Orangensaft\n1 cl Zitronensaft\nProsecco + Soda auffüllen\nOrangenscheibe\nEiswürfel",
+    "steps": "Eiswürfel ins Glas geben.\nSirup, Orangensaft und Zitronensaft einfüllen.\nMit Prosecco und Soda auffüllen.\nMit Orangenscheibe garnieren."
+  },
+  {
+    "id": "cocktail-8",
+    "name": "Lillet Cocos Blaubeere",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "Heidelbeeren",
+    "ingredients": "6 cl Lillet\nRedbull Kokos auffüllen\nHeidelbeeren\nEiswürfel",
+    "steps": "Eiswürfel ins Glas geben.\nLillet einfüllen.\nMit Redbull Kokos auffüllen.\nMit Heidelbeeren garnieren."
+  },
+  {
+    "id": "cocktail-9",
+    "name": "Caipirinha",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "Minze",
+    "ingredients": "Crushed Eis\nLimette auspressen\nBrauner Zucker\n2 cl Rohrzuckersirup\n5-6 cl Pitu (Schnaps)\nBei Bedarf: Schuss Soda\nMinze",
+    "steps": "Crushed Eis vorbereiten.\nLimette auspressen und mit braunem Zucker ins Glas geben.\nRohrzuckersirup und Pitu dazugeben.\nMit Latteöffel rühren.\nBei Bedarf mit einem Schuss Soda auffüllen.\nMit Minze garnieren."
+  },
+  {
+    "id": "cocktail-10",
+    "name": "Ipanema",
+    "category": "alkoholfrei",
+    "glass": "",
+    "garnish": "Minze",
+    "ingredients": "Crushed Eis\nBrauner Zucker\nLimette auspressen\nGingerale auffüllen\nMinze",
+    "steps": "Crushed Eis vorbereiten.\nLimette auspressen und mit braunem Zucker ins Glas geben.\nMit Gingerale auffüllen.\nMit Minze garnieren."
+  },
+  {
+    "id": "cocktail-11",
+    "name": "Touch Down",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "3 cl Apricot Brandy\n3 cl Wodka\n2 cl Grenadine\n1 cl Zitronensaft\nMaracujasaft auffüllen\nEiswürfel",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas abseihen.\nMit Maracujasaft auffüllen."
+  },
+  {
+    "id": "cocktail-12",
+    "name": "Coconut Kiss",
+    "category": "alkoholfrei",
+    "glass": "",
+    "garnish": "Kirschsaft Topping",
+    "ingredients": "4 cl Kokossirup\nOrangensaft\nAnanassaft\nSahne\nKirschsaft Topping",
+    "steps": "Kokossirup, Orangensaft, Ananassaft und Sahne shaken.\nIns Glas geben.\nMit Kirschsaft toppen."
+  },
+  {
+    "id": "cocktail-13",
+    "name": "Mojito",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "Viel Minze",
+    "ingredients": "Crushed Eis\n4 cl Rum\n2 cl Rohrzuckersirup\nBrauner Zucker\nLimette auspressen\nSoda auffüllen\nViel Minze",
+    "steps": "Crushed Eis vorbereiten.\nLimette auspressen und mit braunem Zucker ins Glas geben.\nRum und Rohrzuckersirup dazugeben.\nMit Soda auffüllen.\nMit viel Minze garnieren."
+  },
+  {
+    "id": "cocktail-14",
+    "name": "Virgin Solero",
+    "category": "alkoholfrei",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "2 cl Zitronensaft\n5 cl Vanillesirup\n6 cl Orangensaft\n8 cl Maracujasaft\nSahne\nEis",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas geben."
+  },
+  {
+    "id": "cocktail-15",
+    "name": "Pink Baby Unicorn",
+    "category": "alkoholfrei",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Kokossirup\n4 cl Grenadine\n13 cl Ananassaft\nSahne\nEis",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas geben."
+  },
+  {
+    "id": "cocktail-16",
+    "name": "Sex on the Beach alkoholfrei",
+    "category": "alkoholfrei",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "2 cl Grenadine\n4 cl Pfirsichsirup\n3 cl Zitronensaft\n6 cl Ananassaft\n6 cl Orangensaft\nEis",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas geben."
+  },
+  {
+    "id": "cocktail-17",
+    "name": "Green Mamba",
+    "category": "alkoholfrei",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "3 cl Mangosirup\n2 cl Holundersirup\n1 cl Zitronensaft\n2 cl Blue Curacao\n10 cl Maracujasaft\n10 cl Ananassaft\nEis",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas geben."
+  },
+  {
+    "id": "cocktail-18",
+    "name": "Long Island Ice Tea",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "6 cl Mixe (Vodka, Tequila, Gin, Havana)\n2 cl Orangenlikör\n1,5 cl Zuckersirup\n3 cl Zitronensaft\nCola\nSprite\nEis",
+    "steps": "Zutaten mit Eis ins Glas geben.\nMit Cola auffüllen.\nCola oder Sprite immer zum Schluss dazugeben.\nNicht mitshaken."
+  },
+  {
+    "id": "cocktail-19",
+    "name": "Solero",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "3 cl Vodka\n4 cl Vanillesirup\n2 cl Zitronensaft\n6 cl Maracujasaft\n6 cl Orangensaft\nSahne\nEis",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas geben."
+  },
+  {
+    "id": "cocktail-20",
+    "name": "Pink Unicorn",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Havanna (weißer Rum)\n4 cl Grenadinesirup\n2 cl Kokossirup\n10 cl Ananassaft\nSahne\nEis",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas geben."
+  },
+  {
+    "id": "cocktail-21",
+    "name": "Sex on the Beach",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Vodka\n2 cl Grenadinesirup\n5 cl Pfirsichsirup\n2 cl Zitronensaft\n4 cl Ananassaft\n4 cl Orangensaft\nEis",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas geben."
+  },
+  {
+    "id": "cocktail-22",
+    "name": "Swimmingpool",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "2 cl Vodka\n4 cl Havanna (weißer Rum)\n3 cl Blue Curacao\n3 cl Kokossirup\n10 cl Ananassaft\nSahne\nEis",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas geben."
+  },
+  {
+    "id": "cocktail-23",
+    "name": "Tequila Sunrise",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "15 cl Orangensaft\n4 cl Tequila weiß\n2 cl Grenadine",
+    "steps": "Orangensaft und Tequila ins Glas geben.\nGrenadine langsam dazugeben.\nNicht shaken."
+  },
+  {
+    "id": "cocktail-24",
+    "name": "Pina Colada",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Havanna weißer Rum\n6 cl Kokossirup\n12 cl Ananassaft\nSahne\nEis",
+    "steps": "Alle Zutaten mit Eis shaken.\nIn ein Glas geben."
+  },
+  {
+    "id": "cocktail-25",
+    "name": "Blue Lagoon",
+    "category": "alkohol",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "6 cl Vodka\n2 cl Blue Curacao\n2 cl Zitronensaft\nSprite\nEis",
+    "steps": "Vodka, Blue Curacao und Zitronensaft mit Eis shaken.\nIn ein Glas geben.\nMit Sprite auffüllen."
+  },
+  {
+    "id": "cocktail-26",
+    "name": "Moscow oder Munich Mule",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "Zitrone",
+    "ingredients": "4 cl Vodka oder Gin\nZitrone\nGinger Beer",
+    "steps": "Spirituose und Zitrone ins Glas geben.\nMit Ginger Beer auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-27",
+    "name": "Vodka Lemon oder Orange",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Vodka\nBitter Lemon oder Orangensaft",
+    "steps": "Vodka ins Glas geben.\nMit Bitter Lemon oder Orangensaft auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-28",
+    "name": "Bacardi Cola oder Orange",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Bacardi\nCoca Cola oder Orangensaft",
+    "steps": "Bacardi ins Glas geben.\nMit Coca Cola oder Orangensaft auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-29",
+    "name": "Bacardi Razz",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "Himbeeren",
+    "ingredients": "4 cl Bacardi Razz\nZitronenlimo\nHimbeeren",
+    "steps": "Bacardi Razz ins Glas geben.\nMit Zitronenlimo auffüllen.\nMit Himbeeren garnieren."
+  },
+  {
+    "id": "cocktail-30",
+    "name": "Gin Tonic",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "Limette",
+    "ingredients": "4 cl Gin\nTonicwater\nLimette",
+    "steps": "Gin ins Glas geben.\nMit Tonicwater auffüllen.\nMit Limette garnieren."
+  },
+  {
+    "id": "cocktail-31",
+    "name": "Asbach Cola",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Asbach\nCoca Cola",
+    "steps": "Asbach ins Glas geben.\nMit Coca Cola auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-32",
+    "name": "Cuba Libre",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "Limette",
+    "ingredients": "4 cl Havanna\nCoca Cola\nLimette",
+    "steps": "Havanna und Limette ins Glas geben.\nMit Coca Cola auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-33",
+    "name": "Jack Daniels Cola",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Jack Daniels\nCoca Cola",
+    "steps": "Jack Daniels ins Glas geben.\nMit Coca Cola auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-34",
+    "name": "Jäger Red Bull",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Jägermeister\nRed Bull",
+    "steps": "Jägermeister ins Glas geben.\nMit Red Bull auffüllen."
+  },
+  {
+    "id": "cocktail-35",
+    "name": "Vodka Red Bull",
+    "category": "longdrink",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "4 cl Vodka\nRed Bull",
+    "steps": "Vodka ins Glas geben.\nMit Red Bull auffüllen."
+  },
+  {
+    "id": "cocktail-36",
+    "name": "Hugo",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "Minze und Limette",
+    "ingredients": "Sekt\nMineralwasser\nHolunder\nMinze\nLimette",
+    "steps": "Holunder, Minze und Limette ins Glas geben.\nMit Sekt und Mineralwasser auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-37",
+    "name": "Lillet Wild Berry",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "Lillet\nWildberry",
+    "steps": "Lillet ins Glas geben.\nMit Wildberry auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-38",
+    "name": "White Peach Lillet",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "Lillet\nSekt\nSchweppes White Peach",
+    "steps": "Lillet ins Glas geben.\nMit Sekt und Schweppes White Peach auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-39",
+    "name": "Limoncello Basilikum Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "Basilikum",
+    "ingredients": "Limoncello\nZitrone\nSekt\nMineralwasser\nBasilikum",
+    "steps": "Limoncello, Zitrone und Basilikum ins Glas geben.\nMit Sekt und Mineralwasser auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-40",
+    "name": "Sarti Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "Sarti Rose\nSekt\nMineralwasser",
+    "steps": "Sarti Rose ins Glas geben.\nMit Sekt und Mineralwasser auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-41",
+    "name": "Mango Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "Mango\nSekt\nMineralwasser",
+    "steps": "Mango ins Glas geben.\nMit Sekt und Mineralwasser auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-42",
+    "name": "Erdbeer Spritz",
+    "category": "spritz",
+    "glass": "",
+    "garnish": "Zitrone",
+    "ingredients": "Erdbeer\nZitrone\nSekt\nMineralwasser",
+    "steps": "Erdbeer und Zitrone ins Glas geben.\nMit Sekt und Mineralwasser auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-43",
+    "name": "Erdbeer Spritz alkoholfrei",
+    "category": "alkoholfrei",
+    "glass": "",
+    "garnish": "",
+    "ingredients": "Erdbeer\nMineralwasser",
+    "steps": "Erdbeer ins Glas geben.\nMit Mineralwasser auffüllen.\nKurz umrühren."
+  },
+  {
+    "id": "cocktail-44",
+    "name": "Arrancia Spritz alkoholfrei",
+    "category": "alkoholfrei",
+    "glass": "",
+    "garnish": "Orange und Rosmarin",
+    "ingredients": "Ramazotti Arrancia alkoholfrei\nTonic Water\nOrange\nRosmarin",
+    "steps": "Arrancia alkoholfrei ins Glas geben.\nMit Tonic Water auffüllen.\nMit Orange und Rosmarin garnieren."
+  }
+]

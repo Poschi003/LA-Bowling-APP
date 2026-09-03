@@ -58,6 +58,8 @@ module.exports = async function handler(req, res) {
     if (action === "confirm-reminder") return confirmReminder(body, res);
     if (action === "confirm-terminal-message") return confirmTerminalMessage(body, res);
     if (action === "save-day-meta") return saveDayMeta(body, res);
+    if (action === "save-cocktail") return saveCocktail(body, res);
+    if (action === "delete-cocktail") return deleteCocktail(body, res);
     if (action === "save-assignment-times") return saveAssignmentTimes(body, res);
     if (action === "add-handover") return addHandover(body, res);
     if (action === "save-table-reservation") return saveTableReservation(body, res);
@@ -1119,7 +1121,42 @@ function terminalPayload(appData, requestedDate) {
   const date = cleanDate(requestedDate), month = date.slice(0, 7), schedule = appData.schedules?.[month] || {};
   const report = defaultReport(appData.dayReports?.[date]);
   const assignmentDates = terminalAssignmentDates(date);
-  return { date, openTerminalDates: openTerminalDates(appData, date), settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), assignmentAvailability: assignmentAvailabilityForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), taskTemplates: sortTaskTemplates(appData.taskTemplates || []), taskAreas: cleanTaskAreas(appData.taskAreas), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory), invoiceHistory: invoiceCustomerHistory(appData), offers: Array.isArray(appData.offers) ? appData.offers : [], tablePlanConfig: normalizeTablePlanConfig(appData.tablePlanConfig), tablePlanInfo: tablePlanInfo(appData, date) };
+  return { date, openTerminalDates: openTerminalDates(appData, date), settings: publicSettings(appData.settings), entries: appData.timesheets?.[month] || {}, schedule: schedule.days?.[date] || {}, assignmentTimes: assignmentTimesForDates(appData, assignmentDates), assignmentSchedules: assignmentSchedulesForDates(appData, assignmentDates), assignmentAvailability: assignmentAvailabilityForDates(appData, assignmentDates), report, tipOverview: tipPayoutOverview(appData), correctionMode: Boolean(report.correctionOpen), tasks: tasksForDate(appData, date), taskTemplates: sortTaskTemplates(appData.taskTemplates || []), taskAreas: cleanTaskAreas(appData.taskAreas), cleaningTemplates: weeklyCleaningTemplates(appData.cleaningTemplates), weeklyCleaningCompletions: weeklyCleaningCompletions(appData, date), reminders: appData.reminderTemplates || [], terminalMessages: activeTerminalMessages(appData), customerDirectory: normalizeCustomerDirectory(appData.customerDirectory), invoiceHistory: invoiceCustomerHistory(appData), offers: Array.isArray(appData.offers) ? appData.offers : [], cocktails: Array.isArray(appData.cocktails) ? appData.cocktails : [], tablePlanConfig: normalizeTablePlanConfig(appData.tablePlanConfig), tablePlanInfo: tablePlanInfo(appData, date) };
+}
+
+async function saveCocktail(body, res) {
+  const appData = await readAppData();
+  const recipe = cleanCocktail(body.recipe || {});
+  if (!recipe.name || !recipe.ingredients || !recipe.steps) return sendJson(res, 400, { error: "Name, Zutaten und Zubereitung sind erforderlich." });
+  appData.cocktails ||= [];
+  const index = appData.cocktails.findIndex((item) => item.id === recipe.id);
+  if (index >= 0) appData.cocktails[index] = recipe;
+  else appData.cocktails.unshift(recipe);
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true, message: "Rezept gespeichert.", ...terminalPayload(appData, body.date) });
+}
+
+async function deleteCocktail(body, res) {
+  const appData = await readAppData();
+  const id = cleanText(body.id, 100);
+  appData.cocktails = (appData.cocktails || []).filter((item) => item.id !== id);
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true, message: "Rezept gelöscht.", ...terminalPayload(appData, body.date) });
+}
+
+function cleanCocktail(value = {}) {
+  const categories = new Set(["spritz", "alkoholfrei", "alkohol", "longdrink"]);
+  const category = cleanText(value.category, 40);
+  return {
+    id: cleanText(value.id, 100) || `cocktail-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: cleanText(value.name, 120),
+    category: categories.has(category) ? category : "alkohol",
+    glass: cleanText(value.glass, 100),
+    garnish: cleanText(value.garnish, 160),
+    ingredients: cleanText(value.ingredients, 3000),
+    steps: cleanText(value.steps, 3000),
+    updatedAt: new Date().toISOString()
+  };
 }
 
 function invoiceCustomerHistory(appData) {

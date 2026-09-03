@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const defaultCocktailRecipes = require("../cocktail-recipes.json");
 
 const weekdays = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
@@ -153,6 +154,7 @@ const defaultData = {
   terminalMessages: [],
   customerDirectory: [],
   offers: [],
+  cocktails: defaultCocktailRecipes,
   swaps: [],
   availabilityChangeRequests: []
 };
@@ -220,6 +222,7 @@ function mergeData(value) {
     terminalMessages: Array.isArray(value?.terminalMessages) ? value.terminalMessages : base.terminalMessages,
     customerDirectory: Array.isArray(value?.customerDirectory) ? value.customerDirectory : base.customerDirectory,
     offers: Array.isArray(value?.offers) ? value.offers : base.offers,
+    cocktails: Array.isArray(value?.cocktails) ? value.cocktails : base.cocktails,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests
   };

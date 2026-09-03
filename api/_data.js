@@ -1,5 +1,7 @@
 ﻿const crypto = require("crypto");
 
+const defaultCocktailRecipes = require("../cocktail-recipes.json");
+
 let DEFAULT_INVOICE_SETTINGS = {
   companyName: "LA-Bowling Peter Vorholzer",
   companyAddress: "Röntgenstraße 12 a\n84030 Landshut",
@@ -214,6 +216,7 @@ const defaultData = {
   invoiceSettings: DEFAULT_INVOICE_SETTINGS,
   invoices: [],
   offers: [],
+  cocktails: defaultCocktailRecipes,
   swaps: [],
   availabilityChangeRequests: [],
   pushSubscriptions: {}
@@ -296,6 +299,7 @@ function mergeData(value) {
     invoiceSettings: normalizeInvoiceSettings(value?.invoiceSettings || base.invoiceSettings),
     invoices: normalizeInvoices(Array.isArray(value?.invoices) ? value.invoices : base.invoices, value?.invoiceSettings || base.invoiceSettings),
     offers: Array.isArray(value?.offers) ? value.offers : base.offers,
+    cocktails: Array.isArray(value?.cocktails) ? value.cocktails : base.cocktails,
     swaps: Array.isArray(value?.swaps) ? value.swaps : base.swaps,
     availabilityChangeRequests: Array.isArray(value?.availabilityChangeRequests) ? value.availabilityChangeRequests : base.availabilityChangeRequests,
     pushSubscriptions: normalizePushSubscriptions(value?.pushSubscriptions || base.pushSubscriptions)
