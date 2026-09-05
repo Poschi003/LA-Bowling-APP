@@ -2256,8 +2256,20 @@ button.employee-badge-stat {
 .offer-bmw-package > small { color: var(--muted); }
 .offer-bmw-package > p { margin: 5px 0 0; color: var(--ink); font-size: 12px; line-height: 1.35; }
 
+.offer-bmw-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-sm);
+  background: #f8fbff;
+}
+
 @media (max-width: 760px) {
   .offer-bmw-package-grid { grid-template-columns: 1fr; }
+  .offer-bmw-time-grid { grid-template-columns: 1fr; }
 }
 
 .terminal-offer-workspace .offer-workspace-grid {

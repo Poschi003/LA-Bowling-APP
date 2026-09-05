@@ -1261,7 +1261,7 @@ const OFFER_BMW_TREASURE_PACKAGES = {
     pricePerPerson: 43,
     food: "Speisenauswahl nach Karte",
     details: "2 Stunden Bowling inklusive Leihschuhe, 2 Getränkemarken pro Person und Essen nach Vorauswahl aus der Schatzkisten-Speisekarte.",
-    note: "Für maximal 30 Personen. Die Speisenauswahl wird separat abgestimmt."
+    note: "Für maximal 30 Personen. Zur Auswahl stehen Pizza LA-Bowling, Schnitzel Wiener Art, LA-Bowling Burger, Crunchy Chicken Burger, Falafelsalat, Spaghetti Salmone oder Currywurst."
   },
   package2: {
     name: "Paket 2",
@@ -1274,8 +1274,8 @@ const OFFER_BMW_TREASURE_PACKAGES = {
     name: "Paket 3",
     pricePerPerson: 48,
     food: "Buffet LA-Bowling",
-    details: "2 Stunden Bowling inklusive Leihschuhe, 2 Getränkemarken pro Person und Buffet LA-Bowling mit Vorspeise, Hauptspeisen und Dessert.",
-    note: "Verfügbar ab 15 Personen."
+    details: "2 Stunden Bowling inklusive Leihschuhe, 2 Getränkemarken pro Person und Buffet LA-Bowling.",
+    note: "Verfügbar ab 15 Personen. Vorspeise: Salatbar mit Blattsalat, Tomaten, Gurken und Paprika, dazu Joghurt-Dressing und Essig-Öl-Marinade. Hauptspeisen: Gelbes Kokos-Curry von der Putenbrust mit Gemüse und Jasminreis sowie Schweinelendchen an Pilzrahmsoße mit Eierspätzle. Dessert: Warmer Apfelstrudel mit Vanillesoße."
   }
 };
 const OFFER_BOWLING_WEEKDAY_LABELS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -1510,6 +1510,13 @@ function cleanOfferTimeValue(value) {
   return `${String(hourNumber).padStart(2, "0")}:${String(minuteNumber).padStart(2, "0")}`;
 }
 
+function offerTimePlusMinutes(value, addedMinutes) {
+  const minutes = offerTimeMinutesValue(value);
+  if (minutes == null) return "";
+  const total = (minutes + Number(addedMinutes || 0) + (24 * 60)) % (24 * 60);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 function createBlankOfferDraft() {
   return normalizeOfferClient({
     title: "Neues Angebot",
@@ -1675,6 +1682,9 @@ function currentOfferDraftFromDom() {
   });
   draft.textBlocks.drinksByMenu.enabled = draft.drinksMode !== "custom" && !draft.conference?.enabled;
   draft.textBlocks.drinksByMenu.text = OFFER_TEXT_BLOCK_DEFAULTS.drinksByMenu.text;
+  if (draft.offerType === "bmw-treasure" && draft.bowling.fromTime) {
+    draft.bowling.toTime = offerTimePlusMinutes(draft.bowling.fromTime, 120);
+  }
   return normalizeOfferClient(draft);
 }
 
@@ -5855,17 +5865,28 @@ function renderAdminOffers() {
               </select>
             </label>
           </div>
-          ${draft.offerType === "bmw-treasure" ? `<div class="offer-bmw-package-grid">${Object.entries(OFFER_BMW_TREASURE_PACKAGES).map(([key, item]) => `<button class="offer-bmw-package ${draft.bmwTreasurePackage === key ? "is-selected" : ""}" type="button" data-offer-bmw-package="${key}"><span>${escapeHtml(item.name)}</span><strong>${formatMoney(item.pricePerPerson)}</strong><small>pro Person</small><p>${escapeHtml(item.food)}</p></button>`).join("")}</div>${draft.bmwTreasurePackage ? `<p class="offer-pricing-note"><strong>${escapeHtml(OFFER_BMW_TREASURE_PACKAGES[draft.bmwTreasurePackage].name)}:</strong> ${escapeHtml(OFFER_BMW_TREASURE_PACKAGES[draft.bmwTreasurePackage].details)} ${escapeHtml(OFFER_BMW_TREASURE_PACKAGES[draft.bmwTreasurePackage].note)}</p>` : ""}` : ""}
+          ${draft.offerType === "bmw-treasure" ? `<div class="offer-bmw-package-grid">${Object.entries(OFFER_BMW_TREASURE_PACKAGES).map(([key, item]) => `<button class="offer-bmw-package ${draft.bmwTreasurePackage === key ? "is-selected" : ""}" type="button" data-offer-bmw-package="${key}"><span>${escapeHtml(item.name)}</span><strong>${formatMoney(item.pricePerPerson)}</strong><small>pro Person</small><p>${escapeHtml(item.food)}</p></button>`).join("")}</div>
+            ${draft.bmwTreasurePackage ? `<div class="offer-bmw-time-grid"><label>Uhrzeit Essen<input data-offer-field="mealTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.mealTime)}" placeholder="z. B. 18:00"></label><label>Uhrzeit Bowling<input data-offer-field="bowlingFromTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.bowling?.fromTime || "")}" placeholder="z. B. 20:00"><small class="offer-field-help">Die Dauer von 2 Stunden wird automatisch eingetragen.</small></label></div><p class="offer-pricing-note"><strong>${escapeHtml(OFFER_BMW_TREASURE_PACKAGES[draft.bmwTreasurePackage].name)}:</strong> ${escapeHtml(OFFER_BMW_TREASURE_PACKAGES[draft.bmwTreasurePackage].details)} ${escapeHtml(OFFER_BMW_TREASURE_PACKAGES[draft.bmwTreasurePackage].note)}</p><button class="primary" type="button" data-offer-editor-step="4">Direkt zum fertigen Angebot</button>` : ""}` : ""}
         </section>
 
         <div class="offer-grid">
-          <label>Bezeichnung<input data-offer-field="title" value="${escapeHtml(draft.title)}" placeholder="z.B. Angebot Stoll"></label>
-          <label>Angebotsdatum<input data-offer-field="offerDate" type="date" value="${escapeHtml(draft.offerDate)}"></label>
-          <label>Veranstaltungsdatum<input data-offer-field="eventDate" type="date" value="${escapeHtml(draft.eventDate)}"></label>
-          <label class="offer-arrival-field">Eintreffen der Gäste<input data-offer-field="startTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.startTime)}" placeholder="z. B. 18:00"></label>
-          <label>Anlass<input data-offer-field="occasion" value="${escapeHtml(draft.occasion)}" placeholder="z.B. Hochzeitsfeier"></label>
-          <label>Erwachsene<input data-offer-field="personsAdults" type="number" min="0" step="1" value="${escapeHtml(draft.personsAdults)}"></label>
-          <label>Kinder<input data-offer-field="personsChildren" type="number" min="0" step="1" value="${escapeHtml(draft.personsChildren)}"></label>
+          ${draft.offerType === "bmw-treasure" ? `
+            <input data-offer-field="title" type="hidden" value="${escapeHtml(draft.title)}">
+            <input data-offer-field="offerDate" type="hidden" value="${escapeHtml(draft.offerDate)}">
+            <input data-offer-field="startTime" type="hidden" value="${escapeHtml(draft.startTime)}">
+            <input data-offer-field="occasion" type="hidden" value="${escapeHtml(draft.occasion)}">
+            <input data-offer-field="personsChildren" type="hidden" value="0">
+            <label>Veranstaltungsdatum<input data-offer-field="eventDate" type="date" value="${escapeHtml(draft.eventDate)}"></label>
+            <label>Personenzahl<input data-offer-field="personsAdults" type="number" min="1" step="1" value="${escapeHtml(draft.personsAdults)}"></label>
+          ` : `
+            <label>Bezeichnung<input data-offer-field="title" value="${escapeHtml(draft.title)}" placeholder="z.B. Angebot Stoll"></label>
+            <label>Angebotsdatum<input data-offer-field="offerDate" type="date" value="${escapeHtml(draft.offerDate)}"></label>
+            <label>Veranstaltungsdatum<input data-offer-field="eventDate" type="date" value="${escapeHtml(draft.eventDate)}"></label>
+            <label class="offer-arrival-field">Eintreffen der Gäste<input data-offer-field="startTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.startTime)}" placeholder="z. B. 18:00"></label>
+            <label>Anlass<input data-offer-field="occasion" value="${escapeHtml(draft.occasion)}" placeholder="z.B. Hochzeitsfeier"></label>
+            <label>Erwachsene<input data-offer-field="personsAdults" type="number" min="0" step="1" value="${escapeHtml(draft.personsAdults)}"></label>
+            <label>Kinder<input data-offer-field="personsChildren" type="number" min="0" step="1" value="${escapeHtml(draft.personsChildren)}"></label>
+          `}
         </div>
 
         <section class="offer-section">
@@ -6800,12 +6821,14 @@ function applyBmwTreasurePackage(draftValue, packageKey) {
   const selectedPackage = OFFER_BMW_TREASURE_PACKAGES[packageKey];
   if (!selectedPackage) return normalizeOfferClient(draftValue);
   const draft = cloneData(draftValue);
+  const bowlingFromTime = draft.bowling?.fromTime || "";
   draft.offerType = "bmw-treasure";
   draft.bmwTreasurePackage = packageKey;
   draft.title = `BMW Schatzkiste ${selectedPackage.name}`;
   draft.occasion = "BMW Schatzkiste";
+  draft.personsChildren = 0;
   draft.conference = { enabled: false, morningSnackText: "", morningSnackTime: "" };
-  draft.bowling = { tournamentPackage: "", lanes: 0, shoePersons: 0, fromTime: "", toTime: "" };
+  draft.bowling = { tournamentPackage: "", lanes: 0, shoePersons: 0, fromTime: bowlingFromTime, toTime: offerTimePlusMinutes(bowlingFromTime, 120) };
   draft.buffet = { templateKey: "", name: "", pricePerPerson: 0, sparklingReception: false, categories: normalizeOfferBuffetCategoriesClient({}) };
   draft.drinksMode = "menu";
   draft.drinksCustomText = "";
@@ -7019,7 +7042,10 @@ function printOfferDraft() {
     ? "Tagungsraum"
     : (reservedAreaPricing.reservedAreaLabel || "LA-Bowling");
   const includedItems = [
-    bmwTreasurePricing.selectedPackage ? { icon: "B", title: `BMW Schatzkiste ${bmwTreasurePricing.selectedPackage.name}`, text: `${bmwTreasurePricing.selectedPackage.details} ${bmwTreasurePricing.selectedPackage.note}` } : null,
+    bmwTreasurePricing.selectedPackage ? { icon: "B", title: "Bowling", text: `2 Stunden Bowling${draft.bowling?.fromTime ? ` ab ${draft.bowling.fromTime} Uhr` : ""}` } : null,
+    bmwTreasurePricing.selectedPackage ? { icon: "S", title: "Leihschuhe", text: `Für alle ${bmwTreasurePricing.persons} Personen inklusive` } : null,
+    bmwTreasurePricing.selectedPackage ? { icon: "G", title: "Getränke", text: "2 Getränkemarken pro Person für alkoholfreie Getränke, Bier, Wein oder Weinschorle" } : null,
+    bmwTreasurePricing.selectedPackage ? { icon: "E", title: bmwTreasurePricing.selectedPackage.food, text: `${draft.mealTime ? `${draft.mealTime} Uhr · ` : ""}${bmwTreasurePricing.selectedPackage.note}` } : null,
     draft.conference?.enabled ? { icon: "T", title: "Tagungspauschale", text: `Bis 25 Personen inklusive · jede weitere Person ${formatMoney(OFFER_CONFERENCE_EXTRA_PERSON_PRICE)}` } : null,
     draft.conference?.enabled ? { icon: "V", title: "Vormittagssnack", text: `${draft.conference.morningSnackTime ? `${draft.conference.morningSnackTime} Uhr · ` : ""}${draft.conference.morningSnackText || "Nach Absprache"}` } : null,
     draft.conference?.enabled ? { icon: "R", title: "Reservierter Bereich", text: "Tagungsraum" } : null,
