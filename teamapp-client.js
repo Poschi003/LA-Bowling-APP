@@ -6770,7 +6770,6 @@ function offerTimelineScaleMarkup(events = []) {
   }).join("");
   return `
     <div class="scale-wrap">
-      <div class="scale-line"></div>
       ${points}
     </div>
   `;
