@@ -1732,7 +1732,6 @@ function offerHasBowlingBooking(offer) {
   return Boolean(
     bowling.tournamentPackage ||
     bowling.lanes ||
-    bowling.shoePersons ||
     bowling.fromTime ||
     bowling.toTime
   );
@@ -1874,7 +1873,8 @@ function offerBowlingPricing(dateKey, bowling = {}) {
     }
   }
   const laneCost = Math.round(laneCostPerLane * normalized.lanes * 100) / 100;
-  const shoeCost = Math.round(normalized.shoePersons * OFFER_BOWLING_SHOE_PRICE * 100) / 100;
+  const hasBowlingBooking = Boolean(normalized.tournamentPackage || normalized.lanes || normalized.fromTime || normalized.toTime);
+  const shoeCost = hasBowlingBooking ? Math.round(normalized.shoePersons * OFFER_BOWLING_SHOE_PRICE * 100) / 100 : 0;
   const tournamentCost = cleanOfferMoneyValue(tournamentPackage?.price || 0);
   const gameTotal = Math.round((laneCost + shoeCost) * 100) / 100;
   const total = Math.round((gameTotal + tournamentCost) * 100) / 100;
@@ -6326,6 +6326,7 @@ function setupOfferGuidedEditor(container, draft) {
   if (!editor || !editorHead) return;
   const step = Math.min(4, Math.max(1, Number(state.offerEditorStep || 1)));
   state.offerEditorStep = step;
+  const bmwSimpleMode = draft.offerType === "bmw-treasure";
   const timeline = offerTimelineEvents(draft);
   const done = {
     1: Boolean(draft.customerName && draft.eventDate),
@@ -6335,7 +6336,9 @@ function setupOfferGuidedEditor(container, draft) {
   const wizard = document.createElement("nav");
   wizard.className = "offer-wizard-steps";
   wizard.setAttribute("aria-label", "Schritte zur Angebotserstellung");
-  wizard.innerHTML = [[1, "Kunde & Veranstaltung"], [2, "Leistungen"], [3, "Ablauf"], [4, "Prüfen & Erstellen"]].map(([number, label]) => `
+  const wizardSteps = bmwSimpleMode ? [[1, "Schatzkiste erfassen"], [4, "Prüfen & Erstellen"]] : [[1, "Kunde & Veranstaltung"], [2, "Leistungen"], [3, "Ablauf"], [4, "Prüfen & Erstellen"]];
+  wizard.classList.toggle("is-compact", bmwSimpleMode);
+  wizard.innerHTML = wizardSteps.map(([number, label]) => `
     <button class="offer-wizard-step ${step === number ? "active" : ""} ${done[number] || step > number ? "done" : ""}" data-offer-editor-step="${number}" type="button">
       <span>${done[number] || step > number ? "✓" : number}</span><strong>${label}</strong>
     </button>
@@ -6381,14 +6384,26 @@ function setupOfferGuidedEditor(container, draft) {
     contactHeading.innerHTML = `<div><strong>Kontaktdaten</strong><span>Angaben für Rückfragen und die Angebotsanschrift</span></div>`;
     panels[0].append(contactHeading, directGrids[1]);
   }
+  const serviceGroupLabels = {
+    "Tagungspauschale": "Pauschalen & Räume",
+    "Getränke": "Getränke & Extras",
+    "Bowling": "Bowling & Essen",
+    "Kostenübersicht": "Weitere Positionen"
+  };
   [sections.conference, sections.area, sections.drinks, sections.specialServices, sections.bowling, sections.buffet, sections.costs].filter(Boolean).forEach((section) => {
     const title = section.querySelector(".offer-section-head strong")?.textContent.trim() || "Leistung";
+    if (serviceGroupLabels[title]) {
+      const groupLabel = document.createElement("div");
+      groupLabel.className = "offer-service-group-label";
+      groupLabel.textContent = serviceGroupLabels[title];
+      panels[1].append(groupLabel);
+    }
     const serviceKey = title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const selected = title === "Tagungspauschale" ? draft.conference?.enabled === true
       : title === "Bowling" ? offerHasBowlingBooking(draft)
       : title === "Buffet" ? offerHasBuffet(draft)
         : title === "Bereich & Zusatzoptionen" ? Boolean(draft.reservedArea)
-          : title === "Getränke" ? true
+          : title === "Getränke" ? draft.drinksMode === "custom"
           : title === "Sonderleistungen" ? Boolean(draft.buffet?.sparklingReception || draft.reservedAreaCampfire)
           : Boolean(draft.costs?.length);
     section.classList.add("offer-service-card");
@@ -6420,7 +6435,9 @@ function setupOfferGuidedEditor(container, draft) {
   panels[3].append(reviewActions);
   const footer = document.createElement("footer");
   footer.className = "offer-step-footer";
-  footer.innerHTML = `<button class="secondary" type="button" data-offer-editor-step="${Math.max(1, step - 1)}" ${step === 1 ? "disabled" : ""}>Zurück</button><span>Schritt ${step} von 4</span><button class="primary" type="button" data-offer-editor-step="${Math.min(4, step + 1)}" ${step === 4 ? "disabled" : ""}>Weiter</button>`;
+  const previousStep = bmwSimpleMode ? 1 : Math.max(1, step - 1);
+  const nextStep = bmwSimpleMode ? 4 : Math.min(4, step + 1);
+  footer.innerHTML = `<button class="secondary" type="button" data-offer-editor-step="${previousStep}" ${step === 1 ? "disabled" : ""}>Zurück</button><span>${bmwSimpleMode ? (step === 4 ? "Prüfen" : "Schatzkiste erfassen") : `Schritt ${step} von 4`}</span><button class="primary" type="button" data-offer-editor-step="${nextStep}" ${step === 4 ? "disabled" : ""}>Weiter</button>`;
   main.append(footer);
   const summary = document.createElement("aside");
   summary.id = "offerLiveSummary";
