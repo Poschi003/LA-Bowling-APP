@@ -1066,6 +1066,7 @@ function normalizeOffers(value = []) {
 function normalizeOffer(offer = {}) {
   const buffet = offer.buffet && typeof offer.buffet === "object" ? offer.buffet : {};
   const bowling = offer.bowling && typeof offer.bowling === "object" ? offer.bowling : {};
+  const conference = offer.conference && typeof offer.conference === "object" ? offer.conference : {};
   const costs = Array.isArray(offer.costs) ? offer.costs : [];
   const timeline = Array.isArray(offer.timeline) ? offer.timeline : [];
   return {
@@ -1099,6 +1100,11 @@ function normalizeOffer(offer = {}) {
     customerDirectoryId: String(offer.customerDirectoryId || "").trim().slice(0, 120),
     additionalInfo: String(offer.additionalInfo || "").trim().slice(0, 2000),
     internalNote: String(offer.internalNote || "").trim().slice(0, 2000),
+    conference: {
+      enabled: conference.enabled === true,
+      morningSnackText: String(conference.morningSnackText || "Butterbrezen und Müsliriegel").trim().slice(0, 600),
+      morningSnackTime: cleanTime(conference.morningSnackTime)
+    },
     textBlocks: normalizeOfferTextBlocks(offer.textBlocks),
     bowling: {
       tournamentPackage: String(bowling.tournamentPackage || "").trim().slice(0, 40),

@@ -16276,6 +16276,32 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-nav-management {
   padding-bottom: 14px;
 }
 
+.offer-conference-section.is-selected {
+  border-left-color: #e30613;
+}
+
+.offer-conference-details {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 14px;
+}
+
+.offer-conference-details textarea {
+  min-height: 84px;
+  font-size: 0.95rem;
+}
+
+.offer-conference-snack-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.35fr) minmax(260px, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+@media (max-width: 700px) {
+  .offer-conference-snack-grid { grid-template-columns: 1fr; }
+}
+
 .offer-special-service-card {
   display: grid;
   gap: 12px;

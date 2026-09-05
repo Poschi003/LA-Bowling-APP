@@ -1363,6 +1363,9 @@ function normalizedInvoicePaymentMethodForSync(value = "") {
 }
 
 function reportTransferInvoiceTotalForSync(report = {}) {
+  if (report.invoiceTransferAmount !== "" && report.invoiceTransferAmount != null) {
+    return tipMoneyNumber(report.invoiceTransferAmount);
+  }
   return (Array.isArray(report.invoiceCustomers) ? report.invoiceCustomers : [])
     .filter(invoiceIsReadyForSync)
     .filter((item) => normalizedInvoicePaymentMethodForSync(item?.paymentMethod) === "ueberweisung")

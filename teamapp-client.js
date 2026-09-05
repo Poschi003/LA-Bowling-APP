@@ -1251,6 +1251,9 @@ const OFFER_CAMPFIRE_PRICE = 50;
 const OFFER_HUT_RENT_PRICE = 250;
 const OFFER_LARGE_ROOM_ONLY_PRICE = 100;
 const OFFER_CHILD_DISCOUNT_FACTOR = 0.5;
+const OFFER_CONFERENCE_BASE_PRICE = 1125;
+const OFFER_CONFERENCE_INCLUDED_PERSONS = 25;
+const OFFER_CONFERENCE_EXTRA_PERSON_PRICE = 29.9;
 const OFFER_BOWLING_WEEKDAY_LABELS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 const OFFER_RESERVED_AREA_OPTIONS = [
   { value: "", label: "Keine feste Bereichsauswahl" },
@@ -1314,6 +1317,7 @@ function normalizeOffersClient(offers = []) {
 
 function normalizeOfferClient(offer = {}) {
   const buffet = offer.buffet && typeof offer.buffet === "object" ? offer.buffet : {};
+  const conference = offer.conference && typeof offer.conference === "object" ? offer.conference : {};
   return {
     id: String(offer.id || `offer-${Date.now()}-${Math.random().toString(16).slice(2)}`),
     archived: offer.archived === true,
@@ -1345,6 +1349,11 @@ function normalizeOfferClient(offer = {}) {
     customerDirectoryId: String(offer.customerDirectoryId || "").trim().slice(0, 120),
     additionalInfo: String(offer.additionalInfo || "").trim().slice(0, 2000),
     internalNote: String(offer.internalNote || "").trim().slice(0, 2000),
+    conference: {
+      enabled: conference.enabled === true,
+      morningSnackText: String(conference.morningSnackText || "Butterbrezen und Müsliriegel").trim().slice(0, 600),
+      morningSnackTime: cleanOfferTimeValue(conference.morningSnackTime)
+    },
     textBlocks: normalizeOfferTextBlocksClient(offer.textBlocks),
     bowling: normalizeOfferBowlingClient(offer.bowling),
     buffet: {
@@ -1501,6 +1510,11 @@ function createBlankOfferDraft() {
     customerDirectoryId: "",
     additionalInfo: "",
     internalNote: "",
+    conference: {
+      enabled: false,
+      morningSnackText: "Butterbrezen und Müsliriegel",
+      morningSnackTime: ""
+    },
     bowling: {
       tournamentPackage: "",
       lanes: 0,
@@ -1576,6 +1590,11 @@ function currentOfferDraftFromDom() {
     customerDirectoryId: simpleText("customerDirectoryId"),
     additionalInfo: String(field("additionalInfo")?.value || "").trim(),
     internalNote: String(field("internalNote")?.value || "").trim(),
+    conference: {
+      enabled: field("conferenceEnabled")?.checked === true,
+      morningSnackText: String(field("conferenceMorningSnackText")?.value || "").trim(),
+      morningSnackTime: cleanOfferTimeValue(field("conferenceMorningSnackTime")?.value)
+    },
     textBlocks: {},
     bowling: {
       tournamentPackage: String(field("bowlingTournamentPackage")?.value || "").trim(),
@@ -1622,7 +1641,7 @@ function currentOfferDraftFromDom() {
       text: String(field(`textBlockText-${key}`)?.value || "").trim()
     };
   });
-  draft.textBlocks.drinksByMenu.enabled = draft.drinksMode !== "custom";
+  draft.textBlocks.drinksByMenu.enabled = draft.drinksMode !== "custom" && !draft.conference?.enabled;
   draft.textBlocks.drinksByMenu.text = OFFER_TEXT_BLOCK_DEFAULTS.drinksByMenu.text;
   return normalizeOfferClient(draft);
 }
@@ -1853,7 +1872,7 @@ function offerReservedAreaPricing(offer) {
     roomFee = cleanOfferMoneyValue(draft.reservedAreaPrice);
     roomFeeLabel = "Komplettes Center (geschlossene Gesellschaft)";
     if (roomFee <= 0) warning = "Bitte einen Preis für das komplette Center eintragen.";
-  } else if (reservedArea === "grosses-nebenzimmer" && !buffetPricing.hasBuffet && !hasBowling) {
+  } else if (reservedArea === "grosses-nebenzimmer" && !draft.conference?.enabled && !buffetPricing.hasBuffet && !hasBowling) {
     roomFee = OFFER_LARGE_ROOM_ONLY_PRICE;
     roomFeeLabel = "Raummiete großes Nebenzimmer";
   }
@@ -1878,7 +1897,11 @@ function offerTotals(offer) {
   const reservedAreaPricing = offerReservedAreaPricing(draft);
   const extraRows = (draft.costs || []).reduce((sum, row) => sum + (cleanOfferMoneyValue(row.quantity) * cleanOfferMoneyValue(row.unitPrice)), 0);
   const drinksTotal = draft.drinksMode === "custom" ? cleanOfferMoneyValue(draft.drinksCustomPrice) : 0;
-  const total = buffetPricing.total + bowlingPricing.total + reservedAreaPricing.total + drinksTotal + extraRows;
+  const conferenceExtraPersons = draft.conference?.enabled ? Math.max(0, personCount - OFFER_CONFERENCE_INCLUDED_PERSONS) : 0;
+  const conferenceBaseTotal = draft.conference?.enabled ? OFFER_CONFERENCE_BASE_PRICE : 0;
+  const conferenceExtraTotal = Math.round(conferenceExtraPersons * OFFER_CONFERENCE_EXTRA_PERSON_PRICE * 100) / 100;
+  const conferenceTotal = conferenceBaseTotal + conferenceExtraTotal;
+  const total = conferenceTotal + buffetPricing.total + bowlingPricing.total + reservedAreaPricing.total + drinksTotal + extraRows;
   return {
     adults: buffetPricing.adults,
     children: buffetPricing.children,
@@ -1895,6 +1918,10 @@ function offerTotals(offer) {
     roomFeeLabel: reservedAreaPricing.roomFeeLabel,
     campfireFee: reservedAreaPricing.campfireFee,
     drinksTotal,
+    conferenceBaseTotal,
+    conferenceExtraPersons,
+    conferenceExtraTotal,
+    conferenceTotal,
     extraRows,
     total
   };
@@ -1914,6 +1941,9 @@ function offerTimelineEvents(offer) {
     events.push({ id: cryptoId(), time: clean, title, note, sortOrder });
   };
   push(draft.startTime, "Eintreffen", "", 10);
+  if (draft.conference?.enabled) {
+    push(draft.conference.morningSnackTime, "Vormittagssnack", draft.conference.morningSnackText || "", 15);
+  }
   if (draft.buffet?.sparklingReception) {
     push(draft.sparklingReceptionTime, "Sektempfang", "Optional zum Buffet gebucht", 20);
   }
@@ -4422,6 +4452,9 @@ function normalizedInvoicePaymentMethod(value = "") {
 }
 
 function reportTransferInvoiceTotal(report = {}) {
+  if (report.invoiceTransferAmount !== "" && report.invoiceTransferAmount != null) {
+    return reportMoneyNumber(report.invoiceTransferAmount);
+  }
   return reportItemsTotal(reportTransferInvoiceCustomers(report));
 }
 
@@ -4505,6 +4538,10 @@ function currentTerminalFinanceInvoiceEntries() {
 }
 
 function currentTerminalTransferInvoiceTotal(report = {}) {
+  const manualField = $("#financeInvoiceTotal");
+  if (manualField && String(manualField.value || "").trim()) {
+    return parseMoneyInput(manualField.value);
+  }
   const currentEntries = currentTerminalFinanceInvoiceEntries();
   if (!currentEntries.length) return reportTransferInvoiceTotal(report);
   return reportItemsTotal(
@@ -5781,6 +5818,37 @@ function renderAdminOffers() {
           <label class="offer-grid-wide">Rechnungsanschrift<textarea data-offer-field="customerAddress" rows="3" placeholder="Straße und Hausnummer&#10;PLZ und Ort">${escapeHtml(draft.customerAddress)}</textarea></label>
         </div>
 
+        <section class="offer-section offer-conference-section">
+          <div class="offer-section-head">
+            <div>
+              <strong>Tagungspauschale</strong>
+              <span>1.125,00 Euro bis 25 Personen, jede weitere Person 29,90 Euro.</span>
+            </div>
+          </div>
+          <label class="offer-toggle-row">
+            <span><strong>Tagungspauschale verwenden</strong><small>Buffet und Bowling können separat dazugebucht werden.</small></span>
+            <input data-offer-field="conferenceEnabled" type="checkbox" ${draft.conference?.enabled ? "checked" : ""}>
+          </label>
+          <div class="offer-conference-details ${draft.conference?.enabled ? "" : "hidden"}">
+            <div class="offer-conference-snack-grid">
+              <label>Uhrzeit
+                <input data-offer-field="conferenceMorningSnackTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.conference?.morningSnackTime || "")}" placeholder="z. B. 10:00">
+              </label>
+              <label>Vormittagssnack
+                <textarea data-offer-field="conferenceMorningSnackText" rows="3" placeholder="z. B. Butterbrezen und Müsliriegel">${escapeHtml(draft.conference?.morningSnackText || "")}</textarea>
+              </label>
+            </div>
+            <div class="offer-bowling-summary">
+              <span class="offer-stat"><small>Grundpauschale</small><strong>${formatMoney(OFFER_CONFERENCE_BASE_PRICE)}</strong></span>
+              <span class="offer-stat"><small>Enthalten</small><strong>bis 25 Personen</strong></span>
+              <span class="offer-stat"><small>Weitere Personen</small><strong>${totals.conferenceExtraPersons} × ${formatMoney(OFFER_CONFERENCE_EXTRA_PERSON_PRICE)}</strong></span>
+              <span class="offer-stat offer-stat-total"><small>Tagung gesamt</small><strong>${formatMoney(totals.conferenceTotal)}</strong></span>
+            </div>
+            <p class="offer-pricing-note">Enthalten: WLAN, Sonderöffnung und Tagungsraumnutzung, Tagungsgetränke, Parkplätze, Beamer, Leinwand, Flipchart sowie Vormittagssnack.</p>
+            <p class="offer-pricing-note">Das Mittagsbuffet wird separat nach den Buffetvorschlägen berechnet. Bowling kann zusätzlich gebucht werden.</p>
+          </div>
+        </section>
+
         <section class="offer-section">
           <div class="offer-section-head">
             <div>
@@ -6098,6 +6166,7 @@ function renderOfferLiveSummary(draftValue) {
   const draft = normalizeOfferClient(draftValue || ensureOfferDraft());
   const totals = offerTotals(draft);
   const services = [
+    draft.conference?.enabled ? `Tagungspauschale · ${formatMoney(totals.conferenceTotal)}` : "",
     offerHasBowlingBooking(draft) ? `${draft.bowling?.lanes || 0} Bowlingbahn${Number(draft.bowling?.lanes) === 1 ? "" : "en"}` : "",
     Number(draft.bowling?.shoePersons || 0) ? `${draft.bowling.shoePersons} Leihschuhe` : "",
     offerHasBuffet(draft) ? (draft.buffet?.name || "Buffet") : "",
@@ -6106,11 +6175,13 @@ function renderOfferLiveSummary(draftValue) {
     draft.reservedArea || "",
     draft.drinksMode === "custom"
       ? `${draft.drinksCustomText || "Getränke nach Sonderabsprache"} · ${formatMoney(draft.drinksCustomPrice)}`
-      : "Getränke werden laut Karte berechnet",
+      : draft.conference?.enabled ? "Tagungsgetränke inklusive" : "Getränke werden laut Karte berechnet",
     ...(draft.costs || []).map((item) => item.label).filter(Boolean)
   ].filter(Boolean);
   const timeline = offerTimelineEvents(draft).slice(0, 4);
   const costSummary = [
+    totals.conferenceBaseTotal > 0 ? ["Tagungspauschale bis 25 Personen", totals.conferenceBaseTotal] : null,
+    totals.conferenceExtraTotal > 0 ? [`${totals.conferenceExtraPersons} zusätzliche Personen`, totals.conferenceExtraTotal] : null,
     totals.bowlingTotal > 0 ? ["Bowling", totals.bowlingTotal] : null,
     totals.buffetTotal > 0 ? ["Buffet", totals.buffetTotal] : null,
     totals.reservedAreaTotal > 0 ? ["Bereich", totals.reservedAreaTotal] : null,
@@ -6157,6 +6228,7 @@ function setupOfferGuidedEditor(container, draft) {
   const directGrids = [...editor.querySelectorAll(":scope > .offer-grid")];
   const sections = {
     customer: offerEditorSectionByTitle(editor, "Kunde aus Kundenstamm"),
+    conference: offerEditorSectionByTitle(editor, "Tagungspauschale"),
     area: offerEditorSectionByTitle(editor, "Bereich & Zusatzoptionen"),
     drinks: offerEditorSectionByTitle(editor, "Getränke"),
     specialServices: offerEditorSectionByTitle(editor, "Sonderleistungen"),
@@ -6191,10 +6263,11 @@ function setupOfferGuidedEditor(container, draft) {
     contactHeading.innerHTML = `<div><strong>Kontaktdaten</strong><span>Angaben für Rückfragen und die Angebotsanschrift</span></div>`;
     panels[0].append(contactHeading, directGrids[1]);
   }
-  [sections.area, sections.drinks, sections.specialServices, sections.bowling, sections.buffet, sections.costs].filter(Boolean).forEach((section) => {
+  [sections.conference, sections.area, sections.drinks, sections.specialServices, sections.bowling, sections.buffet, sections.costs].filter(Boolean).forEach((section) => {
     const title = section.querySelector(".offer-section-head strong")?.textContent.trim() || "Leistung";
     const serviceKey = title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const selected = title === "Bowling" ? offerHasBowlingBooking(draft)
+    const selected = title === "Tagungspauschale" ? draft.conference?.enabled === true
+      : title === "Bowling" ? offerHasBowlingBooking(draft)
       : title === "Buffet" ? offerHasBuffet(draft)
         : title === "Bereich & Zusatzoptionen" ? Boolean(draft.reservedArea)
           : title === "Getränke" ? true
@@ -6490,6 +6563,9 @@ function offerFieldNeedsLiveRefresh(target) {
     "eventDate",
     "personsAdults",
     "personsChildren",
+    "conferenceEnabled",
+    "conferenceMorningSnackText",
+    "conferenceMorningSnackTime",
     "startTime",
     "mealTime",
     "sparklingReceptionTime",
@@ -6739,6 +6815,10 @@ function printOfferDraft() {
       <td>${formatMoney((cleanOfferMoneyValue(item.quantity) * cleanOfferMoneyValue(item.unitPrice)))}</td>
     </tr>
   `).join("");
+  const conferenceCostRows = draft.conference?.enabled
+    ? `<tr><td><span class="cost-icon">T</span>Tagungspauschale</td><td>Pauschale für bis zu ${OFFER_CONFERENCE_INCLUDED_PERSONS} Personen</td><td>1 Pauschale</td><td>${formatMoney(OFFER_CONFERENCE_BASE_PRICE)}</td><td>${formatMoney(OFFER_CONFERENCE_BASE_PRICE)}</td></tr>
+      ${totals.conferenceExtraPersons > 0 ? `<tr><td><span class="cost-icon">+</span>Zusätzliche Personen</td><td>Je weitere Person ab der 26. Person</td><td>${totals.conferenceExtraPersons} Pers.</td><td>${formatMoney(OFFER_CONFERENCE_EXTRA_PERSON_PRICE)}</td><td>${formatMoney(totals.conferenceExtraTotal)}</td></tr>` : ""}`
+    : "";
   const bowlingBox = (draft.bowling?.tournamentPackage || draft.bowling?.lanes || draft.bowling?.shoePersons || draft.bowling?.fromTime || draft.bowling?.toTime)
     ? `<div class="box">
           <h2>Bowling</h2>
@@ -6789,14 +6869,17 @@ function printOfferDraft() {
     return formatDate(value.toISOString().slice(0, 10));
   })();
   const includedItems = [
+    draft.conference?.enabled ? { icon: "T", title: "Tagungspauschale", text: `Bis 25 Personen inklusive · jede weitere Person ${formatMoney(OFFER_CONFERENCE_EXTRA_PERSON_PRICE)}` } : null,
+    draft.conference?.enabled ? { icon: "V", title: "Vormittagssnack", text: `${draft.conference.morningSnackTime ? `${draft.conference.morningSnackTime} Uhr · ` : ""}${draft.conference.morningSnackText || "Nach Absprache"}` } : null,
+    draft.conference?.enabled ? { icon: "A", title: "Tagungsausstattung", text: "WLAN, Sonderöffnung und Tagungsraumnutzung, Tagungsgetränke, Parkplätze, Beamer, Leinwand und Flipchart" } : null,
     bowling.total > 0 ? { icon: "B", title: "Bowling", text: `${bowling.durationLabel}${draft.bowling?.lanes ? ` · ${draft.bowling.lanes} Bahn(en)` : ""}` } : null,
-    buffetPricing.buffetBaseTotal > 0 ? { icon: "F", title: "Buffet", text: `${draft.buffet?.name || "Buffet"} · ${formatMoney(draft.buffet?.pricePerPerson || 0)} pro Person` } : null,
+    buffetPricing.buffetBaseTotal > 0 ? { icon: "F", title: draft.conference?.enabled ? "Mittagsbuffet" : "Buffet", text: `${draft.buffet?.name || "Buffet"} · ${formatMoney(draft.buffet?.pricePerPerson || 0)} pro Person` } : null,
     reservedAreaPricing.reservedAreaLabel ? { icon: "R", title: "Reservierter Bereich", text: reservedAreaPricing.reservedAreaLabel } : null,
     draft.buffet?.sparklingReception ? { icon: "S", title: "Sektempfang", text: `${formatMoney(draft.sparklingReceptionPrice)} pro Person${draft.sparklingReceptionTime ? ` · ${draft.sparklingReceptionTime} Uhr` : ""}` } : null,
     draft.reservedAreaCampfire ? { icon: "L", title: "Lagerfeuer", text: `${formatMoney(draft.campfirePrice)} pauschal${draft.campfireTime ? ` · ${draft.campfireTime} Uhr` : ""}` } : null,
     draft.drinksMode === "custom"
       ? { icon: "G", title: "Getränke", text: `${drinksCustomText} · ${formatMoney(totals.drinksTotal)}` }
-      : { icon: "G", title: "Getränke", text: "Werden laut Karte berechnet" }
+      : draft.conference?.enabled ? null : { icon: "G", title: "Getränke", text: "Werden laut Karte berechnet" }
   ].filter(Boolean);
   win.document.write(`
     <!doctype html>
@@ -7027,6 +7110,7 @@ function printOfferDraft() {
             <table class="cost-table">
               <thead><tr><th>Position</th><th>Beschreibung</th><th>Anzahl</th><th>Einzelpreis</th><th>Gesamtpreis</th></tr></thead>
               <tbody>
+                ${conferenceCostRows}
                 ${buffetCostRows}
                 ${bowlingCostRows}
                 ${reservedAreaCostRows}
@@ -8711,6 +8795,7 @@ function reportPreviewFromForm() {
     bowlingCashRevenue,
     gastroCashRevenue,
     revenueGastro,
+    invoiceTransferAmount: $("#financeInvoiceTotal")?.value || state.terminalReport?.invoiceTransferAmount || "",
     miscIncome: miscIncomeFromFormOrReport(),
     barBowling: revenueBowling,
     barGastro: revenueGastro,
@@ -9019,6 +9104,7 @@ function renderTerminal() {
   $("#reportBowlingCashRevenue").value = report.bowlingCashRevenue || "";
   $("#reportGastroCashRevenue").value = report.gastroCashRevenue || "";
   $("#reportRevenueGastro").value = report.revenueGastro || report.barGastro || "";
+  $("#financeInvoiceTotal").value = report.invoiceTransferAmount || (reportTransferInvoiceTotal(report) || "");
   updateReportBarTotal();
   $("#reportNotes").value = report.notes || "";
   renderReportEntryLists(report);
@@ -14548,6 +14634,7 @@ async function collectDayReportPayload() {
     revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
     barBowling: $("#reportRevenueBowling")?.value || "",
     barGastro: gastroRevenueFromFormOrReport().toFixed(2),
+    invoiceTransferAmount: $("#financeInvoiceTotal")?.value || "",
     tipTotal: tipResult.tipTotal.toFixed(2),
     tipRemainder: tipResult.tipRemainder.toFixed(2),
     tipsByEmployee: Object.fromEntries(tipResult.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
@@ -15338,7 +15425,9 @@ function renderFinanceDashboard(result = calculateTipDistribution(state.terminal
   setFinanceText("#financeKpiHandover", formatMoney(result.chefHandover || 0));
   setFinanceText("#financeResultHandover", formatMoney(result.chefHandover || 0));
   const invoiceField = $("#financeInvoiceTotal");
-  if (invoiceField) invoiceField.value = Number(result.invoiceTotal || 0).toFixed(2).replace(".", ",");
+  if (invoiceField && document.activeElement !== invoiceField) {
+    invoiceField.value = Number(result.invoiceTotal || 0).toFixed(2);
+  }
   setFinanceText("#financeMiscIncomeTotal", formatMoney(result.miscIncomeTotal || 0));
   setFinanceText("#financeExpenseTotal", formatMoney(result.cashExpenses || 0));
   setFinanceText(
@@ -21060,7 +21149,7 @@ function bindEvents() {
   $("#saveDayReport")?.addEventListener("click", () => saveClosingData($("#saveDayReport")));
   $("#saveClosingData")?.addEventListener("click", () => saveClosingData($("#saveClosingData")));
 
-  ["#reportCashTotal", "#reportCashExpenses", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportBowlingCashRevenue", "#reportGastroCashRevenue", "#reportRevenueGastro"].forEach((selector) => {
+  ["#reportCashTotal", "#reportCashExpenses", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportBowlingCashRevenue", "#reportGastroCashRevenue", "#reportRevenueGastro", "#financeInvoiceTotal"].forEach((selector) => {
     $(selector)?.addEventListener("input", updateReportBarTotal);
   });
 
