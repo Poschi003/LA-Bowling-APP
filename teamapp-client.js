@@ -6883,7 +6883,7 @@ function printOfferDraft() {
     draft.conference?.enabled ? { icon: "V", title: "Vormittagssnack", text: `${draft.conference.morningSnackTime ? `${draft.conference.morningSnackTime} Uhr · ` : ""}${draft.conference.morningSnackText || "Nach Absprache"}` } : null,
     draft.conference?.enabled ? { icon: "R", title: "Reservierter Bereich", text: "Tagungsraum" } : null,
     draft.conference?.enabled ? { icon: "A", title: "Tagungsausstattung", text: "WLAN, Sonderöffnung, Parkplätze, Beamer, Leinwand und Flipchart" } : null,
-    draft.conference?.enabled ? { icon: "W", title: "Wasser", text: "Still und spritzig" } : null,
+    draft.conference?.enabled ? { icon: "W", title: "Wasser still / spritzig", text: "In der Tagungspauschale enthalten" } : null,
     draft.conference?.enabled ? { icon: "F", title: "Fruchtsäfte", text: "In der Tagungspauschale enthalten" } : null,
     draft.conference?.enabled ? { icon: "K", title: "Kaffee", text: "In der Tagungspauschale enthalten" } : null,
     draft.conference?.enabled ? { icon: "T", title: "Tee", text: "In der Tagungspauschale enthalten" } : null,
