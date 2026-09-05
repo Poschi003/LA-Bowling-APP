@@ -14610,12 +14610,12 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-day-meta-display {
 }
 
 body.terminal-mode:not(.terminal-login-mode) .terminal-day-head-editor {
-  position: absolute;
-  z-index: 20;
-  top: 60px;
-  right: 0;
+  position: fixed;
+  z-index: 1000;
+  top: 92px;
+  right: 24px;
   grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
-  width: min(560px, 100%);
+  width: min(560px, calc(100vw - 32px));
   padding: 12px;
   border: 1px solid #e4e8ee;
   border-radius: 14px;

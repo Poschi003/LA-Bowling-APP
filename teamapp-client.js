@@ -57,6 +57,7 @@
   terminalReport: {},
   terminalTableDraft: null,
   terminalTableQuickEntry: false,
+  terminalTableConnectMode: false,
   terminalTableGroupDraft: null,
   terminalTableCustomDraft: null,
   adminTablePlanDraft: null,
@@ -11528,7 +11529,7 @@ function toggleTerminalTableSelection(value) {
     syncTerminalTableGroupDraftSelection([]);
     return;
   }
-  const booked = sortTerminalTableReservations(
+  const booked = state.terminalTableConnectMode ? [] : sortTerminalTableReservations(
     terminalTableReservations().filter((reservation) => reservation.tableIds.some((tableId) => tableIds.includes(tableId))),
     "time"
   );
@@ -12271,12 +12272,24 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
   if (markerLegend) markerLegend.innerHTML = terminalTableMarkerLegendHtml();
   if ($("#newTablePlanReservationForSelection")) $("#newTablePlanReservationForSelection").disabled = reportClosed || !draft.tableIds.length;
   if ($("#connectSelectedTables")) {
-    $("#connectSelectedTables").disabled = reportClosed || draft.tableIds.length < 2;
-    $("#connectSelectedTables").textContent = selectedGroup ? "Tafel anpassen" : "Tafeln verbinden";
+    $("#connectSelectedTables").disabled = reportClosed;
+    $("#connectSelectedTables").textContent = selectedGroup
+      ? "Tafel anpassen"
+      : state.terminalTableConnectMode && draft.tableIds.length < 2
+        ? `Tische auswählen (${draft.tableIds.length}/2)`
+        : draft.tableIds.length >= 2
+          ? "Auswahl verbinden"
+          : "Tafeln verbinden";
   }
   if ($("#connectTablesFromToolbar")) {
-    $("#connectTablesFromToolbar").disabled = reportClosed || draft.tableIds.length < 2;
-    $("#connectTablesFromToolbar").textContent = selectedGroup ? "Tafel anpassen" : "Tafeln verbinden";
+    $("#connectTablesFromToolbar").disabled = reportClosed;
+    $("#connectTablesFromToolbar").textContent = selectedGroup
+      ? "Tafel anpassen"
+      : state.terminalTableConnectMode && draft.tableIds.length < 2
+        ? `Tische auswählen (${draft.tableIds.length}/2)`
+        : draft.tableIds.length >= 2
+          ? "Auswahl verbinden"
+          : "Tafeln verbinden";
   }
   if ($("#disconnectTablesFromToolbar")) {
     $("#disconnectTablesFromToolbar").classList.toggle("hidden", !selectedGroup);
@@ -12600,7 +12613,12 @@ async function connectSelectedTerminalTables(button) {
   const draft = normalizeTerminalTableDraft(state.terminalTableDraft || {});
   const tableIds = sortTerminalTableIds(draft.tableIds || []);
   if (tableIds.length < 2) {
-    showToast("Bitte mindestens zwei Tische auswählen.");
+    state.terminalTableConnectMode = true;
+    state.terminalTableDraft = normalizeTerminalTableDraft({ tableIds });
+    syncTerminalTableGroupDraftSelection(tableIds);
+    renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
+    showToast("Verbindungsmodus aktiv: Bitte mindestens zwei Tische im Plan auswählen.");
+    $("#tablePlanBoard")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
   const existingGroup = terminalTableGroupForTableIds(tableIds);
@@ -12626,6 +12644,7 @@ async function connectSelectedTerminalTables(button) {
       action: "save-table-group",
       group: payload
     });
+    state.terminalTableConnectMode = false;
     state.terminalTableGroupDraft = emptyTerminalTableGroupDraft(payload);
     renderTerminalTablePlan(state.terminalDate || todayKey(), state.terminalReport || {}, Boolean(state.terminalReport?.closed));
     showToast(result.message || "Tische verbunden.");
@@ -13431,7 +13450,9 @@ function shiftLeaderEmployees() {
   const matches = wanted
     .map((test) => employees.find((name) => test(name)))
     .filter(Boolean);
-  return [...new Set(matches.length ? matches : ["Leicht, Kevin", "Eberhardt, Dennis", "Poschenrieder, Christian"])];
+  const defaults = ["Leicht, Kevin", "Eberhardt, Dennis", "Poschenrieder, Christian"];
+  const marcZettler = employees.find((name) => /(?:marc.*zettler|zettler.*marc)/i.test(name)) || "Marc Zettler";
+  return [...new Set([...(matches.length ? matches : defaults), marcZettler])];
 }
 
 function renderTerminalTasks(report, reportClosed) {
