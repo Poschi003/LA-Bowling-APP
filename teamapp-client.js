@@ -1691,6 +1691,9 @@ function currentOfferDraftFromDom() {
   if (draft.offerType === "bmw-treasure" && draft.bowling.fromTime) {
     draft.bowling.toTime = offerTimePlusMinutes(draft.bowling.fromTime, 120);
   }
+  if (draft.offerType === "bmw-treasure") {
+    draft.bowling.shoePersons = 0;
+  }
   return normalizeOfferClient(draft);
 }
 
@@ -19668,10 +19671,15 @@ function bindEvents() {
       state.offerShoePersonsManual = true;
     } else if (["personsAdults", "personsChildren"].includes(offerFieldName) && !state.offerShoePersonsManual) {
       const root = offerWorkspaceRoot();
-      const adults = cleanOfferIntegerValue(root?.querySelector('[data-offer-field="personsAdults"]')?.value);
-      const children = cleanOfferIntegerValue(root?.querySelector('[data-offer-field="personsChildren"]')?.value);
       const shoeInput = root?.querySelector('[data-offer-field="bowlingShoePersons"]');
-      if (shoeInput) shoeInput.value = String(adults + children);
+      const isBmwTreasure = root?.querySelector('[data-offer-field="offerType"]')?.value === "bmw-treasure";
+      if (isBmwTreasure) {
+        if (shoeInput) shoeInput.value = "0";
+      } else {
+        const adults = cleanOfferIntegerValue(root?.querySelector('[data-offer-field="personsAdults"]')?.value);
+        const children = cleanOfferIntegerValue(root?.querySelector('[data-offer-field="personsChildren"]')?.value);
+        if (shoeInput) shoeInput.value = String(adults + children);
+      }
     }
     state.offerDraftDirty = true;
     window.requestAnimationFrame(refreshOfferLiveSummary);
