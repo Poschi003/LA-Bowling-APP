@@ -2267,9 +2267,17 @@ button.employee-badge-stat {
   background: #f8fbff;
 }
 
+.offer-bmw-extra-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(160px, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
 @media (max-width: 760px) {
   .offer-bmw-package-grid { grid-template-columns: 1fr; }
   .offer-bmw-time-grid { grid-template-columns: 1fr; }
+  .offer-bmw-extra-grid { grid-template-columns: 1fr; }
 }
 
 .terminal-offer-workspace .offer-workspace-grid {
