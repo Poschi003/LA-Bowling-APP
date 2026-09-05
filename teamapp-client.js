@@ -4450,6 +4450,7 @@ function reportInvoiceTotal(report = {}) {
 
 function normalizedInvoicePaymentMethod(value = "") {
   const text = String(value || "").trim().toLowerCase();
+  if (!text) return "ueberweisung";
   if (text === "überweisung" || text === "ueberweisung") return "ueberweisung";
   if (text === "ec") return "ec";
   if (text === "bar") return "bar";
