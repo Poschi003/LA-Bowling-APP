@@ -1322,6 +1322,8 @@ function normalizeOfferClient(offer = {}) {
   return {
     id: String(offer.id || `offer-${Date.now()}-${Math.random().toString(16).slice(2)}`),
     archived: offer.archived === true,
+    confirmed: offer.confirmed === true,
+    confirmedAt: offer.confirmed === true ? String(offer.confirmedAt || offer.updatedAt || new Date().toISOString()) : "",
     createdAt: String(offer.createdAt || new Date().toISOString()),
     updatedAt: String(offer.updatedAt || offer.createdAt || new Date().toISOString()),
     title: String(offer.title || offer.customerName || "Angebot").trim().slice(0, 120),
@@ -6072,11 +6074,14 @@ function renderOfferListItem(offer, activeId) {
   const title = offer.title || offer.customerName || "Angebot";
   const dateLine = [offer.eventDate ? formatDate(offer.eventDate) : "", offer.customerName].filter(Boolean).join(" · ");
   return `
-    <button class="offer-list-item ${offer.id === activeId ? "active" : ""}" type="button" data-select-offer="${escapeHtml(offer.id)}">
-      <strong>${escapeHtml(title)}</strong>
-      <span>${escapeHtml(dateLine || "Noch keine Details")}</span>
-      <small>${formatMoney(totals.total)} · ${offer.archived ? "Archiviert" : "Aktiv"}</small>
-    </button>
+    <article class="offer-list-entry ${offer.confirmed ? "is-confirmed" : ""}">
+      <button class="offer-list-item ${offer.id === activeId ? "active" : ""}" type="button" data-select-offer="${escapeHtml(offer.id)}">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(dateLine || "Noch keine Details")}</span>
+        <small>${formatMoney(totals.total)} · ${offer.archived ? "Archiviert" : offer.confirmed ? "Bestätigt" : "Offen"}</small>
+      </button>
+      <button class="offer-confirm-button ${offer.confirmed ? "is-confirmed" : ""}" type="button" data-offer-confirm="${escapeHtml(offer.id)}" aria-pressed="${offer.confirmed ? "true" : "false"}">${offer.confirmed ? "✓ Bestätigt" : "Bestätigen"}</button>
+    </article>
   `;
 }
 
@@ -6718,6 +6723,40 @@ function newOfferDraft() {
   renderAdminOffers();
 }
 
+async function toggleOfferConfirmed(offerId, button) {
+  let offer = normalizeOffersClient(state.offers || []).find((item) => item.id === offerId);
+  if (!offer) return;
+  if (state.offerDraft?.id === offerId && state.offerDraftDirty) offer = currentOfferDraftFromDom();
+  if (!offer.confirmed && !offer.eventDate) {
+    showToast("Bitte zuerst das Veranstaltungsdatum eintragen.");
+    return;
+  }
+  const nextConfirmed = !offer.confirmed;
+  if (!nextConfirmed && !window.confirm("Bestätigung für dieses Angebot zurücknehmen?")) return;
+  const nextOffer = normalizeOfferClient({ ...offer, confirmed: nextConfirmed, confirmedAt: nextConfirmed ? new Date().toISOString() : "" });
+  if (button) { button.disabled = true; button.textContent = "Speichert..."; }
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({ action: "save-offer", adminToken: state.adminToken, terminalToken: state.terminalToken, offer: nextOffer })
+    });
+    state.offers = normalizeOffersClient(result.offers || state.offers || []);
+    if (state.offerDraft?.id === offerId) {
+      state.offerDraft = cloneData(result.offer || nextOffer);
+      state.offerDraftId = offerId;
+      state.offerDraftDirty = false;
+    }
+    renderAdminOffers();
+    renderTerminalExtras(state.terminalDate || todayKey());
+    if (state.terminalTab === "events") renderTerminalEventCalendar();
+    showToast(nextConfirmed ? "Angebot bestätigt und im Veranstaltungskalender eingetragen." : "Bestätigung zurückgenommen.");
+  } catch (error) {
+    showError(error);
+    renderAdminOffers();
+  }
+}
+
 function moveOfferRow(list, rowId, direction) {
   const index = list.findIndex((item) => item.id === rowId);
   const nextIndex = direction === "up" ? index - 1 : index + 1;
@@ -6782,7 +6821,6 @@ function printOfferDraft() {
   const buffetPricing = offerBuffetPricing(draft);
   const reservedAreaPricing = offerReservedAreaPricing(draft);
   const timelineEvents = offerTimelineEvents(draft);
-  const timelineScale = offerTimelineScaleMarkup(timelineEvents);
   const templateBadge = offerTemplateBadgeLabel(draft);
   const includedTextBlocks = draft.textBlocks || {};
   const drinksByMenuText = includedTextBlocks.drinksByMenu?.enabled ? includedTextBlocks.drinksByMenu.text : "";
@@ -7018,13 +7056,21 @@ function printOfferDraft() {
           .section-title { margin-bottom: 2.5mm; font-size: 12px; }
           .section-title::before, .round-icon, .cost-icon { display: none; }
           .details-copy { font-size: 9.6px; line-height: 1.5; }
-          .event-grid { grid-template-columns: 27mm 1fr; font-size: 9.6px; line-height: 1.4; }
-          .event-grid strong { font-size: 8px; color: var(--muted); }
-          .event-overview { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 0 1mm; border: 1px solid var(--line); }
-          .event-overview div { min-width: 0; padding: 2.6mm 3mm; }
-          .event-overview div + div { border-left: 1px solid var(--line); }
-          .event-overview small { display: block; margin-bottom: 1mm; color: var(--muted); font-size: 7.5px; text-transform: uppercase; }
-          .event-overview strong { display: block; overflow-wrap: anywhere; color: var(--navy); font-size: 9.5px; }
+          .event-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); }
+          .event-detail { min-width: 0; padding: 2.5mm 3mm; border-bottom: 1px solid var(--line); }
+          .event-detail:nth-child(odd) { border-right: 1px solid var(--line); }
+          .event-detail.is-wide { grid-column: 1 / -1; border-right: 0; }
+          .event-detail.is-wide:last-child { border-bottom: 0; }
+          .event-detail small { display: block; margin-bottom: .8mm; color: var(--muted); font-size: 7.5px; text-transform: uppercase; }
+          .event-detail strong { display: block; overflow-wrap: anywhere; color: var(--navy); font-size: 9.5px; line-height: 1.3; }
+          .timeline-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+          .timeline-table th { padding: 2.2mm 2.5mm; border-bottom: 1px solid var(--navy); color: var(--muted); font-size: 7.5px; text-align: left; text-transform: uppercase; }
+          .timeline-table td { padding: 2.5mm; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.35; }
+          .timeline-table tbody tr:last-child td { border-bottom: 0; }
+          .timeline-table th:first-child, .timeline-table td:first-child { width: 25mm; color: var(--navy); font-weight: 700; }
+          .timeline-table th:nth-child(2), .timeline-table td:nth-child(2) { width: 55mm; }
+          .timeline-table td:nth-child(2) { font-weight: 700; }
+          .timeline-table td:last-child { color: var(--muted); }
           .scale-wrap { min-height: 36mm; padding-top: 4mm; margin-top: 1mm; }
           .scale-line { top: 14mm; height: 1px; background: var(--navy); }
           .scale-point { width: 25mm; }
@@ -7062,6 +7108,8 @@ function printOfferDraft() {
           .info-card .section-title { margin-bottom: 1mm; font-size: 9.5px; }
           .info-card p { font-size: 8.2px; line-height: 1.35; }
           .signature-card { margin-top: 1mm; padding: 3mm 0 4mm; border-width: 1px 0 0; border-radius: 0; }
+          .signature-card.offer-acceptance { margin-top: auto; }
+          .signature-card.offer-acceptance + .footer { margin-top: 0; }
           .signature-grid { margin-top: 7mm; }
           .signature-line { min-height: 11mm; }
           .footer { border-color: var(--line); color: var(--muted); font-size: 7.5px; }
@@ -7091,21 +7139,15 @@ function printOfferDraft() {
             <section class="template-card">
               <h3 class="section-title">Veranstaltungsdetails</h3>
               <div class="event-grid">
-                <strong>Datum</strong><span>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</span>
-                <strong>Anlass</strong><span>${escapeHtml(draft.occasion || "-")}</span>
-                <strong>Personen</strong><span>${escapeHtml(personsSummary)}</span>
-                <strong>Beginn</strong><span>${escapeHtml(draft.startTime || draft.bowling?.fromTime || "-")} Uhr</span>
-                <strong>Bereich</strong><span>${escapeHtml(offerAreaLabel)}</span>
+                <div class="event-detail"><small>Datum</small><strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</strong></div>
+                <div class="event-detail"><small>Personen</small><strong>${escapeHtml(personsSummary)}</strong></div>
+                <div class="event-detail"><small>Beginn</small><strong>${escapeHtml(draft.startTime || draft.bowling?.fromTime || "-")} Uhr</strong></div>
+                <div class="event-detail"><small>Bereich</small><strong>${escapeHtml(offerAreaLabel)}</strong></div>
+                <div class="event-detail is-wide"><small>Anlass</small><strong>${escapeHtml(draft.occasion || "-")}</strong></div>
               </div>
             </section>
           </div>
-          <div class="event-overview">
-            <div><small>Datum</small><strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</strong></div>
-            <div><small>Personen</small><strong>${escapeHtml(personsSummary)}</strong></div>
-            <div><small>Beginn / Dauer</small><strong>${escapeHtml(draft.startTime || draft.bowling?.fromTime || "-")}${bowling.durationLabel && bowling.durationLabel !== "-" ? ` · ${escapeHtml(bowling.durationLabel)}` : ""}</strong></div>
-            <div><small>Bereich</small><strong>${escapeHtml(offerAreaLabel)}</strong></div>
-          </div>
-          ${timelineScale ? `<section class="template-card"><h3 class="section-title">Ablauf Ihrer Veranstaltung</h3>${timelineScale}</section>` : ""}
+          ${timeline ? `<section class="template-card"><h3 class="section-title">Ablauf Ihrer Veranstaltung</h3><table class="timeline-table"><thead><tr><th>Uhrzeit</th><th>Programmpunkt</th><th>Hinweis</th></tr></thead><tbody>${timeline}</tbody></table></section>` : ""}
           ${buffetPricing.buffetBaseTotal > 0 ? `<section class="template-card buffet-highlight">
             <div class="buffet-highlight-main">
               <div><h3>${escapeHtml(draft.buffet?.name || templateBadge || "Buffet")}</h3><p>${escapeHtml(`${personsSummary} Personen · Buffet laut ausgewählter Zusammenstellung`)}</p></div>
@@ -7160,7 +7202,7 @@ function printOfferDraft() {
               ${reservationText ? `<section class="info-card"><h3 class="section-title">Reservierung / Bestätigung</h3><p>${escapeHtml(reservationText)}</p></section>` : ""}
             </div></section>
           </div>
-          <section class="signature-card">
+          <section class="signature-card offer-acceptance">
             <h3 class="section-title">Angebot annehmen</h3>
             <p class="muted" style="font-size:9px;">Mit der Unterschrift bestätigen wir die Annahme dieses Angebots und die verbindliche Buchung.</p>
             <div class="signature-grid">
@@ -8849,7 +8891,7 @@ function terminalWorkspaceTab(value) {
     cleaning: "today"
   };
   const tab = legacyTabs[String(value || "")] || String(value || "");
-  return ["today", "tables", "employees", "closing", "orders", "offers", "cocktails", "task-calendar", "invoices", "tips", "settings"].includes(tab) ? tab : "today";
+  return ["today", "tables", "employees", "closing", "orders", "offers", "events", "cocktails", "task-calendar", "invoices", "tips", "settings"].includes(tab) ? tab : "today";
 }
 
 function terminalCanManageSettings() {
@@ -8897,7 +8939,7 @@ function renderTerminalDateNavigator(dateKey) {
 
 function terminalExtrasForDate(dateKey) {
   return normalizeOffersClient(state.offers || [])
-    .filter((offer) => !offer.archived && offer.eventDate === dateKey)
+    .filter((offer) => !offer.archived && offer.confirmed && offer.eventDate === dateKey)
     .sort((a, b) => String(a.startTime || "99:99").localeCompare(String(b.startTime || "99:99")));
 }
 
@@ -8912,6 +8954,65 @@ function terminalExtraDescription(offer = {}) {
   if (persons) details.push(`${persons} Pers.`);
   if (offer.reservedArea) details.push(offer.reservedArea);
   return details.join(" · ") || "Angebot für diesen Tag";
+}
+
+function eventCalendarWeekStart(value) {
+  const date = new Date(`${value || todayKey()}T12:00:00`);
+  const weekday = date.getDay() || 7;
+  date.setDate(date.getDate() - weekday + 1);
+  return isoDate(date);
+}
+
+function confirmedEventOffers() {
+  return normalizeOffersClient(state.offers || [])
+    .filter((offer) => offer.confirmed && !offer.archived && offer.eventDate)
+    .sort((a, b) => `${a.eventDate} ${a.startTime || "99:99"}`.localeCompare(`${b.eventDate} ${b.startTime || "99:99"}`));
+}
+
+function renderTerminalEventCalendar() {
+  const target = $("#terminalEventsWorkspace");
+  if (!target) return;
+  const weekStart = eventCalendarWeekStart(state.terminalEventWeek || state.terminalDate || todayKey());
+  state.terminalEventWeek = weekStart;
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(`${weekStart}T12:00:00`);
+    date.setDate(date.getDate() + index);
+    return isoDate(date);
+  });
+  const weekEnd = days[6];
+  const allEvents = confirmedEventOffers();
+  const weekEvents = allEvents.filter((offer) => offer.eventDate >= weekStart && offer.eventDate <= weekEnd);
+  const guestCount = weekEvents.reduce((sum, offer) => sum + offerPersonCount(offer), 0);
+  const buffetEvents = weekEvents.filter((offer) => offer.buffet?.name || offerHasBuffet(offer));
+  const buffetGroups = new Map();
+  const dishGroups = new Map();
+  buffetEvents.forEach((offer) => {
+    const guests = offerPersonCount(offer);
+    const name = offer.buffet?.name || "Individuelles Buffet";
+    const current = buffetGroups.get(name) || { events: 0, guests: 0 };
+    buffetGroups.set(name, { events: current.events + 1, guests: current.guests + guests });
+    Object.values(offer.buffet?.categories || {}).flat().forEach((dish) => {
+      const dishName = String(dish?.name || dish?.title || "").trim();
+      if (dishName) dishGroups.set(dishName, (dishGroups.get(dishName) || 0) + guests);
+    });
+  });
+  const snackEvents = weekEvents.filter((offer) => offer.conference?.enabled && offer.conference?.morningSnackText);
+  const upcoming = allEvents.filter((offer) => offer.eventDate >= todayKey()).slice(0, 30);
+  const dayHtml = days.map((dateKey) => {
+    const events = weekEvents.filter((offer) => offer.eventDate === dateKey);
+    const date = new Date(`${dateKey}T12:00:00`);
+    return `<section class="event-calendar-day ${events.length ? "has-events" : ""}">
+      <header><span>${escapeHtml(date.toLocaleDateString("de-DE", { weekday: "short" }))}</span><strong>${escapeHtml(date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }))}</strong></header>
+      ${events.length ? events.map((offer) => `<article class="event-calendar-item"><div><strong>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</strong><span>${escapeHtml(offer.occasion || offer.title || "Bestätigtes Angebot")}</span></div><small>${escapeHtml(offer.startTime || "Zeit offen")} · ${offerPersonCount(offer)} Pers.${offer.reservedArea ? ` · ${escapeHtml(offer.reservedArea)}` : ""}</small></article>`).join("") : `<p>Keine Veranstaltung</p>`}
+    </section>`;
+  }).join("");
+  const buffetRows = buffetGroups.size ? [...buffetGroups.entries()].map(([name, info]) => `<div class="event-kitchen-row"><strong>${escapeHtml(name)}</strong><span>${info.guests} Gäste · ${info.events} Veranstaltung${info.events === 1 ? "" : "en"}</span></div>`).join("") : `<p class="event-calendar-empty">In dieser Woche kein Buffet eingeplant.</p>`;
+  target.innerHTML = `
+    <header class="event-calendar-toolbar"><div><p class="terminal-card-kicker">Sicher eingeplant</p><h2>Veranstaltungskalender</h2><p>${escapeHtml(formatDate(weekStart))} bis ${escapeHtml(formatDate(weekEnd))}</p></div><div class="event-calendar-nav"><button class="secondary" type="button" data-event-week-step="-7" aria-label="Vorherige Woche">‹</button><button class="secondary" type="button" data-event-week-today>Diese Woche</button><button class="secondary" type="button" data-event-week-step="7" aria-label="Nächste Woche">›</button></div></header>
+    <div class="event-calendar-kpis"><span><small>Veranstaltungen</small><strong>${weekEvents.length}</strong></span><span><small>Gäste gesamt</small><strong>${guestCount}</strong></span><span><small>Mit Buffet</small><strong>${buffetEvents.length}</strong></span><span><small>Tagungen</small><strong>${weekEvents.filter((offer) => offer.conference?.enabled).length}</strong></span></div>
+    <div class="event-calendar-week">${dayHtml}</div>
+    <section class="event-kitchen-panel"><header><div><p class="terminal-card-kicker">Wochenbedarf</p><h3>Küche &amp; Bestellung</h3></div><strong>${guestCount} Gäste</strong></header><div class="event-kitchen-grid"><div><h4>Buffets</h4>${buffetRows}</div><div><h4>Speisen nach Gästezahl</h4>${dishGroups.size ? [...dishGroups.entries()].map(([name, guests]) => `<div class="event-kitchen-row"><strong>${escapeHtml(name)}</strong><span>für ${guests} Gäste</span></div>`).join("") : `<p class="event-calendar-empty">Keine Speisen ausgewählt.</p>`}</div><div><h4>Vormittagssnacks</h4>${snackEvents.length ? snackEvents.map((offer) => `<div class="event-kitchen-row"><strong>${escapeHtml(offer.conference.morningSnackText)}</strong><span>${offerPersonCount(offer)} Gäste · ${escapeHtml(offer.conference.morningSnackTime || "Zeit offen")}</span></div>`).join("") : `<p class="event-calendar-empty">Keine Snacks eingeplant.</p>`}</div></div></section>
+    <section class="event-upcoming-panel"><header><div><p class="terminal-card-kicker">Vorschau</p><h3>Alle kommenden bestätigten Veranstaltungen</h3></div><span>${upcoming.length} Einträge</span></header><div class="event-upcoming-list">${upcoming.length ? upcoming.map((offer) => `<article><time>${escapeHtml(formatDate(offer.eventDate))}${offer.startTime ? ` · ${escapeHtml(offer.startTime)}` : ""}</time><strong>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</strong><span>${escapeHtml(offer.occasion || offer.title || "Bestätigtes Angebot")} · ${offerPersonCount(offer)} Pers.</span></article>`).join("") : `<p class="event-calendar-empty">Noch keine bestätigten Veranstaltungen.</p>`}</div></section>`;
 }
 
 function renderTerminalExtras(dateKey) {
@@ -9283,6 +9384,7 @@ function renderTerminalTabs() {
   $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "closing");
   $("#terminalOrdersSection")?.classList.toggle("hidden", active !== "orders");
   $("#terminalOffersSection")?.classList.toggle("hidden", active !== "offers");
+  $("#terminalEventsSection")?.classList.toggle("hidden", active !== "events");
   $("#terminalCocktailsSection")?.classList.toggle("hidden", active !== "cocktails");
   $("#terminalTaskCalendarSection")?.classList.toggle("hidden", active !== "task-calendar");
   $("#terminalSettingsSection")?.classList.toggle("hidden", active !== "settings");
@@ -9300,6 +9402,7 @@ function renderTerminalTabs() {
   }
   if (active === "task-calendar") renderTerminalTaskCalendar();
   if (active === "offers") renderAdminOffers();
+  if (active === "events") renderTerminalEventCalendar();
   if (active === "cocktails") renderCocktailTool();
   if (active === "invoices") mountTerminalInvoiceTool();
   if (active === "closing") renderTerminalClosingSteps();
@@ -19539,6 +19642,11 @@ function bindEvents() {
       renderAdminOffers();
       return;
     }
+    const confirmOffer = event.target.closest("[data-offer-confirm]");
+    if (confirmOffer) {
+      await toggleOfferConfirmed(confirmOffer.dataset.offerConfirm, confirmOffer);
+      return;
+    }
     const insertAssortment = event.target.closest("[data-offer-insert-assortment]");
     if (insertAssortment) {
       const draft = currentOfferDraftFromDom();
@@ -19910,6 +20018,19 @@ function bindEvents() {
     if (dateShortcut) {
       const date = dateShortcut.dataset.terminalDateShortcut === "tomorrow" ? terminalRelativeDate(1) : todayKey();
       await loadTerminalWorkDate(date, dateShortcut);
+      return;
+    }
+    const eventWeekStep = event.target.closest("[data-event-week-step]");
+    if (eventWeekStep) {
+      const date = new Date(`${state.terminalEventWeek || eventCalendarWeekStart(state.terminalDate || todayKey())}T12:00:00`);
+      date.setDate(date.getDate() + Number(eventWeekStep.dataset.eventWeekStep || 0));
+      state.terminalEventWeek = isoDate(date);
+      renderTerminalEventCalendar();
+      return;
+    }
+    if (event.target.closest("[data-event-week-today]")) {
+      state.terminalEventWeek = eventCalendarWeekStart(todayKey());
+      renderTerminalEventCalendar();
       return;
     }
     const extraDate = event.target.closest("[data-terminal-extra-date]");
