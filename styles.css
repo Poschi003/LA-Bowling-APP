@@ -5081,6 +5081,32 @@ body.terminal-mode:not(.terminal-login-mode) #mainTabs {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
+.table-plan-saved-group-overlay {
+  position: absolute;
+  z-index: 1;
+  border: 3px solid #a855f7;
+  border-radius: 14px;
+  background: rgba(126, 34, 206, 0.14);
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(216, 180, 254, 0.3), 0 6px 18px rgba(88, 28, 135, 0.22);
+}
+
+.table-plan-saved-group-overlay strong {
+  position: absolute;
+  top: -13px;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: #7e22ce;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .table-plan-group-draft-overlay strong {
   font-size: 14px;
 }

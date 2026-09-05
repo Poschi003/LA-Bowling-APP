@@ -12091,6 +12091,33 @@ function terminalTableDraftOverlayHtml(draft = {}, groups = []) {
   `;
 }
 
+function renderTerminalSavedGroupOverlays(groups = []) {
+  const canvas = $("#tablePlanBoard .table-plan-canvas");
+  if (!canvas) return;
+  canvas.querySelectorAll(".table-plan-saved-group-overlay").forEach((item) => item.remove());
+  const canvasRect = canvas.getBoundingClientRect();
+  if (!canvasRect.width || !canvasRect.height) return;
+  groups.forEach((group) => {
+    const tables = [...canvas.querySelectorAll("[data-table-plan-group]")]
+      .filter((table) => table.dataset.tablePlanGroup === group.id);
+    if (tables.length < 2) return;
+    const rects = tables.map((table) => table.getBoundingClientRect());
+    const padding = 7;
+    const left = Math.max(0, Math.min(...rects.map((rect) => rect.left)) - canvasRect.left - padding);
+    const top = Math.max(0, Math.min(...rects.map((rect) => rect.top)) - canvasRect.top - padding);
+    const right = Math.min(canvasRect.width, Math.max(...rects.map((rect) => rect.right)) - canvasRect.left + padding);
+    const bottom = Math.min(canvasRect.height, Math.max(...rects.map((rect) => rect.bottom)) - canvasRect.top + padding);
+    const overlay = document.createElement("div");
+    overlay.className = "table-plan-saved-group-overlay";
+    overlay.style.left = `${(left / canvasRect.width) * 100}%`;
+    overlay.style.top = `${(top / canvasRect.height) * 100}%`;
+    overlay.style.width = `${((right - left) / canvasRect.width) * 100}%`;
+    overlay.style.height = `${((bottom - top) / canvasRect.height) * 100}%`;
+    overlay.innerHTML = `<strong>${escapeHtml(group.label || terminalTableSuggestedGroupLabel(group.tableIds))}</strong>`;
+    canvas.append(overlay);
+  });
+}
+
 function terminalTableStaffOverlayHtml(assignments = [], employeeMeta = new Map()) {
   const presetCounts = {};
   return assignments.map((assignment) => {
@@ -12203,7 +12230,10 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
     `;
   }
   const board = $("#tablePlanBoard");
-  if (board) board.innerHTML = terminalTableBoardHtml(reservations, groups, draft, staffAssignments, employeeMeta);
+  if (board) {
+    board.innerHTML = terminalTableBoardHtml(reservations, groups, draft, staffAssignments, employeeMeta);
+    window.requestAnimationFrame(() => renderTerminalSavedGroupOverlays(groups));
+  }
   const overviewReservation = $("#tablePlanReservationOverview");
   if (overviewReservation) overviewReservation.innerHTML = terminalTableReservationOverviewHtml(reservations);
   const manageReservationList = $("#tablePlanManageReservationList");
@@ -13212,7 +13242,8 @@ async function loadTerminalTableDate(dateValue = "") {
   resetTerminalTableStaffDraft();
   await terminalAction({
     action: "load",
-    date
+    date,
+    manualDate: true
   });
   showToast(`Tischplan für ${formatLongDate(date)} geladen.`);
 }
@@ -20448,6 +20479,13 @@ function bindEvents() {
       renderTerminal();
       return;
     }
+    const openDashboardHandover = event.target.closest("[data-open-handover-dashboard]");
+    if (openDashboardHandover) {
+      state.terminalTab = "employees";
+      renderTerminalTabs();
+      openTerminalHandoverModal();
+      return;
+    }
     const returnToCorrection = event.target.closest("#returnToAdminCorrection");
     if (returnToCorrection) {
       state.adminUnlocked = true;
@@ -20470,13 +20508,6 @@ function bindEvents() {
     const control = collectTerminalControlForm();
     if (!control.name) {
       $("#terminalControlName")?.focus();
-      return;
-    }
-    const openDashboardHandover = event.target.closest("[data-open-handover-dashboard]");
-    if (openDashboardHandover) {
-      state.terminalTab = "employees";
-      renderTerminalTabs();
-      openTerminalHandoverModal();
       return;
     }
     const index = loadTerminalControls().findIndex((item) => item.id === state.terminalControlDraftId);
