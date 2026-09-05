@@ -12393,13 +12393,13 @@ function terminalTableBoardHtml(reservations = [], groups = [], draft = {}, staf
           if (reservationTheme) style.push(reservationTheme);
           if (staffAssignment) style.push(`--staff-color:${staffAssignment.color}`);
           return `
-            <button class="${classes}" type="button" draggable="${state.terminalTableView === "work"}" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
+            <button class="${classes}" type="button" draggable="${state.terminalTableView === "work"}" data-table-plan-select="${escapeHtml(group.tableIds.join(","))}" data-table-plan-table="${escapeHtml(table.id)}" data-table-plan-group="${escapeHtml(group.id)}" style="${style.join(";")}">
               ${primary && index === 0 ? `<span class="table-plan-table-times">${escapeHtml(primary.time || "Zeit offen")}</span>` : ""}
               <div class="table-plan-table-head">
                 <strong>${escapeHtml(table.label || table.id)}</strong>
                 ${primary?.name && index === 0 ? `<small class="table-plan-table-name">${escapeHtml(primary.name)}</small>` : ""}
               </div>
-              ${index === 0 ? `<span class="table-plan-table-badge is-group-label">${escapeHtml(group.label)}</span>` : ""}
+              <span class="table-plan-table-badge is-group-label">${escapeHtml(group.label)}</span>
               ${booked.some((reservation) => reservation.marker === "birthday") && index === 0 ? `<span class="table-plan-table-badge is-birthday">Geburtstag</span>` : ""}
               ${booked.length > 1 && index === 0 ? `<span class="table-plan-table-badge is-count">+${booked.length - 1}</span>` : ""}
               ${staffAssignment && index === 0 ? `<span class="table-plan-table-badge is-service">${escapeHtml(staffAssignment.employee)}</span>` : ""}

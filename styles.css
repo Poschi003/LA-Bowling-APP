@@ -14084,7 +14084,7 @@ body.table-plan-fullscreen .table-plan-shell.is-work-view .table-plan-canvas {
 .table-plan-table.is-linked-group {
   border-style: dashed;
   border-color: #c026d3;
-  box-shadow: 0 0 0 3px rgba(192, 38, 211, 0.2), 0 7px 18px rgba(2, 6, 23, 0.34);
+  box-shadow: inset 0 0 0 2px rgba(192, 38, 211, 0.18), 0 0 0 3px rgba(192, 38, 211, 0.2), 0 7px 18px rgba(2, 6, 23, 0.34);
 }
 
 .table-plan-table-badge.is-group-label {
@@ -14092,6 +14092,7 @@ body.table-plan-fullscreen .table-plan-shell.is-work-view .table-plan-canvas {
   right: 3px;
   max-width: 48%;
   background: #86198f;
+  color: #fff;
 }
 
 .table-plan-detail-badges,
