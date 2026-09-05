@@ -7471,6 +7471,36 @@ body.terminal-mode:not(.terminal-login-mode) #terminalFinanceSection {
   text-align: right;
 }
 
+.finance-invoice-breakdown {
+  display: grid;
+  gap: 5px;
+  margin: -2px 8px 2px 42px;
+  padding: 7px 9px;
+  border-left: 2px solid #dbe7fb;
+}
+
+.finance-invoice-breakdown.hidden { display: none; }
+
+.finance-invoice-breakdown-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: #536074;
+  font-size: .7rem;
+}
+
+.finance-invoice-breakdown-row strong {
+  min-width: 0;
+  color: #263247;
+  overflow-wrap: anywhere;
+}
+
+.finance-invoice-breakdown-row span {
+  flex: 0 0 auto;
+  font-weight: 750;
+}
+
 .finance-misc-income-block {
   display: grid;
   gap: 9px;

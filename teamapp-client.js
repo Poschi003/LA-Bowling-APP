@@ -13958,7 +13958,21 @@ function renderReportEntryLists(report) {
     expenseTarget.innerHTML = expenses.map((item) => expenseRowHtml(item)).join("") || `<p class="hint">Keine Ausgaben erfasst.</p>`;
   }
   renderMiscIncomeList(miscIncome);
+  renderFinanceInvoiceBreakdown(report);
   renderFinanceExpensePreview();
+}
+
+function renderFinanceInvoiceBreakdown(report = {}) {
+  const target = $("#financeInvoiceBreakdown");
+  if (!target) return;
+  const invoices = reportTransferInvoiceCustomers(report);
+  target.classList.toggle("hidden", !invoices.length);
+  target.innerHTML = invoices.map((item, index) => `
+    <div class="finance-invoice-breakdown-row">
+      <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)}</strong>
+      <span>${escapeHtml(formatReportMoney(invoiceTotal(item)))}</span>
+    </div>
+  `).join("");
 }
 
 function miscIncomeRowHtml(item = {}) {
