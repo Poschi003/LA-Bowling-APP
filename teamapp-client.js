@@ -6876,13 +6876,21 @@ function printOfferDraft() {
     value.setDate(value.getDate() + 14);
     return formatDate(value.toISOString().slice(0, 10));
   })();
+  const offerAreaLabel = draft.conference?.enabled
+    ? "Tagungsraum"
+    : (reservedAreaPricing.reservedAreaLabel || "LA-Bowling");
   const includedItems = [
     draft.conference?.enabled ? { icon: "T", title: "Tagungspauschale", text: `Bis 25 Personen inklusive · jede weitere Person ${formatMoney(OFFER_CONFERENCE_EXTRA_PERSON_PRICE)}` } : null,
     draft.conference?.enabled ? { icon: "V", title: "Vormittagssnack", text: `${draft.conference.morningSnackTime ? `${draft.conference.morningSnackTime} Uhr · ` : ""}${draft.conference.morningSnackText || "Nach Absprache"}` } : null,
-    draft.conference?.enabled ? { icon: "A", title: "Tagungsausstattung", text: "WLAN, Sonderöffnung und Tagungsraumnutzung, Tagungsgetränke, Parkplätze, Beamer, Leinwand und Flipchart" } : null,
+    draft.conference?.enabled ? { icon: "R", title: "Reservierter Bereich", text: "Tagungsraum" } : null,
+    draft.conference?.enabled ? { icon: "A", title: "Tagungsausstattung", text: "WLAN, Sonderöffnung, Parkplätze, Beamer, Leinwand und Flipchart" } : null,
+    draft.conference?.enabled ? { icon: "W", title: "Wasser", text: "Still und spritzig" } : null,
+    draft.conference?.enabled ? { icon: "F", title: "Fruchtsäfte", text: "In der Tagungspauschale enthalten" } : null,
+    draft.conference?.enabled ? { icon: "K", title: "Kaffee", text: "In der Tagungspauschale enthalten" } : null,
+    draft.conference?.enabled ? { icon: "T", title: "Tee", text: "In der Tagungspauschale enthalten" } : null,
     bowling.total > 0 ? { icon: "B", title: "Bowling", text: `${bowling.durationLabel}${draft.bowling?.lanes ? ` · ${draft.bowling.lanes} Bahn(en)` : ""}` } : null,
     buffetPricing.buffetBaseTotal > 0 ? { icon: "F", title: draft.conference?.enabled ? "Mittagsbuffet" : "Buffet", text: `${draft.buffet?.name || "Buffet"} · ${formatMoney(draft.buffet?.pricePerPerson || 0)} pro Person` } : null,
-    reservedAreaPricing.reservedAreaLabel ? { icon: "R", title: "Reservierter Bereich", text: reservedAreaPricing.reservedAreaLabel } : null,
+    !draft.conference?.enabled && reservedAreaPricing.reservedAreaLabel ? { icon: "R", title: "Reservierter Bereich", text: reservedAreaPricing.reservedAreaLabel } : null,
     draft.buffet?.sparklingReception ? { icon: "S", title: "Sektempfang", text: `${formatMoney(draft.sparklingReceptionPrice)} pro Person${draft.sparklingReceptionTime ? ` · ${draft.sparklingReceptionTime} Uhr` : ""}` } : null,
     draft.reservedAreaCampfire ? { icon: "L", title: "Lagerfeuer", text: `${formatMoney(draft.campfirePrice)} pauschal${draft.campfireTime ? ` · ${draft.campfireTime} Uhr` : ""}` } : null,
     draft.drinksMode === "custom"
@@ -7088,7 +7096,7 @@ function printOfferDraft() {
                 <strong>Anlass</strong><span>${escapeHtml(draft.occasion || "-")}</span>
                 <strong>Personen</strong><span>${escapeHtml(personsSummary)}</span>
                 <strong>Beginn</strong><span>${escapeHtml(draft.startTime || draft.bowling?.fromTime || "-")} Uhr</span>
-                <strong>Bereich</strong><span>${escapeHtml(reservedAreaPricing.reservedAreaLabel || "LA-Bowling")}</span>
+                <strong>Bereich</strong><span>${escapeHtml(offerAreaLabel)}</span>
               </div>
             </section>
           </div>
@@ -7096,7 +7104,7 @@ function printOfferDraft() {
             <div><small>Datum</small><strong>${escapeHtml(draft.eventDate ? formatDate(draft.eventDate) : "-")}</strong></div>
             <div><small>Personen</small><strong>${escapeHtml(personsSummary)}</strong></div>
             <div><small>Beginn / Dauer</small><strong>${escapeHtml(draft.startTime || draft.bowling?.fromTime || "-")}${bowling.durationLabel && bowling.durationLabel !== "-" ? ` · ${escapeHtml(bowling.durationLabel)}` : ""}</strong></div>
-            <div><small>Bereich</small><strong>${escapeHtml(reservedAreaPricing.reservedAreaLabel || "LA-Bowling")}</strong></div>
+            <div><small>Bereich</small><strong>${escapeHtml(offerAreaLabel)}</strong></div>
           </div>
           ${timelineScale ? `<section class="template-card"><h3 class="section-title">Ablauf Ihrer Veranstaltung</h3>${timelineScale}</section>` : ""}
           ${buffetPricing.buffetBaseTotal > 0 ? `<section class="template-card buffet-highlight">
@@ -13320,6 +13328,13 @@ function renderTerminalDayMeta(dateKey, report, reportClosed) {
         </span>
         <span class="terminal-shift-leader-arrow" aria-hidden="true">&gt;</span>
       </button>
+      <button class="terminal-handover-button" data-open-handover-dashboard type="button" ${reportClosed ? "disabled" : ""}>
+        <span class="terminal-shift-leader-icon" aria-hidden="true">&#8644;</span>
+        <span class="terminal-shift-leader-copy">
+          <small>Schichtwechsel</small>
+          <strong>Übergabe</strong>
+        </span>
+      </button>
     `;
   }
   const summary = $("#terminalDayMetaSummary");
@@ -13465,6 +13480,15 @@ function shiftLeaderEmployees() {
   const defaults = ["Leicht, Kevin", "Eberhardt, Dennis", "Poschenrieder, Christian"];
   const marcZettler = employees.find((name) => /(?:marc.*zettler|zettler.*marc)/i.test(name)) || "Marc Zettler";
   return [...new Set([...(matches.length ? matches : defaults), marcZettler])];
+}
+
+function openTerminalHandoverModal() {
+  $("#handoverModal")?.classList.remove("hidden");
+  const time = $("#handoverTime");
+  if (time && !time.value) {
+    const now = new Date();
+    time.value = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  }
 }
 
 function renderTerminalTasks(report, reportClosed) {
@@ -20448,6 +20472,13 @@ function bindEvents() {
       $("#terminalControlName")?.focus();
       return;
     }
+    const openDashboardHandover = event.target.closest("[data-open-handover-dashboard]");
+    if (openDashboardHandover) {
+      state.terminalTab = "employees";
+      renderTerminalTabs();
+      openTerminalHandoverModal();
+      return;
+    }
     const index = loadTerminalControls().findIndex((item) => item.id === state.terminalControlDraftId);
     if (index >= 0) {
       state.terminalControls[index] = control;
@@ -20581,14 +20612,7 @@ function bindEvents() {
     }
   });
 
-  $("#openHandover")?.addEventListener("click", () => {
-    $("#handoverModal")?.classList.remove("hidden");
-    const time = $("#handoverTime");
-    if (time && !time.value) {
-      const now = new Date();
-      time.value = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    }
-  });
+  $("#openHandover")?.addEventListener("click", openTerminalHandoverModal);
 
   $("#closeHandover")?.addEventListener("click", () => {
     $("#handoverModal")?.classList.add("hidden");

@@ -14572,6 +14572,26 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-day-meta-display {
   box-shadow: 0 12px 30px rgba(30, 42, 60, 0.14);
 }
 
+.terminal-handover-button {
+  display: grid;
+  grid-template-columns: 34px minmax(88px, auto);
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 9px 13px;
+  border: 1px solid #e4e8ee;
+  border-radius: 12px;
+  background: #fff;
+  color: #111827;
+  text-align: left;
+  box-shadow: 0 8px 24px rgba(30, 42, 60, 0.1);
+}
+
+.terminal-handover-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(30, 42, 60, 0.14);
+}
+
 .terminal-shift-leader-icon {
   display: grid;
   place-items: center;
