@@ -370,6 +370,7 @@ function createBlankInvoiceDraft(settings = DEFAULT_INVOICE_SETTINGS, actor = ""
     invoiceDate: today,
     serviceDate: today,
     dueDate: addDays(today, normalizedSettings.paymentDays),
+    paymentMethod: "Überweisung",
     status: "draft",
     paymentStatus: "open",
     positions: [],

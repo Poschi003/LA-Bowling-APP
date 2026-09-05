@@ -2,7 +2,7 @@ const { invoiceTotals, normalizeInvoices } = require("./invoice-engine");
 
 function isTransferInvoice(invoice = {}) {
   const method = String(invoice.paymentMethod || "").trim().toLowerCase();
-  return method === "überweisung" || method === "ueberweisung";
+  return !method || method === "überweisung" || method === "ueberweisung";
 }
 
 function reportItemFromInvoice(invoice = {}) {

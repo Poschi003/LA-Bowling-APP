@@ -7293,6 +7293,7 @@ function createBlankInvoiceDraftClient(settings = state.invoiceSettings || creat
     invoiceDate: today,
     serviceDate: today,
     dueDate: invoiceAddDays(today, normalizedSettings.paymentDays),
+    paymentMethod: "Überweisung",
     paymentStatus: "open",
     positions: [],
     attachments: [],
