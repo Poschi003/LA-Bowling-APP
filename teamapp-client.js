@@ -6889,6 +6889,14 @@ function printOfferDraft() {
       ? { icon: "G", title: "Getränke", text: `${drinksCustomText} · ${formatMoney(totals.drinksTotal)}` }
       : draft.conference?.enabled ? null : { icon: "G", title: "Getränke", text: "Werden laut Karte berechnet" }
   ].filter(Boolean);
+  const conferenceDescription = draft.conference?.enabled ? `
+    <section class="template-card conference-description">
+      <h3 class="section-title">In der Tagungspauschale enthalten</h3>
+      <p>Die Tagungspauschale umfasst die Sonderöffnung und Nutzung des Tagungsraums, kostenfreies WLAN, Parkplätze direkt am Center sowie Beamer, Leinwand und Flipchart.</p>
+      <p>Inklusive sind außerdem Tagungsgetränke mit Wasser still und spritzig, Fruchtsäften, Kaffee und Tee sowie der Vormittagssnack${draft.conference.morningSnackTime ? ` um ${escapeHtml(draft.conference.morningSnackTime)} Uhr` : ""}${draft.conference.morningSnackText ? ` mit ${escapeHtml(draft.conference.morningSnackText)}` : " nach Absprache"}.</p>
+      <p class="muted"><strong>Nicht in der Pauschale enthalten:</strong> Das Mittagsbuffet wird separat nach unseren Buffetvorschlägen berechnet. Bowling kann zusätzlich gebucht werden.</p>
+    </section>
+  ` : "";
   win.document.write(`
     <!doctype html>
     <html lang="de">
@@ -6979,6 +6987,9 @@ function printOfferDraft() {
           .included-item + .included-item { border-left: 1px solid var(--line); }
           .included-item strong { display: block; margin: 1mm 0; color: var(--navy); font-size: 10px; }
           .included-item span:last-child { color: var(--muted); font-size: 8.5px; line-height: 1.35; }
+          .conference-description { border-top: 2px solid var(--navy); }
+          .conference-description p { margin: 0; font-size: 9px; line-height: 1.45; }
+          .conference-description p + p { margin-top: 1.5mm; }
           .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
           .info-grid .info-card { margin: 0; min-height: 28mm; }
           .info-card .section-title { font-size: 11px; margin-bottom: 2mm; }
@@ -7095,6 +7106,7 @@ function printOfferDraft() {
             <div class="buffet-price">${formatMoney(draft.buffet?.pricePerPerson || 0)}<small>pro Person</small></div>
             ${buffetSections ? `<div class="buffet-menu">${buffetSections}</div>` : ""}
           </section>` : ""}
+          ${conferenceDescription}
           ${includedItems.length ? `<section class="template-card"><h3 class="section-title">Ihre Leistungen</h3><div class="included-grid">${includedItems.map((item) => `<div class="included-item"><span><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.text)}</span></span></div>`).join("")}</div></section>` : ""}
           <div class="footer">
             <span>LA Bowling · Röntgenstr. 12 · 84030 Landshut</span>

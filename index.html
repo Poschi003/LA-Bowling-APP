@@ -199,6 +199,11 @@
                       <p id="terminalPremiumDate">Gewählter Tag</p>
                     </div>
                     <div id="terminalDayMetaDisplay" class="terminal-day-meta-display"></div>
+                    <div id="terminalDayHeadForm" class="terminal-day-head terminal-day-head-editor hidden">
+                      <label>Öffnungszeit<input id="terminalOpeningHours" placeholder="z.B. 16:00 bis 00:00 Uhr"></label>
+                      <label>Schichtleitung<select id="terminalShiftLeader"></select></label>
+                      <button id="saveTerminalDayMeta" class="primary" type="button">Speichern</button>
+                    </div>
                   </header>
                   <section class="terminal-section terminal-overview-card">
                     <div class="terminal-dashboard-head">
@@ -209,11 +214,6 @@
                           <p class="terminal-card-subtitle">Angebote, Aktionen und Hinweise für den gewählten Tag</p>
                         </div>
                       </div>
-                    </div>
-                    <div id="terminalDayHeadForm" class="terminal-day-head terminal-day-head-editor hidden">
-                      <label>Öffnungszeit<input id="terminalOpeningHours" placeholder="z.B. 16:00 bis 00:00 Uhr"></label>
-                      <label>Schichtleitung<select id="terminalShiftLeader"></select></label>
-                      <button id="saveTerminalDayMeta" class="primary" type="button">Speichern</button>
                     </div>
                     <div class="terminal-date-navigator" aria-label="Tagesauswahl">
                       <div class="terminal-date-shortcuts">
