@@ -9170,7 +9170,7 @@ function renderTerminalEventCalendar() {
     const date = new Date(`${dateKey}T12:00:00`);
     return `<section class="event-calendar-day ${events.length ? "has-events" : ""}">
       <header><span>${escapeHtml(date.toLocaleDateString("de-DE", { weekday: "short" }))}</span><strong>${escapeHtml(date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }))}</strong></header>
-      ${events.length ? events.map((offer) => `<article class="event-calendar-item"><div><strong>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</strong><span>${escapeHtml(offer.occasion || offer.title || "Bestätigtes Angebot")}</span></div><small>${escapeHtml(offer.startTime || "Zeit offen")} · ${offerPersonCount(offer)} Pers.${offer.reservedArea ? ` · ${escapeHtml(offer.reservedArea)}` : ""}</small></article>`).join("") : `<p>Keine Veranstaltung</p>`}
+      ${events.length ? events.map((offer) => `<button class="event-calendar-item" type="button" data-open-calendar-offer="${escapeHtml(offer.id)}"><div><strong>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</strong><span>${escapeHtml(offer.occasion || offer.title || "Bestätigtes Angebot")}</span></div><small>${escapeHtml(offer.startTime || "Zeit offen")} · ${offerPersonCount(offer)} Pers.${offer.reservedArea ? ` · ${escapeHtml(offer.reservedArea)}` : ""}</small><b>Angebot öffnen ›</b></button>`).join("") : `<p>Keine Veranstaltung</p>`}
     </section>`;
   }).join("");
   const buffetRows = buffetGroups.size ? [...buffetGroups.entries()].map(([name, info]) => `<div class="event-kitchen-row"><strong>${escapeHtml(name)}</strong><span>${info.guests} Gäste · ${info.events} Veranstaltung${info.events === 1 ? "" : "en"}</span></div>`).join("") : `<p class="event-calendar-empty">In dieser Woche kein Buffet eingeplant.</p>`;
@@ -9179,7 +9179,7 @@ function renderTerminalEventCalendar() {
     <div class="event-calendar-kpis"><span><small>Veranstaltungen</small><strong>${weekEvents.length}</strong></span><span><small>Gäste gesamt</small><strong>${guestCount}</strong></span><span><small>Mit Buffet</small><strong>${buffetEvents.length}</strong></span><span><small>Tagungen</small><strong>${weekEvents.filter((offer) => offer.conference?.enabled).length}</strong></span></div>
     <div class="event-calendar-week">${dayHtml}</div>
     <section class="event-kitchen-panel"><header><div><p class="terminal-card-kicker">Wochenbedarf</p><h3>Küche &amp; Bestellung</h3></div><strong>${guestCount} Gäste</strong></header><div class="event-kitchen-grid"><div><h4>Buffets</h4>${buffetRows}</div><div><h4>Speisen nach Gästezahl</h4>${dishGroups.size ? [...dishGroups.entries()].map(([name, guests]) => `<div class="event-kitchen-row"><strong>${escapeHtml(name)}</strong><span>für ${guests} Gäste</span></div>`).join("") : `<p class="event-calendar-empty">Keine Speisen ausgewählt.</p>`}</div><div><h4>Vormittagssnacks</h4>${snackEvents.length ? snackEvents.map((offer) => `<div class="event-kitchen-row"><strong>${escapeHtml(offer.conference.morningSnackText)}</strong><span>${offerPersonCount(offer)} Gäste · ${escapeHtml(offer.conference.morningSnackTime || "Zeit offen")}</span></div>`).join("") : `<p class="event-calendar-empty">Keine Snacks eingeplant.</p>`}</div></div></section>
-    <section class="event-upcoming-panel"><header><div><p class="terminal-card-kicker">Vorschau</p><h3>Alle kommenden bestätigten Veranstaltungen</h3></div><span>${upcoming.length} Einträge</span></header><div class="event-upcoming-list">${upcoming.length ? upcoming.map((offer) => `<article><time>${escapeHtml(formatDate(offer.eventDate))}${offer.startTime ? ` · ${escapeHtml(offer.startTime)}` : ""}</time><strong>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</strong><span>${escapeHtml(offer.occasion || offer.title || "Bestätigtes Angebot")} · ${offerPersonCount(offer)} Pers.</span></article>`).join("") : `<p class="event-calendar-empty">Noch keine bestätigten Veranstaltungen.</p>`}</div></section>`;
+    <section class="event-upcoming-panel"><header><div><p class="terminal-card-kicker">Vorschau</p><h3>Alle kommenden bestätigten Veranstaltungen</h3></div><span>${upcoming.length} Einträge</span></header><div class="event-upcoming-list">${upcoming.length ? upcoming.map((offer) => `<button type="button" data-open-calendar-offer="${escapeHtml(offer.id)}"><time>${escapeHtml(formatDate(offer.eventDate))}${offer.startTime ? ` · ${escapeHtml(offer.startTime)}` : ""}</time><strong>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</strong><span>${escapeHtml(offer.occasion || offer.title || "Bestätigtes Angebot")} · ${offerPersonCount(offer)} Pers.</span><b>Angebot öffnen ›</b></button>`).join("") : `<p class="event-calendar-empty">Noch keine bestätigten Veranstaltungen.</p>`}</div></section>`;
 }
 
 function renderTerminalExtras(dateKey) {
@@ -20202,6 +20202,20 @@ function bindEvents() {
       date.setDate(date.getDate() + Number(eventWeekStep.dataset.eventWeekStep || 0));
       state.terminalEventWeek = isoDate(date);
       renderTerminalEventCalendar();
+      return;
+    }
+    const calendarOffer = event.target.closest("[data-open-calendar-offer]");
+    if (calendarOffer) {
+      const offer = normalizeOffersClient(state.offers || []).find((item) => item.id === calendarOffer.dataset.openCalendarOffer);
+      if (!offer) {
+        showToast("Das Angebot wurde nicht gefunden.");
+        return;
+      }
+      setOfferDraftFromOffer(offer);
+      state.offerEditorStep = 1;
+      state.terminalTab = "offers";
+      renderTerminalTabs();
+      window.requestAnimationFrame(() => offerWorkspaceRoot()?.scrollIntoView({ behavior: "smooth", block: "start" }));
       return;
     }
     if (event.target.closest("[data-event-week-today]")) {
