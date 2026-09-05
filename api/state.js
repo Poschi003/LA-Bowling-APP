@@ -1076,6 +1076,8 @@ function normalizeOffer(offer = {}) {
     archived: offer.archived === true,
     confirmed: offer.confirmed === true,
     confirmedAt: offer.confirmed === true ? String(offer.confirmedAt || new Date().toISOString()).slice(0, 80) : "",
+    offerType: offer.offerType === "bmw-treasure" ? "bmw-treasure" : "standard",
+    bmwTreasurePackage: ["package1", "package2", "package3"].includes(String(offer.bmwTreasurePackage || "")) ? String(offer.bmwTreasurePackage) : "",
     createdAt: String(offer.createdAt || new Date().toISOString()).slice(0, 80),
     updatedAt: String(offer.updatedAt || new Date().toISOString()).slice(0, 80),
     title: String(offer.title || offer.customerName || "Angebot").trim().slice(0, 120),

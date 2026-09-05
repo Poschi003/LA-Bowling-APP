@@ -2226,6 +2226,40 @@ button.employee-badge-stat {
   color: #fff;
 }
 
+.offer-bmw-package-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.offer-bmw-package {
+  display: grid;
+  gap: 4px;
+  min-height: 116px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 12px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.offer-bmw-package:hover,
+.offer-bmw-package.is-selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.offer-bmw-package > span { font-weight: 800; }
+.offer-bmw-package > strong { color: #1d4ed8; font-size: 20px; }
+.offer-bmw-package > small { color: var(--muted); }
+.offer-bmw-package > p { margin: 5px 0 0; color: var(--ink); font-size: 12px; line-height: 1.35; }
+
+@media (max-width: 760px) {
+  .offer-bmw-package-grid { grid-template-columns: 1fr; }
+}
+
 .terminal-offer-workspace .offer-workspace-grid {
   grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
 }

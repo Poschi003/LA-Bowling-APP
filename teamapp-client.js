@@ -1255,6 +1255,29 @@ const OFFER_CHILD_DISCOUNT_FACTOR = 0.5;
 const OFFER_CONFERENCE_BASE_PRICE = 1125;
 const OFFER_CONFERENCE_INCLUDED_PERSONS = 25;
 const OFFER_CONFERENCE_EXTRA_PERSON_PRICE = 29.9;
+const OFFER_BMW_TREASURE_PACKAGES = {
+  package1: {
+    name: "Paket 1",
+    pricePerPerson: 43,
+    food: "Speisenauswahl nach Karte",
+    details: "2 Stunden Bowling inklusive Leihschuhe, 2 Getränkemarken pro Person und Essen nach Vorauswahl aus der Schatzkisten-Speisekarte.",
+    note: "Für maximal 30 Personen. Die Speisenauswahl wird separat abgestimmt."
+  },
+  package2: {
+    name: "Paket 2",
+    pricePerPerson: 45,
+    food: "Pizzabuffet all you can eat",
+    details: "2 Stunden Bowling inklusive Leihschuhe, 2 Getränkemarken pro Person und Pizzabuffet all you can eat.",
+    note: "Personenzahl unbegrenzt. Bitte die Anzahl der Gäste ohne Schweinefleisch bei der Reservierung angeben."
+  },
+  package3: {
+    name: "Paket 3",
+    pricePerPerson: 48,
+    food: "Buffet LA-Bowling",
+    details: "2 Stunden Bowling inklusive Leihschuhe, 2 Getränkemarken pro Person und Buffet LA-Bowling mit Vorspeise, Hauptspeisen und Dessert.",
+    note: "Verfügbar ab 15 Personen."
+  }
+};
 const OFFER_BOWLING_WEEKDAY_LABELS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 const OFFER_RESERVED_AREA_OPTIONS = [
   { value: "", label: "Keine feste Bereichsauswahl" },
@@ -1324,6 +1347,8 @@ function normalizeOfferClient(offer = {}) {
     archived: offer.archived === true,
     confirmed: offer.confirmed === true,
     confirmedAt: offer.confirmed === true ? String(offer.confirmedAt || offer.updatedAt || new Date().toISOString()) : "",
+    offerType: offer.offerType === "bmw-treasure" ? "bmw-treasure" : "standard",
+    bmwTreasurePackage: OFFER_BMW_TREASURE_PACKAGES[offer.bmwTreasurePackage] ? offer.bmwTreasurePackage : "",
     createdAt: String(offer.createdAt || new Date().toISOString()),
     updatedAt: String(offer.updatedAt || offer.createdAt || new Date().toISOString()),
     title: String(offer.title || offer.customerName || "Angebot").trim().slice(0, 120),
@@ -1496,6 +1521,8 @@ function createBlankOfferDraft() {
     customerPhone: "",
     customerAddress: "",
     occasion: "",
+    offerType: "standard",
+    bmwTreasurePackage: "",
     personsAdults: 0,
     personsChildren: 0,
     startTime: "",
@@ -1576,6 +1603,8 @@ function currentOfferDraftFromDom() {
     customerPhone: simpleText("customerPhone"),
     customerAddress: String(field("customerAddress")?.value || "").trim(),
     occasion: simpleText("occasion"),
+    offerType: field("offerType")?.value === "bmw-treasure" ? "bmw-treasure" : "standard",
+    bmwTreasurePackage: String(field("bmwTreasurePackage")?.value || "").trim(),
     personsAdults: cleanOfferIntegerValue(field("personsAdults")?.value),
     personsChildren: cleanOfferIntegerValue(field("personsChildren")?.value),
     startTime: cleanOfferTimeValue(field("startTime")?.value),
@@ -1892,19 +1921,32 @@ function offerReservedAreaPricing(offer) {
   };
 }
 
+function offerBmwTreasurePricing(offer) {
+  const packageKey = offer?.offerType === "bmw-treasure" ? String(offer?.bmwTreasurePackage || "") : "";
+  const selectedPackage = OFFER_BMW_TREASURE_PACKAGES[packageKey] || null;
+  const persons = offerPersonCount(offer);
+  return {
+    packageKey,
+    selectedPackage,
+    persons,
+    total: selectedPackage ? Math.round(persons * selectedPackage.pricePerPerson * 100) / 100 : 0
+  };
+}
+
 function offerTotals(offer) {
   const draft = normalizeOfferClient(offer || {});
   const personCount = offerPersonCount(draft);
   const buffetPricing = offerBuffetPricing(draft);
   const bowlingPricing = offerBowlingPricing(draft.eventDate, draft.bowling);
   const reservedAreaPricing = offerReservedAreaPricing(draft);
+  const bmwTreasurePricing = offerBmwTreasurePricing(draft);
   const extraRows = (draft.costs || []).reduce((sum, row) => sum + (cleanOfferMoneyValue(row.quantity) * cleanOfferMoneyValue(row.unitPrice)), 0);
   const drinksTotal = draft.drinksMode === "custom" ? cleanOfferMoneyValue(draft.drinksCustomPrice) : 0;
   const conferenceExtraPersons = draft.conference?.enabled ? Math.max(0, personCount - OFFER_CONFERENCE_INCLUDED_PERSONS) : 0;
   const conferenceBaseTotal = draft.conference?.enabled ? OFFER_CONFERENCE_BASE_PRICE : 0;
   const conferenceExtraTotal = Math.round(conferenceExtraPersons * OFFER_CONFERENCE_EXTRA_PERSON_PRICE * 100) / 100;
   const conferenceTotal = conferenceBaseTotal + conferenceExtraTotal;
-  const total = conferenceTotal + buffetPricing.total + bowlingPricing.total + reservedAreaPricing.total + drinksTotal + extraRows;
+  const total = bmwTreasurePricing.total + conferenceTotal + buffetPricing.total + bowlingPricing.total + reservedAreaPricing.total + drinksTotal + extraRows;
   return {
     adults: buffetPricing.adults,
     children: buffetPricing.children,
@@ -1925,6 +1967,8 @@ function offerTotals(offer) {
     conferenceExtraPersons,
     conferenceExtraTotal,
     conferenceTotal,
+    bmwTreasureTotal: bmwTreasurePricing.total,
+    bmwTreasurePackage: bmwTreasurePricing.selectedPackage,
     extraRows,
     total
   };
@@ -5790,6 +5834,30 @@ function renderAdminOffers() {
           </div>
         </div>
 
+        <section class="offer-section offer-bmw-template">
+          <div class="offer-section-head">
+            <div>
+              <strong>Angebotsvorlage</strong>
+              <span>Mit BMW Schatzkiste werden Leistungen und Preis automatisch eingesetzt.</span>
+            </div>
+          </div>
+          <div class="offer-grid offer-grid-two">
+            <label>Angebotsart
+              <select data-offer-field="offerType">
+                <option value="standard" ${draft.offerType !== "bmw-treasure" ? "selected" : ""}>Standardangebot</option>
+                <option value="bmw-treasure" ${draft.offerType === "bmw-treasure" ? "selected" : ""}>BMW Schatzkiste</option>
+              </select>
+            </label>
+            <label class="${draft.offerType === "bmw-treasure" ? "" : "hidden"}">Schatzkisten-Paket
+              <select data-offer-field="bmwTreasurePackage">
+                <option value="">Paket auswählen</option>
+                ${Object.entries(OFFER_BMW_TREASURE_PACKAGES).map(([key, item]) => `<option value="${key}" ${draft.bmwTreasurePackage === key ? "selected" : ""}>${escapeHtml(item.name)} · ${formatMoney(item.pricePerPerson)} pro Person</option>`).join("")}
+              </select>
+            </label>
+          </div>
+          ${draft.offerType === "bmw-treasure" ? `<div class="offer-bmw-package-grid">${Object.entries(OFFER_BMW_TREASURE_PACKAGES).map(([key, item]) => `<button class="offer-bmw-package ${draft.bmwTreasurePackage === key ? "is-selected" : ""}" type="button" data-offer-bmw-package="${key}"><span>${escapeHtml(item.name)}</span><strong>${formatMoney(item.pricePerPerson)}</strong><small>pro Person</small><p>${escapeHtml(item.food)}</p></button>`).join("")}</div>${draft.bmwTreasurePackage ? `<p class="offer-pricing-note"><strong>${escapeHtml(OFFER_BMW_TREASURE_PACKAGES[draft.bmwTreasurePackage].name)}:</strong> ${escapeHtml(OFFER_BMW_TREASURE_PACKAGES[draft.bmwTreasurePackage].details)} ${escapeHtml(OFFER_BMW_TREASURE_PACKAGES[draft.bmwTreasurePackage].note)}</p>` : ""}` : ""}
+        </section>
+
         <div class="offer-grid">
           <label>Bezeichnung<input data-offer-field="title" value="${escapeHtml(draft.title)}" placeholder="z.B. Angebot Stoll"></label>
           <label>Angebotsdatum<input data-offer-field="offerDate" type="date" value="${escapeHtml(draft.offerDate)}"></label>
@@ -6179,6 +6247,7 @@ function renderOfferLiveSummary(draftValue) {
   const draft = normalizeOfferClient(draftValue || ensureOfferDraft());
   const totals = offerTotals(draft);
   const services = [
+    totals.bmwTreasurePackage ? `BMW Schatzkiste ${totals.bmwTreasurePackage.name}` : "",
     draft.conference?.enabled ? `Tagungspauschale · ${formatMoney(totals.conferenceTotal)}` : "",
     offerHasBowlingBooking(draft) ? `${draft.bowling?.lanes || 0} Bowlingbahn${Number(draft.bowling?.lanes) === 1 ? "" : "en"}` : "",
     Number(draft.bowling?.shoePersons || 0) ? `${draft.bowling.shoePersons} Leihschuhe` : "",
@@ -6193,6 +6262,7 @@ function renderOfferLiveSummary(draftValue) {
   ].filter(Boolean);
   const timeline = offerTimelineEvents(draft).slice(0, 4);
   const costSummary = [
+    totals.bmwTreasureTotal > 0 ? [`BMW Schatzkiste ${totals.bmwTreasurePackage?.name || ""}`, totals.bmwTreasureTotal] : null,
     totals.conferenceBaseTotal > 0 ? ["Tagungspauschale bis 25 Personen", totals.conferenceBaseTotal] : null,
     totals.conferenceExtraTotal > 0 ? [`${totals.conferenceExtraPersons} zusätzliche Personen`, totals.conferenceExtraTotal] : null,
     totals.bowlingTotal > 0 ? ["Bowling", totals.bowlingTotal] : null,
@@ -6240,6 +6310,7 @@ function setupOfferGuidedEditor(container, draft) {
 
   const directGrids = [...editor.querySelectorAll(":scope > .offer-grid")];
   const sections = {
+    template: offerEditorSectionByTitle(editor, "Angebotsvorlage"),
     customer: offerEditorSectionByTitle(editor, "Kunde aus Kundenstamm"),
     conference: offerEditorSectionByTitle(editor, "Tagungspauschale"),
     area: offerEditorSectionByTitle(editor, "Bereich & Zusatzoptionen"),
@@ -6269,7 +6340,7 @@ function setupOfferGuidedEditor(container, draft) {
     main.append(panel);
     return panel;
   });
-  [directGrids[0], sections.customer].filter(Boolean).forEach((node) => panels[0].append(node));
+  [sections.template, directGrids[0], sections.customer].filter(Boolean).forEach((node) => panels[0].append(node));
   if (directGrids[1]) {
     const contactHeading = document.createElement("div");
     contactHeading.className = "offer-subsection-title";
@@ -6573,6 +6644,8 @@ function renderOfferTextBlockEditor(key, block) {
 function offerFieldNeedsLiveRefresh(target) {
   if (!target) return false;
   const liveFields = new Set([
+    "offerType",
+    "bmwTreasurePackage",
     "eventDate",
     "personsAdults",
     "personsChildren",
@@ -6723,6 +6796,27 @@ function newOfferDraft() {
   renderAdminOffers();
 }
 
+function applyBmwTreasurePackage(draftValue, packageKey) {
+  const selectedPackage = OFFER_BMW_TREASURE_PACKAGES[packageKey];
+  if (!selectedPackage) return normalizeOfferClient(draftValue);
+  const draft = cloneData(draftValue);
+  draft.offerType = "bmw-treasure";
+  draft.bmwTreasurePackage = packageKey;
+  draft.title = `BMW Schatzkiste ${selectedPackage.name}`;
+  draft.occasion = "BMW Schatzkiste";
+  draft.conference = { enabled: false, morningSnackText: "", morningSnackTime: "" };
+  draft.bowling = { tournamentPackage: "", lanes: 0, shoePersons: 0, fromTime: "", toTime: "" };
+  draft.buffet = { templateKey: "", name: "", pricePerPerson: 0, sparklingReception: false, categories: normalizeOfferBuffetCategoriesClient({}) };
+  draft.drinksMode = "menu";
+  draft.drinksCustomText = "";
+  draft.drinksCustomPrice = 0;
+  draft.reservedArea = "";
+  draft.reservedAreaPrice = 0;
+  draft.reservedAreaCampfire = false;
+  draft.costs = [];
+  return normalizeOfferClient(draft);
+}
+
 async function toggleOfferConfirmed(offerId, button) {
   let offer = normalizeOffersClient(state.offers || []).find((item) => item.id === offerId);
   if (!offer) return;
@@ -6820,13 +6914,18 @@ function printOfferDraft() {
   const bowling = offerBowlingPricing(draft.eventDate, draft.bowling);
   const buffetPricing = offerBuffetPricing(draft);
   const reservedAreaPricing = offerReservedAreaPricing(draft);
+  const bmwTreasurePricing = offerBmwTreasurePricing(draft);
   const timelineEvents = offerTimelineEvents(draft);
   const templateBadge = offerTemplateBadgeLabel(draft);
   const includedTextBlocks = draft.textBlocks || {};
-  const drinksByMenuText = includedTextBlocks.drinksByMenu?.enabled ? includedTextBlocks.drinksByMenu.text : "";
+  const drinksByMenuText = bmwTreasurePricing.selectedPackage ? "" : (includedTextBlocks.drinksByMenu?.enabled ? includedTextBlocks.drinksByMenu.text : "");
   const drinksCustomText = draft.drinksMode === "custom" ? (draft.drinksCustomText || "Getränke nach Sonderabsprache") : "";
-  const pricingNoticeText = includedTextBlocks.pricingNotice?.enabled ? includedTextBlocks.pricingNotice.text : "";
-  const cancellationText = includedTextBlocks.cancellationTerms?.enabled ? includedTextBlocks.cancellationTerms.text : "";
+  const pricingNoticeText = bmwTreasurePricing.selectedPackage
+    ? "Die spätestens 48 Stunden vor Veranstaltungsbeginn gemeldete Personenzahl ist die verbindliche Rechnungsgrundlage."
+    : (includedTextBlocks.pricingNotice?.enabled ? includedTextBlocks.pricingNotice.text : "");
+  const cancellationText = bmwTreasurePricing.selectedPackage
+    ? "Bei Nichterscheinen zum reservierten Termin wird die Veranstaltung vollständig berechnet."
+    : (includedTextBlocks.cancellationTerms?.enabled ? includedTextBlocks.cancellationTerms.text : "");
   const reservationText = includedTextBlocks.reservationConfirmation?.enabled ? includedTextBlocks.reservationConfirmation.text : "";
   const vatNoticeText = includedTextBlocks.vatNotice?.enabled ? includedTextBlocks.vatNotice.text : "";
   const win = window.open("", "_blank", "width=1100,height=1400");
@@ -6863,6 +6962,9 @@ function printOfferDraft() {
   const conferenceCostRows = draft.conference?.enabled
     ? `<tr><td><span class="cost-icon">T</span>Tagungspauschale</td><td>Pauschale für bis zu ${OFFER_CONFERENCE_INCLUDED_PERSONS} Personen</td><td>1 Pauschale</td><td>${formatMoney(OFFER_CONFERENCE_BASE_PRICE)}</td><td>${formatMoney(OFFER_CONFERENCE_BASE_PRICE)}</td></tr>
       ${totals.conferenceExtraPersons > 0 ? `<tr><td><span class="cost-icon">+</span>Zusätzliche Personen</td><td>Je weitere Person ab der 26. Person</td><td>${totals.conferenceExtraPersons} Pers.</td><td>${formatMoney(OFFER_CONFERENCE_EXTRA_PERSON_PRICE)}</td><td>${formatMoney(totals.conferenceExtraTotal)}</td></tr>` : ""}`
+    : "";
+  const bmwTreasureCostRows = bmwTreasurePricing.selectedPackage
+    ? `<tr><td><span class="cost-icon">B</span>BMW Schatzkiste ${escapeHtml(bmwTreasurePricing.selectedPackage.name)}</td><td>${escapeHtml(bmwTreasurePricing.selectedPackage.food)}</td><td>${bmwTreasurePricing.persons} Pers.</td><td>${formatMoney(bmwTreasurePricing.selectedPackage.pricePerPerson)}</td><td>${formatMoney(bmwTreasurePricing.total)}</td></tr>`
     : "";
   const bowlingBox = (draft.bowling?.tournamentPackage || draft.bowling?.lanes || draft.bowling?.shoePersons || draft.bowling?.fromTime || draft.bowling?.toTime)
     ? `<div class="box">
@@ -6917,6 +7019,7 @@ function printOfferDraft() {
     ? "Tagungsraum"
     : (reservedAreaPricing.reservedAreaLabel || "LA-Bowling");
   const includedItems = [
+    bmwTreasurePricing.selectedPackage ? { icon: "B", title: `BMW Schatzkiste ${bmwTreasurePricing.selectedPackage.name}`, text: `${bmwTreasurePricing.selectedPackage.details} ${bmwTreasurePricing.selectedPackage.note}` } : null,
     draft.conference?.enabled ? { icon: "T", title: "Tagungspauschale", text: `Bis 25 Personen inklusive · jede weitere Person ${formatMoney(OFFER_CONFERENCE_EXTRA_PERSON_PRICE)}` } : null,
     draft.conference?.enabled ? { icon: "V", title: "Vormittagssnack", text: `${draft.conference.morningSnackTime ? `${draft.conference.morningSnackTime} Uhr · ` : ""}${draft.conference.morningSnackText || "Nach Absprache"}` } : null,
     draft.conference?.enabled ? { icon: "R", title: "Reservierter Bereich", text: "Tagungsraum" } : null,
@@ -6930,7 +7033,7 @@ function printOfferDraft() {
     !draft.conference?.enabled && reservedAreaPricing.reservedAreaLabel ? { icon: "R", title: "Reservierter Bereich", text: reservedAreaPricing.reservedAreaLabel } : null,
     draft.buffet?.sparklingReception ? { icon: "S", title: "Sektempfang", text: `${formatMoney(draft.sparklingReceptionPrice)} pro Person${draft.sparklingReceptionTime ? ` · ${draft.sparklingReceptionTime} Uhr` : ""}` } : null,
     draft.reservedAreaCampfire ? { icon: "L", title: "Lagerfeuer", text: `${formatMoney(draft.campfirePrice)} pauschal${draft.campfireTime ? ` · ${draft.campfireTime} Uhr` : ""}` } : null,
-    draft.drinksMode === "custom"
+    bmwTreasurePricing.selectedPackage ? null : draft.drinksMode === "custom"
       ? { icon: "G", title: "Getränke", text: `${drinksCustomText} · ${formatMoney(totals.drinksTotal)}` }
       : draft.conference?.enabled ? null : { icon: "G", title: "Getränke", text: "Werden laut Karte berechnet" }
   ].filter(Boolean);
@@ -7179,6 +7282,7 @@ function printOfferDraft() {
             <table class="cost-table">
               <thead><tr><th>Position</th><th>Beschreibung</th><th>Anzahl</th><th>Einzelpreis</th><th>Gesamtpreis</th></tr></thead>
               <tbody>
+                ${bmwTreasureCostRows}
                 ${conferenceCostRows}
                 ${buffetCostRows}
                 ${bowlingCostRows}
@@ -19521,6 +19625,14 @@ function bindEvents() {
         return;
       }
     }
+    if (event.target.dataset?.offerField === "bmwTreasurePackage" && event.target.value) {
+      state.offerDraft = applyBmwTreasurePackage(currentOfferDraftFromDom(), event.target.value);
+      state.offerDraftId = state.offerDraft.id;
+      state.offerDraftDirty = true;
+      renderAdminOffers();
+      showToast(`${OFFER_BMW_TREASURE_PACKAGES[event.target.value].name} wurde vollständig übernommen.`);
+      return;
+    }
     if (offerFieldNeedsLiveRefresh(event.target)) {
       const fieldName = event.target.dataset?.offerField || "";
       const focusSelector = fieldName ? `[data-offer-field="${cssEscape(fieldName)}"]` : "";
@@ -19529,6 +19641,15 @@ function bindEvents() {
   }));
 
   $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("click", async (event) => {
+    const bmwPackage = event.target.closest("[data-offer-bmw-package]");
+    if (bmwPackage) {
+      state.offerDraft = applyBmwTreasurePackage(currentOfferDraftFromDom(), bmwPackage.dataset.offerBmwPackage);
+      state.offerDraftId = state.offerDraft.id;
+      state.offerDraftDirty = true;
+      renderAdminOffers();
+      showToast(`${OFFER_BMW_TREASURE_PACKAGES[bmwPackage.dataset.offerBmwPackage].name} wurde vollständig übernommen.`);
+      return;
+    }
     const editorStepButton = event.target.closest("[data-offer-editor-step]");
     if (editorStepButton) {
       state.offerCustomerSearch = offerWorkspaceRoot()?.querySelector("#offerCustomerSearch")?.value || state.offerCustomerSearch || "";
