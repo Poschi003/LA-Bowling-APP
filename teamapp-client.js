@@ -3242,7 +3242,7 @@ function dayReportValuesHtml(report = {}) {
 }
 
 function dayReportA4Html(dateKey, report = {}) {
-  const printableInvoices = reportInvoiceCustomers(report);
+  const printableInvoices = reportTransferInvoiceCustomers(report);
   const invoiceTotalValue = reportTransferInvoiceTotal(report);
   const expenseTotalValue = reportCashExpensesTotal(report);
   const ecTotalValue = reportEcTotal(report);
@@ -3432,6 +3432,7 @@ function reportEmployeesForDate(dateKey, report = {}) {
 }
 
 function a4InvoiceBlock(items = []) {
+  const total = reportItemsTotal(items);
   return `
     <section class="a4-report-block a4-report-compact">
       <h4>Rechnungskunden</h4>
@@ -3448,6 +3449,10 @@ function a4InvoiceBlock(items = []) {
             <strong>${formatReportMoney(invoiceTotal(item))}</strong>
           </div>
         `).join("")}
+        <div class="a4-compact-row a4-invoice-total-row">
+          <strong>Gesamtsumme Rechnungen</strong>
+          <strong>${formatReportMoney(total)}</strong>
+        </div>
       </div>` : `<p class="hint">Keine Rechnungskunden.</p>`}
     </section>
   `;
@@ -4452,10 +4457,11 @@ function normalizedInvoicePaymentMethod(value = "") {
 }
 
 function reportTransferInvoiceTotal(report = {}) {
-  if (report.invoiceTransferAmount !== "" && report.invoiceTransferAmount != null) {
+  const automaticTotal = reportItemsTotal(reportTransferInvoiceCustomers(report));
+  if (report.invoiceTransferAmountManual === true || report.invoiceTransferAmountManual === "true") {
     return reportMoneyNumber(report.invoiceTransferAmount);
   }
-  return reportItemsTotal(reportTransferInvoiceCustomers(report));
+  return automaticTotal || reportMoneyNumber(report.invoiceTransferAmount);
 }
 
 function barTotal(report = {}) {
@@ -4539,7 +4545,7 @@ function currentTerminalFinanceInvoiceEntries() {
 
 function currentTerminalTransferInvoiceTotal(report = {}) {
   const manualField = $("#financeInvoiceTotal");
-  if (manualField && String(manualField.value || "").trim()) {
+  if (manualField?.dataset.manualOverride === "true" && String(manualField.value || "").trim()) {
     return parseMoneyInput(manualField.value);
   }
   const currentEntries = currentTerminalFinanceInvoiceEntries();
@@ -4570,7 +4576,7 @@ function exportDayReport(dateKey) {
   const report = state.dayReports?.[dateKey];
   if (!report) return;
   const lineIf = (key, line) => reportFieldEnabled(key) ? [line] : [];
-  const printableInvoices = reportInvoiceCustomers(report);
+  const printableInvoices = reportTransferInvoiceCustomers(report);
   const invoiceTotalValue = reportTransferInvoiceTotal(report);
   const expenseTotalValue = reportCashExpensesTotal(report);
   const ecTotalValue = reportEcTotal(report);
@@ -8795,7 +8801,8 @@ function reportPreviewFromForm() {
     bowlingCashRevenue,
     gastroCashRevenue,
     revenueGastro,
-    invoiceTransferAmount: $("#financeInvoiceTotal")?.value || state.terminalReport?.invoiceTransferAmount || "",
+    invoiceTransferAmount: $("#financeInvoiceTotal")?.dataset.manualOverride === "true" ? ($("#financeInvoiceTotal")?.value || "") : "",
+    invoiceTransferAmountManual: $("#financeInvoiceTotal")?.dataset.manualOverride === "true",
     miscIncome: miscIncomeFromFormOrReport(),
     barBowling: revenueBowling,
     barGastro: revenueGastro,
@@ -9104,7 +9111,10 @@ function renderTerminal() {
   $("#reportBowlingCashRevenue").value = report.bowlingCashRevenue || "";
   $("#reportGastroCashRevenue").value = report.gastroCashRevenue || "";
   $("#reportRevenueGastro").value = report.revenueGastro || report.barGastro || "";
-  $("#financeInvoiceTotal").value = report.invoiceTransferAmount || (reportTransferInvoiceTotal(report) || "");
+  const invoiceTransferField = $("#financeInvoiceTotal");
+  const storedManualInvoiceTotal = report.invoiceTransferAmountManual === true || report.invoiceTransferAmountManual === "true";
+  invoiceTransferField.dataset.manualOverride = storedManualInvoiceTotal ? "true" : "";
+  invoiceTransferField.value = storedManualInvoiceTotal ? (report.invoiceTransferAmount || "") : (reportTransferInvoiceTotal(report) || "");
   updateReportBarTotal();
   $("#reportNotes").value = report.notes || "";
   renderReportEntryLists(report);
@@ -14634,7 +14644,8 @@ async function collectDayReportPayload() {
     revenueGastro: gastroRevenueFromFormOrReport().toFixed(2),
     barBowling: $("#reportRevenueBowling")?.value || "",
     barGastro: gastroRevenueFromFormOrReport().toFixed(2),
-    invoiceTransferAmount: $("#financeInvoiceTotal")?.value || "",
+    invoiceTransferAmount: $("#financeInvoiceTotal")?.dataset.manualOverride === "true" ? ($("#financeInvoiceTotal")?.value || "") : "",
+    invoiceTransferAmountManual: $("#financeInvoiceTotal")?.dataset.manualOverride === "true",
     tipTotal: tipResult.tipTotal.toFixed(2),
     tipRemainder: tipResult.tipRemainder.toFixed(2),
     tipsByEmployee: Object.fromEntries(tipResult.rows.map((row) => [row.employee, row.tip.toFixed(2)])),
@@ -15425,7 +15436,7 @@ function renderFinanceDashboard(result = calculateTipDistribution(state.terminal
   setFinanceText("#financeKpiHandover", formatMoney(result.chefHandover || 0));
   setFinanceText("#financeResultHandover", formatMoney(result.chefHandover || 0));
   const invoiceField = $("#financeInvoiceTotal");
-  if (invoiceField && document.activeElement !== invoiceField) {
+  if (invoiceField && invoiceField.dataset.manualOverride !== "true" && document.activeElement !== invoiceField) {
     invoiceField.value = Number(result.invoiceTotal || 0).toFixed(2);
   }
   setFinanceText("#financeMiscIncomeTotal", formatMoney(result.miscIncomeTotal || 0));
@@ -21149,6 +21160,9 @@ function bindEvents() {
   $("#saveDayReport")?.addEventListener("click", () => saveClosingData($("#saveDayReport")));
   $("#saveClosingData")?.addEventListener("click", () => saveClosingData($("#saveClosingData")));
 
+  $("#financeInvoiceTotal")?.addEventListener("input", (event) => {
+    event.currentTarget.dataset.manualOverride = "true";
+  });
   ["#reportCashTotal", "#reportCashExpenses", "#reportEcTerminal1", "#reportEcTerminal2", "#reportPersonalConsumption", "#reportRevenueBowling", "#reportRevenueDrinks", "#reportRevenueFood", "#reportRevenueOther", "#reportBowlingCashRevenue", "#reportGastroCashRevenue", "#reportRevenueGastro", "#financeInvoiceTotal"].forEach((selector) => {
     $(selector)?.addEventListener("input", updateReportBarTotal);
   });

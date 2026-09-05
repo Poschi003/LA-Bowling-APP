@@ -16,6 +16,7 @@ const {
   normalizeInvoices,
   sendInvoiceEmail
 } = require("../server/invoice-engine");
+const { syncInvoiceToDayReport } = require("../server/day-report-invoices");
 const {
   applyPushTemplate,
   collectEmployeeTimesheets,
@@ -571,6 +572,7 @@ async function handleInvoiceMutation(body, res) {
     }, appData.invoiceSettings);
     appData.invoices = upsertInvoice(appData.invoices, finalized, appData.invoiceSettings);
     markSourceCustomerDone(appData, finalized);
+    syncInvoiceToDayReport(appData, finalized);
     await writeAppData(appData);
     return sendJson(res, 200, {
       ...invoiceResponse(appData, finalized, "Rechnung finalisiert."),

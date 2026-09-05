@@ -2,6 +2,7 @@
 const crypto = require("crypto");
 const { defaultData } = require("./_data");
 const { sameEmployeeName } = require("./_data");
+const { syncInvoicesForDate } = require("../server/day-report-invoices");
 
 const DEFAULT_TASK_AREAS = [
   { id: "outside", name: "Außenbereich", color: "#16a34a", active: true },
@@ -150,10 +151,12 @@ async function adminCloseCorrection(body, res) {
 
 async function load(body, res, session = {}) {
   const appData = await readAppData();
-  if (require("./_data").syncReportTipsToTimesheets(appData)) await writeAppData(appData);
   const requestedDate = cleanDate(body.date);
   const date = session.correctionDate
     || (body.manualDate === true ? manuallySelectedTerminalDate(appData, requestedDate) : activeTerminalDate(appData, requestedDate));
+  const didTipSync = require("./_data").syncReportTipsToTimesheets(appData);
+  const didInvoiceSync = syncInvoicesForDate(appData, date);
+  if (didTipSync || didInvoiceSync) await writeAppData(appData);
   sendJson(res, 200, terminalPayload(appData, date));
 }
 
@@ -314,6 +317,8 @@ async function saveReport(body, res) {
   const documents = await cleanReportDocuments(body.documents || existing.documents, date);
   upsertCustomerDirectory(appData, invoiceCustomers);
   appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, invoiceTransferAmount: cleanMoney(body.invoiceTransferAmount ?? existing.invoiceTransferAmount), personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), bowlingCashRevenue: cleanMoney(body.bowlingCashRevenue ?? existing.bowlingCashRevenue), gastroCashRevenue: cleanMoney(body.gastroCashRevenue ?? existing.gastroCashRevenue), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, miscIncome, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), extraEmployees: cleanExtraEmployees(body.extraEmployees || existing.extraEmployees), removedEmployees: cleanEmployeeList(body.removedEmployees || existing.removedEmployees), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
+  appData.dayReports[date].invoiceTransferAmountManual = body.invoiceTransferAmountManual === true || body.invoiceTransferAmountManual === "true";
+  syncInvoicesForDate(appData, date);
   applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
   await writeAppData(appData);
   const shouldSendInvoiceNotifications = body.sendInvoiceNotifications === true || body.sendInvoiceNotifications === "true";
