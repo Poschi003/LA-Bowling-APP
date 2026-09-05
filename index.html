@@ -649,8 +649,7 @@
                   <label class="finance-entry-row"><span class="finance-row-icon">€</span><strong>Bar gesamt</strong><input id="reportCashTotal" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
                   <label class="finance-entry-row"><span class="finance-row-icon">EC</span><strong>EC Terminal 1</strong><input id="reportEcTerminal1" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
                   <label class="finance-entry-row"><span class="finance-row-icon">EC</span><strong>EC Terminal 2</strong><input id="reportEcTerminal2" type="number" min="0" step="0.01" placeholder="0,00"><em>€</em></label>
-                  <label class="finance-entry-row"><span class="finance-row-icon">R</span><strong>Rechnung / Überweisung</strong><input id="financeInvoiceTotal" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00"><em>€</em></label>
-                  <div id="financeInvoiceBreakdown" class="finance-invoice-breakdown hidden" aria-label="Rechnungen per Überweisung"></div>
+                  <label class="finance-entry-row finance-invoice-row"><span class="finance-row-icon">R</span><span class="finance-invoice-label"><strong>Rechnung / Überweisung</strong><span id="financeInvoiceBreakdown" class="finance-invoice-breakdown hidden" aria-label="Rechnungen per Überweisung"></span></span><input id="financeInvoiceTotal" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00"><em>€</em></label>
                 </div>
                 <div class="finance-misc-income-block">
                   <div class="finance-subhead"><div><strong>Sonstige Bareinnahmen</strong><small>Im Bar gesamt enthalten · nicht boniert · Bezeichnung erforderlich</small></div><button id="addMiscIncome" type="button"><span aria-hidden="true">+</span> Hinzufügen</button></div>

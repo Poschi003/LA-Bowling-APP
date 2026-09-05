@@ -13969,8 +13969,7 @@ function renderFinanceInvoiceBreakdown(report = {}) {
   target.classList.toggle("hidden", !invoices.length);
   target.innerHTML = invoices.map((item, index) => `
     <div class="finance-invoice-breakdown-row">
-      <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)}</strong>
-      <span>${escapeHtml(formatReportMoney(invoiceTotal(item)))}</span>
+      <strong>${escapeHtml(item.name || `Kunde ${index + 1}`)} · ${escapeHtml(formatReportMoney(invoiceTotal(item)))}</strong>
     </div>
   `).join("");
 }

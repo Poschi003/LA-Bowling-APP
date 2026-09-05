@@ -7473,32 +7473,28 @@ body.terminal-mode:not(.terminal-login-mode) #terminalFinanceSection {
 
 .finance-invoice-breakdown {
   display: grid;
-  gap: 5px;
-  margin: -2px 8px 2px 42px;
-  padding: 7px 9px;
-  border-left: 2px solid #dbe7fb;
+  gap: 2px;
+  margin-top: 3px;
 }
 
 .finance-invoice-breakdown.hidden { display: none; }
 
 .finance-invoice-breakdown-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  display: block;
   color: #536074;
   font-size: .7rem;
 }
 
 .finance-invoice-breakdown-row strong {
-  min-width: 0;
-  color: #263247;
+  display: block;
+  color: #2563a8;
+  font-size: .7rem;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-.finance-invoice-breakdown-row span {
-  flex: 0 0 auto;
-  font-weight: 750;
+.finance-invoice-label {
+  min-width: 0;
 }
 
 .finance-misc-income-block {
@@ -15297,6 +15293,13 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-worktime-group > header {
   min-height: 38px;
   padding: 8px 11px;
   background: #0a1928;
+}
+
+body.terminal-mode:not(.terminal-login-mode) #terminalWorktimePreviewSection #terminalWorktimePreviewList {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
 }
 
 body.terminal-mode:not(.terminal-login-mode) .terminal-worktime-group > header span {
