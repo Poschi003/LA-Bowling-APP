@@ -1106,69 +1106,60 @@ function cleanCleaningTemplateClient(task = {}) {
 const OFFER_BUFFET_TEMPLATES = {
   tradition: {
     name: "Tradition",
-    pricePerPerson: 39.9,
+    pricePerPerson: 32.9,
     categories: {
       vorspeise: [
-        { name: "Obazda-Creme im Weckglas mit Laugen-Crunch" },
-        { name: "Frischer Endiviensalat mit Birnenspalten, Walnüssen und Balsamico-Walnuss-Dressing" }
+        { name: "Obazda-Creme im Weckglas mit Laugen-Crunch" }
       ],
       hauptgericht: [
-        { name: "Langsam geschmorter Schweinebraten von Wammerl und Hals in kräftiger Dunkelbiersauce" },
-        { name: "Rahmschwammerl aus frischen Waldpilzen in feiner Kräuterrahmsoße mit hausgemachtem Semmelknödel" },
-        { name: "Sous-vide gegarte Schweinefiletmedaillons in kräftiger Portwein-Schalottenjus mit Butter-Kartoffelstampf" }
+        { name: "Langsam geschmorter Schweinebraten von Wammerl und Hals in kräftiger Dunkelbiersoße mit Bayerischem Sauerkraut, Kartoffelknödel und hausgemachtem Kartoffelsalat" },
+        { name: "Rahmschwammerl aus frischen Waldpilzen in feiner Kräuterrahmsoße mit hausgemachtem Semmelknödel" }
       ],
       dessert: [
-        { name: "Frisch gebackener Kaiserschmarrn mit Apfelmus" },
-        { name: "Mousse Duo von dunkler und weißer Schokolade mit frischen Beeren" }
+        { name: "Frisch gebackener Kaiserschmarrn mit Apfelmus" }
       ]
     }
   },
   elegant: {
     name: "Elegant",
-    pricePerPerson: 36.9,
+    pricePerPerson: 39.9,
     categories: {
       vorspeise: [
-        { name: "Feine Antipasti-Auswahl" },
-        { name: "Räucherlachs mit Zitronencreme" },
-        { name: "Blattsalat mit Balsamico-Dressing" }
+        { name: "Frischer Endiviensalat mit saftigen Birnenspalten, gerösteten Walnüssen und mildem Balsamico-Walnuss-Dressing, veredelt mit gehobeltem Parmesan" }
       ],
       hauptgericht: [
-        { name: "Kalbsrahmgeschnetzeltes mit feinen Champignons" },
-        { name: "Hähnchenbrust mit Kräutersauce" },
-        { name: "Gebratener Lachs auf Gemüsebett" },
-        { name: "Gemüsegratin mit Kräuterkruste" }
+        { name: "Sous-vide gegarte Schweinefiletmedaillons in kräftiger Portwein-Schalottenjus mit cremigem Butter-Kartoffelstampf und glaciertem Wurzelgemüse" },
+        { name: "Lachsfilet mit Zitronen-Kräuterkruste auf jungem Blattspinat dazu Rosmarin-Ofenkartoffeln" },
+        { name: "Ofengeröstetes Blumenkohlsteak mit feinem Kräuteröl und Joghurt-Knoblauch-Dip" }
       ],
       dessert: [
-        { name: "Panna Cotta mit Beerenragout" }
+        { name: "Mousse Duo von dunkler und weißer Schokolade luftig aufgeschlagen, im Glas serviert und mit frischen Beeren verfeinert" }
       ]
     }
   },
   festlich: {
     name: "Festlich",
-    pricePerPerson: 44.9,
+    pricePerPerson: 36.9,
     categories: {
       vorspeise: [
-        { name: "Carpaccio vom Rind mit Parmesan" },
-        { name: "Antipasti und Brotvariation" }
+        { name: "Cremesuppe von der Marone mit hausgemachten Croutons" }
       ],
       hauptgericht: [
-        { name: "Rinderbraten mit Portweinsauce" },
-        { name: "Putenbraten mit feiner Rahmsauce" },
-        { name: "Lachsfilet mit Kräuterkruste" },
-        { name: "Mediterrane Gemüsevariation" }
+        { name: "Klassisches Wildgulasch vom heimischen Hirsch in aromatischer Wacholder-Rotweinsoße dazu hausgemachte Brezenknödel und Blaukraut" },
+        { name: "Knusprig zarte Hähnchenbrust an Knoblauch-Parmesan-Soße dazu Rosmarin-Ofenkartoffeln" },
+        { name: "Pasta mit gebratenen Kräuterseitlingen in feinem Olivenöl geschwenkt mit frischer Petersilie und gehobeltem Parmesan" }
       ],
       dessert: [
-        { name: "Schokoladenmousse mit frischer Frucht" }
+        { name: "Zartschmelzendes Lebkuchenmousse mit fruchtigem Kirschragout und einem Hauch winterlicher Gewürze" }
       ]
     }
   },
   modern: {
     name: "Modern",
-    pricePerPerson: 37.9,
+    pricePerPerson: 35.9,
     categories: {
       vorspeise: [
-        { name: "Bunte Salatbar" },
-        { name: "Fingerfood mit Dips" }
+        { name: "Gegrillte Antipasti von Zucchini, Paprika und Aubergine, Tomate-Mozzarella mit frischem Basilikum, Rucola mit Parmesanspänen und Balsamico, dazu Ciabatta" }
       ],
       hauptgericht: [
         { name: "Zürcher Geschnetzeltes von der Pute in feiner Conjac-Rahmsoße mit frischen Champignons" },
@@ -1474,7 +1465,19 @@ function normalizeOfferTextBlocksClient(blocks = {}) {
 
 function cleanOfferDateValue(value) {
   const text = String(value || "").trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+  const match = text.match(/^(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4}))$/);
+  if (!match) return "";
+  const year = Number(match[1] || match[6]);
+  const month = Number(match[2] || match[5]);
+  const day = Number(match[3] || match[4]);
+  const date = new Date(year, month - 1, day, 12);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return "";
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function offerDateInputValue(value) {
+  const date = cleanOfferDateValue(value);
+  return date ? formatNumericDate(date) : "";
 }
 
 function cleanOfferIntegerValue(value) {
@@ -5891,12 +5894,12 @@ function renderAdminOffers() {
             <input data-offer-field="startTime" type="hidden" value="${escapeHtml(draft.startTime)}">
             <input data-offer-field="occasion" type="hidden" value="${escapeHtml(draft.occasion)}">
             <input data-offer-field="personsChildren" type="hidden" value="0">
-            <label>Veranstaltungsdatum<input data-offer-field="eventDate" type="date" value="${escapeHtml(draft.eventDate)}"></label>
+            <label>Veranstaltungsdatum<input data-offer-field="eventDate" data-offer-date-input type="text" inputmode="numeric" maxlength="10" value="${escapeHtml(offerDateInputValue(draft.eventDate))}" placeholder="TT.MM.JJJJ"></label>
             <label>Personenzahl<input data-offer-field="personsAdults" type="number" min="1" step="1" value="${escapeHtml(draft.personsAdults)}"></label>
           ` : `
             <label>Bezeichnung<input data-offer-field="title" value="${escapeHtml(draft.title)}" placeholder="z.B. Angebot Stoll"></label>
-            <label>Angebotsdatum<input data-offer-field="offerDate" type="date" value="${escapeHtml(draft.offerDate)}"></label>
-            <label>Veranstaltungsdatum<input data-offer-field="eventDate" type="date" value="${escapeHtml(draft.eventDate)}"></label>
+            <label>Angebotsdatum<input data-offer-field="offerDate" data-offer-date-input type="text" inputmode="numeric" maxlength="10" value="${escapeHtml(offerDateInputValue(draft.offerDate))}" placeholder="TT.MM.JJJJ"></label>
+            <label>Veranstaltungsdatum<input data-offer-field="eventDate" data-offer-date-input type="text" inputmode="numeric" maxlength="10" value="${escapeHtml(offerDateInputValue(draft.eventDate))}" placeholder="TT.MM.JJJJ"></label>
             <label class="offer-arrival-field">Eintreffen der Gäste<input data-offer-field="startTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.startTime)}" placeholder="z. B. 18:00"></label>
             <label>Anlass<input data-offer-field="occasion" value="${escapeHtml(draft.occasion)}" placeholder="z.B. Hochzeitsfeier"></label>
             <label>Erwachsene<input data-offer-field="personsAdults" type="number" min="0" step="1" value="${escapeHtml(draft.personsAdults)}"></label>
@@ -19666,6 +19669,10 @@ function bindEvents() {
       const rawTime = String(event.target.value || "").trim();
       if (/^\d{4}$/.test(rawTime)) event.target.value = cleanOfferTimeValue(rawTime);
     }
+    if (event.target.matches("[data-offer-date-input]")) {
+      const digits = String(event.target.value || "").replace(/\D/g, "").slice(0, 8);
+      if (/^\d{8}$/.test(digits)) event.target.value = `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+    }
     const offerFieldName = event.target.dataset?.offerField || "";
     if (offerFieldName === "bowlingShoePersons") {
       state.offerShoePersonsManual = true;
@@ -19692,6 +19699,15 @@ function bindEvents() {
       if (normalizedTime) event.target.value = normalizedTime;
       else if (String(event.target.value || "").trim()) {
         showToast("Bitte die Uhrzeit als HH:MM eingeben, zum Beispiel 18:00.");
+        event.target.focus();
+        return;
+      }
+    }
+    if (event.target.matches("[data-offer-date-input]")) {
+      const normalizedDate = cleanOfferDateValue(event.target.value);
+      if (normalizedDate) event.target.value = offerDateInputValue(normalizedDate);
+      else if (String(event.target.value || "").trim()) {
+        showToast("Bitte das Datum als TT.MM.JJJJ eingeben, zum Beispiel 07.09.2026.");
         event.target.focus();
         return;
       }
