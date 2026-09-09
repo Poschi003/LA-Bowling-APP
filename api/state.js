@@ -23,6 +23,7 @@ const {
   defaultData,
   handleError,
   publicSettings,
+  purgePreviousMonthTimesheets,
   pushPublicKey,
   pushSubscriptionActive,
   readAppData,
@@ -49,8 +50,9 @@ module.exports = async function handler(req, res) {
     const employeeSession = verifyToken(req.query.employeeToken, "employee");
     const appData = await readAppData();
     const didCleanup = cleanupOldSchedules(appData);
+    const didTimesheetPurge = purgePreviousMonthTimesheets(appData);
     const didTipSync = syncReportTipsToTimesheets(appData);
-    if (didCleanup || didTipSync) await writeAppData(appData);
+    if (didCleanup || didTimesheetPurge || didTipSync) await writeAppData(appData);
     const schedule = appData.schedules[month] || { month, published: false, days: {} };
     const nextMonth = req.query.nextMonth;
     const availabilityMonth = cleanMonth(req.query.availabilityMonth) || cleanMonth(appData.settings.availabilityTargetMonth) || cleanMonth(nextMonth) || month;

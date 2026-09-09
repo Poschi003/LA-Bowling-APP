@@ -1,4 +1,7 @@
 {
+  "crons": [
+    { "path": "/api/state?maintenance=timesheets", "schedule": "0 3 5 * *" }
+  ],
   "rewrites": [
     { "source": "/", "destination": "/api/state?asset=index.html" },
     { "source": "/index.html", "destination": "/api/state?asset=index.html" },

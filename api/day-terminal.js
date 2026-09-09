@@ -2,6 +2,7 @@
 const crypto = require("crypto");
 const { defaultData } = require("./_data");
 const { sameEmployeeName } = require("./_data");
+const { purgePreviousMonthTimesheets } = require("./_data");
 const { syncInvoicesForDate } = require("../server/day-report-invoices");
 
 const DEFAULT_TASK_AREAS = [
@@ -94,7 +95,9 @@ module.exports = async function handler(req, res) {
 async function login(body, res) {
   const appData = await readAppData();
   if (!verifyTerminalCode(appData.settings, body.code)) return sendJson(res, 401, { error: "Code stimmt nicht." });
-  if (require("./_data").syncReportTipsToTimesheets(appData)) await writeAppData(appData);
+  const didTimesheetPurge = purgePreviousMonthTimesheets(appData);
+  const didTipSync = require("./_data").syncReportTipsToTimesheets(appData);
+  if (didTimesheetPurge || didTipSync) await writeAppData(appData);
   sendJson(res, 200, { ok: true, token: signToken({ type: "terminal", terminal: true }), ...terminalPayload(appData, activeTerminalDate(appData, cleanDate(body.date))) });
 }
 
@@ -154,9 +157,10 @@ async function load(body, res, session = {}) {
   const requestedDate = cleanDate(body.date);
   const date = session.correctionDate
     || (body.manualDate === true ? manuallySelectedTerminalDate(appData, requestedDate) : activeTerminalDate(appData, requestedDate));
+  const didTimesheetPurge = purgePreviousMonthTimesheets(appData);
   const didTipSync = require("./_data").syncReportTipsToTimesheets(appData);
   const didInvoiceSync = syncInvoicesForDate(appData, date);
-  if (didTipSync || didInvoiceSync) await writeAppData(appData);
+  if (didTimesheetPurge || didTipSync || didInvoiceSync) await writeAppData(appData);
   sendJson(res, 200, terminalPayload(appData, date));
 }
 

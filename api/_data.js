@@ -144,6 +144,7 @@ const defaultData = {
   availability: {},
   schedules: {},
   timesheets: {},
+  timesheetPurges: {},
   tipPayouts: {},
   assignmentTimes: {},
   cleaningTemplates: defaultCleaningTemplates,
@@ -287,6 +288,7 @@ function mergeData(value) {
     availability: value?.availability || base.availability,
     schedules: normalizeSchedules(value?.schedules || base.schedules),
     timesheets: value?.timesheets || base.timesheets,
+    timesheetPurges: value?.timesheetPurges && typeof value.timesheetPurges === "object" ? value.timesheetPurges : base.timesheetPurges,
     tipPayouts: value?.tipPayouts && typeof value.tipPayouts === "object" ? value.tipPayouts : base.tipPayouts,
     assignmentTimes: normalizeAssignmentTimes(value?.assignmentTimes || base.assignmentTimes),
     cleaningTemplates: Array.isArray(value?.cleaningTemplates) ? value.cleaningTemplates : base.cleaningTemplates,
@@ -1250,6 +1252,7 @@ function syncReportTipsToTimesheets(appData) {
   for (const [date, report] of Object.entries(reports)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !report || typeof report !== "object") continue;
     const month = date.slice(0, 7);
+    if (appData.timesheetPurges?.[month]) continue;
     appData.timesheets[month] ||= {};
     const tips = reportTipsForSync(appData, date, report);
     if (!Object.keys(tips).length) continue;
@@ -1286,6 +1289,34 @@ function syncReportTipsToTimesheets(appData) {
     }
   }
 
+  return changed;
+}
+
+function purgePreviousMonthTimesheets(appData, now = new Date()) {
+  if (!appData || typeof appData !== "object") return false;
+  const berlinDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(now);
+  const [year, month, day] = berlinDate.split("-").map(Number);
+  if (day < 5) return false;
+
+  const previous = new Date(Date.UTC(year, month - 2, 1));
+  const previousMonth = `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, "0")}`;
+  appData.timesheets ||= {};
+  appData.timesheetPurges ||= {};
+
+  let changed = false;
+  if (Object.prototype.hasOwnProperty.call(appData.timesheets, previousMonth)) {
+    delete appData.timesheets[previousMonth];
+    changed = true;
+  }
+  if (!appData.timesheetPurges[previousMonth]) {
+    appData.timesheetPurges[previousMonth] = new Date().toISOString();
+    changed = true;
+  }
   return changed;
 }
 
@@ -1601,6 +1632,7 @@ module.exports = {
   downloadReceipt,
   mergeData,
   publicSettings,
+  purgePreviousMonthTimesheets,
   pushPublicKey,
   pushSubscriptionActive,
   sendInvoiceNotificationEmail,
