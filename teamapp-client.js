@@ -9748,7 +9748,7 @@ function mountTerminalInvoiceTool() {
   const date = $("#terminalInvoicesToolDate");
   if (!state.terminalInvoiceDate) state.terminalInvoiceDate = todayKey();
   if (date) {
-    date.max = todayKey();
+    date.removeAttribute("max");
     date.value = state.terminalInvoiceDate;
   }
   renderTerminalInvoiceToolView();
@@ -14736,7 +14736,10 @@ function invoiceRowHtml(item = {}) {
             <label class="invoice-grid-wide">Rechnungsadresse<textarea data-report-field="address" rows="2" placeholder="Adresse für Rechnung">${escapeHtml(item.address || "")}</textarea></label>
             <label class="invoice-grid-wide">Notiz<input data-report-field="note" value="${escapeHtml(item.note || "")}" placeholder="optional"></label>
           </div>
-          <div class="invoice-wizard-actions"><button class="primary" data-invoice-step-go="2" type="button">Weiter zu Beträge</button></div>
+          <div class="invoice-wizard-actions">
+            <button class="secondary" data-save-invoice-customer-only type="button">Für diesen Eventtag vormerken</button>
+            <button class="primary" data-invoice-step-go="2" type="button">Beträge jetzt ergänzen</button>
+          </div>
         </section>
         <section class="invoice-workflow-block invoice-wizard-panel ${suggestedStep === 2 ? "" : "hidden"}" data-invoice-step-panel="2">
           <div class="invoice-workflow-head">
@@ -21311,9 +21314,9 @@ function bindEvents() {
 
   $("#terminalInvoicesToolDate")?.addEventListener("change", (event) => {
     const date = String(event.target.value || "");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > todayKey()) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       event.target.value = state.terminalInvoiceDate || todayKey();
-      showToast("Bitte ein gültiges Datum bis heute wählen.");
+      showToast("Bitte ein gültiges Veranstaltungsdatum wählen.");
       return;
     }
     state.terminalInvoiceDate = date;
@@ -21492,6 +21495,8 @@ function bindEvents() {
     }
     const draftButton = event.target.closest("[data-save-invoice-draft]");
     if (draftButton) return void saveInvoiceRow(draftButton, false);
+    const saveCustomerOnlyButton = event.target.closest("[data-save-invoice-customer-only]");
+    if (saveCustomerOnlyButton) return void saveInvoiceRow(saveCustomerOnlyButton, false);
     const readyButton = event.target.closest("[data-mark-invoice-ready]");
     if (readyButton) return void saveInvoiceRow(readyButton, true);
     const pdfButton = event.target.closest("[data-open-invoice-builder]");
