@@ -18891,3 +18891,19 @@ body.cocktail-only-mode .cocktail-tool-head h2::after {
 .table-plan-shell.is-work-view [data-table-plan-table="T21"] { left: 5% !important; top: 88% !important; width: 11% !important; height: 7% !important; }
 .table-plan-shell.is-work-view [data-table-plan-table="T22"] { left: 31% !important; top: 88% !important; width: 11% !important; height: 7% !important; }
 .table-plan-shell.is-work-view .table-plan-new-reservation { align-self: start; flex: 0 0 44px; width: 100%; min-height: 44px; height: 44px; max-height: 44px; padding: 10px 14px; }
+.invoice-field-error {
+  display: block;
+  margin-top: 6px;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.invoice-field-error.hidden {
+  display: none;
+}
+
+[data-report-field="paymentMethod"][aria-invalid="true"] {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgb(220 38 38 / 14%);
+}

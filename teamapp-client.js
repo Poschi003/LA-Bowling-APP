@@ -9813,6 +9813,18 @@ function showInvoiceWizardStep(row, step) {
     row.querySelector('[data-report-field="name"]')?.focus();
     return;
   }
+  const paymentSelect = row.querySelector('[data-report-field="paymentMethod"]');
+  const paymentError = row.querySelector("[data-invoice-payment-error]");
+  if (targetStep === 3 && !String(paymentSelect?.value || "").trim()) {
+    paymentSelect?.setAttribute("aria-invalid", "true");
+    paymentError?.classList.remove("hidden");
+    showToast("Bitte zuerst die Zahlungsart wählen.");
+    paymentSelect?.focus();
+    paymentSelect?.scrollIntoView({ block: "center", behavior: "smooth" });
+    return;
+  }
+  paymentSelect?.removeAttribute("aria-invalid");
+  paymentError?.classList.add("hidden");
   row.querySelectorAll("[data-invoice-step-panel]").forEach((panel) => {
     panel.classList.toggle("hidden", Number(panel.dataset.invoiceStepPanel) !== targetStep);
   });
@@ -14754,6 +14766,7 @@ function invoiceRowHtml(item = {}) {
                 <option value="EC"${item.paymentMethod === "EC" ? " selected" : ""}>EC</option>
                 <option value="Überweisung"${item.paymentMethod === "Überweisung" ? " selected" : ""}>Überweisung</option>
               </select>
+              <span class="invoice-field-error hidden" data-invoice-payment-error>Bitte eine Zahlungsart wählen, dann geht es weiter zu Beleg &amp; Abschluss.</span>
             </label>
           </div>
           <div class="report-entry-grid invoice-amount-grid">
