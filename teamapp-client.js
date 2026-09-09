@@ -14693,12 +14693,12 @@ function invoiceRowHtml(item = {}) {
     ? `<span class="hint">Bisherige getrennte Belege: ${legacyReceipts.map(({ label, receipt }) => `${escapeHtml(label)} ${escapeHtml(receipt.receiptName || "")}`).join(" | ")}</span>`
     : "";
   return `
-    <details class="report-entry invoice-entry ${statusClass}" data-report-entry="invoice" data-id="${escapeHtml(id)}" data-invoice-date="${escapeHtml(item.sourceDate || "")}" data-saved="${isSaved ? "true" : "false"}" ${isReady ? "" : "open"}>
+    <details class="report-entry invoice-entry ${statusClass}" data-report-entry="invoice" data-id="${escapeHtml(id)}" data-invoice-date="${escapeHtml(item.sourceDate || "")}" data-saved="${isSaved ? "true" : "false"}" ${isSaved || isReady ? "" : "open"}>
       <summary class="invoice-entry-summary">
         <div>
           <strong>${escapeHtml(item.name || "Neuer Rechnungskunde")}</strong>
           <span>${escapeHtml(item.contact || "Kontakt offen")} · ${escapeHtml(item.email || "E-Mail offen")}</span>
-          <small class="invoice-entry-next-step">${escapeHtml(workflow.title)}: ${escapeHtml(workflow.detail)}</small>
+          <small class="invoice-entry-next-step">${item.sourceDate ? `${escapeHtml(formatNumericDate(item.sourceDate))} · ` : ""}${escapeHtml(workflow.title)}: ${escapeHtml(workflow.detail)}</small>
         </div>
         <span class="invoice-pill ${statusClass}">${escapeHtml(invoiceStatusText(item))}</span>
         <span class="invoice-entry-total">${formatReportMoney(total)}</span>
@@ -15156,6 +15156,7 @@ async function loadCustomerInvoiceDesk() {
     body: JSON.stringify({
       action: "load",
       date: state.invoiceDate || todayKey(),
+      manualDate: true,
       terminalToken: state.invoiceTerminalToken
     })
   });

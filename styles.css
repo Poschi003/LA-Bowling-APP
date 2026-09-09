@@ -10269,19 +10269,51 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-overview-card .terminal-e
 }
 
 .customer-invoice-panel {
-  max-width: 860px;
+  max-width: 1120px;
   margin: 0 auto;
 }
 
 .customer-invoice-form {
   display: grid;
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.customer-invoice-form > * {
+  grid-column: 1 / -1;
+}
+
+.customer-event-date {
+  max-width: 360px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 12px;
+}
+
+.customer-event-date small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .customer-invoice-create-body {
   display: grid;
   gap: 14px;
   padding: 14px;
+}
+
+.customer-invoice-create-section,
+.customer-invoice-staff .report-subsection {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.customer-invoice-create-section > summary,
+.customer-invoice-staff .report-subsection > summary {
+  padding: 14px 16px;
 }
 
 .customer-invoice-create-hint {
@@ -10404,7 +10436,7 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-overview-card .terminal-e
 }
 
 .customer-invoice-mode main {
-  width: min(920px, calc(100% - 32px));
+  width: min(1180px, calc(100% - 32px));
 }
 
 .chef-dashboard {

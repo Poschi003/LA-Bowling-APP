@@ -1135,12 +1135,12 @@
           </div>
         </div>
         <details class="report-subsection customer-invoice-create-section" open>
-          <summary>Neue Veranstaltungsrechnung</summary>
+          <summary>Rechnungskunde für zukünftiges Event</summary>
           <div class="customer-invoice-create-body">
-            <p class="hint customer-invoice-create-hint">Veranstaltungskunde direkt anlegen. Betrag, Zahlungsart und Beleg ergänzt ihr danach im Mitarbeiterbereich.</p>
+            <p class="hint customer-invoice-create-hint">Kunde jetzt für einen späteren Veranstaltungstag vormerken. Beträge, Zahlungsart und Beleg werden erst nach dem Event ergänzt.</p>
             <form id="customerInvoiceForm" class="customer-invoice-form">
               <p class="customer-firming-hint">Bitte auf korrekte Firmierung achten.</p>
-              <label>Datum<input id="customerInvoiceDate" type="date"></label>
+              <label class="customer-event-date">Veranstaltungsdatum<input id="customerInvoiceDate" type="date" required><small>Der Kunde erscheint automatisch beim ausgewählten Veranstaltungstag.</small></label>
               <div class="form-grid">
                 <label>Firma / Name<input id="customerName" required autocomplete="organization"></label>
                 <label>Ansprechpartner<input id="customerContact" required autocomplete="name"></label>
@@ -1154,7 +1154,7 @@
                 <label>Tipp<input id="customerTip" placeholder="optional"></label>
                 <label>Notiz<textarea id="customerNote" rows="3"></textarea></label>
               </div>
-              <button id="submitCustomerInvoice" class="primary" type="submit">Neue Rechnung anlegen</button>
+              <button id="submitCustomerInvoice" class="primary" type="submit">Kunde für Event vormerken</button>
               <p id="customerInvoiceStatus" class="action-status"></p>
             </form>
           </div>
@@ -1162,8 +1162,8 @@
         <section class="customer-invoice-staff">
           <div class="customer-invoice-staff-head">
             <div>
-              <h3>Geplante Veranstaltungsrechnungen</h3>
-              <p>Bestehende Veranstaltungsrechnungen ergänzen oder neue direkt aus dem Bowling-Kundenstamm anlegen.</p>
+              <h3>Vorgemerkte Rechnungskunden</h3>
+              <p>Kunden nach Veranstaltungstag öffnen und erst nach dem Event vervollständigen.</p>
             </div>
             <button id="lockCustomerInvoiceStaff" class="secondary hidden" type="button">Sperren</button>
           </div>
@@ -1172,7 +1172,7 @@
             <button id="unlockCustomerInvoiceStaff" class="primary" type="button">Mitarbeiterbereich öffnen</button>
           </div>
           <div id="customerInvoiceStaffArea" class="customer-invoice-staff-area hidden">
-            <details class="report-subsection customer-master-section" open>
+            <details class="report-subsection customer-master-section">
               <summary>Aus Bowling-Kundenstamm</summary>
               <div class="customer-master-tools">
                 <label>Kunde suchen<input id="customerMasterSearch" placeholder="Name, Firma, Ansprechpartner"></label>
@@ -1180,12 +1180,12 @@
               </div>
               <div id="customerMasterPreview" class="customer-master-preview"></div>
               <div class="day-report-actions">
-                <button id="addCustomerFromMaster" class="primary" type="button">Neue Rechnung aus Kundenstamm anlegen</button>
+                <button id="addCustomerFromMaster" class="primary" type="button">Kunde für diesen Tag vormerken</button>
               </div>
               <p class="hint customer-master-hint">Bestehende Kundendaten übernehmen und direkt als neue geplante Rechnung anlegen.</p>
             </details>
             <details class="report-subsection" open>
-              <summary>Geplante Veranstaltungsrechnungen</summary>
+              <summary>Rechnungskunden am gewählten Tag</summary>
               <div id="customerInvoiceWorkList" class="report-entry-list"></div>
             </details>
             <details id="customerInvoiceBuilderSection" class="report-subsection hidden">
