@@ -1991,6 +1991,9 @@ function offerTotals(offer) {
     sparklingReceptionTotal: buffetPricing.sparklingReceptionTotal,
     buffetTotal: buffetPricing.total,
     bowlingGameTotal: bowlingPricing.gameTotal,
+    bowlingGrossTotal: bowlingPricing.grossTotal,
+    bowlingDiscountPercent: bowlingPricing.discountPercent,
+    bowlingDiscountAmount: bowlingPricing.discountAmount,
     tournamentTotal: bowlingPricing.tournamentCost,
     bowlingTotal: bowlingPricing.total,
     reservedAreaTotal: reservedAreaPricing.total,
@@ -5835,7 +5838,7 @@ function renderAdminOffers() {
         <button class="secondary" type="button" data-offer-duplicate>Duplizieren</button>
         <button class="secondary" type="button" data-offer-toggle-archive>${draft.archived ? "Archivierung aufheben" : "Archivieren"}</button>
         <button class="secondary danger-lite" type="button" data-offer-delete>Löschen</button>
-        <button class="secondary" type="button" data-offer-print>PDF / Drucken</button>
+        <button class="secondary" type="button" data-offer-print>Vollständige Vorschau</button>
       </div>
       <div class="offer-toolbar-stats">
         <span class="offer-stat"><small>Personen</small><strong>${totals.personCount}</strong></span>
@@ -6320,14 +6323,15 @@ function renderOfferLiveSummary(draftValue) {
     totals.bmwExtraTotal > 0 ? [draft.bmwExtraText || "Zusatzoption", totals.bmwExtraTotal] : null,
     totals.conferenceBaseTotal > 0 ? ["Tagungspauschale bis 25 Personen", totals.conferenceBaseTotal] : null,
     totals.conferenceExtraTotal > 0 ? [`${totals.conferenceExtraPersons} zusätzliche Personen`, totals.conferenceExtraTotal] : null,
-    totals.bowlingTotal > 0 ? ["Bowling", totals.bowlingTotal] : null,
+    totals.bowlingGrossTotal > 0 ? ["Bowling regulär", totals.bowlingGrossTotal] : null,
+    totals.bowlingDiscountAmount > 0 ? [`${draft.bowling?.discountLabel || "Bowling-Rabatt"} (${formatOfferUnits(totals.bowlingDiscountPercent)} %)`, -totals.bowlingDiscountAmount] : null,
     totals.buffetTotal > 0 ? ["Buffet", totals.buffetTotal] : null,
     totals.reservedAreaTotal > 0 ? ["Bereich", totals.reservedAreaTotal] : null,
     totals.drinksTotal > 0 ? ["Getränke", totals.drinksTotal] : null,
     totals.extraRows > 0 ? ["Zusatzpositionen", totals.extraRows] : null
   ].filter(Boolean);
   return `
-    <div class="offer-live-summary-head"><small>Live-Vorschau</small><strong>Angebot</strong><span>Aktualisiert sich während der Eingabe</span></div>
+    <div class="offer-live-summary-head"><small>Kurzvorschau</small><strong>Angebot</strong><span>Die vollständige Dokumentansicht erscheint nach „Angebot fertig“.</span></div>
     <div class="offer-live-summary-customer">
       <small>Kundendaten</small>
       <strong>${escapeHtml(draft.customerName || "Kunde noch offen")}</strong>
@@ -6452,13 +6456,13 @@ function setupOfferGuidedEditor(container, draft) {
   [sections.texts, directGrids[2]].filter(Boolean).forEach((node) => panels[3].append(node));
   const reviewActions = document.createElement("div");
   reviewActions.className = "offer-review-actions";
-  reviewActions.innerHTML = `<button class="secondary" type="button" data-offer-save>Entwurf speichern</button><button class="primary" type="button" data-offer-print>Vorschau / Drucken</button>`;
+  reviewActions.innerHTML = `<button class="secondary" type="button" data-offer-save>Entwurf speichern</button>`;
   panels[3].append(reviewActions);
   const footer = document.createElement("footer");
   footer.className = "offer-step-footer";
   const previousStep = bmwSimpleMode ? 1 : Math.max(1, step - 1);
   const nextStep = bmwSimpleMode ? 4 : Math.min(4, step + 1);
-  footer.innerHTML = `<button class="secondary" type="button" data-offer-editor-step="${previousStep}" ${step === 1 ? "disabled" : ""}>Zurück</button><span>${bmwSimpleMode ? (step === 4 ? "Prüfen" : "Schatzkiste erfassen") : `Schritt ${step} von 4`}</span><button class="primary" type="button" data-offer-editor-step="${nextStep}" ${step === 4 ? "disabled" : ""}>Weiter</button>`;
+  footer.innerHTML = `<button class="secondary" type="button" data-offer-editor-step="${previousStep}" ${step === 1 ? "disabled" : ""}>Zurück</button><span>${bmwSimpleMode ? (step === 4 ? "Prüfen" : "Schatzkiste erfassen") : `Schritt ${step} von 4`}</span>${step === 4 ? `<button class="primary" type="button" data-offer-print>Angebot fertig – Vorschau anzeigen</button>` : `<button class="primary" type="button" data-offer-editor-step="${nextStep}">Weiter</button>`}`;
   main.append(footer);
   const summary = document.createElement("aside");
   summary.id = "offerLiveSummary";
