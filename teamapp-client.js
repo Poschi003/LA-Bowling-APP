@@ -12144,9 +12144,24 @@ function terminalTableTimeRange(reservation = {}) {
   return reservation.timeEnd ? `${start}–${reservation.timeEnd}` : start;
 }
 
-function terminalTablePreparationText(reservation = {}) {
+function terminalTableBookingNumber(reservation = {}, reservations = []) {
+  const selected = new Set(reservation.tableIds || []);
+  const sameTables = sortTerminalTableReservations(reservations.filter((item) => (
+    item.tableIds?.some((tableId) => selected.has(tableId))
+  )), "time");
+  const index = sameTables.findIndex((item) => item.id === reservation.id);
+  return index >= 0 ? index + 1 : 1;
+}
+
+function terminalTableBookingLabel(reservation = {}, reservations = []) {
+  const number = terminalTableBookingNumber(reservation, reservations);
+  return number > 1 ? `${number}. Belegung` : "";
+}
+
+function terminalTablePreparationText(reservation = {}, reservations = []) {
   const tableIds = sortTerminalTableIds(reservation.tableIds || []);
   const parts = [];
+  if (terminalTableBookingNumber(reservation, reservations) > 1) parts.push("Nach Vorbelegung neu vorbereiten");
   if (tableIds.length > 1) parts.push(`${terminalTableLabelText(tableIds)} zusammenschieben`);
   const marker = cleanTerminalTableMarker(reservation.marker);
   if (marker && marker !== "normal") parts.push(terminalTableMarkerConfig(marker).label);
@@ -12226,7 +12241,8 @@ function terminalTableReservationOverviewHtml(reservations = []) {
     <div class="table-plan-overview-list">
       ${sortTerminalTableReservations(reservations, "time").map((reservation) => {
         const status = cleanTerminalTableReservationStatus(reservation.status);
-        const statusLabel = status === "arrived" ? "Besetzt" : terminalTableReservationStatusLabel(status);
+        const bookingLabel = terminalTableBookingLabel(reservation, reservations);
+        const statusLabel = bookingLabel || (status === "arrived" ? "Besetzt" : terminalTableReservationStatusLabel(status));
         return `
         <button class="table-plan-overview-row ${state.terminalTableDraft?.id === reservation.id ? "is-active" : ""}" type="button" data-table-plan-edit="${escapeHtml(reservation.id)}">
           <span class="table-plan-overview-row-head">
@@ -12897,11 +12913,11 @@ function terminalTablePrintListHtml(dateKey, reservations = [], staffAssignments
             ${reservations.map((reservation) => `
               <tr class="${state.terminalTableDraft?.id === reservation.id ? "is-active" : ""}">
                 <td>${escapeHtml(terminalTableTimeRange(reservation))}</td>
-                <td>${escapeHtml(reservation.name || "-")}</td>
+                <td>${terminalTableBookingLabel(reservation, reservations) ? `<span class="table-plan-booking-sequence">${escapeHtml(terminalTableBookingLabel(reservation, reservations))}</span>` : ""}${escapeHtml(reservation.name || "-")}</td>
                 <td>${escapeHtml(String(reservation.people || 0))}</td>
                 <td>${escapeHtml(terminalTableLabelText(reservation.tableIds))}</td>
                 <td>${escapeHtml(terminalTableAreaText(reservation.tableIds))}</td>
-                <td><strong>${escapeHtml(terminalTablePreparationText(reservation))}</strong></td>
+                <td><strong>${escapeHtml(terminalTablePreparationText(reservation, reservations))}</strong></td>
                 <td>${escapeHtml(reservation.note || "-")}</td>
                 <td class="table-plan-print-action-cell">
                   <button class="secondary" type="button" data-table-plan-edit="${escapeHtml(reservation.id)}">Bearbeiten</button>
@@ -14180,9 +14196,9 @@ function renderTerminalTableLite() {
           <div class="terminal-table-lite-row" role="row">
             <span>${escapeHtml(terminalTableTimeRange(reservation))}</span>
             <span>${escapeHtml(terminalTableLabelText(reservation.tableIds))}</span>
-            <span>${escapeHtml(reservation.name || "Reservierung")}</span>
+            <span>${terminalTableBookingLabel(reservation, reservations) ? `<strong class="terminal-table-lite-sequence">${escapeHtml(terminalTableBookingLabel(reservation, reservations))}</strong>` : ""}${escapeHtml(reservation.name || "Reservierung")}</span>
             <span>${escapeHtml(String(reservation.people || 0))}</span>
-            <span>${escapeHtml(terminalTablePreparationText(reservation))}</span>
+            <span>${escapeHtml(terminalTablePreparationText(reservation, reservations))}</span>
           </div>
         `).join("")}
       </div>
