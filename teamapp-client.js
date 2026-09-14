@@ -1448,6 +1448,7 @@ function normalizeOfferBowlingClient(bowling = {}) {
     lanes: cleanOfferIntegerValue(bowling?.lanes),
     shoePersons: cleanOfferIntegerValue(bowling?.shoePersons),
     discountPercent: Math.min(100, cleanOfferMoneyValue(bowling?.discountPercent)),
+    discountLabel: String(bowling?.discountLabel || "Bowling-Rabatt").trim().slice(0, 120),
     fromTime: cleanOfferTimeValue(bowling?.fromTime),
     toTime: cleanOfferTimeValue(bowling?.toTime)
   };
@@ -1565,6 +1566,7 @@ function createBlankOfferDraft() {
       lanes: 0,
       shoePersons: 0,
       discountPercent: 0,
+      discountLabel: "Bowling-Rabatt",
       fromTime: "",
       toTime: ""
     },
@@ -1651,6 +1653,7 @@ function currentOfferDraftFromDom() {
       lanes: cleanOfferIntegerValue(field("bowlingLanes")?.value),
       shoePersons: cleanOfferIntegerValue(field("bowlingShoePersons")?.value),
       discountPercent: Math.min(100, cleanOfferMoneyValue(field("bowlingDiscountPercent")?.value)),
+      discountLabel: String(field("bowlingDiscountLabel")?.value || "Bowling-Rabatt").trim().slice(0, 120),
       fromTime: cleanOfferTimeValue(field("bowlingFromTime")?.value),
       toTime: cleanOfferTimeValue(field("bowlingToTime")?.value)
     },
@@ -1888,7 +1891,7 @@ function offerBowlingPricing(dateKey, bowling = {}) {
   const gameTotal = Math.round((laneCost + shoeCost) * 100) / 100;
   const grossTotal = Math.round((gameTotal + tournamentCost) * 100) / 100;
   const discountPercent = Math.min(100, cleanOfferMoneyValue(normalized.discountPercent));
-  const discountAmount = Math.round(grossTotal * discountPercent) / 100;
+  const discountAmount = Math.round(laneCost * discountPercent) / 100;
   const total = Math.round((grossTotal - discountAmount) * 100) / 100;
   const rateLabel = plan.segments.length
     ? plan.segments.map((segment) => `${segment.label}: ${formatMoney(segment.rate)}/Std pro Bahn`).join(" · ")
@@ -6073,7 +6076,8 @@ function renderAdminOffers() {
             </label>
             <label>Bahnen Anzahl<input data-offer-field="bowlingLanes" type="number" min="0" step="1" value="${escapeHtml(draft.bowling?.lanes)}"></label>
             <label>Leihschuhe Personen<input data-offer-field="bowlingShoePersons" type="number" min="0" step="1" value="${escapeHtml(draft.bowling?.shoePersons)}"><small class="offer-field-help">Automatisch aus der Personenzahl, weiterhin frei änderbar.</small></label>
-            <label>Bowling-Rabatt (%)<input data-offer-field="bowlingDiscountPercent" type="number" min="0" max="100" step="0.1" value="${escapeHtml(draft.bowling?.discountPercent)}" placeholder="0"><small class="offer-field-help">Wird auf den gesamten Bowlingpreis angewendet.</small></label>
+            <label>Rabatt-Bezeichnung<input data-offer-field="bowlingDiscountLabel" value="${escapeHtml(draft.bowling?.discountLabel)}" placeholder="z. B. Firmenrabatt"></label>
+            <label>Rabatt auf Stundenpreis (%)<input data-offer-field="bowlingDiscountPercent" type="number" min="0" max="100" step="0.1" value="${escapeHtml(draft.bowling?.discountPercent)}" placeholder="0"><small class="offer-field-help">Gilt nur für die Bahnmiete. Leihschuhe und Turnierpaket bleiben unverändert.</small></label>
             <label>Bowling von<input data-offer-field="bowlingFromTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.bowling?.fromTime)}" placeholder="HH:MM"></label>
             <label>Bowling bis<input data-offer-field="bowlingToTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.bowling?.toTime)}" placeholder="HH:MM"></label>
           </div>
@@ -6084,7 +6088,7 @@ function renderAdminOffers() {
             <span class="offer-stat"><small>Bahnkosten</small><strong>${formatMoney(bowling.laneCost)}</strong></span>
             <span class="offer-stat"><small>Leihschuhe</small><strong>${formatMoney(bowling.shoeCost)}</strong></span>
             <span class="offer-stat"><small>Turnierpaket</small><strong>${formatMoney(bowling.tournamentCost)}</strong></span>
-            ${bowling.discountPercent > 0 ? `<span class="offer-stat offer-stat-discount"><small>Rabatt ${formatOfferUnits(bowling.discountPercent)} %</small><strong>-${formatMoney(bowling.discountAmount)}</strong></span>` : ""}
+            ${bowling.discountPercent > 0 ? `<span class="offer-stat offer-stat-discount"><small>${escapeHtml(bowling.discountLabel)} ${formatOfferUnits(bowling.discountPercent)} %</small><strong>-${formatMoney(bowling.discountAmount)}</strong></span>` : ""}
             <span class="offer-stat offer-stat-total"><small>Bowling gesamt</small><strong>${formatMoney(bowling.total)}</strong></span>
           </div>
           ${bowling.tournamentPackageLabel ? `<p class="offer-pricing-note"><strong>${escapeHtml(bowling.tournamentPackageLabel)}</strong>: ${escapeHtml(bowling.tournamentPackageDescription)}</p>` : ""}
@@ -7051,7 +7055,7 @@ function printOfferDraft() {
             <div class="kv"><strong>Spielzeit</strong>${escapeHtml(draft.bowling?.fromTime || "-")} bis ${escapeHtml(draft.bowling?.toTime || "-")}</div>
             <div class="kv"><strong>Spieldauer</strong>${escapeHtml(bowling.durationLabel)}</div>
             <div class="kv"><strong>Öffnungszeit</strong>${escapeHtml(bowling.openingHours || "-")}</div>
-            ${bowling.discountPercent > 0 ? `<div class="kv"><strong>Bowling regulär</strong>${formatMoney(bowling.grossTotal)}</div><div class="kv"><strong>Rabatt</strong>${escapeHtml(formatOfferUnits(bowling.discountPercent))} % / -${formatMoney(bowling.discountAmount)}</div>` : ""}
+            ${bowling.discountPercent > 0 ? `<div class="kv"><strong>Bowling regulär</strong>${formatMoney(bowling.grossTotal)}</div><div class="kv"><strong>${escapeHtml(bowling.discountLabel)}</strong>${escapeHtml(formatOfferUnits(bowling.discountPercent))} % auf Bahnmiete / -${formatMoney(bowling.discountAmount)}</div>` : ""}
             <div class="kv"><strong>Bowling gesamt</strong>${formatMoney(bowling.total)}</div>
           </div>
           ${bowling.tournamentPackageDescription ? `<p class="muted">${escapeHtml(bowling.tournamentPackageDescription)}</p>` : ""}
@@ -7064,7 +7068,7 @@ function printOfferDraft() {
       ${bowling.laneCost > 0 ? `<tr><td><span class="cost-icon">B</span>Bowling</td><td>${escapeHtml(`${bowling.durationLabel} inkl. Bahnmiete`)}</td><td>${escapeHtml(`${draft.bowling?.lanes || 0} Bahn(en)`)}</td><td>laut Tarif</td><td>${formatMoney(bowling.laneCost)}</td></tr>` : ""}
       ${bowling.shoeCost > 0 ? `<tr><td><span class="cost-icon">S</span>Leihschuhe</td><td>Leihschuhe für die Gäste</td><td>${escapeHtml(`${draft.bowling?.shoePersons || 0} Pers.`)}</td><td>${formatMoney(OFFER_BOWLING_SHOE_PRICE)}</td><td>${formatMoney(bowling.shoeCost)}</td></tr>` : ""}
       ${bowling.tournamentCost > 0 ? `<tr><td><span class="cost-icon">T</span>${escapeHtml(bowling.tournamentPackageLabel || "Turnierpaket")}</td><td>${escapeHtml(bowling.tournamentPackageDescription || "Zusatzpaket")}</td><td>1</td><td>${formatMoney(bowling.tournamentCost)}</td><td>${formatMoney(bowling.tournamentCost)}</td></tr>` : ""}
-      ${bowling.discountAmount > 0 ? `<tr class="discount-row"><td><span class="cost-icon">%</span>Bowling-Rabatt</td><td>Rabatt auf den gesamten Bowlingpreis</td><td>${escapeHtml(formatOfferUnits(bowling.discountPercent))} %</td><td></td><td>-${formatMoney(bowling.discountAmount)}</td></tr>` : ""}
+      ${bowling.discountAmount > 0 ? `<tr class="discount-row"><td><span class="cost-icon">%</span>${escapeHtml(bowling.discountLabel)}</td><td>Rabatt ausschließlich auf die Bahnmiete</td><td>${escapeHtml(formatOfferUnits(bowling.discountPercent))} %</td><td></td><td>-${formatMoney(bowling.discountAmount)}</td></tr>` : ""}
     `
     : "";
   const buffetCostRows = buffetPricing.buffetBaseTotal > 0 || buffetPricing.sparklingReceptionTotal > 0

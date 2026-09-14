@@ -1121,6 +1121,7 @@ function normalizeOffer(offer = {}) {
       lanes: cleanOfferInteger(bowling.lanes),
       shoePersons: cleanOfferInteger(bowling.shoePersons),
       discountPercent: Math.min(100, cleanOfferMoney(bowling.discountPercent)),
+      discountLabel: String(bowling.discountLabel || "Bowling-Rabatt").trim().slice(0, 120),
       fromTime: cleanTime(bowling.fromTime),
       toTime: cleanTime(bowling.toTime)
     },
