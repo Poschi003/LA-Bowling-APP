@@ -2121,6 +2121,15 @@ button.employee-badge-stat {
   background: var(--brand-soft);
 }
 
+.offer-stat-discount {
+  border-color: rgba(22, 163, 74, 0.28);
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.offer-stat-discount strong {
+  color: #15803d;
+}
+
 .offer-workspace-grid {
   display: grid;
   grid-template-columns: minmax(250px, 280px) minmax(0, 1fr);
