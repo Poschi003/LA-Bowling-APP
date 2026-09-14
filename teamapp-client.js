@@ -5835,7 +5835,7 @@ function renderAdminOffers() {
     <div class="offer-toolbar">
       <div class="offer-toolbar-actions">
         <button class="secondary" type="button" data-offer-save>Speichern</button>
-        <button class="secondary" type="button" data-offer-duplicate>Duplizieren</button>
+        <button class="secondary" type="button" data-offer-duplicate>Für weiteren Termin kopieren</button>
         <button class="secondary" type="button" data-offer-toggle-archive>${draft.archived ? "Archivierung aufheben" : "Archivieren"}</button>
         <button class="secondary danger-lite" type="button" data-offer-delete>Löschen</button>
         <button class="secondary" type="button" data-offer-print>Vollständige Vorschau</button>
@@ -6850,12 +6850,20 @@ function duplicateCurrentOffer() {
   clone.id = cryptoId();
   clone.createdAt = new Date().toISOString();
   clone.updatedAt = clone.createdAt;
-  clone.title = `${clone.title || "Angebot"} Kopie`;
+  clone.title = `${clone.title || "Angebot"} – weiterer Termin`;
+  clone.eventDate = "";
+  clone.confirmed = false;
+  clone.confirmedAt = "";
+  clone.archived = false;
   state.offerDraft = normalizeOfferClient(clone);
   state.offerDraftId = state.offerDraft.id;
-  state.offerDraftDirty = false;
+  state.offerDraftDirty = true;
+  state.offerEditorStep = 1;
   renderAdminOffers();
-  showToast("Angebot dupliziert.");
+  const eventDate = offerWorkspaceRoot()?.querySelector('[data-offer-field="eventDate"]');
+  eventDate?.focus();
+  eventDate?.scrollIntoView({ behavior: "smooth", block: "center" });
+  showToast("Alle Angaben wurden kopiert. Bitte nur noch den weiteren Veranstaltungstermin eintragen und speichern.");
 }
 
 function toggleCurrentOfferArchive() {
