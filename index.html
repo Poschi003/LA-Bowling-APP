@@ -19,7 +19,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260914-calendar-print-preview-v1">
+    <link rel="stylesheet" href="styles.css?v=20260914-table-worklist-v1">
   </head>
   <body>
     <header class="topbar">
@@ -405,8 +405,6 @@
                     <input id="tablePlanDate" type="date">
                   </label>
                   <button id="loadTodayTablePlan" class="secondary hidden" type="button">Heute öffnen</button>
-                  <button id="connectTablesFromToolbar" class="secondary" type="button" disabled>Tafeln verbinden</button>
-                  <button id="disconnectTablesFromToolbar" class="secondary danger-lite hidden" type="button">Verbindung lösen</button>
                   <button id="openTablePlanSettings" class="secondary hidden" type="button" data-terminal-tab="settings" data-terminal-settings-target="table-plan">Tischplan-Einstellungen</button>
                   <button id="toggleTablePlanFullscreen" class="secondary" type="button">Vollbild</button>
                 </div>
@@ -418,11 +416,11 @@
                 <div id="tablePlanBoardMeta" class="table-plan-meta"></div>
                 <div id="tablePlanBoard" class="table-plan-board"></div>
                 <div class="table-plan-work-hint"><span aria-hidden="true">i</span> Tippe auf einen Tisch für Details oder reserviere einen freien Tisch.</div>
-                <section class="table-plan-list-panel table-plan-manage-only">
+                <section class="table-plan-list-panel table-plan-primary-list">
                   <div class="terminal-section-head">
                     <div>
-                      <h3>Druckliste</h3>
-                      <p class="hint">Reservierungen und Personalbereiche für den Tag.</p>
+                      <h3>Reservierungen &amp; Vorbereitung</h3>
+                      <p class="hint">Verbindliche Arbeitsliste für Service, Aufbau und Druck.</p>
                     </div>
                     <div class="table-plan-list-actions">
                       <label>Sortierung
@@ -505,8 +503,7 @@
                       <div id="tablePlanConflictHint" class="hint"></div>
                       <div id="tablePlanSelectionBookings" class="table-plan-selection-bookings"></div>
                       <div class="table-plan-editor-actions">
-                        <button id="connectSelectedTables" class="secondary" type="button">Tafeln verbinden</button>
-                        <button id="disconnectSelectedTables" class="secondary danger-lite" type="button">Verbindung lösen</button>
+                        <span class="hint">Mehrere ausgewählte Tische werden automatisch als gemeinsame Tischgruppe in der Vorbereitungsliste angezeigt.</span>
                       </div>
                     </section>
                     <section class="table-plan-form-card">
@@ -530,6 +527,32 @@
                       <button id="printTablePlanReservation" class="secondary" type="button">Drucken</button>
                       <button id="deleteTablePlanReservation" class="secondary danger-lite" type="button">Reservierung löschen</button>
                     </div>
+                  </div>
+                </details>
+                <details id="tablePlanQuickTablesPanel" class="table-plan-side-section table-plan-quick-table-editor">
+                  <summary class="table-plan-side-summary">
+                    <strong>Tische verwalten</strong>
+                    <span>Schnell hinzufügen oder entfernen</span>
+                  </summary>
+                  <div class="table-plan-side-body">
+                    <div class="form-grid table-plan-quick-table-form">
+                      <label>Tischnummer<input id="tablePlanCustomId" data-table-plan-custom-field="id" maxlength="16" placeholder="z. B. T80"></label>
+                      <label>Bezeichnung<input id="tablePlanCustomLabel" data-table-plan-custom-field="label" maxlength="60" placeholder="z. B. T80"></label>
+                      <label>Bereich<input id="tablePlanCustomArea" data-table-plan-custom-field="area" maxlength="80" placeholder="z. B. Innenraum"></label>
+                      <label>Plätze<input id="tablePlanCustomSeats" data-table-plan-custom-field="seats" type="number" min="1" step="1" placeholder="4"></label>
+                      <input id="tablePlanCustomShape" data-table-plan-custom-field="shape" type="hidden" value="table">
+                      <input id="tablePlanCustomX" data-table-plan-custom-field="x" type="hidden" value="5">
+                      <input id="tablePlanCustomY" data-table-plan-custom-field="y" type="hidden" value="5">
+                      <input id="tablePlanCustomW" data-table-plan-custom-field="w" type="hidden" value="8">
+                      <input id="tablePlanCustomH" data-table-plan-custom-field="h" type="hidden" value="6">
+                    </div>
+                    <div class="table-plan-editor-actions">
+                      <button id="resetTablePlanCustom" class="secondary" type="button">Neu</button>
+                      <button id="saveTablePlanCustom" class="primary" type="button">Tisch speichern</button>
+                      <button id="deleteTablePlanCustom" class="secondary danger-lite" type="button">Tisch löschen</button>
+                    </div>
+                    <p class="hint">Nur hier zusätzlich angelegte Tische können gelöscht werden. Bereits verwendete Tische bleiben geschützt.</p>
+                    <div id="tablePlanCustomList"></div>
                   </div>
                 </details>
                 <div class="table-plan-manage-tools">
@@ -1957,7 +1980,7 @@
         }
       }
     </script>
-    <script src="teamapp-client.js?v=20260914-calendar-print-preview-v1"></script>
+    <script src="teamapp-client.js?v=20260914-table-worklist-v1"></script>
     <script src="terminal-roles-addon.js?v=20260520-terminal-rollenfilter-v1"></script>
   </body>
 </html>

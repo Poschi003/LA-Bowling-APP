@@ -18916,3 +18916,70 @@ body.cocktail-only-mode .cocktail-tool-head h2::after {
   border-color: #dc2626;
   box-shadow: 0 0 0 2px rgb(220 38 38 / 14%);
 }
+
+/* Tischplan Arbeitsansicht: Tabelle ist die verbindliche Vorschau. */
+.table-plan-shell.is-work-view {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px) !important;
+  align-items: start;
+}
+
+.table-plan-shell.is-work-view .table-plan-board-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.table-plan-shell.is-work-view .table-plan-primary-list {
+  display: block !important;
+  order: -1;
+  background: #fff;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.table-plan-primary-list .table-plan-print-table th,
+.table-plan-primary-list .table-plan-print-table td {
+  vertical-align: top;
+}
+
+.table-plan-primary-list .table-plan-print-table td strong {
+  color: #132c42;
+}
+
+.table-plan-quick-table-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.table-plan-quick-table-editor .table-plan-group-cards {
+  margin-top: 12px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.table-plan-overview-sidebar > .table-plan-side-section {
+  width: 100%;
+  background: #fff;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  color: #132c42;
+}
+
+.table-plan-overview-sidebar > .table-plan-side-section .table-plan-side-summary {
+  min-height: 54px;
+}
+
+.terminal-table-lite-row {
+  grid-template-columns: 82px minmax(105px, .8fr) minmax(130px, 1fr) 52px minmax(170px, 1.25fr) !important;
+}
+
+.terminal-table-lite-row:not(.is-head) span:last-child {
+  color: #176a42;
+  font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .table-plan-shell.is-work-view { grid-template-columns: 1fr !important; }
+  .terminal-table-lite-table { overflow-x: auto; }
+  .terminal-table-lite-row { min-width: 760px; }
+}

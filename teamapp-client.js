@@ -11385,17 +11385,18 @@ function emptyTerminalTableCustomDraft(value = {}) {
 
 function terminalTableCustomDraftPayload() {
   const draft = emptyTerminalTableCustomDraft(state.terminalTableCustomDraft || {});
+  const customIndex = (state.terminalTableConfig?.customTables || []).length;
   return {
     originalId: draft.originalId || draft.id || "",
     id: cleanTerminalRawTableId(draft.id),
-    label: String(draft.label || "").trim(),
+    label: String(draft.label || draft.id || "").trim(),
     area: String(draft.area || "").trim(),
     seats: cleanTerminalTablePeople(draft.seats),
     shape: ["table", "room", "lane"].includes(String(draft.shape || "").trim()) ? String(draft.shape).trim() : "table",
-    x: cleanTerminalPercent(draft.x, 0, 96),
-    y: cleanTerminalPercent(draft.y, 0, 96),
-    w: cleanTerminalPercent(draft.w, 2, 40),
-    h: cleanTerminalPercent(draft.h, 2, 30)
+    x: cleanTerminalPercent(draft.x || String(5 + ((customIndex % 8) * 10)), 0, 96),
+    y: cleanTerminalPercent(draft.y || String(6 + (Math.floor(customIndex / 8) * 9)), 0, 96),
+    w: cleanTerminalPercent(draft.w || "8", 2, 40),
+    h: cleanTerminalPercent(draft.h || "6", 2, 30)
   };
 }
 
@@ -12143,6 +12144,15 @@ function terminalTableTimeRange(reservation = {}) {
   return reservation.timeEnd ? `${start}–${reservation.timeEnd}` : start;
 }
 
+function terminalTablePreparationText(reservation = {}) {
+  const tableIds = sortTerminalTableIds(reservation.tableIds || []);
+  const parts = [];
+  if (tableIds.length > 1) parts.push(`${terminalTableLabelText(tableIds)} zusammenschieben`);
+  const marker = cleanTerminalTableMarker(reservation.marker);
+  if (marker && marker !== "normal") parts.push(terminalTableMarkerConfig(marker).label);
+  return parts.length ? parts.join(" · ") : "Tisch vorbereiten";
+}
+
 function terminalTableOverviewReservation(draft = {}, reservations = []) {
   if (draft.id) {
     const exact = reservations.find((reservation) => reservation.id === draft.id);
@@ -12520,6 +12530,11 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
     shell.classList.toggle("is-manage-view", state.terminalTableView === "manage");
   }
   document.body.classList.toggle("table-plan-fullscreen", Boolean(state.terminalTableFullscreen));
+  const quickTablesPanel = $("#tablePlanQuickTablesPanel");
+  const staffPanel = $("#tablePlanStaffPanel");
+  const overviewSidebar = $(".table-plan-overview-sidebar");
+  if (quickTablesPanel && overviewSidebar && quickTablesPanel.parentElement !== overviewSidebar) overviewSidebar.append(quickTablesPanel);
+  if (staffPanel && overviewSidebar && staffPanel.parentElement !== overviewSidebar) overviewSidebar.append(staffPanel);
   const boardMeta = $("#tablePlanBoardMeta");
   if (boardMeta) {
     boardMeta.innerHTML = `
@@ -12666,7 +12681,6 @@ function renderTerminalTablePlan(dateKey, report = {}, reportClosed = false) {
     $("#disconnectSelectedTables").disabled = reportClosed || !selectedGroup;
   }
   if ($("#tablePlanStaffSummary")) $("#tablePlanStaffSummary").textContent = terminalTableStaffSummaryText(staffAssignments, staffDraft);
-  const staffPanel = $("#tablePlanStaffPanel");
   if (staffPanel && (staffDraft.id || staffDraft.employee || staffDraft.presetId || staffDraft.note)) staffPanel.open = true;
   if ($("#tablePlanStaffEmployee")) $("#tablePlanStaffEmployee").innerHTML = terminalTableStaffEmployeeOptionsHtml(employeeMeta, staffDraft.employee);
   if ($("#tablePlanStaffPreset")) $("#tablePlanStaffPreset").innerHTML = terminalTableStaffPresetOptionsHtml(staffDraft.presetId);
@@ -12874,6 +12888,7 @@ function terminalTablePrintListHtml(dateKey, reservations = [], staffAssignments
               <th>Personen</th>
               <th>Tisch</th>
               <th>Bereich</th>
+              <th>Vorbereitung</th>
               <th>Notiz</th>
               <th class="table-plan-print-action-cell">Aktion</th>
             </tr>
@@ -12886,6 +12901,7 @@ function terminalTablePrintListHtml(dateKey, reservations = [], staffAssignments
                 <td>${escapeHtml(String(reservation.people || 0))}</td>
                 <td>${escapeHtml(terminalTableLabelText(reservation.tableIds))}</td>
                 <td>${escapeHtml(terminalTableAreaText(reservation.tableIds))}</td>
+                <td><strong>${escapeHtml(terminalTablePreparationText(reservation))}</strong></td>
                 <td>${escapeHtml(reservation.note || "-")}</td>
                 <td class="table-plan-print-action-cell">
                   <button class="secondary" type="button" data-table-plan-edit="${escapeHtml(reservation.id)}">Bearbeiten</button>
@@ -12917,34 +12933,6 @@ async function saveTerminalTableReservation(button) {
   if (!payload.people) {
     showToast("Bitte Personenzahl eintragen.");
     return;
-  }
-  const existingGroup = terminalTableGroupForTableIds(payload.tableIds);
-  if (
-    !payload.id
-    && payload.tableIds.length >= 3
-    && !existingGroup
-    && terminalTableSelectionCanConnect(payload.tableIds)
-    && window.confirm(`${payload.tableIds.length} benachbarte Tische sind ausgewählt. Zu einer gemeinsamen Tafel verbinden?`)
-  ) {
-    const suggestedLabel = terminalTableSuggestedGroupLabel(payload.tableIds);
-    const label = window.prompt("Welche Tischnummer oder Bezeichnung soll die Tafel bekommen?", suggestedLabel);
-    if (label == null) return;
-    if (!String(label).trim()) {
-      showToast("Bitte eine Tischnummer oder Bezeichnung für die Tafel eingeben.");
-      return;
-    }
-    try {
-      await terminalAction({
-        action: "save-table-group",
-        group: {
-          tableIds: payload.tableIds,
-          label: String(label).trim()
-        }
-      });
-    } catch (error) {
-      showError(error);
-      return;
-    }
   }
   const oldText = button.textContent;
   button.disabled = true;
@@ -14186,7 +14174,7 @@ function renderTerminalTableLite() {
     target.innerHTML = `
       <div class="terminal-table-lite-table" role="table" aria-label="Aktuelle Tischreservierungen">
         <div class="terminal-table-lite-row is-head" role="row">
-          <span>Zeit</span><span>Tisch</span><span>Name</span><span>Pers.</span>
+          <span>Zeit</span><span>Tischgruppe</span><span>Name</span><span>Pers.</span><span>Vorbereitung</span>
         </div>
         ${reservations.slice(0, 6).map((reservation) => `
           <div class="terminal-table-lite-row" role="row">
@@ -14194,6 +14182,7 @@ function renderTerminalTableLite() {
             <span>${escapeHtml(terminalTableLabelText(reservation.tableIds))}</span>
             <span>${escapeHtml(reservation.name || "Reservierung")}</span>
             <span>${escapeHtml(String(reservation.people || 0))}</span>
+            <span>${escapeHtml(terminalTablePreparationText(reservation))}</span>
           </div>
         `).join("")}
       </div>
