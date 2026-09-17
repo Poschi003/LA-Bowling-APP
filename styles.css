@@ -2213,6 +2213,36 @@ button.employee-badge-stat {
   padding: 8px;
 }
 
+.offer-month-folder {
+  overflow: hidden;
+  border: 1px solid #dce4ee;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.offer-month-folder > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  cursor: pointer;
+  list-style: none;
+  background: #f7f9fc;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.offer-month-folder > summary::-webkit-details-marker { display: none; }
+.offer-month-folder > summary::before { content: "▸"; color: var(--brand); }
+.offer-month-folder[open] > summary::before { content: "▾"; }
+.offer-month-folder > summary small { margin-left: auto; color: var(--muted); font-weight: 600; }
+
+.offer-month-list {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+}
+
 .offer-list-entry {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

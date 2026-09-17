@@ -5814,15 +5814,32 @@ function renderAdminOffers() {
   const offers = normalizeOffersClient(state.offers || []);
   const activeId = state.offerDraft?.id || draft.id;
   const fixedYears = [2024, 2025, 2026];
-  const offerYear = (offer) => Number(String(offer.offerDate || offer.eventDate || offer.createdAt || "2026").slice(0, 4)) || 2026;
+  const offerYear = (offer) => Number(String(offer.eventDate || offer.offerDate || offer.createdAt || "2026").slice(0, 4)) || 2026;
+  const offerMonth = (offer) => String(offer.eventDate || offer.offerDate || offer.createdAt || "").slice(0, 7);
   const years = [...new Set([...fixedYears, ...offers.map(offerYear)])].sort((a, b) => a - b);
   const listHtml = years.map((year) => {
     const yearOffers = offers.filter((offer) => offerYear(offer) === year);
+    const monthKeys = year === 2026
+      ? [...new Set([...yearOffers.map(offerMonth).filter((month) => month.startsWith("2026-")), "2026-11", "2026-12"])].sort()
+      : [];
+    const yearList = year === 2026
+      ? monthKeys.map((month) => {
+        const monthOffers = yearOffers.filter((offer) => offerMonth(offer) === month);
+        return `
+          <details class="offer-month-folder" ${monthOffers.some((offer) => offer.id === activeId) ? "open" : ""}>
+            <summary><span>${escapeHtml(formatMonth(month))}</span><small>${monthOffers.length} Angebot${monthOffers.length === 1 ? "" : "e"}</small></summary>
+            <div class="offer-month-list">
+              ${monthOffers.length ? monthOffers.map((offer) => renderOfferListItem(offer, activeId)).join("") : `<p class="hint">Noch keine Angebote im ${escapeHtml(formatMonth(month))}.</p>`}
+            </div>
+          </details>
+        `;
+      }).join("")
+      : (yearOffers.length ? yearOffers.map((offer) => renderOfferListItem(offer, activeId)).join("") : `<p class="hint">Noch keine Angebote in ${year}.</p>`);
     return `
       <details class="offer-year-folder" ${year === 2026 ? "open" : ""}>
         <summary><span>${year}</span><small>${yearOffers.length} Angebot${yearOffers.length === 1 ? "" : "e"}</small></summary>
         <div class="offer-year-list">
-          ${yearOffers.length ? yearOffers.map((offer) => renderOfferListItem(offer, activeId)).join("") : `<p class="hint">Noch keine Angebote in ${year}.</p>`}
+          ${yearList}
         </div>
       </details>
     `;
