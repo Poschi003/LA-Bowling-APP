@@ -2243,6 +2243,23 @@ button.employee-badge-stat {
   padding: 8px;
 }
 
+.offer-internal-upload-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.offer-internal-upload-actions label { cursor: pointer; }
+.offer-internal-upload-actions input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.offer-internal-file-list { display: grid; gap: 8px; margin-top: 12px; }
+.offer-internal-file-card { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px; border: 1px solid var(--line); border-radius: 6px; }
+.offer-internal-file-card img { width: 56px; height: 48px; object-fit: cover; border-radius: 4px; }
+.offer-internal-file-card div { display: grid; gap: 3px; min-width: 0; }
+.offer-internal-file-card div strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.offer-internal-file-card small { color: var(--muted); }
+.offer-internal-file-icon { display: grid; place-items: center; width: 56px; height: 48px; border-radius: 4px; background: #eef2f7; color: #42566d; font-weight: 800; }
+.event-internal-note { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: #694d00; font-size: 11px; font-style: normal; }
+.event-internal-files { display: flex; align-items: center; gap: 5px; margin-top: 5px; }
+.event-internal-files img, .event-internal-files i { width: 34px; height: 28px; border-radius: 4px; object-fit: cover; }
+.event-internal-files i { display: grid; place-items: center; background: #eef2f7; color: #42566d; font-size: 9px; font-style: normal; font-weight: 800; }
+.event-internal-files small { margin-left: 2px; color: #694d00; }
+@media (max-width: 700px) { .offer-internal-file-card { grid-template-columns: 48px minmax(0, 1fr); } .offer-internal-file-card > a, .offer-internal-file-card > button { width: 100%; } }
+
 .offer-list-entry {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

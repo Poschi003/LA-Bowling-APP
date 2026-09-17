@@ -1370,6 +1370,7 @@ function normalizeOfferClient(offer = {}) {
     customerDirectoryId: String(offer.customerDirectoryId || "").trim().slice(0, 120),
     additionalInfo: String(offer.additionalInfo || "").trim().slice(0, 2000),
     internalNote: String(offer.internalNote || "").trim().slice(0, 2000),
+    internalAttachments: normalizeOfferInternalAttachmentsClient(offer.internalAttachments),
     conference: {
       enabled: conference.enabled === true,
       morningSnackText: String(conference.morningSnackText || "Butterbrezen und Müsliriegel").trim().slice(0, 600),
@@ -1430,6 +1431,19 @@ function normalizeOfferBuffetCategoriesClient(categories = {}) {
       ...(Array.isArray(source.dessert) ? source.dessert : [])
     ])
   };
+}
+
+function normalizeOfferInternalAttachmentsClient(items = []) {
+  return (Array.isArray(items) ? items : []).slice(0, 12).map((item, index) => ({
+    id: String(item?.id || `offer-file-${Date.now()}-${index}`),
+    name: String(item?.name || `Anlage ${index + 1}`).trim(),
+    url: String(item?.url || "").trim(),
+    path: String(item?.path || "").trim(),
+    data: String(item?.data || ""),
+    mime: String(item?.mime || "").trim(),
+    kind: item?.kind === "external-offer" ? "external-offer" : "note",
+    createdAt: String(item?.createdAt || new Date().toISOString())
+  })).filter((item) => item.url || item.path || item.data);
 }
 
 function normalizeOfferBuffetItemsClient(items = []) {
@@ -1556,6 +1570,7 @@ function createBlankOfferDraft() {
     customerDirectoryId: "",
     additionalInfo: "",
     internalNote: "",
+    internalAttachments: [],
     conference: {
       enabled: false,
       morningSnackText: "Butterbrezen und Müsliriegel",
@@ -6201,6 +6216,26 @@ function renderAdminOffers() {
           </div>
         </section>
 
+        <section class="offer-section offer-internal-files">
+          <div class="offer-section-head">
+            <div><strong>Interne Notizen &amp; externe Angebote</strong><span>Nur intern sichtbar, niemals auf dem Kundenangebot.</span></div>
+          </div>
+          <div class="offer-internal-upload-actions">
+            <label class="secondary">Screenshot als Notiz<input data-offer-internal-file="note" type="file" accept="image/*" capture="environment"></label>
+            <label class="secondary">Externes Angebot einlesen<input data-offer-internal-file="external-offer" type="file" accept="image/*,application/pdf"></label>
+          </div>
+          <div class="offer-internal-file-list">
+            ${(draft.internalAttachments || []).length ? draft.internalAttachments.map((item) => `
+              <article class="offer-internal-file-card">
+                ${String(item.mime || "").startsWith("image/") || String(item.data || "").startsWith("data:image/") ? `<img src="${escapeHtml(item.url || item.data)}" alt="${escapeHtml(item.name)}">` : `<span class="offer-internal-file-icon">PDF</span>`}
+                <div><strong>${escapeHtml(item.name)}</strong><small>${item.kind === "external-offer" ? "Externes Angebot" : "Interne Screenshot-Notiz"}</small></div>
+                ${item.url || item.data ? `<a class="secondary" href="${escapeHtml(item.url || item.data)}" target="_blank" rel="noopener">Öffnen</a>` : ""}
+                <button class="secondary danger-lite" type="button" data-offer-remove-internal-file="${escapeHtml(item.id)}">Entfernen</button>
+              </article>
+            `).join("") : `<p class="hint">Noch keine internen Dateien hinterlegt.</p>`}
+          </div>
+        </section>
+
         <div class="offer-grid offer-grid-two">
           <label class="offer-grid-wide">Zusätzliche Informationen<textarea data-offer-field="additionalInfo" rows="4" placeholder="Für das Angebot sichtbar">${escapeHtml(draft.additionalInfo)}</textarea></label>
           <label class="offer-grid-wide">Interne Notiz<textarea data-offer-field="internalNote" rows="4" placeholder="Nur intern">${escapeHtml(draft.internalNote)}</textarea></label>
@@ -9222,7 +9257,7 @@ function renderTerminalEventCalendar() {
     const date = new Date(`${dateKey}T12:00:00`);
     return `<section class="event-calendar-day ${events.length ? "has-events" : ""}">
       <header><span>${escapeHtml(date.toLocaleDateString("de-DE", { weekday: "short" }))}</span><strong>${escapeHtml(date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }))}</strong></header>
-      ${events.length ? events.map((offer) => `<button class="event-calendar-item" type="button" data-open-calendar-offer="${escapeHtml(offer.id)}"><div><strong>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</strong><span>${escapeHtml(offer.occasion || offer.title || "Bestätigtes Angebot")}</span></div><small>${escapeHtml(offer.startTime || "Zeit offen")} · ${offerPersonCount(offer)} Pers.${offer.reservedArea ? ` · ${escapeHtml(offer.reservedArea)}` : ""}</small><b>Druckansicht anzeigen ›</b></button>`).join("") : `<p>Keine Veranstaltung</p>`}
+      ${events.length ? events.map((offer) => `<button class="event-calendar-item" type="button" data-open-calendar-offer="${escapeHtml(offer.id)}"><div><strong>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</strong><span>${escapeHtml(offer.occasion || offer.title || "Bestätigtes Angebot")}</span></div><small>${escapeHtml(offer.startTime || "Zeit offen")} · ${offerPersonCount(offer)} Pers.${offer.reservedArea ? ` · ${escapeHtml(offer.reservedArea)}` : ""}</small>${offer.internalNote ? `<em class="event-internal-note">${escapeHtml(offer.internalNote)}</em>` : ""}${offer.internalAttachments?.length ? `<span class="event-internal-files">${offer.internalAttachments.slice(0, 2).map((item) => String(item.mime || "").startsWith("image/") ? `<img src="${escapeHtml(item.url || item.data)}" alt="Interne Notiz">` : `<i>PDF</i>`).join("")}<small>${offer.internalAttachments.length} interne Anlage${offer.internalAttachments.length === 1 ? "" : "n"}</small></span>` : ""}<b>Druckansicht anzeigen ›</b></button>`).join("") : `<p>Keine Veranstaltung</p>`}
     </section>`;
   }).join("");
   const buffetRows = buffetGroups.size ? [...buffetGroups.entries()].map(([name, info]) => `<div class="event-kitchen-row"><strong>${escapeHtml(name)}</strong><span>${info.guests} Gäste · ${info.events} Veranstaltung${info.events === 1 ? "" : "en"}</span></div>`).join("") : `<p class="event-calendar-empty">In dieser Woche kein Buffet eingeplant.</p>`;
@@ -19760,7 +19795,32 @@ function bindEvents() {
     window.requestAnimationFrame(refreshOfferLiveSummary);
   }));
 
-  $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("change", (event) => {
+  $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("change", async (event) => {
+    const internalFileInput = event.target.closest("[data-offer-internal-file]");
+    if (internalFileInput) {
+      const file = internalFileInput.files?.[0];
+      if (!file) return;
+      try {
+        const draft = currentOfferDraftFromDom();
+        const attachment = {
+          id: `offer-file-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          name: file.name || (internalFileInput.dataset.offerInternalFile === "external-offer" ? "Externes Angebot" : "Screenshot-Notiz"),
+          mime: file.type || "application/octet-stream",
+          kind: internalFileInput.dataset.offerInternalFile === "external-offer" ? "external-offer" : "note",
+          data: await fileToDataUrl(file),
+          createdAt: new Date().toISOString()
+        };
+        draft.internalAttachments = [...(draft.internalAttachments || []), attachment].slice(0, 12);
+        state.offerDraft = normalizeOfferClient(draft);
+        state.offerDraftId = state.offerDraft.id;
+        state.offerDraftDirty = true;
+        renderAdminOffers();
+        showToast(attachment.kind === "external-offer" ? "Externes Angebot wurde angehängt. Bitte Angebot speichern." : "Screenshot wurde als interne Notiz angehängt. Bitte Angebot speichern.");
+      } catch (error) {
+        showError(error);
+      }
+      return;
+    }
     state.offerDraftDirty = true;
     if (event.target.matches("[data-offer-time-input]")) {
       const normalizedTime = cleanOfferTimeValue(event.target.value);
@@ -19788,6 +19848,17 @@ function bindEvents() {
   }));
 
   $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("click", async (event) => {
+    const removeInternalFile = event.target.closest("[data-offer-remove-internal-file]");
+    if (removeInternalFile) {
+      const draft = currentOfferDraftFromDom();
+      draft.internalAttachments = (draft.internalAttachments || []).filter((item) => item.id !== removeInternalFile.dataset.offerRemoveInternalFile);
+      state.offerDraft = normalizeOfferClient(draft);
+      state.offerDraftId = state.offerDraft.id;
+      state.offerDraftDirty = true;
+      renderAdminOffers();
+      showToast("Interne Anlage entfernt. Bitte Angebot speichern.");
+      return;
+    }
     const bmwPackage = event.target.closest("[data-offer-bmw-package]");
     if (bmwPackage) {
       state.offerDraft = applyBmwTreasurePackage(currentOfferDraftFromDom(), bmwPackage.dataset.offerBmwPackage);

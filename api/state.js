@@ -33,6 +33,7 @@ const {
   sendPushToEmployees,
   syncReportTipsToTimesheets,
   upsertPushSubscription,
+  uploadReceiptDataUrl,
   verifyToken,
   writeAppData
 } = require("./_data");
@@ -740,7 +741,30 @@ function bufferToPdfDataUrl(buffer) {
 async function saveOffer(body, res) {
   const session = verifyToken(body.adminToken || "", "admin") || verifyToken(body.terminalToken || "", "terminal");
   if (!session) return sendJson(res, 401, { error: "Bitte Admin oder Terminal erneut anmelden." });
-  const offer = normalizeOffer(body.offer || body);
+  const rawOffer = body.offer || body;
+  const pendingAttachments = Array.isArray(rawOffer.internalAttachments) ? rawOffer.internalAttachments : [];
+  const uploadedAttachments = [];
+  for (const [index, attachment] of pendingAttachments.slice(0, 12).entries()) {
+    if (attachment?.data) {
+      const upload = await uploadReceiptDataUrl(attachment.data, {
+        date: cleanOfferDate(rawOffer.eventDate) || cleanOfferDate(rawOffer.offerDate),
+        filename: attachment.name || `angebot-anlage-${index + 1}`,
+        prefix: attachment.kind === "external-offer" ? "externes-angebot" : "angebotsnotiz"
+      });
+      if (upload) uploadedAttachments.push({
+        id: String(attachment.id || `offer-file-${Date.now()}-${index}`),
+        name: upload.receiptName,
+        url: upload.receiptUrl,
+        path: upload.receiptPath,
+        mime: String(attachment.mime || ""),
+        kind: attachment.kind === "external-offer" ? "external-offer" : "note",
+        createdAt: String(attachment.createdAt || new Date().toISOString())
+      });
+    } else {
+      uploadedAttachments.push(attachment);
+    }
+  }
+  const offer = normalizeOffer({ ...rawOffer, internalAttachments: uploadedAttachments });
   if (!offer.customerName && !offer.title) {
     return sendJson(res, 400, { error: "Angebot fehlt." });
   }
@@ -1110,6 +1134,7 @@ function normalizeOffer(offer = {}) {
     customerDirectoryId: String(offer.customerDirectoryId || "").trim().slice(0, 120),
     additionalInfo: String(offer.additionalInfo || "").trim().slice(0, 2000),
     internalNote: String(offer.internalNote || "").trim().slice(0, 2000),
+    internalAttachments: normalizeOfferInternalAttachments(offer.internalAttachments),
     conference: {
       enabled: conference.enabled === true,
       morningSnackText: String(conference.morningSnackText || "Butterbrezen und Müsliriegel").trim().slice(0, 600),
@@ -1135,6 +1160,19 @@ function normalizeOffer(offer = {}) {
     timeline: normalizeOfferTimeline(timeline),
     costs: normalizeOfferCosts(costs)
   };
+}
+
+function normalizeOfferInternalAttachments(items = []) {
+  return (Array.isArray(items) ? items : []).slice(0, 12).map((item, index) => ({
+    id: String(item?.id || `offer-file-${Date.now()}-${index}`).slice(0, 100),
+    name: String(item?.name || `Anlage ${index + 1}`).trim().slice(0, 160),
+    url: String(item?.url || "").trim().slice(0, 1000),
+    path: String(item?.path || "").trim().slice(0, 1000),
+    data: String(item?.data || ""),
+    mime: String(item?.mime || "").trim().slice(0, 100),
+    kind: item?.kind === "external-offer" ? "external-offer" : "note",
+    createdAt: String(item?.createdAt || new Date().toISOString()).slice(0, 80)
+  })).filter((item) => item.url || item.path || item.data);
 }
 
 function normalizeOfferTextBlocks(blocks = {}) {
