@@ -16392,6 +16392,30 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-nav-management {
 .terminal-toilet-confirm-card select { width: 100%; min-height: 46px; border: 1px solid #dce2e9; border-radius: 10px; background: #fff; padding: 0 11px; }
 .terminal-toilet-confirm-actions { display: flex; justify-content: flex-end; gap: 9px; }
 
+.offer-invoice-modal { position: fixed; inset: 0; z-index: 6100; display: grid; place-items: center; padding: 20px; background: rgb(9 17 28 / 62%); backdrop-filter: blur(5px); }
+.offer-invoice-modal.hidden { display: none; }
+.offer-invoice-modal-card { width: min(680px, 96vw); max-height: 92vh; overflow: auto; border-radius: 14px; background: #fff; padding: 22px; box-shadow: 0 24px 70px rgb(0 0 0 / 32%); }
+.offer-invoice-modal-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.offer-invoice-modal-card > header small { color: #657386; font-weight: 800; text-transform: uppercase; }
+.offer-invoice-modal-card h2 { margin: 4px 0 0; font-size: 1.35rem; }
+.offer-invoice-preview-date { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-left: 4px solid #e30613; background: #f5f7fa; padding: 14px 16px; }
+.offer-invoice-preview-date small { color: #657386; }
+.offer-invoice-preview-date strong { font-size: 1.05rem; }
+.offer-invoice-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+.offer-invoice-preview-grid > div { min-width: 0; border: 1px solid #dce4ec; padding: 12px; }
+.offer-invoice-preview-grid > .wide { grid-column: 1 / -1; }
+.offer-invoice-preview-grid dt { margin-bottom: 5px; color: #657386; font-size: .72rem; font-weight: 800; text-transform: uppercase; }
+.offer-invoice-preview-grid dd { margin: 0; overflow-wrap: anywhere; font-weight: 700; }
+.offer-invoice-preview-warning { border: 1px solid #efb43b; background: #fff8e8; padding: 11px 13px; color: #704d00; }
+.offer-invoice-preview-note { color: #657386; font-size: .83rem; }
+.offer-invoice-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+
+@media (max-width: 600px) {
+  .offer-invoice-preview-grid { grid-template-columns: 1fr; }
+  .offer-invoice-preview-grid > .wide { grid-column: auto; }
+  .offer-invoice-modal-actions { display: grid; grid-template-columns: 1fr; }
+}
+
 @media (max-width: 800px) {
   .terminal-toilet-control { grid-template-columns: 82px 1fr; }
   .terminal-toilet-control-icon { width: 78px; height: 78px; border-radius: 20px; font-size: 1.85rem; }

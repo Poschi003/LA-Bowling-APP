@@ -5886,6 +5886,7 @@ function renderAdminOffers() {
         <button class="secondary" type="button" data-offer-toggle-archive>${draft.archived ? "Archivierung aufheben" : "Archivieren"}</button>
         <button class="secondary danger-lite" type="button" data-offer-delete>Löschen</button>
         <button class="secondary" type="button" data-offer-print>Vollständige Vorschau</button>
+        ${draft.confirmed && draft.eventDate ? `<button class="primary" type="button" data-offer-prepare-invoice>Rechnung vorbereiten</button>` : ""}
       </div>
       <div class="offer-toolbar-stats">
         <span class="offer-stat"><small>Personen</small><strong>${totals.personCount}</strong></span>
@@ -7017,6 +7018,82 @@ async function toggleOfferConfirmed(offerId, button) {
   } catch (error) {
     showError(error);
     renderAdminOffers();
+  }
+}
+
+function offerInvoiceCustomer(offer) {
+  const offerId = String(offer.id || "").replace(/[^a-zA-Z0-9_-]/g, "-");
+  return {
+    id: `offer-invoice-${offerId}`,
+    name: offer.customerName || offer.title || "Veranstaltungskunde",
+    contact: offer.customerContact || "",
+    email: offer.customerEmail || "",
+    phone: offer.customerPhone || "",
+    address: offer.customerAddress || "",
+    paymentMethod: "Überweisung",
+    note: `Aus bestätigtem Angebot: ${offer.title || offer.id}`,
+    bowlingAmount: "",
+    gastroDrinksAmount: "",
+    gastroFoodAmount: "",
+    gastroOtherAmount: "",
+    tip: "",
+    invoiceReady: false,
+    createdAt: offer.confirmedAt || new Date().toISOString()
+  };
+}
+
+function closeOfferInvoicePreview() {
+  const modal = document.querySelector("#offerInvoiceCustomerModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  delete modal.dataset.offerId;
+}
+
+function openOfferInvoicePreview(offer) {
+  const modal = document.querySelector("#offerInvoiceCustomerModal");
+  const preview = document.querySelector("#offerInvoiceCustomerPreview");
+  const confirmButton = document.querySelector("#confirmOfferInvoiceCustomer");
+  if (!modal || !preview || !confirmButton) return;
+  const customer = offerInvoiceCustomer(offer);
+  const missing = [!customer.name && "Firmenname", !customer.address && "Rechnungsadresse", !customer.email && "E-Mail"].filter(Boolean);
+  modal.dataset.offerId = offer.id;
+  preview.innerHTML = `
+    <div class="offer-invoice-preview-date"><small>Zuordnung zum Veranstaltungstag</small><strong>${escapeHtml(formatDate(offer.eventDate))}</strong></div>
+    <dl class="offer-invoice-preview-grid">
+      <div><dt>Firma / Kunde</dt><dd>${escapeHtml(customer.name || "Nicht angegeben")}</dd></div>
+      <div><dt>Ansprechpartner</dt><dd>${escapeHtml(customer.contact || "Nicht angegeben")}</dd></div>
+      <div class="wide"><dt>Rechnungsadresse</dt><dd>${escapeHtml(customer.address || "Nicht angegeben").replace(/\n/g, "<br>")}</dd></div>
+      <div><dt>E-Mail</dt><dd>${escapeHtml(customer.email || "Nicht angegeben")}</dd></div>
+      <div><dt>Telefon</dt><dd>${escapeHtml(customer.phone || "Nicht angegeben")}</dd></div>
+    </dl>
+    ${missing.length ? `<p class="offer-invoice-preview-warning">Bitte beachten: ${escapeHtml(missing.join(", "))} fehlt. Die Angaben können anschließend bei „Bezahlung auf Rechnung“ ergänzt werden.</p>` : ""}
+    <p class="offer-invoice-preview-note">Es werden noch keine Beträge gebucht und keine Rechnung erstellt.</p>`;
+  confirmButton.disabled = false;
+  confirmButton.textContent = "Bestätigen und anlegen";
+  modal.classList.remove("hidden");
+  confirmButton.focus();
+}
+
+async function confirmOfferInvoiceCustomer(button) {
+  const modal = document.querySelector("#offerInvoiceCustomerModal");
+  const offerId = modal?.dataset.offerId || "";
+  const offer = normalizeOffersClient(state.offers || []).find((item) => item.id === offerId);
+  if (!offer?.confirmed || !offer.eventDate) {
+    closeOfferInvoicePreview();
+    showToast("Das bestätigte Angebot oder der Veranstaltungstag fehlt.");
+    return;
+  }
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Wird angelegt...";
+  try {
+    await terminalAction({ action: "save-invoice-customer", invoiceDate: offer.eventDate, customer: offerInvoiceCustomer(offer) });
+    closeOfferInvoicePreview();
+    showToast(`Rechnungskunde wurde dem ${formatDate(offer.eventDate)} zugeordnet.`);
+  } catch (error) {
+    showError(error);
+    button.disabled = false;
+    button.textContent = oldText;
   }
 }
 
@@ -19966,6 +20043,12 @@ function bindEvents() {
     const printOffer = event.target.closest("[data-offer-print]");
     if (printOffer) {
       printOfferDraft();
+      return;
+    }
+    const prepareInvoice = event.target.closest("[data-offer-prepare-invoice]");
+    if (prepareInvoice) {
+      const offer = normalizeOffersClient(state.offers || []).find((item) => item.id === state.offerDraft?.id) || currentOfferDraftFromDom();
+      openOfferInvoicePreview(offer);
       return;
     }
     const applyTemplate = event.target.closest("[data-offer-apply-template]");
