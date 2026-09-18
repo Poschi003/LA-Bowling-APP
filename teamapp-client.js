@@ -1465,6 +1465,8 @@ function normalizeOfferBowlingClient(bowling = {}) {
     tournamentPackage: String(bowling?.tournamentPackage || "").trim().slice(0, 40),
     lanes: cleanOfferIntegerValue(bowling?.lanes),
     shoePersons: cleanOfferIntegerValue(bowling?.shoePersons),
+    manualHourlyRate: cleanOfferMoneyValue(bowling?.manualHourlyRate),
+    manualRateLabel: String(bowling?.manualRateLabel || "Feiertagstarif").trim().slice(0, 120),
     discountPercent: Math.min(100, cleanOfferMoneyValue(bowling?.discountPercent)),
     discountLabel: String(bowling?.discountLabel || "Bowling-Rabatt").trim().slice(0, 120),
     fromTime: cleanOfferTimeValue(bowling?.fromTime),
@@ -1587,6 +1589,8 @@ function createBlankOfferDraft() {
       tournamentPackage: "",
       lanes: 0,
       shoePersons: 0,
+      manualHourlyRate: 0,
+      manualRateLabel: "Feiertagstarif",
       discountPercent: 0,
       discountLabel: "Bowling-Rabatt",
       fromTime: "",
@@ -1677,6 +1681,8 @@ function currentOfferDraftFromDom() {
       tournamentPackage: String(field("bowlingTournamentPackage")?.value || "").trim(),
       lanes: cleanOfferIntegerValue(field("bowlingLanes")?.value),
       shoePersons: cleanOfferIntegerValue(field("bowlingShoePersons")?.value),
+      manualHourlyRate: field("bowlingManualHourlyRate") ? cleanOfferMoneyValue(field("bowlingManualHourlyRate")?.value) : cleanOfferMoneyValue(base.bowling?.manualHourlyRate),
+      manualRateLabel: String(field("bowlingManualRateLabel")?.value || base.bowling?.manualRateLabel || "Feiertagstarif").trim().slice(0, 120),
       discountPercent: Math.min(100, cleanOfferMoneyValue(field("bowlingDiscountPercent")?.value)),
       discountLabel: String(field("bowlingDiscountLabel")?.value || "Bowling-Rabatt").trim().slice(0, 120),
       fromTime: cleanOfferTimeValue(field("bowlingFromTime")?.value),
@@ -1908,6 +1914,10 @@ function offerBowlingPricing(dateKey, bowling = {}) {
       coveredMinutes += overlap;
       laneCostPerLane += (overlap / 60) * segment.rate;
     }
+    if (!plan.segments.length && normalized.manualHourlyRate > 0) {
+      coveredMinutes = durationMinutes;
+      laneCostPerLane = (durationMinutes / 60) * normalized.manualHourlyRate;
+    }
   }
   const laneCost = Math.round(laneCostPerLane * normalized.lanes * 100) / 100;
   const hasBowlingBooking = Boolean(normalized.tournamentPackage || normalized.lanes || normalized.fromTime || normalized.toTime);
@@ -1920,8 +1930,11 @@ function offerBowlingPricing(dateKey, bowling = {}) {
   const total = Math.round((grossTotal - discountAmount) * 100) / 100;
   const rateLabel = plan.segments.length
     ? plan.segments.map((segment) => `${segment.label}: ${formatMoney(segment.rate)}/Std pro Bahn`).join(" · ")
-    : "Tarif auf Anfrage";
+    : normalized.manualHourlyRate > 0
+      ? `${normalized.manualRateLabel}: ${formatMoney(normalized.manualHourlyRate)}/Std pro Bahn`
+      : "Tarif auf Anfrage";
   let warning = plan.warning || "";
+  if (!plan.segments.length && normalized.manualHourlyRate > 0) warning = "Manuell eingetragener Tarif wird verwendet.";
   if (hasPartialTime) {
     warning = [warning, "Bitte Bowling von und bis vollständig eintragen."].filter(Boolean).join(" ");
   } else if (durationMinutes > 0 && coveredMinutes < durationMinutes && plan.segments.length) {
@@ -1932,6 +1945,7 @@ function offerBowlingPricing(dateKey, bowling = {}) {
     dayLabel: plan.dayLabel,
     openingHours: plan.openingHours,
     rateLabel,
+    appliedHourlyRate: plan.segments.length === 1 ? plan.segments[0].rate : (!plan.segments.length ? normalized.manualHourlyRate : 0),
     warning,
     durationMinutes,
     durationLabel: offerDurationLabel(durationMinutes),
@@ -6137,6 +6151,7 @@ function renderAdminOffers() {
             </label>
             <label>Bahnen Anzahl<input data-offer-field="bowlingLanes" type="number" min="0" step="1" value="${escapeHtml(draft.bowling?.lanes)}"></label>
             <label>Leihschuhe Personen<input data-offer-field="bowlingShoePersons" type="number" min="0" step="1" value="${escapeHtml(draft.bowling?.shoePersons)}"><small class="offer-field-help">Automatisch aus der Personenzahl, weiterhin frei änderbar.</small></label>
+            ${bowling.rateLabel === "Tarif auf Anfrage" || draft.bowling?.manualHourlyRate ? `<label>Tarif-Bezeichnung<input data-offer-field="bowlingManualRateLabel" value="${escapeHtml(draft.bowling?.manualRateLabel || "Feiertagstarif")}" placeholder="z. B. Feiertagstarif"></label><label>Stundenpreis pro Bahn<input data-offer-field="bowlingManualHourlyRate" type="number" min="0" step="0.01" value="${escapeHtml(draft.bowling?.manualHourlyRate || "")}" placeholder="0,00"><small class="offer-field-help">Wird verwendet, wenn kein automatischer Tarif hinterlegt ist.</small></label>` : ""}
             <label>Rabatt-Bezeichnung<input data-offer-field="bowlingDiscountLabel" value="${escapeHtml(draft.bowling?.discountLabel)}" placeholder="z. B. Firmenrabatt"></label>
             <label>Rabatt auf Stundenpreis (%)<input data-offer-field="bowlingDiscountPercent" type="number" min="0" max="100" step="0.1" value="${escapeHtml(draft.bowling?.discountPercent)}" placeholder="0"><small class="offer-field-help">Gilt nur für die Bahnmiete. Leihschuhe und Turnierpaket bleiben unverändert.</small></label>
             <label>Bowling von<input data-offer-field="bowlingFromTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.bowling?.fromTime)}" placeholder="HH:MM"></label>
@@ -6828,6 +6843,8 @@ function offerFieldNeedsLiveRefresh(target) {
     "bowlingTournamentPackage",
     "bowlingLanes",
     "bowlingShoePersons",
+    "bowlingManualHourlyRate",
+    "bowlingManualRateLabel",
     "bowlingFromTime",
     "bowlingToTime",
     "buffetName",
@@ -7235,7 +7252,7 @@ function printOfferDraft(offerValue = null) {
     : "";
   const bowlingCostRows = bowling.laneCost > 0 || bowling.shoeCost > 0 || bowling.tournamentCost > 0
     ? `
-      ${bowling.laneCost > 0 ? `<tr><td><span class="cost-icon">B</span>Bowling</td><td>${escapeHtml(`${bowling.durationLabel} inkl. Bahnmiete`)}</td><td>${escapeHtml(`${draft.bowling?.lanes || 0} Bahn(en)`)}</td><td>laut Tarif</td><td>${formatMoney(bowling.laneCost)}</td></tr>` : ""}
+      ${bowling.laneCost > 0 ? `<tr><td><span class="cost-icon">B</span>Bowling</td><td>${escapeHtml(`${bowling.durationLabel} inkl. Bahnmiete${bowling.manualHourlyRate > 0 ? ` · ${bowling.manualRateLabel}` : ""}`)}</td><td>${escapeHtml(`${draft.bowling?.lanes || 0} Bahn(en)`)}</td><td>${bowling.appliedHourlyRate > 0 ? `${formatMoney(bowling.appliedHourlyRate)}/Std.` : "laut Tarif"}</td><td>${formatMoney(bowling.laneCost)}</td></tr>` : ""}
       ${bowling.shoeCost > 0 ? `<tr><td><span class="cost-icon">S</span>Leihschuhe</td><td>Leihschuhe für die Gäste</td><td>${escapeHtml(`${draft.bowling?.shoePersons || 0} Pers.`)}</td><td>${formatMoney(OFFER_BOWLING_SHOE_PRICE)}</td><td>${formatMoney(bowling.shoeCost)}</td></tr>` : ""}
       ${bowling.tournamentCost > 0 ? `<tr><td><span class="cost-icon">T</span>${escapeHtml(bowling.tournamentPackageLabel || "Turnierpaket")}</td><td>${escapeHtml(bowling.tournamentPackageDescription || "Zusatzpaket")}</td><td>1</td><td>${formatMoney(bowling.tournamentCost)}</td><td>${formatMoney(bowling.tournamentCost)}</td></tr>` : ""}
       ${bowling.discountAmount > 0 ? `<tr class="discount-row"><td><span class="cost-icon">%</span>${escapeHtml(bowling.discountLabel)}</td><td>Rabatt ausschließlich auf die Bahnmiete</td><td>${escapeHtml(formatOfferUnits(bowling.discountPercent))} %</td><td></td><td>-${formatMoney(bowling.discountAmount)}</td></tr>` : ""}

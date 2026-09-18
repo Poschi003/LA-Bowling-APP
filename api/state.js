@@ -1148,6 +1148,8 @@ function normalizeOffer(offer = {}) {
       tournamentPackage: String(bowling.tournamentPackage || "").trim().slice(0, 40),
       lanes: cleanOfferInteger(bowling.lanes),
       shoePersons: cleanOfferInteger(bowling.shoePersons),
+      manualHourlyRate: cleanOfferMoney(bowling.manualHourlyRate),
+      manualRateLabel: String(bowling.manualRateLabel || "Feiertagstarif").trim().slice(0, 120),
       discountPercent: Math.min(100, cleanOfferMoney(bowling.discountPercent)),
       discountLabel: String(bowling.discountLabel || "Bowling-Rabatt").trim().slice(0, 120),
       fromTime: cleanTime(bowling.fromTime),
