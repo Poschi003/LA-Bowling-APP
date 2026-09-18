@@ -2830,6 +2830,20 @@ button.employee-badge-stat {
 .event-kitchen-grid h4 { margin: 0 0 8px; }
 .event-kitchen-row { display: grid; gap: 2px; border-bottom: 1px solid var(--line); padding: 8px 0; }
 .event-kitchen-row span { color: var(--muted); font-size: 12px; }
+.event-kitchen-buffets { margin-top: 16px; }
+.event-kitchen-buffets > h4 { margin: 0 0 10px; color: var(--navy); font-size: 1rem; }
+.event-kitchen-buffet-card { border: 1px solid #e4a9ae; border-left: 5px solid var(--danger); background: #fffafa; padding: 14px 16px; }
+.event-kitchen-buffet-card + .event-kitchen-buffet-card { margin-top: 10px; }
+.event-kitchen-buffet-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.event-kitchen-buffet-card time { color: var(--muted); font-size: .75rem; font-weight: 800; }
+.event-kitchen-buffet-card h4 { margin: 3px 0 0; color: var(--navy); font-size: 1.05rem; }
+.event-kitchen-buffet-card > header > b { color: var(--danger); white-space: nowrap; }
+.event-kitchen-buffet-card > p { margin: 7px 0 12px; font-weight: 700; }
+.event-kitchen-menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.event-kitchen-menu > div { border-top: 1px solid #e3c9cb; padding-top: 8px; }
+.event-kitchen-menu strong, .event-kitchen-menu span { display: block; }
+.event-kitchen-menu strong { margin-bottom: 4px; color: var(--danger); font-size: .72rem; text-transform: uppercase; }
+.event-kitchen-menu span { color: #354256; font-size: .82rem; line-height: 1.45; }
 .event-upcoming-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 9px; margin-top: 14px; }
 .event-upcoming-list button { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; padding: 11px; color: inherit; text-align: left; cursor: pointer; }
 .event-upcoming-list button:hover,
@@ -2838,6 +2852,7 @@ button.employee-badge-stat {
 @media (max-width: 900px) {
   .event-calendar-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .event-kitchen-grid { grid-template-columns: 1fr; }
+  .event-kitchen-menu { grid-template-columns: 1fr; }
   .event-calendar-toolbar { align-items: flex-start; flex-direction: column; }
 }
 

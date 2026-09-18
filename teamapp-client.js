@@ -7440,15 +7440,16 @@ function printOfferDraft(offerValue = null) {
           .scale-dot { width: 4.5mm; height: 4.5mm; margin-bottom: 3mm; border-width: 1.2mm; box-shadow: none; }
           .scale-label { font-size: 8.5px; line-height: 1.2; overflow-wrap: anywhere; }
           .scale-note { font-size: 7.5px; line-height: 1.2; overflow-wrap: anywhere; }
-          .buffet-highlight { flex-wrap: wrap; padding: 3mm 0; background: #fff; border-color: var(--line); }
+          .buffet-highlight { flex-wrap: wrap; padding: 5mm; border: 1px solid #e8b5ba; border-left: 4px solid var(--red); border-radius: 3mm; background: #fff8f8; }
           .buffet-highlight-main { display: block; }
-          .buffet-highlight h3 { font-size: 12px; }
-          .buffet-price { font-size: 17px; }
-          .buffet-menu { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin-top: 2.5mm; padding-top: 2.5mm; border-top: 1px solid var(--line); }
-          .offer-print-buffet-group h4 { margin: 0 0 1mm; color: var(--navy); font-size: 8.5px; }
-          .offer-print-buffet-group ul { margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 7.6px; line-height: 1.3; }
-          .offer-print-buffet-group li + li { margin-top: .8mm; }
-          .offer-print-buffet-group span { display: block; }
+          .buffet-highlight h3 { font-size: 16px; }
+          .buffet-highlight p { font-size: 9.5px; }
+          .buffet-price { font-size: 20px; }
+          .buffet-menu { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; margin-top: 4mm; padding-top: 4mm; border-top: 2px solid #e8b5ba; }
+          .offer-print-buffet-group h4 { margin: 0 0 2mm; color: var(--red); font-size: 10px; text-transform: uppercase; }
+          .offer-print-buffet-group ul { margin: 0; padding: 0; list-style: none; color: var(--navy); font-size: 9px; line-height: 1.45; }
+          .offer-print-buffet-group li + li { margin-top: 1.5mm; }
+          .offer-print-buffet-group span { display: block; margin-top: .5mm; color: var(--muted); font-size: 8px; }
           .included-grid { grid-template-columns: repeat(2, 1fr); gap: 0 5mm; }
           .included-item { min-height: 0; padding: 2mm 0; border-bottom: 1px solid var(--line); }
           .included-item + .included-item { border-left: 0; }
@@ -9372,11 +9373,19 @@ function renderTerminalEventCalendar() {
     </section>`;
   }).join("");
   const buffetRows = buffetGroups.size ? [...buffetGroups.entries()].map(([name, info]) => `<div class="event-kitchen-row"><strong>${escapeHtml(name)}</strong><span>${info.guests} Gäste · ${info.events} Veranstaltung${info.events === 1 ? "" : "en"}</span></div>`).join("") : `<p class="event-calendar-empty">In dieser Woche kein Buffet eingeplant.</p>`;
+  const buffetEventDetails = buffetEvents.length ? buffetEvents.map((offer) => {
+    const categories = OFFER_CATEGORY_ORDER.map((category) => {
+      const dishes = (offer.buffet?.categories?.[category] || []).map((dish) => dish?.name).filter(Boolean);
+      if (!dishes.length) return "";
+      return `<div><strong>${escapeHtml(OFFER_CATEGORY_LABELS[category] || category)}</strong><span>${dishes.map((dish) => escapeHtml(dish)).join(" · ")}</span></div>`;
+    }).filter(Boolean).join("");
+    return `<article class="event-kitchen-buffet-card"><header><div><time>${escapeHtml(formatDate(offer.eventDate))}${offer.mealTime ? ` · ${escapeHtml(offer.mealTime)} Uhr` : ""}</time><h4>${escapeHtml(offer.buffet?.name || "Individuelles Buffet")}</h4></div><b>${offerPersonCount(offer)} Personen</b></header><p>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</p><div class="event-kitchen-menu">${categories || `<span>Menüzusammenstellung noch offen</span>`}</div></article>`;
+  }).join("") : `<p class="event-calendar-empty">In dieser Woche kein Buffet eingeplant.</p>`;
   target.innerHTML = `
     <header class="event-calendar-toolbar"><div><p class="terminal-card-kicker">Sicher eingeplant</p><h2>Veranstaltungskalender</h2><p>${escapeHtml(formatDate(weekStart))} bis ${escapeHtml(formatDate(weekEnd))}</p></div><div class="event-calendar-nav"><button class="secondary" type="button" data-event-week-step="-7" aria-label="Vorherige Woche">‹</button><button class="secondary" type="button" data-event-week-today>Diese Woche</button><button class="secondary" type="button" data-event-week-step="7" aria-label="Nächste Woche">›</button></div></header>
     <div class="event-calendar-kpis"><span><small>Veranstaltungen</small><strong>${weekEvents.length}</strong></span><span><small>Gäste gesamt</small><strong>${guestCount}</strong></span><span><small>Mit Buffet</small><strong>${buffetEvents.length}</strong></span><span><small>Tagungen</small><strong>${weekEvents.filter((offer) => offer.conference?.enabled).length}</strong></span></div>
     <div class="event-calendar-week">${dayHtml}</div>
-    <section class="event-kitchen-panel"><header><div><p class="terminal-card-kicker">Wochenbedarf</p><h3>Küche &amp; Bestellung</h3></div><strong>${guestCount} Gäste</strong></header><div class="event-kitchen-grid"><div><h4>Buffets</h4>${buffetRows}</div><div><h4>Speisen nach Gästezahl</h4>${dishGroups.size ? [...dishGroups.entries()].map(([name, guests]) => `<div class="event-kitchen-row"><strong>${escapeHtml(name)}</strong><span>für ${guests} Gäste</span></div>`).join("") : `<p class="event-calendar-empty">Keine Speisen ausgewählt.</p>`}</div><div><h4>Vormittagssnacks</h4>${snackEvents.length ? snackEvents.map((offer) => `<div class="event-kitchen-row"><strong>${escapeHtml(offer.conference.morningSnackText)}</strong><span>${offerPersonCount(offer)} Gäste · ${escapeHtml(offer.conference.morningSnackTime || "Zeit offen")}</span></div>`).join("") : `<p class="event-calendar-empty">Keine Snacks eingeplant.</p>`}</div></div></section>
+    <section class="event-kitchen-panel"><header><div><p class="terminal-card-kicker">Wochenbedarf</p><h3>Küche &amp; Bestellung</h3></div><strong>${guestCount} Gäste</strong></header><div class="event-kitchen-buffets"><h4>Menüs je Veranstaltung</h4>${buffetEventDetails}</div><div class="event-kitchen-grid"><div><h4>Buffets gesamt</h4>${buffetRows}</div><div><h4>Speisen nach Gästezahl</h4>${dishGroups.size ? [...dishGroups.entries()].map(([name, guests]) => `<div class="event-kitchen-row"><strong>${escapeHtml(name)}</strong><span>für ${guests} Gäste</span></div>`).join("") : `<p class="event-calendar-empty">Keine Speisen ausgewählt.</p>`}</div><div><h4>Vormittagssnacks</h4>${snackEvents.length ? snackEvents.map((offer) => `<div class="event-kitchen-row"><strong>${escapeHtml(offer.conference.morningSnackText)}</strong><span>${offerPersonCount(offer)} Gäste · ${escapeHtml(offer.conference.morningSnackTime || "Zeit offen")}</span></div>`).join("") : `<p class="event-calendar-empty">Keine Snacks eingeplant.</p>`}</div></div></section>
     <section class="event-upcoming-panel"><header><div><p class="terminal-card-kicker">Vorschau</p><h3>Alle kommenden bestätigten Veranstaltungen</h3></div><span>${upcoming.length} Einträge</span></header><div class="event-upcoming-list">${upcoming.length ? upcoming.map((offer) => `<button type="button" data-open-calendar-offer="${escapeHtml(offer.id)}"><time>${escapeHtml(formatDate(offer.eventDate))}${offer.startTime ? ` · ${escapeHtml(offer.startTime)}` : ""}</time><strong>${escapeHtml(offer.customerName || offer.title || "Veranstaltung")}</strong><span>${escapeHtml(offer.occasion || offer.title || "Bestätigtes Angebot")} · ${offerPersonCount(offer)} Pers.</span><b>Druckansicht anzeigen ›</b></button>`).join("") : `<p class="event-calendar-empty">Noch keine bestätigten Veranstaltungen.</p>`}</div></section>`;
 }
 
