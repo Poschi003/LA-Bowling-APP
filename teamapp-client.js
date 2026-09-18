@@ -1239,6 +1239,7 @@ const OFFER_DISH_ASSORTMENT = {
 const OFFER_BOWLING_PRICE_URL = "https://www.la-bowling.de/%C3%B6ffnungszeiten";
 const OFFER_BOWLING_SHOE_PRICE = 2.5;
 const OFFER_SPARKLING_RECEPTION_PRICE = 2.5;
+const OFFER_MULLED_WINE_RECEPTION_PRICE = 3.9;
 const OFFER_CAMPFIRE_PRICE = 50;
 const OFFER_HUT_RENT_PRICE = 250;
 const OFFER_LARGE_ROOM_ONLY_PRICE = 100;
@@ -1359,6 +1360,9 @@ function normalizeOfferClient(offer = {}) {
     mealTime: cleanOfferTimeValue(offer.mealTime),
     sparklingReceptionTime: cleanOfferTimeValue(offer.sparklingReceptionTime),
     sparklingReceptionPrice: offer.sparklingReceptionPrice == null ? OFFER_SPARKLING_RECEPTION_PRICE : cleanOfferMoneyValue(offer.sparklingReceptionPrice),
+    mulledWineReception: offer.mulledWineReception === true,
+    mulledWineReceptionTime: cleanOfferTimeValue(offer.mulledWineReceptionTime),
+    mulledWineReceptionPrice: offer.mulledWineReceptionPrice == null ? OFFER_MULLED_WINE_RECEPTION_PRICE : cleanOfferMoneyValue(offer.mulledWineReceptionPrice),
     campfireTime: cleanOfferTimeValue(offer.campfireTime),
     campfirePrice: offer.campfirePrice == null ? OFFER_CAMPFIRE_PRICE : cleanOfferMoneyValue(offer.campfirePrice),
     drinksMode: offer.drinksMode === "custom" ? "custom" : "menu",
@@ -1559,6 +1563,9 @@ function createBlankOfferDraft() {
     mealTime: "",
     sparklingReceptionTime: "",
     sparklingReceptionPrice: OFFER_SPARKLING_RECEPTION_PRICE,
+    mulledWineReception: false,
+    mulledWineReceptionTime: "",
+    mulledWineReceptionPrice: OFFER_MULLED_WINE_RECEPTION_PRICE,
     campfireTime: "",
     campfirePrice: OFFER_CAMPFIRE_PRICE,
     drinksMode: "menu",
@@ -1646,6 +1653,9 @@ function currentOfferDraftFromDom() {
     mealTime: cleanOfferTimeValue(field("mealTime")?.value),
     sparklingReceptionTime: cleanOfferTimeValue(field("sparklingReceptionTime")?.value),
     sparklingReceptionPrice: cleanOfferMoneyValue(field("sparklingReceptionPrice")?.value ?? base.sparklingReceptionPrice),
+    mulledWineReception: field("mulledWineReception")?.checked === true,
+    mulledWineReceptionTime: cleanOfferTimeValue(field("mulledWineReceptionTime")?.value),
+    mulledWineReceptionPrice: cleanOfferMoneyValue(field("mulledWineReceptionPrice")?.value ?? base.mulledWineReceptionPrice),
     campfireTime: cleanOfferTimeValue(field("campfireTime")?.value || base.campfireTime),
     campfirePrice: cleanOfferMoneyValue(field("campfirePrice")?.value ?? base.campfirePrice),
     drinksMode: root.querySelector('[data-offer-field="drinksMode"]:checked')?.value === "custom" ? "custom" : "menu",
@@ -1996,7 +2006,8 @@ function offerTotals(offer) {
   const conferenceBaseTotal = draft.conference?.enabled ? OFFER_CONFERENCE_BASE_PRICE : 0;
   const conferenceExtraTotal = Math.round(conferenceExtraPersons * OFFER_CONFERENCE_EXTRA_PERSON_PRICE * 100) / 100;
   const conferenceTotal = conferenceBaseTotal + conferenceExtraTotal;
-  const total = bmwTreasurePricing.total + bmwExtraTotal + conferenceTotal + buffetPricing.total + bowlingPricing.total + reservedAreaPricing.total + drinksTotal + extraRows;
+  const mulledWineReceptionTotal = draft.mulledWineReception ? Math.round(personCount * cleanOfferMoneyValue(draft.mulledWineReceptionPrice) * 100) / 100 : 0;
+  const total = bmwTreasurePricing.total + bmwExtraTotal + conferenceTotal + buffetPricing.total + bowlingPricing.total + reservedAreaPricing.total + drinksTotal + mulledWineReceptionTotal + extraRows;
   return {
     adults: buffetPricing.adults,
     children: buffetPricing.children,
@@ -2004,6 +2015,7 @@ function offerTotals(offer) {
     chargedUnits: buffetPricing.chargedUnits,
     buffetBaseTotal: buffetPricing.buffetBaseTotal,
     sparklingReceptionTotal: buffetPricing.sparklingReceptionTotal,
+    mulledWineReceptionTotal,
     buffetTotal: buffetPricing.total,
     bowlingGameTotal: bowlingPricing.gameTotal,
     bowlingGrossTotal: bowlingPricing.grossTotal,
@@ -2047,6 +2059,9 @@ function offerTimelineEvents(offer) {
   }
   if (draft.buffet?.sparklingReception) {
     push(draft.sparklingReceptionTime, "Sektempfang", "Optional zum Buffet gebucht", 20);
+  }
+  if (draft.mulledWineReception) {
+    push(draft.mulledWineReceptionTime, "Glühweinempfang", `${formatMoney(draft.mulledWineReceptionPrice)} pro Person`, 22);
   }
   if (draft.reservedAreaCampfire) {
     push(draft.campfireTime, "Lagerfeuer", "Lagerfeuerstelle mit Feuerholz", 35);
@@ -6068,7 +6083,7 @@ function renderAdminOffers() {
           <div class="offer-section-head">
             <div>
               <strong>Sonderleistungen</strong>
-              <span>Sektempfang und Lagerfeuer mit Vorgabepreis, Uhrzeit und freier Anpassung.</span>
+              <span>Sekt- oder Glühweinempfang und Lagerfeuer mit Vorgabepreis, Uhrzeit und freier Anpassung.</span>
             </div>
           </div>
           <div class="offer-special-service-grid">
@@ -6080,6 +6095,16 @@ function renderAdminOffers() {
               <div class="offer-grid offer-grid-two">
                 <label>Uhrzeit<input data-offer-field="sparklingReceptionTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.sparklingReceptionTime)}" placeholder="z. B. 18:00"></label>
                 <label>Preis pro Person<input data-offer-field="sparklingReceptionPrice" type="number" min="0" step="0.01" value="${escapeHtml(draft.sparklingReceptionPrice)}"></label>
+              </div>
+            </article>
+            <article class="offer-special-service-card ${draft.mulledWineReception ? "is-selected" : ""}">
+              <label class="offer-toggle-row">
+                <span><strong>Glühweinempfang</strong><small>3,90 Euro pro Person</small></span>
+                <input data-offer-field="mulledWineReception" type="checkbox" ${draft.mulledWineReception ? "checked" : ""}>
+              </label>
+              <div class="offer-grid offer-grid-two">
+                <label>Uhrzeit<input data-offer-field="mulledWineReceptionTime" data-offer-time-input inputmode="numeric" maxlength="5" value="${escapeHtml(draft.mulledWineReceptionTime)}" placeholder="z. B. 18:00"></label>
+                <label>Preis pro Person<input data-offer-field="mulledWineReceptionPrice" type="number" min="0" step="0.01" value="${escapeHtml(draft.mulledWineReceptionPrice)}"></label>
               </div>
             </article>
             <article class="offer-special-service-card ${draft.reservedAreaCampfire ? "is-selected" : ""}">
@@ -6362,6 +6387,7 @@ function renderOfferLiveSummary(draftValue) {
     Number(draft.bowling?.shoePersons || 0) ? `${draft.bowling.shoePersons} Leihschuhe` : "",
     offerHasBuffet(draft) ? (draft.buffet?.name || "Buffet") : "",
     draft.buffet?.sparklingReception ? `Sektempfang ${formatMoney(draft.sparklingReceptionPrice)} pro Person${draft.sparklingReceptionTime ? ` · ${draft.sparklingReceptionTime} Uhr` : ""}` : "",
+    draft.mulledWineReception ? `Glühweinempfang ${formatMoney(draft.mulledWineReceptionPrice)} pro Person${draft.mulledWineReceptionTime ? ` · ${draft.mulledWineReceptionTime} Uhr` : ""}` : "",
     draft.reservedAreaCampfire ? `Lagerfeuer ${formatMoney(draft.campfirePrice)}${draft.campfireTime ? ` · ${draft.campfireTime} Uhr` : ""}` : "",
     draft.reservedArea || "",
     draft.drinksMode === "custom"
@@ -6481,7 +6507,7 @@ function setupOfferGuidedEditor(container, draft) {
       : title === "Buffet" ? offerHasBuffet(draft)
         : title === "Bereich & Zusatzoptionen" ? Boolean(draft.reservedArea)
           : title === "Getränke" ? draft.drinksMode === "custom"
-          : title === "Sonderleistungen" ? Boolean(draft.buffet?.sparklingReception || draft.reservedAreaCampfire)
+          : title === "Sonderleistungen" ? Boolean(draft.buffet?.sparklingReception || draft.mulledWineReception || draft.reservedAreaCampfire)
           : Boolean(draft.costs?.length);
     section.classList.add("offer-service-card");
     section.classList.toggle("is-selected", selected);
@@ -6786,6 +6812,9 @@ function offerFieldNeedsLiveRefresh(target) {
     "mealTime",
     "sparklingReceptionTime",
     "sparklingReceptionPrice",
+    "mulledWineReception",
+    "mulledWineReceptionTime",
+    "mulledWineReceptionPrice",
     "campfireTime",
     "campfirePrice",
     "drinksMode",
@@ -7152,6 +7181,9 @@ function printOfferDraft(offerValue = null) {
   const drinksCostRows = draft.drinksMode === "custom" && totals.drinksTotal > 0
     ? `<tr><td><span class="cost-icon">G</span>Getränke</td><td>${escapeHtml(drinksCustomText)}</td><td>1</td><td>${formatMoney(totals.drinksTotal)}</td><td>${formatMoney(totals.drinksTotal)}</td></tr>`
     : "";
+  const mulledWineReceptionCostRows = draft.mulledWineReception && totals.mulledWineReceptionTotal > 0
+    ? `<tr><td><span class="cost-icon">G</span>Glühweinempfang</td><td>Glühweinempfang${draft.mulledWineReceptionTime ? ` um ${escapeHtml(draft.mulledWineReceptionTime)} Uhr` : ""}</td><td>${escapeHtml(`${totals.personCount} Pers.`)}</td><td>${formatMoney(draft.mulledWineReceptionPrice)}</td><td>${formatMoney(totals.mulledWineReceptionTotal)}</td></tr>`
+    : "";
   const personsSummary = totals.children ? `${totals.adults} + ${totals.children} Kinder` : `${totals.personCount || 0}`;
   const venueInfo = [reservedAreaPricing.reservedAreaLabel, draft.additionalInfo].filter(Boolean).join("\n\n");
   const offerValidUntil = (() => {
@@ -7181,6 +7213,7 @@ function printOfferDraft(offerValue = null) {
     buffetPricing.buffetBaseTotal > 0 ? { icon: "F", title: draft.conference?.enabled ? "Mittagsbuffet" : "Buffet", text: `${draft.buffet?.name || "Buffet"} · ${formatMoney(draft.buffet?.pricePerPerson || 0)} pro Person` } : null,
     !draft.conference?.enabled && reservedAreaPricing.reservedAreaLabel ? { icon: "R", title: "Reservierter Bereich", text: reservedAreaPricing.reservedAreaLabel } : null,
     draft.buffet?.sparklingReception ? { icon: "S", title: "Sektempfang", text: `${formatMoney(draft.sparklingReceptionPrice)} pro Person${draft.sparklingReceptionTime ? ` · ${draft.sparklingReceptionTime} Uhr` : ""}` } : null,
+    draft.mulledWineReception ? { icon: "G", title: "Glühweinempfang", text: `${formatMoney(draft.mulledWineReceptionPrice)} pro Person${draft.mulledWineReceptionTime ? ` · ${draft.mulledWineReceptionTime} Uhr` : ""}` } : null,
     draft.reservedAreaCampfire ? { icon: "L", title: "Lagerfeuer", text: `${formatMoney(draft.campfirePrice)} pauschal${draft.campfireTime ? ` · ${draft.campfireTime} Uhr` : ""}` } : null,
     bmwTreasurePricing.selectedPackage ? null : draft.drinksMode === "custom"
       ? { icon: "G", title: "Getränke", text: `${drinksCustomText} · ${formatMoney(totals.drinksTotal)}` }
@@ -7437,6 +7470,7 @@ function printOfferDraft(offerValue = null) {
                 ${buffetCostRows}
                 ${bowlingCostRows}
                 ${reservedAreaCostRows}
+                ${mulledWineReceptionCostRows}
                 ${drinksCostRows}
                 ${costs}
               </tbody>
