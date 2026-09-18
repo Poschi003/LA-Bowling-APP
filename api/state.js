@@ -1125,7 +1125,7 @@ function normalizeOffer(offer = {}) {
     sparklingReceptionPrice: offer.sparklingReceptionPrice == null ? 2.5 : cleanOfferMoney(offer.sparklingReceptionPrice),
     mulledWineReception: offer.mulledWineReception === true,
     mulledWineReceptionTime: cleanTime(offer.mulledWineReceptionTime),
-    mulledWineReceptionPrice: offer.mulledWineReceptionPrice == null ? 3.9 : cleanOfferMoney(offer.mulledWineReceptionPrice),
+    mulledWineReceptionPrice: offer.mulledWineReceptionPrice == null ? 4.5 : cleanOfferMoney(offer.mulledWineReceptionPrice),
     campfireTime: cleanTime(offer.campfireTime),
     campfirePrice: offer.campfirePrice == null ? 50 : cleanOfferMoney(offer.campfirePrice),
     drinksMode: offer.drinksMode === "custom" ? "custom" : "menu",

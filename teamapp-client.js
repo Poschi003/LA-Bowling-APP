@@ -1239,7 +1239,7 @@ const OFFER_DISH_ASSORTMENT = {
 const OFFER_BOWLING_PRICE_URL = "https://www.la-bowling.de/%C3%B6ffnungszeiten";
 const OFFER_BOWLING_SHOE_PRICE = 2.5;
 const OFFER_SPARKLING_RECEPTION_PRICE = 2.5;
-const OFFER_MULLED_WINE_RECEPTION_PRICE = 3.9;
+const OFFER_MULLED_WINE_RECEPTION_PRICE = 4.5;
 const OFFER_CAMPFIRE_PRICE = 50;
 const OFFER_HUT_RENT_PRICE = 250;
 const OFFER_LARGE_ROOM_ONLY_PRICE = 100;
@@ -6099,7 +6099,7 @@ function renderAdminOffers() {
             </article>
             <article class="offer-special-service-card ${draft.mulledWineReception ? "is-selected" : ""}">
               <label class="offer-toggle-row">
-                <span><strong>Glühweinempfang</strong><small>3,90 Euro pro Person</small></span>
+                <span><strong>Glühweinempfang</strong><small>Standardpreis 4,50 Euro pro Person</small></span>
                 <input data-offer-field="mulledWineReception" type="checkbox" ${draft.mulledWineReception ? "checked" : ""}>
               </label>
               <div class="offer-grid offer-grid-two">
