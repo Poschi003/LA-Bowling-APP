@@ -1339,6 +1339,9 @@ function normalizeOfferClient(offer = {}) {
     archived: offer.archived === true,
     confirmed: offer.confirmed === true,
     confirmedAt: offer.confirmed === true ? String(offer.confirmedAt || offer.updatedAt || new Date().toISOString()) : "",
+    nextFollowUpDate: cleanOfferDateValue(offer.nextFollowUpDate),
+    followUpContactedAt: String(offer.followUpContactedAt || "").slice(0, 80),
+    followUpClosedAt: String(offer.followUpClosedAt || "").slice(0, 80),
     offerType: offer.offerType === "bmw-treasure" ? "bmw-treasure" : "standard",
     bmwTreasurePackage: OFFER_BMW_TREASURE_PACKAGES[offer.bmwTreasurePackage] ? offer.bmwTreasurePackage : "",
     bmwExtraText: String(offer.bmwExtraText || "").trim().slice(0, 600),
@@ -1621,6 +1624,27 @@ function setOfferDraftFromOffer(offer) {
   state.offerDraftId = state.offerDraft.id;
   state.offerDraftDirty = false;
   state.offerShoePersonsManual = Number(state.offerDraft.bowling?.shoePersons || 0) > 0;
+}
+
+function offerFollowUpInfo(offer, referenceDate = todayKey()) {
+  const sourceDate = cleanOfferDateValue(offer.offerDate) || cleanOfferDateValue(String(offer.createdAt || "").slice(0, 10));
+  if (!sourceDate) return null;
+  const expiryDate = isoDate(addDays(new Date(`${sourceDate}T12:00:00`), 14));
+  const reminderDate = cleanOfferDateValue(offer.nextFollowUpDate) || isoDate(addDays(new Date(`${sourceDate}T12:00:00`), 11));
+  return {
+    expiryDate,
+    reminderDate,
+    due: referenceDate >= reminderDate,
+    expired: referenceDate > expiryDate,
+    daysUntilExpiry: Math.round((new Date(`${expiryDate}T12:00:00`) - new Date(`${referenceDate}T12:00:00`)) / 86400000)
+  };
+}
+
+function offerFollowUpReminders(offers = [], referenceDate = todayKey()) {
+  return normalizeOffersClient(offers)
+    .map((offer) => ({ offer, info: offerFollowUpInfo(offer, referenceDate) }))
+    .filter(({ offer, info }) => info?.due && !offer.confirmed && !offer.archived && !offer.followUpClosedAt)
+    .sort((a, b) => a.info.reminderDate.localeCompare(b.info.reminderDate));
 }
 
 function offerWorkspaceRoot() {
@@ -5856,6 +5880,7 @@ function renderAdminOffers() {
   const customerQuery = String(state.offerCustomerSearch || "").trim();
   const customerOptions = normalizeCustomerDirectory(state.customerDirectory).filter((customer) => offerCustomerDirectoryMatches(customer, customerQuery));
   const offers = normalizeOffersClient(state.offers || []);
+  const followUpReminders = offerFollowUpReminders(offers);
   const activeId = state.offerDraft?.id || draft.id;
   const fixedYears = [2024, 2025, 2026];
   const offerYear = (offer) => Number(String(offer.eventDate || offer.offerDate || offer.createdAt || "2026").slice(0, 4)) || 2026;
@@ -5893,6 +5918,7 @@ function renderAdminOffers() {
       <button class="primary" type="button" data-offer-new>+ Neues Angebot erstellen</button>
       <button class="secondary" type="button" data-offer-scroll-saved>Gespeicherte Angebote ansehen</button>
     </nav>
+    ${followUpReminders.length ? `<section class="offer-follow-up-panel"><header><div><small>Automatische Erinnerung</small><h3>Angebote nachfassen</h3><p>Diese Kunden benötigen eine Rückmeldung, damit reservierte Bahnen nicht unnötig blockiert bleiben.</p></div><strong>${followUpReminders.length}</strong></header><div class="offer-follow-up-list">${followUpReminders.map(({ offer, info }) => `<article class="offer-follow-up-item ${info.expired ? "is-expired" : ""}"><div><span>${info.expired ? "Angebot abgelaufen" : `Noch ${info.daysUntilExpiry} Tag${info.daysUntilExpiry === 1 ? "" : "e"} gültig`}</span><strong>${escapeHtml(offer.customerName || offer.title || "Kunde")}</strong><small>${escapeHtml(offer.eventDate ? `Veranstaltung: ${formatDate(offer.eventDate)}` : "Veranstaltungstag noch offen")} · gültig bis ${escapeHtml(formatDate(info.expiryDate))}</small></div><div class="offer-follow-up-actions"><button class="secondary" type="button" data-select-offer="${escapeHtml(offer.id)}">Angebot öffnen</button><button class="secondary" type="button" data-offer-follow-up="contacted" data-offer-id="${escapeHtml(offer.id)}">Kunde kontaktiert</button><button class="secondary danger-lite" type="button" data-offer-follow-up="closed" data-offer-id="${escapeHtml(offer.id)}">Erledigt / Bahnen frei</button></div></article>`).join("")}</div></section>` : ""}
     <div class="offer-toolbar">
       <div class="offer-toolbar-actions">
         <button class="secondary" type="button" data-offer-save>Speichern</button>
@@ -6953,6 +6979,9 @@ function duplicateCurrentOffer() {
   clone.eventDate = "";
   clone.confirmed = false;
   clone.confirmedAt = "";
+  clone.nextFollowUpDate = "";
+  clone.followUpContactedAt = "";
+  clone.followUpClosedAt = "";
   clone.archived = false;
   state.offerDraft = normalizeOfferClient(clone);
   state.offerDraftId = state.offerDraft.id;
@@ -7035,6 +7064,34 @@ async function toggleOfferConfirmed(offerId, button) {
   } catch (error) {
     showError(error);
     renderAdminOffers();
+  }
+}
+
+async function updateOfferFollowUp(offerId, action, button) {
+  const offer = normalizeOffersClient(state.offers || []).find((item) => item.id === offerId);
+  if (!offer) return;
+  const nextOffer = normalizeOfferClient({
+    ...offer,
+    nextFollowUpDate: action === "contacted" ? isoDate(addDays(new Date(), 3)) : offer.nextFollowUpDate,
+    followUpContactedAt: action === "contacted" ? new Date().toISOString() : offer.followUpContactedAt,
+    followUpClosedAt: action === "closed" ? new Date().toISOString() : ""
+  });
+  const oldText = button?.textContent || "";
+  if (button) { button.disabled = true; button.textContent = "Speichert..."; }
+  try {
+    const result = await api("/api/state", {
+      method: "POST",
+      headers: { "x-admin-token": state.adminToken },
+      body: JSON.stringify({ action: "save-offer", adminToken: state.adminToken, terminalToken: state.terminalToken, offer: nextOffer })
+    });
+    state.offers = normalizeOffersClient(result.offers || state.offers || []);
+    if (state.offerDraft?.id === offerId) state.offerDraft = cloneData(result.offer || nextOffer);
+    renderAdminOffers();
+    renderTerminalExtras(state.terminalDate || todayKey());
+    showToast(action === "contacted" ? "In drei Tagen wird erneut erinnert." : "Nachfassvorgang abgeschlossen. Bahnen können freigegeben werden.");
+  } catch (error) {
+    if (button) { button.disabled = false; button.textContent = oldText; }
+    showError(error);
   }
 }
 
@@ -9411,6 +9468,7 @@ function renderTerminalExtras(dateKey) {
   const weekTarget = $("#terminalExtrasWeek");
   if (!target || !weekTarget) return;
   const selectedExtras = terminalExtrasForDate(dateKey);
+  const offerReminders = offerFollowUpReminders(state.offers || [], dateKey);
   const overviewCard = target.closest(".terminal-overview-card");
   overviewCard?.classList.toggle("has-no-extras", selectedExtras.length === 0);
   overviewCard?.classList.toggle("has-extras", selectedExtras.length > 0);
@@ -9424,7 +9482,8 @@ function renderTerminalExtras(dateKey) {
     $("#terminalExtrasCount").textContent = `${selectedExtras.length} Extra${selectedExtras.length === 1 ? "" : "s"}`;
     $("#terminalExtrasCount").classList.toggle("has-extras", selectedExtras.length > 0);
   }
-  target.innerHTML = selectedExtras.length ? `
+  const reminderHtml = offerReminders.length ? `<section class="terminal-offer-reminder"><header><div><small>Angebote nachfassen</small><strong>${offerReminders.length} Erinnerung${offerReminders.length === 1 ? "" : "en"}</strong></div><button class="secondary" data-terminal-tab-target="offers" type="button">Zu den Angeboten</button></header>${offerReminders.slice(0, 3).map(({ offer, info }) => `<div><span>${info.expired ? "Überfällig" : `Gültig bis ${escapeHtml(formatDate(info.expiryDate))}`}</span><strong>${escapeHtml(offer.customerName || offer.title || "Kunde")}</strong></div>`).join("")}</section>` : "";
+  target.innerHTML = reminderHtml + (selectedExtras.length ? `
     <div class="terminal-extra-list">
       ${selectedExtras.slice(0, 5).map((offer) => `
         <article class="terminal-extra-item">
@@ -9443,7 +9502,7 @@ function renderTerminalExtras(dateKey) {
       <span class="terminal-extras-empty-icon" aria-hidden="true">+</span>
       <span><strong>Keine Extras geplant</strong><small>Für diesen Tag sind keine besonderen Aktionen oder Hinweise hinterlegt.</small></span>
     </div>
-  `;
+  `);
 
   const weekDays = Array.from({ length: 7 }, (_, offset) => {
     const day = new Date(`${dateKey}T12:00:00`);
@@ -20019,6 +20078,11 @@ function bindEvents() {
   }));
 
   $$("#adminOffers, #terminalOffersWorkspace").forEach((offerContainer) => offerContainer.addEventListener("click", async (event) => {
+    const followUpButton = event.target.closest("[data-offer-follow-up]");
+    if (followUpButton) {
+      await updateOfferFollowUp(followUpButton.dataset.offerId, followUpButton.dataset.offerFollowUp, followUpButton);
+      return;
+    }
     const removeInternalFile = event.target.closest("[data-offer-remove-internal-file]");
     if (removeInternalFile) {
       const draft = currentOfferDraftFromDom();
