@@ -10001,7 +10001,7 @@ function renderTerminalInvoiceHistory() {
   const target = $("#terminalInvoiceHistory");
   if (!target) return;
   const entries = Array.isArray(state.terminalInvoiceHistory) ? state.terminalInvoiceHistory : [];
-  const renderEntry = (entry) => {
+  const renderEntry = (entry, allowDelete = false) => {
     const item = entry.customer || {};
     const total = invoiceTotal(item);
     const receipt = invoiceReceipt(item);
@@ -10014,14 +10014,14 @@ function renderTerminalInvoiceHistory() {
         <section class="history-invoice-amounts"><small>Positionen</small><span>Bowling <b>${formatReportMoney(item.bowlingAmount)}</b></span><span>Getränke <b>${formatReportMoney(item.gastroDrinksAmount)}</b></span><span>Speisen <b>${formatReportMoney(item.gastroFoodAmount)}</b></span><span>Sonstiges <b>${formatReportMoney(item.gastroOtherAmount)}</b></span><span>Tipp <b>${formatReportMoney(item.tip)}</b></span></section>
         ${item.note || item.gastroOtherNote ? `<section><small>Notizen</small><span>${escapeHtml([item.note, item.gastroOtherNote].filter(Boolean).join(" · "))}</span></section>` : ""}
         <section><small>Beleg</small><span>${receipt?.receiptName ? escapeHtml(receipt.receiptName) : "Kein Beleg hinterlegt"}</span>${receipt ? receiptLinkHtml(receipt, "Beleg öffnen") : ""}</section>
-        <div class="invoice-entry-actions"><button class="primary" data-history-invoice-pdf data-invoice-date="${escapeHtml(entry.date)}" data-invoice-id="${escapeHtml(item.id || "")}" type="button">2 PDFs &amp; Outlook vorbereiten</button></div>
+        <div class="invoice-entry-actions"><button class="primary" data-history-invoice-pdf data-invoice-date="${escapeHtml(entry.date)}" data-invoice-id="${escapeHtml(item.id || "")}" type="button">2 PDFs &amp; Outlook vorbereiten</button>${allowDelete ? `<button class="secondary danger-lite" data-delete-future-invoice data-invoice-date="${escapeHtml(entry.date)}" data-invoice-id="${escapeHtml(item.id || "")}" data-invoice-name="${escapeHtml(item.name || "Rechnungskunde")}" type="button">Löschen</button>` : ""}</div>
       </div>
     </details>`;
   };
   const renderGroup = (key, title, description, items) => `
     <section class="terminal-invoice-date-group is-${key}">
       <header><div><h4>${title}</h4><p>${description}</p></div><strong>${items.length}</strong></header>
-      ${items.length ? `<div class="terminal-invoice-history-list">${items.map(renderEntry).join("")}</div>` : `<p class="terminal-invoice-group-empty">Keine Einträge in diesem Bereich.</p>`}
+      ${items.length ? `<div class="terminal-invoice-history-list">${items.map((entry) => renderEntry(entry, key === "future")).join("")}</div>` : `<p class="terminal-invoice-group-empty">Keine Einträge in diesem Bereich.</p>`}
     </section>`;
   const today = todayKey();
   const future = entries.filter((entry) => entry.date > today).sort((a, b) => a.date.localeCompare(b.date));
@@ -10035,6 +10035,26 @@ function renderTerminalInvoiceHistory() {
       ${renderGroup("done", "Erledigt", "Abgeschlossene oder bezahlte Rechnungen zum Nachsehen.", done)}
     </div>
   ` : `<div class="terminal-invoice-history-empty"><strong>Noch keine Termine angelegt</strong><span>Gespeicherte Rechnungskunden erscheinen hier automatisch.</span></div>`;
+}
+
+async function deleteFutureInvoiceCustomer(button) {
+  const date = button.dataset.invoiceDate || "";
+  const invoiceId = button.dataset.invoiceId || "";
+  const name = button.dataset.invoiceName || "Rechnungskunde";
+  if (!date || !invoiceId) return;
+  if (!window.confirm(`${name} am ${formatDate(date)} wirklich löschen?\n\nDer Rechnungskunde wird aus dem zukünftigen Tagesbericht entfernt.`)) return;
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Wird gelöscht...";
+  try {
+    await terminalAction({ action: "delete-future-invoice-customer", invoiceDate: date, invoiceId });
+    renderTerminalInvoiceHistory();
+    showToast("Zukünftiger Rechnungskunde wurde gelöscht.");
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = oldText;
+    showError(error);
+  }
 }
 
 function showInvoiceWizardStep(row, step) {
@@ -21755,6 +21775,11 @@ function bindEvents() {
     const historyPdfButton = event.target.closest("[data-history-invoice-pdf]");
     if (historyPdfButton) {
       terminalInvoicePdf(historyPdfButton.dataset.invoiceDate, historyPdfButton.dataset.invoiceId, historyPdfButton);
+      return;
+    }
+    const deleteFutureInvoiceButton = event.target.closest("[data-delete-future-invoice]");
+    if (deleteFutureInvoiceButton) {
+      deleteFutureInvoiceCustomer(deleteFutureInvoiceButton);
       return;
     }
     const row = event.target.closest('[data-report-entry="invoice"]');

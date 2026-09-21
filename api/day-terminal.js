@@ -83,6 +83,7 @@ module.exports = async function handler(req, res) {
     if (action === "save-report") return saveReport(body, res);
     if (action === "send-ready-invoice-mail") return sendReadyInvoiceMail(body, res);
     if (action === "save-invoice-customer") return saveInvoiceCustomerOnly(body, res);
+    if (action === "delete-future-invoice-customer") return deleteFutureInvoiceCustomer(body, res);
     if (action === "close-business-range") return closeBusinessRange(body, res);
     if (action === "reopen-business-day") return reopenBusinessDay(body, res);
     if (action === "close-report") return closeReport(body, res);
@@ -1251,6 +1252,27 @@ async function saveInvoiceCustomerOnly(body, res) {
   upsertCustomerDirectory(appData, [customer]);
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true, customer, message: "Rechnungskunde gespeichert.", ...terminalPayload(appData, cleanDate(body.date)) });
+}
+
+async function deleteFutureInvoiceCustomer(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.invoiceDate || body.date);
+  const invoiceId = String(body.invoiceId || "").trim();
+  if (!date || date <= localDate(new Date())) {
+    return sendJson(res, 400, { error: "Nur zukünftige Rechnungskunden können hier gelöscht werden." });
+  }
+  const report = appData.dayReports?.[date];
+  if (!invoiceId || !Array.isArray(report?.invoiceCustomers)) {
+    return sendJson(res, 404, { error: "Rechnungskunde nicht gefunden." });
+  }
+  const before = report.invoiceCustomers.length;
+  report.invoiceCustomers = report.invoiceCustomers.filter((invoice, index) => String(invoice.id || index) !== invoiceId);
+  if (report.invoiceCustomers.length === before) {
+    return sendJson(res, 404, { error: "Rechnungskunde nicht gefunden." });
+  }
+  report.updatedAt = new Date().toISOString();
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true, message: "Zukünftiger Rechnungskunde gelöscht.", ...terminalPayload(appData, cleanDate(body.date)) });
 }
 
 function terminalAssignmentDates(dateKey) {
