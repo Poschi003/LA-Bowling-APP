@@ -10001,26 +10001,40 @@ function renderTerminalInvoiceHistory() {
   const target = $("#terminalInvoiceHistory");
   if (!target) return;
   const entries = Array.isArray(state.terminalInvoiceHistory) ? state.terminalInvoiceHistory : [];
+  const renderEntry = (entry) => {
+    const item = entry.customer || {};
+    const total = invoiceTotal(item);
+    const receipt = invoiceReceipt(item);
+    return `<details class="terminal-invoice-history-item">
+      <summary><span><strong>${escapeHtml(item.name || "Rechnungskunde")}</strong><small>${escapeHtml(formatDate(entry.date))}</small></span><b>${escapeHtml(formatReportMoney(total))}</b></summary>
+      <div class="terminal-invoice-history-details">
+        <section><small>Rechnungsadresse</small><strong>${escapeHtml(item.address || "-")}</strong></section>
+        <section><small>Kontakt</small><strong>${escapeHtml(item.contact || "-")}</strong><span>${escapeHtml([item.phone, item.email].filter(Boolean).join(" · ") || "-")}</span></section>
+        <section><small>Zahlungsart</small><strong>${escapeHtml(item.paymentMethod || "-")}</strong></section>
+        <section class="history-invoice-amounts"><small>Positionen</small><span>Bowling <b>${formatReportMoney(item.bowlingAmount)}</b></span><span>Getränke <b>${formatReportMoney(item.gastroDrinksAmount)}</b></span><span>Speisen <b>${formatReportMoney(item.gastroFoodAmount)}</b></span><span>Sonstiges <b>${formatReportMoney(item.gastroOtherAmount)}</b></span><span>Tipp <b>${formatReportMoney(item.tip)}</b></span></section>
+        ${item.note || item.gastroOtherNote ? `<section><small>Notizen</small><span>${escapeHtml([item.note, item.gastroOtherNote].filter(Boolean).join(" · "))}</span></section>` : ""}
+        <section><small>Beleg</small><span>${receipt?.receiptName ? escapeHtml(receipt.receiptName) : "Kein Beleg hinterlegt"}</span>${receipt ? receiptLinkHtml(receipt, "Beleg öffnen") : ""}</section>
+        <div class="invoice-entry-actions"><button class="primary" data-history-invoice-pdf data-invoice-date="${escapeHtml(entry.date)}" data-invoice-id="${escapeHtml(item.id || "")}" type="button">2 PDFs &amp; Outlook vorbereiten</button></div>
+      </div>
+    </details>`;
+  };
+  const renderGroup = (key, title, description, items) => `
+    <section class="terminal-invoice-date-group is-${key}">
+      <header><div><h4>${title}</h4><p>${description}</p></div><strong>${items.length}</strong></header>
+      ${items.length ? `<div class="terminal-invoice-history-list">${items.map(renderEntry).join("")}</div>` : `<p class="terminal-invoice-group-empty">Keine Einträge in diesem Bereich.</p>`}
+    </section>`;
+  const today = todayKey();
+  const future = entries.filter((entry) => entry.date > today).sort((a, b) => a.date.localeCompare(b.date));
+  const current = entries.filter((entry) => entry.date <= today && !entry.customer?.invoiceDone && !invoiceIsPaid(entry.customer || {})).sort((a, b) => b.date.localeCompare(a.date));
+  const done = entries.filter((entry) => entry.date <= today && (entry.customer?.invoiceDone || invoiceIsPaid(entry.customer || {}))).sort((a, b) => b.date.localeCompare(a.date));
   target.innerHTML = entries.length ? `
-    <div class="terminal-invoice-history-head"><div><h3>Archiv</h3><p>Alle gespeicherten Rechnungskunden nach Datum.</p></div><strong>${entries.length} Einträge</strong></div>
-    <div class="terminal-invoice-history-list">${entries.map((entry) => {
-      const item = entry.customer || {};
-      const total = invoiceTotal(item);
-      const receipt = invoiceReceipt(item);
-      return `<details class="terminal-invoice-history-item">
-        <summary><span><strong>${escapeHtml(item.name || "Rechnungskunde")}</strong><small>${escapeHtml(formatDate(entry.date))}</small></span><b>${escapeHtml(formatReportMoney(total))}</b></summary>
-        <div class="terminal-invoice-history-details">
-          <section><small>Rechnungsadresse</small><strong>${escapeHtml(item.address || "-")}</strong></section>
-          <section><small>Kontakt</small><strong>${escapeHtml(item.contact || "-")}</strong><span>${escapeHtml([item.phone, item.email].filter(Boolean).join(" · ") || "-")}</span></section>
-          <section><small>Zahlungsart</small><strong>${escapeHtml(item.paymentMethod || "-")}</strong></section>
-          <section class="history-invoice-amounts"><small>Positionen</small><span>Bowling <b>${formatReportMoney(item.bowlingAmount)}</b></span><span>Getränke <b>${formatReportMoney(item.gastroDrinksAmount)}</b></span><span>Speisen <b>${formatReportMoney(item.gastroFoodAmount)}</b></span><span>Sonstiges <b>${formatReportMoney(item.gastroOtherAmount)}</b></span><span>Tipp <b>${formatReportMoney(item.tip)}</b></span></section>
-          ${item.note || item.gastroOtherNote ? `<section><small>Notizen</small><span>${escapeHtml([item.note, item.gastroOtherNote].filter(Boolean).join(" · "))}</span></section>` : ""}
-          <section><small>Beleg</small><span>${receipt?.receiptName ? escapeHtml(receipt.receiptName) : "Kein Beleg hinterlegt"}</span>${receipt ? receiptLinkHtml(receipt, "Beleg öffnen") : ""}</section>
-          <div class="invoice-entry-actions"><button class="primary" data-history-invoice-pdf data-invoice-date="${escapeHtml(entry.date)}" data-invoice-id="${escapeHtml(item.id || "")}" type="button">2 PDFs &amp; Outlook vorbereiten</button></div>
-        </div>
-      </details>`;
-    }).join("")}</div>
-  ` : `<div class="terminal-invoice-history-empty"><strong>Archiv ist leer</strong><span>Gespeicherte Rechnungskunden erscheinen hier automatisch.</span></div>`;
+    <div class="terminal-invoice-history-head"><div><h3>Alle Termine</h3><p>Vorgemerkte, offene und erledigte Rechnungskunden nach Veranstaltungstag.</p></div><strong>${entries.length} Einträge</strong></div>
+    <div class="terminal-invoice-date-groups">
+      ${renderGroup("future", "Zukünftige Termine", "Bereits für kommende Tagesberichte vorgemerkt.", future)}
+      ${renderGroup("open", "Offene Rechnungen", "Veranstaltung war bereits oder ist heute und muss noch abgeschlossen werden.", current)}
+      ${renderGroup("done", "Erledigt", "Abgeschlossene oder bezahlte Rechnungen zum Nachsehen.", done)}
+    </div>
+  ` : `<div class="terminal-invoice-history-empty"><strong>Noch keine Termine angelegt</strong><span>Gespeicherte Rechnungskunden erscheinen hier automatisch.</span></div>`;
 }
 
 function showInvoiceWizardStep(row, step) {
