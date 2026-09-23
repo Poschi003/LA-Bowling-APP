@@ -797,7 +797,7 @@ function createFollowUpInvoice(invoice = {}, type = "correction", actor = "", se
   }, settings);
 }
 
-async function attachmentToMailFile(attachment = {}) {
+async function attachmentToMailFile(attachment = {}, loadStoredReceipt = null) {
   const normalized = normalizeInvoiceAttachment(attachment);
   if (normalized.data) {
     const parsed = dataUrlToBuffer(normalized.data);
@@ -815,6 +815,16 @@ async function attachmentToMailFile(attachment = {}) {
       content: fs.readFileSync(normalized.path),
       contentType: normalized.mime || undefined
     };
+  }
+  if (normalized.path && typeof loadStoredReceipt === "function") {
+    const stored = await loadStoredReceipt(normalized.path);
+    if (stored?.buffer?.length) {
+      return {
+        filename: normalized.name || path.basename(normalized.path),
+        content: stored.buffer,
+        contentType: stored.contentType || normalized.mime || undefined
+      };
+    }
   }
   return null;
 }
@@ -1001,7 +1011,7 @@ async function buildInvoiceInfoPdfBuffer(invoice = {}, settings = DEFAULT_INVOIC
   };
 }
 
-async function buildInvoiceAttachmentsPdfBuffer(invoice = {}, settings = DEFAULT_INVOICE_SETTINGS) {
+async function buildInvoiceAttachmentsPdfBuffer(invoice = {}, settings = DEFAULT_INVOICE_SETTINGS, options = {}) {
   const normalized = normalizeInvoiceRecord(invoice, settings);
   const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
   const output = await PDFDocument.create();
@@ -1010,7 +1020,7 @@ async function buildInvoiceAttachmentsPdfBuffer(invoice = {}, settings = DEFAULT
   let added = 0;
 
   for (const attachment of normalized.attachments || []) {
-    const file = await attachmentToMailFile(attachment);
+    const file = await attachmentToMailFile(attachment, options.loadStoredReceipt);
     if (!file?.content?.length) continue;
     const mime = String(file.contentType || attachment.mime || "").toLowerCase();
     const name = file.filename || attachment.name || attachment.label || "Beleg";

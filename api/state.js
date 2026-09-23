@@ -21,6 +21,7 @@ const {
   applyPushTemplate,
   collectEmployeeTimesheets,
   defaultData,
+  downloadReceipt,
   handleError,
   publicSettings,
   purgePreviousMonthTimesheets,
@@ -541,7 +542,7 @@ async function handleInvoiceMutation(body, res) {
     const validation = validateInvoice(previewInvoice, { requireEmail: false, requireNumber: false });
     if (validation.length) return sendJson(res, 400, { error: validation.join(", ") });
     const infoPdf = await buildInvoiceInfoPdfBuffer(previewInvoice, appData.invoiceSettings);
-    const receiptsPdf = await buildInvoiceAttachmentsPdfBuffer(previewInvoice, appData.invoiceSettings);
+    const receiptsPdf = await buildInvoiceAttachmentsPdfBuffer(previewInvoice, appData.invoiceSettings, { loadStoredReceipt: downloadReceipt });
     return sendJson(res, 200, {
       ok: true,
       infoPdfData: bufferToPdfDataUrl(infoPdf.buffer),
