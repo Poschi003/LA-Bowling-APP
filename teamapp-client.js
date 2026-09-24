@@ -16923,9 +16923,9 @@ async function terminalInvoicePdf(date, invoiceId, button) {
     const subject = `LA-Bowling Rechnung - ${customerName}`;
     const body = `Hallo Peter,\n\nim Anhang findest du die Rechnungsinformationen und die gescannten Belege für ${customerName} vom ${formatDate(date)}.\n\nBitte diese beiden Dateien anhängen:\n- ${infoName}\n- ${receiptsName}\n\nViele Grüße`;
     window.setTimeout(() => {
-      window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.location.href = `ms-outlook://compose?to=${encodeURIComponent(recipient)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     }, 450);
-    showToast("Rechnungsinformationen und Belege erstellt. Outlook wird geöffnet; bitte beide PDFs anhängen.");
+    showToast("Rechnungsinformationen und Belege erstellt. Das installierte Outlook wird geöffnet; bitte beide PDFs anhängen.");
   } catch (error) {
     showError(error);
   } finally {
