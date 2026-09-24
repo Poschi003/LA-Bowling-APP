@@ -2332,7 +2332,8 @@ async function sendReadyInvoiceNotifications(appData, date, targetInvoiceId = ""
     const result = await sendInvoiceNotificationEmail({
       date,
       customer: invoice,
-      to: appData.settings?.invoiceNotificationTo
+      to: appData.settings?.invoiceNotificationTo,
+      invoiceSettings: appData.invoiceSettings
     });
     if (result?.ok) {
       if (!(invoice.invoiceReady === true || invoice.invoiceReady === "true")) {

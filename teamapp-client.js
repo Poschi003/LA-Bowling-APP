@@ -16922,10 +16922,23 @@ async function terminalInvoicePdf(date, invoiceId, button) {
     const customerName = pdfResult.customerName || "Rechnungskunde";
     const subject = `LA-Bowling Rechnung - ${customerName}`;
     const body = `Hallo Peter,\n\nim Anhang findest du die Rechnungsinformationen und die gescannten Belege für ${customerName} vom ${formatDate(date)}.\n\nBitte diese beiden Dateien anhängen:\n- ${infoName}\n- ${receiptsName}\n\nViele Grüße`;
-    window.setTimeout(() => {
-      window.location.href = `ms-outlook://compose?to=${encodeURIComponent(recipient)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    }, 450);
-    showToast("Rechnungsinformationen und Belege erstellt. Das installierte Outlook wird geöffnet; bitte beide PDFs anhängen.");
+    const mailResult = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "send-ready-invoice-mail",
+        date,
+        invoiceId,
+        terminalToken: state.invoiceTerminalToken || state.terminalToken
+      })
+    }).catch(() => null);
+    if (mailResult?.mailSent) {
+      showToast("Rechnungsinformationen und Belege wurden als zwei PDF-Anhänge an den Chef gesendet.");
+    } else {
+      window.setTimeout(() => {
+        window.location.href = `ms-outlook://compose?to=${encodeURIComponent(recipient)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      }, 450);
+      showToast(mailResult?.mailMessage || "Automatischer Versand nicht verfügbar. Outlook wird geöffnet; bitte beide PDFs anhängen.");
+    }
   } catch (error) {
     showError(error);
   } finally {

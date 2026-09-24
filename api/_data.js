@@ -32,12 +32,18 @@ let normalizeInvoiceSettings = (value = {}) => ({
 });
 
 let normalizeInvoices = (value = []) => Array.isArray(value) ? value : [];
+let buildInvoiceInfoPdfBuffer = null;
+let buildInvoiceAttachmentsPdfBuffer = null;
+let createInvoiceDraftFromCustomer = null;
 
 try {
   const invoiceEngine = require("../server/invoice-engine");
   if (invoiceEngine?.DEFAULT_INVOICE_SETTINGS) DEFAULT_INVOICE_SETTINGS = invoiceEngine.DEFAULT_INVOICE_SETTINGS;
   if (typeof invoiceEngine?.normalizeInvoiceSettings === "function") normalizeInvoiceSettings = invoiceEngine.normalizeInvoiceSettings;
   if (typeof invoiceEngine?.normalizeInvoices === "function") normalizeInvoices = invoiceEngine.normalizeInvoices;
+  if (typeof invoiceEngine?.buildInvoiceInfoPdfBuffer === "function") buildInvoiceInfoPdfBuffer = invoiceEngine.buildInvoiceInfoPdfBuffer;
+  if (typeof invoiceEngine?.buildInvoiceAttachmentsPdfBuffer === "function") buildInvoiceAttachmentsPdfBuffer = invoiceEngine.buildInvoiceAttachmentsPdfBuffer;
+  if (typeof invoiceEngine?.createInvoiceDraftFromCustomer === "function") createInvoiceDraftFromCustomer = invoiceEngine.createInvoiceDraftFromCustomer;
 } catch (error) {
   console.warn("invoice-engine konnte nicht geladen werden. Fallback fuer _data.js aktiv.", error?.message || String(error));
 }
@@ -1165,6 +1171,20 @@ async function invoiceMailAttachments(customer = {}) {
   return attachments;
 }
 
+async function generatedInvoiceMailAttachments(payload = {}) {
+  if (!buildInvoiceInfoPdfBuffer || !buildInvoiceAttachmentsPdfBuffer || !createInvoiceDraftFromCustomer) return [];
+  const settings = normalizeInvoiceSettings(payload.invoiceSettings || {});
+  const invoice = createInvoiceDraftFromCustomer(payload.customer || {}, payload.date || "", settings, "TeamApp");
+  const [infoPdf, receiptsPdf] = await Promise.all([
+    buildInvoiceInfoPdfBuffer(invoice, settings),
+    buildInvoiceAttachmentsPdfBuffer(invoice, settings, { loadStoredReceipt: downloadReceipt })
+  ]);
+  return [
+    { filename: infoPdf.fileName, content: infoPdf.buffer, contentType: "application/pdf" },
+    { filename: receiptsPdf.fileName, content: receiptsPdf.buffer, contentType: "application/pdf" }
+  ];
+}
+
 async function sendInvoiceNotificationEmail(payload = {}) {
   const to = String(payload.to || process.env.INVOICE_NOTIFICATION_TO || "pvo65@outlook.de").trim();
   const smtpHost = String(process.env.SMTP_HOST || "").trim();
@@ -1200,7 +1220,13 @@ async function sendInvoiceNotificationEmail(payload = {}) {
   });
 
   try {
-    const attachments = await invoiceMailAttachments(payload.customer || {});
+    let attachments;
+    try {
+      attachments = await generatedInvoiceMailAttachments(payload);
+    } catch (error) {
+      console.error("Vorbereitete Rechnungs-PDFs konnten nicht als Mail-Anhang erstellt werden.", error);
+      attachments = await invoiceMailAttachments(payload.customer || {});
+    }
     console.info("Rechnungskunden-Mailversand gestartet.", {
       date: String(payload.date || ""),
       recipient: to,
