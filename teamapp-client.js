@@ -16899,8 +16899,19 @@ async function closeCorrectionReport(button) {
   }
 }
 
+function pdfDataUrlToObjectUrl(dataUrl) {
+  const [header, encoded] = String(dataUrl || "").split(",", 2);
+  if (!encoded) return "";
+  const mime = header.match(/^data:([^;]+)/i)?.[1] || "application/pdf";
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
+
 function showPreparedInvoicePackage({ infoData, infoName, receiptsData, receiptsName, recipient, subject, body }) {
   document.querySelector("#preparedInvoicePackageModal")?.remove();
+  const previewUrls = new Set();
   const modal = document.createElement("div");
   modal.id = "preparedInvoicePackageModal";
   modal.className = "tip-detail-modal";
@@ -16927,14 +16938,25 @@ function showPreparedInvoicePackage({ infoData, infoName, receiptsData, receipts
     </section>
   `;
   document.body.appendChild(modal);
+  const closeModal = () => {
+    modal.remove();
+    window.setTimeout(() => previewUrls.forEach((url) => URL.revokeObjectURL(url)), 60000);
+  };
   modal.addEventListener("click", (event) => {
     if (event.target === modal || event.target.closest("[data-close-prepared-invoice]")) {
-      modal.remove();
+      closeModal();
       return;
     }
     const preview = event.target.closest("[data-preview-prepared-invoice]")?.dataset.previewPreparedInvoice;
     if (preview) {
-      window.open(preview === "info" ? infoData : receiptsData, "_blank", "noopener");
+      try {
+        const url = pdfDataUrlToObjectUrl(preview === "info" ? infoData : receiptsData);
+        if (!url) throw new Error("PDF konnte nicht vorbereitet werden.");
+        previewUrls.add(url);
+        window.open(url, "_blank", "noopener");
+      } catch (error) {
+        showError(error);
+      }
       return;
     }
     const download = event.target.closest("[data-download-prepared-invoice]")?.dataset.downloadPreparedInvoice;
