@@ -16922,6 +16922,11 @@ async function terminalInvoicePdf(date, invoiceId, button) {
     const customerName = pdfResult.customerName || "Rechnungskunde";
     const subject = `LA-Bowling Rechnung - ${customerName}`;
     const body = `Hallo Peter,\n\nim Anhang findest du die Rechnungsinformationen und die gescannten Belege für ${customerName} vom ${formatDate(date)}.\n\nBitte diese beiden Dateien anhängen:\n- ${infoName}\n- ${receiptsName}\n\nViele Grüße`;
+    const confirmed = window.confirm(`Die E-Mail an ${recipient} ist mit beiden PDFs vorbereitet. Jetzt senden?`);
+    if (!confirmed) {
+      showToast("PDFs wurden erstellt. Die E-Mail wurde noch nicht gesendet.");
+      return;
+    }
     const mailResult = await api("/api/day-terminal", {
       method: "POST",
       body: JSON.stringify({
