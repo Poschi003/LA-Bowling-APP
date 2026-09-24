@@ -12402,7 +12402,45 @@ body.terminal-mode:not(.terminal-login-mode) .terminal-overview-card .terminal-e
   }
 }
 
+.day-report-print-root {
+  display: none;
+}
+
 @media print {
+  body.print-day-report-only > *:not(#dayReportPrintRoot) {
+    display: none !important;
+  }
+
+  body.print-day-report-only #dayReportPrintRoot {
+    display: block !important;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    color: #111;
+    background: #fff;
+  }
+
+  body.print-day-report-only #dayReportPrintRoot .a4-report {
+    display: block !important;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #fff;
+    font-size: 7.8pt;
+  }
+
+  body.print-day-report-only #dayReportPrintRoot .a4-report-grid {
+    gap: 1mm;
+  }
+
+  body.print-day-report-only #dayReportPrintRoot .a4-report-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
   body.terminal-mode .panel:not(#terminal) {
     display: none !important;
   }

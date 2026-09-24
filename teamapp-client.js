@@ -4794,6 +4794,25 @@ function printDayReportFromChef(dateKey, button) {
   window.setTimeout(cleanup, 1200);
 }
 
+function printTerminalDayReportOnly() {
+  const existingRoot = document.querySelector("#dayReportPrintRoot");
+  if (existingRoot) existingRoot.remove();
+  const root = document.createElement("div");
+  root.id = "dayReportPrintRoot";
+  root.className = "day-report-print-root";
+  root.innerHTML = dayReportA4Html(state.terminalDate || todayKey(), reportPreviewFromForm());
+  document.body.appendChild(root);
+  document.body.classList.add("print-day-report-only");
+  const cleanup = () => {
+    document.body.classList.remove("print-day-report-only");
+    root.remove();
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  window.setTimeout(cleanup, 1500);
+}
+
 function exportReportFolder(value) {
   const [month, key] = String(value || "").split("|");
   const items = reportFolderItems(month, key).filter((item) => item.href);
@@ -22190,17 +22209,7 @@ function bindEvents() {
   $("#printDayReport")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    const report = $("#dayReportPrintArea");
-    if (report) report.open = true;
-    const hadTerminalMode = document.body.classList.contains("terminal-mode");
-    document.body.classList.add("terminal-mode");
-    const cleanup = () => {
-      if (!hadTerminalMode) document.body.classList.remove("terminal-mode");
-      window.removeEventListener("afterprint", cleanup);
-    };
-    window.addEventListener("afterprint", cleanup);
-    window.print();
-    window.setTimeout(cleanup, 1200);
+    printTerminalDayReportOnly();
   });
   $("#printCleaningPlan")?.addEventListener("click", () => {
     document.body.classList.add("print-cleaning-plan");
