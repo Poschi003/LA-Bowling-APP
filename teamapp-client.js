@@ -16899,6 +16899,59 @@ async function closeCorrectionReport(button) {
   }
 }
 
+function showPreparedInvoicePackage({ infoData, infoName, receiptsData, receiptsName, recipient, subject, body }) {
+  document.querySelector("#preparedInvoicePackageModal")?.remove();
+  const modal = document.createElement("div");
+  modal.id = "preparedInvoicePackageModal";
+  modal.className = "tip-detail-modal";
+  modal.innerHTML = `
+    <section class="tip-detail-panel finance-detail-panel prepared-invoice-package" role="dialog" aria-modal="true" aria-labelledby="preparedInvoicePackageTitle">
+      <header>
+        <div><small>Rechnung für den Chef</small><h3 id="preparedInvoicePackageTitle">PDFs prüfen und versenden</h3></div>
+        <button class="tip-detail-close" type="button" data-close-prepared-invoice aria-label="Schließen">&times;</button>
+      </header>
+      <div class="prepared-invoice-package-content">
+        <p>Prüfe beide PDFs. Lade sie danach herunter und hänge sie selbst in Outlook an.</p>
+        <article class="prepared-invoice-file">
+          <div><strong>Rechnungsinformationen</strong><span>${escapeHtml(infoName)}</span></div>
+          <div><button class="secondary" type="button" data-preview-prepared-invoice="info">Öffnen</button><button class="primary" type="button" data-download-prepared-invoice="info">Herunterladen</button></div>
+        </article>
+        <article class="prepared-invoice-file">
+          <div><strong>Belege</strong><span>${escapeHtml(receiptsName)}</span></div>
+          <div><button class="secondary" type="button" data-preview-prepared-invoice="receipts">Öffnen</button><button class="primary" type="button" data-download-prepared-invoice="receipts">Herunterladen</button></div>
+        </article>
+        <div class="prepared-invoice-recipient"><span>E-Mail an</span><strong>${escapeHtml(recipient)}</strong><button class="secondary" type="button" data-copy-prepared-recipient>Kopieren</button></div>
+        <p class="hint">Heruntergeladene Dateien findest du im Download-Ordner des Computers.</p>
+      </div>
+      <footer><button class="primary" type="button" data-open-prepared-outlook>Outlook öffnen</button><button class="secondary" type="button" data-close-prepared-invoice>Schließen</button></footer>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal || event.target.closest("[data-close-prepared-invoice]")) {
+      modal.remove();
+      return;
+    }
+    const preview = event.target.closest("[data-preview-prepared-invoice]")?.dataset.previewPreparedInvoice;
+    if (preview) {
+      window.open(preview === "info" ? infoData : receiptsData, "_blank", "noopener");
+      return;
+    }
+    const download = event.target.closest("[data-download-prepared-invoice]")?.dataset.downloadPreparedInvoice;
+    if (download) {
+      downloadDataUrlFile(download === "info" ? infoData : receiptsData, download === "info" ? infoName : receiptsName);
+      return;
+    }
+    if (event.target.closest("[data-copy-prepared-recipient]")) {
+      copyText(recipient);
+      return;
+    }
+    if (event.target.closest("[data-open-prepared-outlook]")) {
+      window.location.href = `ms-outlook://compose?to=${encodeURIComponent(recipient)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    }
+  });
+}
+
 async function terminalInvoicePdf(date, invoiceId, button) {
   if (!date || !invoiceId) {
     showToast("Rechnungskunde bitte zuerst speichern.");
@@ -16916,34 +16969,20 @@ async function terminalInvoicePdf(date, invoiceId, button) {
     });
     const infoName = pdfResult.infoPdfFileName || `Rechnungsinformationen-${date}.pdf`;
     const receiptsName = pdfResult.receiptsPdfFileName || `Belege-${date}.pdf`;
-    downloadDataUrlFile(pdfResult.infoPdfData, infoName);
-    window.setTimeout(() => downloadDataUrlFile(pdfResult.receiptsPdfData, receiptsName), 180);
     const recipient = state.settings.invoiceNotificationTo || "pvo65@outlook.de";
     const customerName = pdfResult.customerName || "Rechnungskunde";
     const subject = `LA-Bowling Rechnung - ${customerName}`;
     const body = `Hallo Peter,\n\nim Anhang findest du die Rechnungsinformationen und die gescannten Belege für ${customerName} vom ${formatDate(date)}.\n\nBitte diese beiden Dateien anhängen:\n- ${infoName}\n- ${receiptsName}\n\nViele Grüße`;
-    const confirmed = window.confirm(`Die E-Mail an ${recipient} ist mit beiden PDFs vorbereitet. Jetzt senden?`);
-    if (!confirmed) {
-      showToast("PDFs wurden erstellt. Die E-Mail wurde noch nicht gesendet.");
-      return;
-    }
-    const mailResult = await api("/api/day-terminal", {
-      method: "POST",
-      body: JSON.stringify({
-        action: "send-ready-invoice-mail",
-        date,
-        invoiceId,
-        terminalToken: state.invoiceTerminalToken || state.terminalToken
-      })
-    }).catch(() => null);
-    if (mailResult?.mailSent) {
-      showToast("Rechnungsinformationen und Belege wurden als zwei PDF-Anhänge an den Chef gesendet.");
-    } else {
-      window.setTimeout(() => {
-        window.location.href = `ms-outlook://compose?to=${encodeURIComponent(recipient)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      }, 450);
-      showToast(mailResult?.mailMessage || "Automatischer Versand nicht verfügbar. Outlook wird geöffnet; bitte beide PDFs anhängen.");
-    }
+    showPreparedInvoicePackage({
+      infoData: pdfResult.infoPdfData,
+      infoName,
+      receiptsData: pdfResult.receiptsPdfData,
+      receiptsName,
+      recipient,
+      subject,
+      body
+    });
+    showToast("Beide PDFs sind zur Prüfung bereit. Es wurde keine E-Mail versendet.");
   } catch (error) {
     showError(error);
   } finally {

@@ -8054,6 +8054,32 @@ body.terminal-mode:not(.terminal-login-mode) #terminalFinanceSection {
 .finance-modal-content { display: grid; gap: 12px; padding: 20px 22px; }
 .finance-detail-panel { width: min(980px, 96vw); }
 
+.prepared-invoice-package { width: min(760px, 96vw); }
+.prepared-invoice-package-content { display: grid; gap: 12px; padding: 20px 22px; }
+.prepared-invoice-package-content > p { margin: 0; }
+.prepared-invoice-file,
+.prepared-invoice-recipient {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fafc;
+}
+.prepared-invoice-file > div { display: grid; gap: 4px; min-width: 0; }
+.prepared-invoice-file > div:last-child { display: flex; grid-auto-flow: column; gap: 8px; }
+.prepared-invoice-file span { overflow-wrap: anywhere; color: #596579; font-size: .82rem; }
+.prepared-invoice-recipient { justify-content: flex-start; }
+.prepared-invoice-recipient strong { flex: 1; overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+  .prepared-invoice-file,
+  .prepared-invoice-recipient { align-items: stretch; flex-direction: column; }
+  .prepared-invoice-file > div:last-child { grid-auto-flow: row; grid-template-columns: 1fr 1fr; }
+}
+
 .terminal-table-lite-actions {
   display: flex;
   align-items: center;
