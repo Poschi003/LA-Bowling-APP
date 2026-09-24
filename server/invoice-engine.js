@@ -897,6 +897,7 @@ async function buildInvoiceInfoPdfBuffer(invoice = {}, settings = DEFAULT_INVOIC
   const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
   const pdf = await PDFDocument.create();
   const page = pdf.addPage([595.28, 841.89]);
+  const form = pdf.getForm();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const dark = rgb(0.07, 0.1, 0.16);
@@ -941,7 +942,22 @@ async function buildInvoiceInfoPdfBuffer(invoice = {}, settings = DEFAULT_INVOIC
   }));
   const contactX = 318;
   page.drawText("RECHNUNGS-E-MAIL", { x: contactX, y: panelY + 96, size: 7.5, font: bold, color: muted });
-  drawWrapped(page, bold, normalized.customerEmail || "-", contactX, panelY + 76, 225, 9, dark, 12);
+  const emailField = form.createTextField("customerEmail");
+  emailField.setText(normalized.customerEmail || "-");
+  emailField.enableReadOnly();
+  emailField.addToPage(page, {
+    x: contactX - 2,
+    y: panelY + 65,
+    width: 228,
+    height: 18,
+    borderWidth: 0,
+    borderColor: panel,
+    backgroundColor: panel,
+    textColor: dark,
+    font: bold
+  });
+  emailField.setFontSize(9);
+  page.drawText("Antippen und kopieren", { x: contactX, y: panelY + 58, size: 6.5, font, color: muted });
   page.drawText("ANSPRECHPARTNER", { x: contactX, y: panelY + 48, size: 7.5, font, color: muted });
   page.drawText("TELEFON", { x: 445, y: panelY + 48, size: 7.5, font, color: muted });
   page.drawText(normalized.customerContact || "-", { x: contactX, y: panelY + 30, size: 9.5, font: bold, color: dark });
@@ -1005,6 +1021,7 @@ async function buildInvoiceInfoPdfBuffer(invoice = {}, settings = DEFAULT_INVOIC
   drawRight("LA-Bowling TeamApp", right, 43, 8, font, muted);
 
   const safeName = safeText(normalized.customerName || "rechnung", 80).replace(/[^a-z0-9äöüß_-]+/gi, "-").replace(/^-+|-+$/g, "") || "rechnung";
+  form.updateFieldAppearances(font);
   return {
     buffer: Buffer.from(await pdf.save()),
     fileName: `Rechnungsinformationen-${safeName}-${normalized.sourceDate || normalized.invoiceDate}.pdf`
