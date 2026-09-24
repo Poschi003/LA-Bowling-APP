@@ -83,6 +83,7 @@ module.exports = async function handler(req, res) {
     if (action === "save-report") return saveReport(body, res);
     if (action === "send-ready-invoice-mail") return sendReadyInvoiceMail(body, res);
     if (action === "save-invoice-customer") return saveInvoiceCustomerOnly(body, res);
+    if (action === "delete-invoice-customer") return deleteInvoiceCustomerOnly(body, res);
     if (action === "delete-future-invoice-customer") return deleteFutureInvoiceCustomer(body, res);
     if (action === "close-business-range") return closeBusinessRange(body, res);
     if (action === "reopen-business-day") return reopenBusinessDay(body, res);
@@ -313,12 +314,15 @@ async function saveReport(body, res) {
   const revenueGastro = cleanGastroTotal(body.revenueGastro ?? body.barGastro ?? existing.revenueGastro ?? existing.barGastro, revenueDrinks, revenueFood, revenueOther);
   const personalConsumption = cleanMoney(body.personalConsumption ?? existing.personalConsumption);
   const cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
-  const invoiceCustomers = await cleanReportItems(body.invoiceCustomers, "invoice", date);
+  const cleanedInvoiceCustomers = await cleanReportItems(body.invoiceCustomers, "invoice", date);
   const cleanedExpenses = await cleanReportItems(body.expenses, "expense", date);
   const miscIncome = await cleanReportItems(body.miscIncome ?? existing.miscIncome, "misc-income", date);
   const expenses = body.mergeExpenses === true || body.mergeExpenses === "true"
     ? mergeReportItemsById(existing.expenses || [], cleanedExpenses)
     : cleanedExpenses;
+  const invoiceCustomers = body.mergeInvoiceCustomers === true || body.mergeInvoiceCustomers === "true"
+    ? mergeReportItemsById(existing.invoiceCustomers || [], cleanedInvoiceCustomers)
+    : cleanedInvoiceCustomers;
   const documents = await cleanReportDocuments(body.documents || existing.documents, date);
   upsertCustomerDirectory(appData, invoiceCustomers);
   appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, invoiceTransferAmount: cleanMoney(body.invoiceTransferAmount ?? existing.invoiceTransferAmount), personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), bowlingCashRevenue: cleanMoney(body.bowlingCashRevenue ?? existing.bowlingCashRevenue), gastroCashRevenue: cleanMoney(body.gastroCashRevenue ?? existing.gastroCashRevenue), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, miscIncome, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), extraEmployees: cleanExtraEmployees(body.extraEmployees || existing.extraEmployees), removedEmployees: cleanEmployeeList(body.removedEmployees || existing.removedEmployees), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
@@ -1252,6 +1256,26 @@ async function saveInvoiceCustomerOnly(body, res) {
   upsertCustomerDirectory(appData, [customer]);
   await writeAppData(appData);
   return sendJson(res, 200, { ok: true, customer, message: "Rechnungskunde gespeichert.", ...terminalPayload(appData, cleanDate(body.date)) });
+}
+
+async function deleteInvoiceCustomerOnly(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.invoiceDate || body.date);
+  const invoiceId = String(body.invoiceId || "").trim();
+  const report = appData.dayReports?.[date];
+  if (report?.closed) return sendJson(res, 423, { error: "Tagesbericht ist abgeschlossen." });
+  if (!invoiceId || !Array.isArray(report?.invoiceCustomers)) {
+    return sendJson(res, 404, { error: "Rechnungskunde nicht gefunden." });
+  }
+  const before = report.invoiceCustomers.length;
+  report.invoiceCustomers = report.invoiceCustomers.filter((invoice, index) => String(invoice.id || index) !== invoiceId);
+  if (report.invoiceCustomers.length === before) {
+    return sendJson(res, 404, { error: "Rechnungskunde nicht gefunden." });
+  }
+  report.updatedAt = new Date().toISOString();
+  syncInvoicesForDate(appData, date);
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true, message: "Rechnungskunde gelöscht.", ...terminalPayload(appData, cleanDate(body.date)) });
 }
 
 async function deleteFutureInvoiceCustomer(body, res) {

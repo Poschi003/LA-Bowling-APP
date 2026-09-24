@@ -15362,6 +15362,7 @@ async function collectDayReportPayload() {
     openingHours: $("#terminalOpeningHours")?.value || "",
     shiftLeader: $("#terminalShiftLeader")?.value || "",
     handovers: state.terminalReport.handovers || [],
+    mergeInvoiceCustomers: true,
     invoiceCustomers: await collectReportEntries("invoice"),
     expenses: await collectReportEntries("expense"),
     miscIncome,
@@ -15423,6 +15424,7 @@ async function collectCustomerInvoiceDeskPayload() {
     openingHours: report.openingHours || "",
     shiftLeader: report.shiftLeader || "",
     handovers: report.handovers || [],
+    mergeInvoiceCustomers: true,
     invoiceCustomers: await collectReportEntriesFrom(root, "invoice"),
     expenses: await collectReportEntriesFrom(root, "expense"),
     documents: await collectCustomerInvoiceDocuments(),
@@ -15797,16 +15799,43 @@ async function saveCustomerInvoiceDeskRow(button, markReady = false) {
     setReportFieldValue(row, "invoiceReady", "true");
     setReportFieldValue(row, "invoiceReadyAt", new Date().toISOString());
   }
-  const result = await saveCustomerInvoiceDeskReport(
-    button,
-    markReady ? "Rechnung gespeichert." : "Rechnungskunde zwischengespeichert."
-  );
+  const oldText = button?.textContent || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Speichert...";
+  }
+  let result = null;
+  try {
+    const customer = (await collectReportEntriesFrom(row, "invoice"))[0];
+    result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "save-invoice-customer",
+        invoiceDate: state.invoiceDate || todayKey(),
+        date: state.invoiceDate || todayKey(),
+        customer,
+        terminalToken: state.invoiceTerminalToken
+      })
+    });
+    state.invoiceReport = result.report || state.invoiceReport || {};
+    state.customerDirectory = normalizeCustomerDirectory(result.customerDirectory || state.customerDirectory);
+    state.dayReports[state.invoiceDate || todayKey()] = state.invoiceReport;
+    renderCustomerInvoiceDesk();
+    showToast(markReady ? "Rechnung gespeichert." : "Rechnungskunde zwischengespeichert.");
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
   if (!result) {
     if (markReady) setReportFieldValue(row, "invoiceReady", "false");
     return;
   }
   if (markReady) {
-    const invoiceDate = row.dataset.invoiceDate || state.terminalInvoiceDate || state.terminalDate || todayKey();
+    const invoiceDate = row.dataset.invoiceDate || state.invoiceDate || todayKey();
     await terminalInvoicePdf(invoiceDate, invoiceId, button);
   }
 }
@@ -15816,8 +15845,29 @@ async function removeCustomerInvoiceDeskEntry(button) {
   if (!row) return;
   const isInvoice = row.dataset.reportEntry === "invoice";
   if (isInvoice && row.dataset.saved === "true" && !window.confirm("Rechnungskunden wirklich vollständig löschen? Der Eintrag verschwindet dann aus allen Ansichten.")) return;
-  row.remove();
-  await saveCustomerInvoiceDeskReport(button, isInvoice ? "Rechnungskunde gelöscht." : "Eintrag gelöscht.");
+  if (!isInvoice) {
+    row.remove();
+    await saveCustomerInvoiceDeskReport(button, "Eintrag gelöscht.");
+    return;
+  }
+  try {
+    const result = await api("/api/day-terminal", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "delete-invoice-customer",
+        invoiceDate: state.invoiceDate || todayKey(),
+        date: state.invoiceDate || todayKey(),
+        invoiceId: row.dataset.id || "",
+        terminalToken: state.invoiceTerminalToken
+      })
+    });
+    state.invoiceReport = result.report || state.invoiceReport || {};
+    state.dayReports[state.invoiceDate || todayKey()] = state.invoiceReport;
+    renderCustomerInvoiceDesk();
+    showToast("Rechnungskunde gelöscht.");
+  } catch (error) {
+    showError(error);
+  }
 }
 
 function reportFieldValue(row, name) {
@@ -15888,21 +15938,14 @@ async function saveInvoiceRow(button, markReady = false) {
   button.disabled = true;
   button.textContent = "Speichert...";
   try {
-    const invoiceDate = row.dataset.invoiceDate || "";
-    if (invoiceDate && invoiceDate !== (state.terminalDate || todayKey())) {
-      const customer = (await collectReportEntriesFrom(row, "invoice"))[0];
-      const result = await terminalAction({ action: "save-invoice-customer", invoiceDate, customer });
-      showToast(markReady ? "Nachträgliche Rechnung ist fertig für Chef." : "Nachträglicher Rechnungskunde gespeichert.");
-      if (markReady) await terminalInvoicePdf(invoiceDate, result?.customer?.id || customer?.id || row.dataset.id, button);
-      return result;
-    }
-    const payload = await collectDayReportPayload();
-    const result = await terminalAction(payload);
+    const invoiceDate = row.dataset.invoiceDate || state.terminalDate || todayKey();
+    const customer = (await collectReportEntriesFrom(row, "invoice"))[0];
+    const result = await terminalAction({ action: "save-invoice-customer", invoiceDate, customer });
     const toastMessage = markReady
       ? ["Rechnung ist fertig für Chef.", result?.mailMessage].filter(Boolean).join(" ")
       : "Rechnungskunde zwischengespeichert.";
     showToast(toastMessage);
-    if (markReady) await terminalInvoicePdf(invoiceDate || state.terminalDate || todayKey(), row.dataset.id || "", button);
+    if (markReady) await terminalInvoicePdf(invoiceDate, result?.customer?.id || customer?.id || row.dataset.id || "", button);
     return result;
   } catch (error) {
     if (markReady) setReportFieldValue(row, "invoiceReady", "false");
@@ -15922,6 +15965,22 @@ async function removeTerminalFinanceEntry(button) {
   const oldText = button.textContent;
   button.disabled = true;
   button.textContent = "Löscht...";
+  if (isInvoice) {
+    try {
+      await terminalAction({
+        action: "delete-invoice-customer",
+        invoiceDate: row.dataset.invoiceDate || state.terminalDate || todayKey(),
+        invoiceId: row.dataset.id || ""
+      });
+      showToast("Rechnungskunde gelöscht.");
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.textContent = oldText;
+      button.disabled = false;
+    }
+    return;
+  }
   row.remove();
   syncCashExpensesFromExpenseRows(true);
   updateReportBarTotal();
