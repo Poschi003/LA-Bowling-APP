@@ -14648,8 +14648,10 @@ function setDayReportLocked(isLocked, report = {}) {
   });
   const closeButton = $("#closeDayReport");
   if (closeButton) {
-    closeButton.disabled = isLocked;
-    closeButton.textContent = isLocked ? "Abgeschlossen" : "Tagesabschluss";
+    const canUndoToday = isLocked && (state.terminalDate || todayKey()) === todayKey() && !report.correctionOpen;
+    closeButton.disabled = isLocked && !canUndoToday;
+    closeButton.dataset.undoCloseReport = canUndoToday ? "true" : "";
+    closeButton.textContent = canUndoToday ? "Tagesabschluss rückgängig" : (isLocked ? "Abgeschlossen" : "Tagesabschluss");
   }
 }
 
@@ -22266,8 +22268,23 @@ function bindEvents() {
   });
 
   $("#closeDayReport")?.addEventListener("click", async () => {
-    if (!confirm("Tagesbericht abschließen? Danach kann er nicht mehr verändert werden.")) return;
     const button = $("#closeDayReport");
+    if (button?.dataset.undoCloseReport === "true") {
+      if (!confirm("Den heutigen Tagesabschluss rückgängig machen und den Bericht wieder normal öffnen?")) return;
+      const oldText = button.textContent;
+      button.disabled = true;
+      button.textContent = "Öffnet...";
+      try {
+        const result = await terminalAction({ action: "undo-close-report" });
+        showToast(result.message || "Tagesabschluss wurde rückgängig gemacht.");
+      } catch (error) {
+        button.textContent = oldText;
+        button.disabled = false;
+        showError(error);
+      }
+      return;
+    }
+    if (!confirm("Tagesbericht abschließen? Danach kann er nicht mehr verändert werden.")) return;
     const oldText = button.textContent;
     button.disabled = true;
     button.textContent = "Schließt...";

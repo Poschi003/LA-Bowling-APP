@@ -88,6 +88,7 @@ module.exports = async function handler(req, res) {
     if (action === "close-business-range") return closeBusinessRange(body, res);
     if (action === "reopen-business-day") return reopenBusinessDay(body, res);
     if (action === "close-report") return closeReport(body, res);
+    if (action === "undo-close-report") return undoCloseReport(body, res);
     return sendJson(res, 400, { error: "Unbekannte Aktion." });
   } catch (error) {
     handleError(res, error);
@@ -1131,6 +1132,31 @@ async function closeReport(body, res) {
   };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, message: "Tagesbericht abgeschlossen.", ...terminalPayload(appData, date) });
+}
+
+async function undoCloseReport(body, res) {
+  const appData = await readAppData();
+  const date = cleanDate(body.date);
+  const today = localDate(new Date());
+  const existing = appData.dayReports?.[date];
+  if (date !== today) return sendJson(res, 400, { error: "Nur der heutige Tagesabschluss kann direkt zurückgenommen werden." });
+  if (!existing?.closed) return sendJson(res, 400, { error: "Der Tagesbericht ist bereits geöffnet." });
+  if (existing.closureType === "business-vacation") return sendJson(res, 400, { error: "Betriebsurlaub bitte über die Betriebsurlaub-Funktion öffnen." });
+  const now = new Date().toISOString();
+  const correctionLog = Array.isArray(existing.correctionLog) ? existing.correctionLog : [];
+  const reopened = {
+    ...existing,
+    closed: false,
+    correctionOpen: false,
+    accidentalReopenedAt: now,
+    lastClosedAt: existing.closedAt || "",
+    correctionLog: [...correctionLog, { action: "accidental-reopen", at: now }],
+    updatedAt: now
+  };
+  delete reopened.closedAt;
+  appData.dayReports[date] = reopened;
+  await writeAppData(appData);
+  return sendJson(res, 200, { ok: true, message: "Tagesabschluss wurde rückgängig gemacht.", ...terminalPayload(appData, date) });
 }
 
 async function closeBusinessRange(body, res) {
