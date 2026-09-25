@@ -17765,7 +17765,7 @@ function planningWeeks() {
   const now = new Date();
   now.setHours(12, 0, 0, 0);
   const weeks = [];
-  for (let weekOffset = 0; weekOffset < 4; weekOffset += 1) {
+  for (let weekOffset = 0; weekOffset < 8; weekOffset += 1) {
     const monday = weekStart(addDays(now, weekOffset * 7));
     const dates = [];
     for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
@@ -17836,7 +17836,7 @@ function plannerDateIsPublished(dateKey) {
 function renderPlanner() {
   const weeksToPlan = plannerVisibleWeeks().filter((week) => !plannerWeekIsPublished(week) || isWeekOpenedForEdit(week.key));
   if (!weeksToPlan.length) {
-    $("#planner").innerHTML = `<p class="hint">Alle nächsten 4 Wochen sind bereits veröffentlicht. Änderungen findest du unter „Veröffentlichte Wochen“.</p>`;
+    $("#planner").innerHTML = `<p class="hint">Alle nächsten 8 Wochen sind bereits veröffentlicht. Änderungen findest du unter „Veröffentlichte Wochen“.</p>`;
     return;
   }
   const weeksHtml = weeksToPlan.map((week) => `
