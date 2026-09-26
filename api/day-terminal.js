@@ -314,13 +314,18 @@ async function saveReport(body, res) {
   const revenueOther = cleanMoney(body.revenueOther ?? existing.revenueOther);
   const revenueGastro = cleanGastroTotal(body.revenueGastro ?? body.barGastro ?? existing.revenueGastro ?? existing.barGastro, revenueDrinks, revenueFood, revenueOther);
   const personalConsumption = cleanMoney(body.personalConsumption ?? existing.personalConsumption);
-  const cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
+  let cashExpenses = cleanMoney(body.cashExpenses ?? existing.cashExpenses);
   const cleanedInvoiceCustomers = await cleanReportItems(body.invoiceCustomers, "invoice", date);
   const cleanedExpenses = await cleanReportItems(body.expenses, "expense", date);
   const miscIncome = await cleanReportItems(body.miscIncome ?? existing.miscIncome, "misc-income", date);
   const expenses = body.mergeExpenses === true || body.mergeExpenses === "true"
     ? mergeReportItemsById(existing.expenses || [], cleanedExpenses)
     : cleanedExpenses;
+  if (expenses.length) {
+    cashExpenses = expenses.reduce((sum, item) => sum + moneyNumber(item.amount), 0).toFixed(2);
+  } else if (Array.isArray(body.expenses)) {
+    cashExpenses = "0.00";
+  }
   const invoiceCustomers = body.mergeInvoiceCustomers === true || body.mergeInvoiceCustomers === "true"
     ? mergeReportItemsById(existing.invoiceCustomers || [], cleanedInvoiceCustomers)
     : cleanedInvoiceCustomers;

@@ -4634,8 +4634,9 @@ function reportPersonalConsumptionTotal(report = {}) {
 }
 
 function reportCashExpensesTotal(report = {}) {
+  if (Array.isArray(report.expenses) && report.expenses.length) return reportItemsTotal(report.expenses);
   if (report.cashExpenses !== "" && report.cashExpenses != null) return reportMoneyNumber(report.cashExpenses);
-  return reportItemsTotal(report.expenses);
+  return 0;
 }
 
 function reportMiscIncomeTotal(report = {}) {
@@ -9692,7 +9693,10 @@ function renderTerminal() {
   }).join("") : `<p class="hint">Für heute ist noch niemand im Dienstplan eingeteilt.</p>`;
 
   $("#reportCashTotal").value = report.cashTotal || "";
-  $("#reportCashExpenses").value = report.cashExpenses || (reportItemsTotal(report.expenses) ? reportItemsTotal(report.expenses).toFixed(2) : "");
+  const expenseItemsTotal = reportItemsTotal(report.expenses);
+  $("#reportCashExpenses").value = Array.isArray(report.expenses) && report.expenses.length
+    ? expenseItemsTotal.toFixed(2)
+    : (report.cashExpenses || "");
   $("#reportEcTerminal1").value = report.ecTerminal1 || "";
   $("#reportEcTerminal2").value = report.ecTerminal2 || "";
   $("#reportPersonalConsumption").value = report.personalConsumption || "";
