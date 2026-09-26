@@ -655,6 +655,9 @@ function invoiceSession(appData, body) {
   if (terminalSession?.terminal) {
     return { ok: true, actor: "Terminal" };
   }
+  if (body.terminalToken) {
+    return { ok: false, error: "Terminal-Sitzung abgelaufen. Bitte den Terminal-Code erneut eingeben." };
+  }
   return { ok: false, error: "Bitte als Chef oder Admin anmelden." };
 }
 

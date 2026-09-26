@@ -742,9 +742,12 @@ function sessionSecret() {
 }
 
 function signToken(payload) {
+  const sessionDuration = payload?.type === "terminal"
+    ? 36 * 60 * 60 * 1000
+    : 12 * 60 * 60 * 1000;
   const body = Buffer.from(JSON.stringify({
     ...payload,
-    exp: Date.now() + 12 * 60 * 60 * 1000
+    exp: Date.now() + sessionDuration
   })).toString("base64url");
   const sig = crypto.createHmac("sha256", sessionSecret()).update(body).digest("base64url");
   return `${body}.${sig}`;

@@ -16993,7 +16993,12 @@ async function terminalInvoicePdf(date, invoiceId, button) {
   try {
     const pdfResult = await api("/api/state", {
       method: "POST",
-      body: JSON.stringify({ action: "invoice-export-package", terminalToken: state.terminalToken, sourceDate: date, sourceCustomerId: invoiceId })
+      body: JSON.stringify({
+        action: "invoice-export-package",
+        terminalToken: state.terminalToken || state.invoiceTerminalToken,
+        sourceDate: date,
+        sourceCustomerId: invoiceId
+      })
     });
     const infoName = pdfResult.infoPdfFileName || `Rechnungsinformationen-${date}.pdf`;
     const receiptsName = pdfResult.receiptsPdfFileName || `Belege-${date}.pdf`;
@@ -17012,6 +17017,10 @@ async function terminalInvoicePdf(date, invoiceId, button) {
     });
     showToast("Beide PDFs sind zur Prüfung bereit. Es wurde keine E-Mail versendet.");
   } catch (error) {
+    if (String(error?.message || "").includes("Terminal-Sitzung abgelaufen")) {
+      state.terminalToken = "";
+      renderTerminal();
+    }
     showError(error);
   } finally {
     if (button?.isConnected) {
