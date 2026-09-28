@@ -2347,7 +2347,6 @@ function renderEmployeeBadge() {
       </div>
     </div>
     <button class="employee-badge-stat compact" type="button" data-open-timesheet><small>Gesamtstunden in diesem Monat</small>${formatHours(totals.hours)}</button>
-    <span class="employee-badge-stat compact"><small>Gesammeltes Trinkgeld in diesem Monat</small>${formatMoney(totals.tip)}</span>
   `;
 }
 
@@ -2561,11 +2560,6 @@ function renderHomeStats() {
         <span>Stunden</span>
         <strong>${formatHours(totals.hours)}</strong>
         <small>${doneDays} abgeschlossene Tage</small>
-      </button>
-      <button type="button" data-open-timesheet>
-        <span>Trinkgeld</span>
-        <strong>${formatMoney(totals.tip)}</strong>
-        <small>optional ergänzen</small>
       </button>
     </section>
   `;
@@ -3499,31 +3493,12 @@ function a4ReportLine(label, value, className = "") {
 }
 
 function a4TipDistributionBlock(report = {}) {
-  const rows = reportTipRows(report);
   const tipTotal = reportMoneyNumber(report.tipTotal);
-  const distributed = rows.reduce((sum, row) => sum + row.amount, 0);
-  const remainder = reportMoneyNumber(report.tipRemainder);
-  if (!rows.length && tipTotal <= 0 && remainder <= 0) return "";
+  if (tipTotal <= 0) return "";
   return `
     <section class="a4-report-block a4-report-block-wide a4-report-tip-control">
-      <h4>Trinkgeld-Verteilung</h4>
-      <table class="a4-report-table">
-        <thead>
-          <tr><th>Mitarbeiter</th><th>Betrag</th></tr>
-        </thead>
-        <tbody>
-          ${rows.length ? rows.map((row) => `
-            <tr>
-              <td>${escapeHtml(row.employee)}</td>
-              <td>${formatReportMoney(row.amount)}</td>
-            </tr>
-          `).join("") : `<tr><td colspan="2">Noch keine Verteilung gespeichert.</td></tr>`}
-        </tbody>
-        <tfoot>
-          <tr><th>Verteilt</th><td>${formatReportMoney(distributed)}</td></tr>
-          <tr><th>Trinkgeld gesamt</th><td>${formatReportMoney(tipTotal)}</td></tr>
-        </tfoot>
-      </table>
+      <h4>Trinkgeld gesamt</h4>
+      ${a4ReportLine("Gesamtsumme", formatReportMoney(tipTotal), "a4-report-total")}
     </section>
   `;
 }
@@ -9103,25 +9078,17 @@ function renderTimesheet() {
   const rows = shiftDates.map((dateKey) => {
     const entry = entries[dateKey] || {};
     const hours = paidHours(entry);
-    const hasTip = entry.tip !== "" && entry.tip != null && Number(entry.tip || 0) > 0;
-    const tipSource = entry.tipSource === "terminal-distribution" ? "aus Tagesabschluss" : "manuell erfasst";
     return `
       <article class="timesheet-row" data-date="${dateKey}">
         <div>
           <strong>${formatDate(dateKey)}</strong>
           <span>${escapeHtml(dayReportShiftText(entry))} · ${formatHours(hours)}</span>
         </div>
-        <div class="timesheet-tip-display">
-          <span>Trinkgeld</span>
-          <strong>${hasTip ? formatMoney(entry.tip) : "Noch nicht verteilt"}</strong>
-          <small>${hasTip ? escapeHtml(tipSource) : "erscheint nach dem Tagesabschluss"}</small>
-        </div>
       </article>
     `;
   }).join("");
   summary.innerHTML = `
     <article><span>Aktuelle Stunden</span><strong>${formatHours(totals.hours)}</strong></article>
-    <article><span>Trinkgeld</span><strong>${formatMoney(totals.tip)}</strong></article>
   `;
   grid.innerHTML = rows || `<p class="hint">Abgeschlossene Dienste erscheinen hier erst nach Dienstende.</p>`;
 }
@@ -9351,7 +9318,7 @@ function terminalWorkspaceTab(value) {
     cleaning: "today"
   };
   const tab = legacyTabs[String(value || "")] || String(value || "");
-  return ["today", "tables", "employees", "closing", "orders", "offers", "events", "cocktails", "task-calendar", "invoices", "tips", "settings"].includes(tab) ? tab : "today";
+  return ["today", "tables", "employees", "closing", "orders", "offers", "events", "cocktails", "task-calendar", "invoices", "settings"].includes(tab) ? tab : "today";
 }
 
 function terminalCanManageSettings() {
@@ -9848,11 +9815,10 @@ function renderTerminalTabs() {
   $("#terminalTodaySection")?.classList.toggle("hidden", active !== "today");
   $("#terminalTasksSection")?.classList.toggle("hidden", active !== "today");
   $("#terminalChecksSection")?.classList.toggle("hidden", active !== "today");
-  $("#terminalAssignmentsSection")?.classList.toggle("hidden", !(active === "closing" && Number(state.terminalClosingStep || 1) === 7));
+  $("#terminalAssignmentsSection")?.classList.toggle("hidden", !(active === "closing" && Number(state.terminalClosingStep || 1) === 6));
   $("#terminalTablesSection")?.classList.toggle("hidden", active !== "tables" && !tablePlanSettingsActive);
   $("#terminalServiceSection")?.classList.toggle("hidden", active !== "employees");
   $("#terminalFinanceSection")?.classList.toggle("hidden", active !== "closing");
-  $("#terminalTipsSection")?.classList.toggle("hidden", active !== "tips");
   $("#terminalInvoicesToolSection")?.classList.toggle("hidden", active !== "invoices");
   $("#dayReportPrintArea")?.classList.toggle("hidden", active !== "closing");
   $("#terminalOrdersSection")?.classList.toggle("hidden", active !== "orders");
@@ -10199,8 +10165,8 @@ function renderTerminalClosingSteps() {
     tomorrowAssignmentsMount.append(assignmentsSection);
   }
 
-  const activeStep = Math.min(7, Math.max(1, Number(state.terminalClosingStep || 1)));
-  assignmentsSection?.classList.toggle("hidden", activeStep !== 7);
+  const activeStep = Math.min(6, Math.max(1, Number(state.terminalClosingStep || 1)));
+  assignmentsSection?.classList.toggle("hidden", activeStep !== 6);
   $$('[data-closing-step]').forEach((button) => {
     const step = Number(button.dataset.closingStep || 1);
     button.classList.toggle("is-active", step === activeStep);
@@ -16180,12 +16146,12 @@ function renderDailyTipDistribution() {
   const distributed = displayRows.reduce((sum, row) => sum + Number(row.tip || 0), 0);
   const chefHandover = result.chefHandover;
   const summaryHtml = `
-    <button class="tip-summary-card tip-detail-trigger" type="button" data-open-tip-distribution aria-haspopup="dialog">
+    <article class="tip-summary-card">
       <span class="tip-summary-icon" aria-hidden="true">&#127873;</span>
       <span>Trinkgeld gesamt</span>
       <strong>${formatMoney(result.tipTotal)}</strong>
-      <small>Wird laut Arbeitszeiten verteilt.</small>
-    </button>
+      <small>Gesamtsumme des Tagesabschlusses</small>
+    </article>
   `;
   const listHtml = displayRows.length ? `
     <section class="tip-group">

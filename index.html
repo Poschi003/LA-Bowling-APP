@@ -113,7 +113,7 @@
         <div class="section-head">
           <div>
             <h2>Stundenübersicht</h2>
-            <p>Gearbeitete Dienste und automatisch verteiltes Trinkgeld.</p>
+            <p>Gearbeitete Dienste und erfasste Arbeitszeiten.</p>
           </div>
         </div>
         <div id="timesheetSummary" class="timesheet-summary"></div>
@@ -184,7 +184,6 @@
                   <button class="terminal-tab" data-terminal-tab="cocktails" type="button"><span aria-hidden="true">&#9679;</span>Cocktails</button>
                   <button class="terminal-tab" data-terminal-tab="task-calendar" type="button"><span aria-hidden="true">&#9638;</span>Aufgaben-Kalender</button>
                   <button class="terminal-tab" data-terminal-tab="invoices" type="button"><span aria-hidden="true">&#128196;</span>Bezahlung auf Rechnung</button>
-                  <button class="terminal-tab" data-terminal-tab="tips" type="button"><span aria-hidden="true">&#127873;</span>Trinkgeld</button>
                 </div>
                 <div class="terminal-nav-group terminal-nav-management">
                   <span class="terminal-nav-label">Verwaltung</span>
@@ -649,8 +648,7 @@
               <button class="closing-step" type="button" data-closing-step="3"><span>3</span><strong>Belege</strong></button>
               <button class="closing-step" type="button" data-closing-step="4"><span>4</span><strong>Ergebnis &amp; Bericht</strong></button>
               <button class="closing-step" type="button" data-closing-step="5"><span>5</span><strong>Tagesbericht</strong></button>
-              <button class="closing-step" type="button" data-closing-step="6"><span>6</span><strong>Trinkgeld</strong></button>
-              <button class="closing-step" type="button" data-closing-step="7"><span>7</span><strong>Morgen planen</strong></button>
+              <button class="closing-step" type="button" data-closing-step="6"><span>6</span><strong>Morgen planen</strong></button>
             </nav>
 
             <div class="closing-step-content" data-closing-step-content="1">
@@ -803,18 +801,9 @@
               </header>
               <div id="terminalDayReportClosingMount"></div>
             </section>
-            <section id="terminalClosingTipStep" class="closing-tip-step hidden" data-closing-step-content="6">
+            <section id="terminalTomorrowStep" class="closing-tomorrow-step hidden" data-closing-step-content="6">
               <header class="closing-day-report-head">
-                <div><span>Schritt 6</span><h4>Trinkgeld-Verteilung</h4><p>Verteilung für den aktuell gewählten Tagesabschluss.</p></div>
-              </header>
-              <div id="closingTipDistributionDetail" class="closing-tip-detail"></div>
-              <footer class="closing-tip-actions">
-                <button class="secondary" type="button" data-close-closing-tip>Zurück zum Tagesbericht</button>
-              </footer>
-            </section>
-            <section id="terminalTomorrowStep" class="closing-tomorrow-step hidden" data-closing-step-content="7">
-              <header class="closing-day-report-head">
-                <div><span>Schritt 7</span><h4>Morgen planen</h4><p id="terminalTomorrowDate">Vorbereitung für den nächsten Tag.</p></div>
+                <div><span>Schritt 6</span><h4>Morgen planen</h4><p id="terminalTomorrowDate">Vorbereitung für den nächsten Tag.</p></div>
               </header>
               <div class="closing-tomorrow-grid">
                 <section class="closing-tomorrow-card is-assignments">
@@ -845,21 +834,6 @@
               <footer><button class="secondary" type="button" data-close-finance-modal="expenseDetailsModal">Schließen</button></footer>
             </section>
           </div>
-          <div id="tipDistributionModal" class="tip-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="tipDistributionModalTitle">
-            <section class="tip-detail-panel">
-              <header>
-                <div>
-                  <small>Abschluss</small>
-                  <h3 id="tipDistributionModalTitle">Trinkgeld-Verteilung</h3>
-                </div>
-                <button id="closeTipDistributionModal" class="tip-detail-close" type="button" aria-label="Trinkgeld-Verteilung schließen">&times;</button>
-              </header>
-              <div id="tipDistributionDetail"></div>
-              <footer>
-                <button id="closeTipDistributionModalFooter" class="secondary" type="button">Schließen</button>
-              </footer>
-            </section>
-          </div>
           <div id="dayReportPreviewModal" class="tip-detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="dayReportPreviewTitle">
             <section class="tip-detail-panel day-report-preview-panel">
               <header><div><small>Abschluss</small><h3 id="dayReportPreviewTitle">Tagesbericht-Vorschau</h3></div><button class="tip-detail-close" type="button" data-close-day-report-preview aria-label="Schließen">&times;</button></header>
@@ -867,17 +841,6 @@
               <footer><button class="secondary" type="button" data-print-day-report>Drucken</button><button class="secondary" type="button" data-close-day-report-preview>Schließen</button></footer>
             </section>
           </div>
-          <section id="terminalTipsSection" class="terminal-section hidden">
-            <div class="terminal-section-head">
-              <div>
-                <h3>Trinkgeld Übersicht</h3>
-                <p class="hint">Offene Auszahlungen pro Mitarbeiter. Bestätigungen setzen nur diese Übersicht zurück, nicht die Mitarbeiter-App.</p>
-              </div>
-            </div>
-            <div id="tipPayoutStatus" class="action-status"></div>
-            <div id="tipSummary" class="tip-summary"></div>
-            <div id="tipDistributionList" class="tip-distribution-list"></div>
-          </section>
           <section id="terminalCocktailsSection" class="cocktail-tool hidden">
             <header class="cocktail-tool-head">
               <div><p class="terminal-card-kicker">Bar-Tool</p><h2>Cocktail-Rezepte</h2><p>Rezept auswählen und direkt am Tablet zubereiten.</p></div>
@@ -921,7 +884,6 @@
                 <p id="dayReportLockStatus" class="hint"></p>
               </div>
             </summary>
-            <div id="dayReportTipDayDistribution" class="tip-distribution-list day-report-tip-control"></div>
             <div id="dayReportA4Summary" class="day-report-a4-summary"></div>
             <label data-report-field-box="notes">Notizen<textarea id="reportNotes" rows="5"></textarea></label>
           </details>
