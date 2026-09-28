@@ -16743,6 +16743,39 @@ async function terminalLogin(code) {
   showToast(isTodoMode() ? "TO DO geöffnet." : "Tages-Terminal geöffnet.");
 }
 
+async function refreshTerminalData(button) {
+  if (!state.terminalToken) {
+    showToast("Bitte Terminal-Code eingeben.");
+    return;
+  }
+  const oldText = button?.textContent || "Aktualisieren";
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = '<span aria-hidden="true">&#8635;</span>Wird geladen...';
+  }
+  try {
+    await terminalAction({
+      action: "load",
+      date: state.terminalDate || todayKey(),
+      manualDate: true
+    });
+    showToast(`Terminaldaten für ${formatDate(state.terminalDate || todayKey())} aktualisiert.`);
+  } catch (error) {
+    if (String(error?.message || "").includes("Terminal-Code")) {
+      state.terminalToken = "";
+      renderTerminal();
+    }
+    showError(error);
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.innerHTML = '<span aria-hidden="true">&#8635;</span>Aktualisieren';
+    } else if (button) {
+      button.textContent = oldText;
+    }
+  }
+}
+
 async function openCorrectionReport(button) {
   if (!state.adminToken) {
     showToast("Bitte Admin-Bereich erneut entsperren.");
@@ -21343,6 +21376,10 @@ function bindEvents() {
       $$(".admin-workspace").forEach((section) => section.classList.toggle("active", section.dataset.adminWorkspace === "correction"));
       showToast("Korrekturmodus im Admin-Bereich geöffnet.");
     }
+  });
+
+  $("#refreshTerminalData")?.addEventListener("click", (event) => {
+    refreshTerminalData(event.currentTarget);
   });
 
   $("#terminalContent")?.addEventListener("toggle", (event) => {
