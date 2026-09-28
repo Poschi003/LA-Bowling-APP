@@ -22305,8 +22305,8 @@ function bindEvents() {
     button.disabled = true;
     button.textContent = "Schließt...";
     try {
-      await terminalAction(await collectDayReportPayload());
-      await terminalAction({ action: "close-report" });
+      const reportPayload = await collectDayReportPayload();
+      await terminalAction({ ...reportPayload, closeAfterSave: true });
       if ((state.terminalDate || "") < todayKey()) {
         await terminalAction({ action: "load", date: todayKey(), manualDate: true });
       }

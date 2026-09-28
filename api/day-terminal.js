@@ -333,6 +333,22 @@ async function saveReport(body, res) {
   upsertCustomerDirectory(appData, invoiceCustomers);
   appData.dayReports[date] = { ...existing, cashTotal: cleanMoney(body.cashTotal), cashExpenses, ecTerminal1, ecTerminal2, ecTotal, invoiceTransferAmount: cleanMoney(body.invoiceTransferAmount ?? existing.invoiceTransferAmount), personalConsumption, revenueBowling: cleanMoney(body.revenueBowling ?? body.barBowling), bowlingCashRevenue: cleanMoney(body.bowlingCashRevenue ?? existing.bowlingCashRevenue), gastroCashRevenue: cleanMoney(body.gastroCashRevenue ?? existing.gastroCashRevenue), revenueDrinks, revenueFood, revenueOther, revenueGastro, barBowling: cleanMoney(body.barBowling ?? body.revenueBowling), barGastro: revenueGastro, tipTotal: cleanMoney(body.tipTotal ?? existing.tipTotal), tipRemainder: cleanMoney(body.tipRemainder ?? existing.tipRemainder), tipsByEmployee: cleanTipsByEmployee(body.tipsByEmployee || existing.tipsByEmployee), invoiceCustomers, expenses, miscIncome, documents, notes: String(body.notes || "").trim().slice(0, 2000), openingHours: cleanText(body.openingHours || existing.openingHours, 80), shiftLeader: cleanText(body.shiftLeader || existing.shiftLeader, 160), extraEmployees: cleanExtraEmployees(body.extraEmployees || existing.extraEmployees), removedEmployees: cleanEmployeeList(body.removedEmployees || existing.removedEmployees), handovers: cleanHandovers(body.handovers || existing.handovers), taskCompletions: cleanTaskCompletions(body.taskCompletions || existing.taskCompletions), cleaningCompletions: cleanCleaningCompletions(body.cleaningCompletions || existing.cleaningCompletions), toiletChecks: cleanToiletChecks(body.toiletChecks || existing.toiletChecks), reminderChecks: cleanToiletChecks(body.reminderChecks || existing.reminderChecks), terminalMessageChecks: cleanTerminalMessageChecks(body.terminalMessageChecks || existing.terminalMessageChecks), tipPayoutConfirmedAt: body.resetTipPayout ? "" : existing.tipPayoutConfirmedAt, tipPayoutAmount: body.resetTipPayout ? "" : existing.tipPayoutAmount, tipPayoutRemainder: body.resetTipPayout ? "" : existing.tipPayoutRemainder, updatedAt: new Date().toISOString() };
   appData.dayReports[date].invoiceTransferAmountManual = body.invoiceTransferAmountManual === true || body.invoiceTransferAmountManual === "true";
+  const closeAfterSave = body.closeAfterSave === true || body.closeAfterSave === "true";
+  if (closeAfterSave) {
+    const closedAt = new Date().toISOString();
+    appData.dayReports[date] = {
+      ...appData.dayReports[date],
+      closed: true,
+      closedAt,
+      correctionOpen: false,
+      correctionClosedAt: existing.correctionOpen ? closedAt : existing.correctionClosedAt,
+      correctionLog: existing.correctionOpen
+        ? [...(Array.isArray(existing.correctionLog) ? existing.correctionLog : []), { action: "closed", at: closedAt }]
+        : (existing.correctionLog || []),
+      closureLog: [...(Array.isArray(existing.closureLog) ? existing.closureLog : []), { action: "closed", at: closedAt, source: "terminal-save" }],
+      updatedAt: closedAt
+    };
+  }
   syncInvoicesForDate(appData, date);
   applyTipsToTimesheets(appData, date, appData.dayReports[date].tipsByEmployee);
   await writeAppData(appData);
@@ -343,7 +359,7 @@ async function saveReport(body, res) {
     ? await sendReadyInvoiceNotifications(appData, date, targetInvoiceId, { forceResend: forceInvoiceNotification })
     : { sent: 0, failed: 0, skipped: 0, skipReasons: [], changed: false, errors: [] };
   const mailMessage = invoiceMailResultMessage(mailResult);
-  sendJson(res, 200, { ok: true, message: "Tagesbericht gespeichert.", mailMessage, mailSent: mailResult.sent > 0, mailFailed: mailResult.failed > 0, ...terminalPayload(appData, date) });
+  sendJson(res, 200, { ok: true, message: closeAfterSave ? "Tagesbericht gespeichert und abgeschlossen." : "Tagesbericht gespeichert.", mailMessage, mailSent: mailResult.sent > 0, mailFailed: mailResult.failed > 0, ...terminalPayload(appData, date) });
 }
 
 async function sendReadyInvoiceMail(body, res) {
@@ -1126,14 +1142,16 @@ async function addHandover(body, res) {
 async function closeReport(body, res) {
   const appData = await readAppData(), date = cleanDate(body.date), existing = appData.dayReports?.[date] || {};
   const correctionLog = Array.isArray(existing.correctionLog) ? existing.correctionLog : [];
+  const closedAt = new Date().toISOString();
   appData.dayReports ||= {}; appData.dayReports[date] = {
     ...existing,
     closed: true,
-    closedAt: new Date().toISOString(),
+    closedAt,
     correctionOpen: false,
-    correctionClosedAt: existing.correctionOpen ? new Date().toISOString() : existing.correctionClosedAt,
-    correctionLog: existing.correctionOpen ? [...correctionLog, { action: "closed", at: new Date().toISOString() }] : correctionLog,
-    updatedAt: new Date().toISOString()
+    correctionClosedAt: existing.correctionOpen ? closedAt : existing.correctionClosedAt,
+    correctionLog: existing.correctionOpen ? [...correctionLog, { action: "closed", at: closedAt }] : correctionLog,
+    closureLog: [...(Array.isArray(existing.closureLog) ? existing.closureLog : []), { action: "closed", at: closedAt, source: "terminal" }],
+    updatedAt: closedAt
   };
   await writeAppData(appData);
   sendJson(res, 200, { ok: true, message: "Tagesbericht abgeschlossen.", ...terminalPayload(appData, date) });
