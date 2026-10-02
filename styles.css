@@ -2702,6 +2702,110 @@ button.employee-badge-stat {
   font-size: 14px;
 }
 
+.offer-assortment-picker {
+  position: relative;
+}
+
+.offer-assortment-picker > summary {
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.offer-assortment-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.offer-assortment-picker > summary::before {
+  content: "+";
+  margin-right: 7px;
+  color: var(--accent);
+}
+
+.offer-assortment-picker[open] > summary::before {
+  content: "−";
+}
+
+.offer-assortment-picker-panel {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  width: min(520px, calc(100vw - 48px));
+  margin-top: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+}
+
+.offer-assortment-options {
+  display: grid;
+  gap: 6px;
+  max-height: 360px;
+  margin-bottom: 10px;
+  overflow-y: auto;
+}
+
+.offer-assortment-options label {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.offer-assortment-options label:has(input:checked) {
+  border-color: var(--accent);
+  background: #fff5f5;
+}
+
+.offer-assortment-options input {
+  margin-top: 3px;
+}
+
+.offer-assortment-options span {
+  display: grid;
+  gap: 2px;
+  line-height: 1.35;
+}
+
+.offer-assortment-options small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.offer-assortment-picker-panel > button {
+  width: 100%;
+}
+
+@media (max-width: 700px) {
+  .offer-category-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .offer-category-head .offer-inline-tools,
+  .offer-assortment-picker {
+    width: 100%;
+  }
+
+  .offer-assortment-picker-panel {
+    position: static;
+    width: 100%;
+  }
+}
+
 .offer-print-buffet-group + .offer-print-buffet-group {
   margin-top: 8px;
 }

@@ -2183,6 +2183,27 @@ function offerDishAssortmentOptions(category = "") {
   `;
 }
 
+function offerDishAssortmentPicker(category = "") {
+  const items = offerDishAssortmentForCategory(category);
+  if (!items.length) return `<span class="hint">Kein Sortiment hinterlegt.</span>`;
+  return `
+    <details class="offer-assortment-picker">
+      <summary>Aus Sortiment wählen</summary>
+      <div class="offer-assortment-picker-panel">
+        <div class="offer-assortment-options">
+          ${items.map((item, index) => `
+            <label>
+              <input type="checkbox" data-offer-assortment-option value="${index}">
+              <span><small>${escapeHtml(item.group || OFFER_CATEGORY_LABELS[category] || "Gericht")}</small>${escapeHtml(item.name)}</span>
+            </label>
+          `).join("")}
+        </div>
+        <button class="primary" type="button" data-offer-insert-assortment="${escapeHtml(category)}">Ausgewählte hinzufügen</button>
+      </div>
+    </details>
+  `;
+}
+
 function renderAll() {
   $("#appTitle").textContent = isCustomerInvoiceMode() ? "Veranstaltungen auf Rechnung" : isTodoMode() ? "TO DO" : state.settings.businessName;
   if ($("#customerInvoiceDate")) $("#customerInvoiceDate").value = invoiceSafeDate(state.invoiceDate, todayKey());
@@ -6331,10 +6352,7 @@ function renderOfferBuffetCategory(category, draft) {
       <div class="offer-category-head">
         <strong>${escapeHtml(OFFER_CATEGORY_LABELS[category] || category)}</strong>
         <div class="offer-inline-tools">
-          <select data-offer-assortment-select="${escapeHtml(category)}">
-            ${offerDishAssortmentOptions(category)}
-          </select>
-          <button class="secondary" type="button" data-offer-insert-assortment="${escapeHtml(category)}">Aus Sortiment</button>
+          ${offerDishAssortmentPicker(category)}
           <button class="secondary" type="button" data-offer-add-dish="${escapeHtml(category)}">+ Leer</button>
         </div>
       </div>
@@ -20403,21 +20421,23 @@ function bindEvents() {
       const draft = currentOfferDraftFromDom();
       const category = insertAssortment.dataset.offerInsertAssortment;
       const section = insertAssortment.closest("[data-offer-category]");
-      const select = section?.querySelector(`[data-offer-assortment-select="${cssEscape(category || "")}"]`);
-      const assortmentIndex = Number(select?.value ?? -1);
       const assortment = offerDishAssortmentForCategory(category);
-      const selectedDish = Number.isInteger(assortmentIndex) && assortmentIndex >= 0 ? assortment[assortmentIndex] : null;
-      if (!category || !selectedDish) {
-        showToast("Bitte zuerst ein Gericht aus dem Sortiment wählen.");
+      const selectedDishes = [...(section?.querySelectorAll("[data-offer-assortment-option]:checked") || [])]
+        .map((input) => assortment[Number(input.value)])
+        .filter(Boolean);
+      if (!category || !selectedDishes.length) {
+        showToast("Bitte mindestens ein Gericht aus dem Sortiment auswählen.");
         return;
       }
       draft.buffet.categories[category] ||= [];
-      draft.buffet.categories[category].push({ id: cryptoId(), name: selectedDish.name, note: "" });
+      selectedDishes.forEach((dish) => {
+        draft.buffet.categories[category].push({ id: cryptoId(), name: dish.name, note: "" });
+      });
       state.offerDraft = normalizeOfferClient(draft);
       state.offerDraftId = draft.id;
       state.offerDraftDirty = false;
       renderAdminOffers();
-      showToast("Gericht aus dem Sortiment eingefügt.");
+      showToast(`${selectedDishes.length} ${selectedDishes.length === 1 ? "Gericht" : "Gerichte"} aus dem Sortiment eingefügt.`);
       return;
     }
     const removeDish = event.target.closest("[data-offer-remove-dish]");
