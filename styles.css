@@ -2786,7 +2786,10 @@ button.employee-badge-stat {
 }
 
 .offer-assortment-picker-panel > button {
+  position: sticky;
+  bottom: 0;
   width: 100%;
+  box-shadow: 0 -8px 12px #fff;
 }
 
 @media (max-width: 700px) {

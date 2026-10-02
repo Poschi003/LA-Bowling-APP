@@ -20418,11 +20418,14 @@ function bindEvents() {
     }
     const insertAssortment = event.target.closest("[data-offer-insert-assortment]");
     if (insertAssortment) {
+      event.preventDefault();
+      event.stopPropagation();
       const draft = currentOfferDraftFromDom();
       const category = insertAssortment.dataset.offerInsertAssortment;
-      const section = insertAssortment.closest("[data-offer-category]");
+      const picker = insertAssortment.closest(".offer-assortment-picker");
       const assortment = offerDishAssortmentForCategory(category);
-      const selectedDishes = [...(section?.querySelectorAll("[data-offer-assortment-option]:checked") || [])]
+      const selectedDishes = [...(picker?.querySelectorAll("[data-offer-assortment-option]") || [])]
+        .filter((input) => input.checked === true)
         .map((input) => assortment[Number(input.value)])
         .filter(Boolean);
       if (!category || !selectedDishes.length) {
