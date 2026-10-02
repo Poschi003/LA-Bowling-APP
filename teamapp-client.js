@@ -2190,6 +2190,10 @@ function offerDishAssortmentPicker(category = "") {
     <details class="offer-assortment-picker">
       <summary>Aus Sortiment wählen</summary>
       <div class="offer-assortment-picker-panel">
+        <div class="offer-assortment-picker-actions">
+          <strong>Gerichte markieren</strong>
+          <button class="primary" type="button" data-offer-insert-assortment="${escapeHtml(category)}">Markierte Gerichte hinzufügen</button>
+        </div>
         <div class="offer-assortment-options">
           ${items.map((item, index) => `
             <label>
@@ -2198,7 +2202,6 @@ function offerDishAssortmentPicker(category = "") {
             </label>
           `).join("")}
         </div>
-        <button class="primary" type="button" data-offer-insert-assortment="${escapeHtml(category)}">Ausgewählte hinzufügen</button>
       </div>
     </details>
   `;

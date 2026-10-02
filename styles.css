@@ -2785,11 +2785,22 @@ button.employee-badge-stat {
   font-weight: 700;
 }
 
-.offer-assortment-picker-panel > button {
+.offer-assortment-picker-actions {
   position: sticky;
-  bottom: 0;
-  width: 100%;
-  box-shadow: 0 -8px 12px #fff;
+  z-index: 2;
+  top: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin: -4px -4px 10px;
+  padding: 4px;
+  background: #fff;
+  box-shadow: 0 8px 12px #fff;
+}
+
+.offer-assortment-picker-actions strong {
+  font-size: 13px;
 }
 
 @media (max-width: 700px) {
@@ -2805,6 +2816,14 @@ button.employee-badge-stat {
 
   .offer-assortment-picker-panel {
     position: static;
+    width: 100%;
+  }
+
+  .offer-assortment-picker-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .offer-assortment-picker-actions button {
     width: 100%;
   }
 }
