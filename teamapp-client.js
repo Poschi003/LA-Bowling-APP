@@ -2192,7 +2192,10 @@ function offerDishAssortmentPicker(category = "") {
       <div class="offer-assortment-picker-panel">
         <div class="offer-assortment-picker-actions">
           <strong>Gerichte markieren</strong>
-          <button class="primary" type="button" data-offer-insert-assortment="${escapeHtml(category)}">Markierte Gerichte hinzufügen</button>
+          <div>
+            <button class="ghost" type="button" data-offer-close-assortment>Schließen</button>
+            <button class="primary" type="button" data-offer-insert-assortment="${escapeHtml(category)}">Markierte Gerichte hinzufügen</button>
+          </div>
         </div>
         <div class="offer-assortment-options">
           ${items.map((item, index) => `
@@ -20444,6 +20447,12 @@ function bindEvents() {
       state.offerDraftDirty = false;
       renderAdminOffers();
       showToast(`${selectedDishes.length} ${selectedDishes.length === 1 ? "Gericht" : "Gerichte"} aus dem Sortiment eingefügt.`);
+      return;
+    }
+    const closeAssortment = event.target.closest("[data-offer-close-assortment]");
+    if (closeAssortment) {
+      event.preventDefault();
+      closeAssortment.closest(".offer-assortment-picker")?.removeAttribute("open");
       return;
     }
     const removeDish = event.target.closest("[data-offer-remove-dish]");
